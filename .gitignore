@@ -1,5 +1,8 @@
 /target
 **/test_snapshots
+**/test_snapshots/
+*.snap
+*.snapshot
 *.local
 .DS_Store
 .env
