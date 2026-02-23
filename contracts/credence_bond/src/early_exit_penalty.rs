@@ -52,8 +52,7 @@ pub fn calculate_penalty(
         return 0;
     }
     let base = amount.checked_mul(penalty_bps as i128).unwrap_or(0) / 10_000;
-    let penalty = (base * (remaining_time as i128)) / (total_duration as i128);
-    penalty
+    (base * (remaining_time as i128)) / (total_duration as i128)
 }
 
 /// Emit early exit penalty event.
