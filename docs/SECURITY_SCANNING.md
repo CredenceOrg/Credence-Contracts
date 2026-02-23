@@ -32,7 +32,7 @@ Install the required tools:
 
 ```bash
 # Install cargo-audit (version pinned to match CI)
-cargo install cargo-audit --version 0.20.0 --locked
+cargo install cargo-audit --version 0.20.1 --locked
 
 # Install cargo-geiger (version pinned to match CI)
 cargo install cargo-geiger --version 0.11.7 --locked
@@ -318,7 +318,7 @@ cargo audit
 
 | Tool | Current Version | Last Updated |
 |------|----------------|--------------|
-| cargo-audit | 0.20.0 | 2024-02-23 |
+| cargo-audit | 0.20.1 | 2024-02-23 |
 | cargo-geiger | 0.11.7 | 2024-02-23 |
 | clippy | stable | (follows Rust toolchain) |
 
