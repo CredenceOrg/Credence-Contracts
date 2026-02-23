@@ -1,0 +1,11 @@
+[package]
+name = "credence_treasury"
+version = "0.1.0"
+edition = "2021"
+description = "Credence treasury — protocol fees, slashed funds, multi-sig withdrawals"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
