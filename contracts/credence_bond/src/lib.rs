@@ -7,6 +7,7 @@ use soroban_sdk::{
 mod early_exit_penalty;
 mod rolling_bond;
 mod tiered_bond;
+mod validation;
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -130,6 +131,9 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period: u64,
     ) -> IdentityBond {
+        // Validate bond amount before creating the bond
+        validation::validate_bond_amount(amount);
+        
         let bond_start = e.ledger().timestamp();
         let _end_timestamp = bond_start
             .checked_add(duration)
@@ -443,6 +447,11 @@ impl CredenceBond {
 
     /// Top up the bond with additional amount (checks for overflow)
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
+        // Validate the top-up amount is positive
+        if amount <= 0 {
+            panic!("top-up amount must be positive");
+        }
+        
         let key = DataKey::Bond;
         let mut bond = e
             .storage()
@@ -528,6 +537,9 @@ impl CredenceBond {
             bond_duration: bond.bond_duration,
             slashed_amount: bond.slashed_amount,
             active: false,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
 
@@ -586,6 +598,9 @@ impl CredenceBond {
             bond_duration: bond.bond_duration,
             slashed_amount: new_slashed,
             active: bond.active,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
 
@@ -677,6 +692,9 @@ mod test_reentrancy;
 
 #[cfg(test)]
 mod test_attestation;
+
+#[cfg(test)]
+mod test_validation;
 
 #[cfg(test)]
 mod security;
