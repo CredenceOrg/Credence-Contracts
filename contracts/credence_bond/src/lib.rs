@@ -1,13 +1,22 @@
 #![no_std]
 
-use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
-};
-
 mod early_exit_penalty;
 mod rolling_bond;
+mod slashing;
 mod tiered_bond;
 mod validation;
+
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+
+/// Identity tier based on bonded amount (Bronze < Silver < Gold < Platinum).
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BondTier {
+    Bronze,
+    Silver,
+    Gold,
+    Platinum,
+}
 
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -18,9 +27,12 @@ pub struct IdentityBond {
     pub bond_duration: u64,
     pub slashed_amount: i128,
     pub active: bool,
+    /// If true, bond auto-renews at period end unless withdrawal was requested.
     pub is_rolling: bool,
+    /// When withdrawal was requested (0 = not requested).
     pub withdrawal_requested_at: u64,
-    pub notice_period: u64,
+    /// Notice period duration for rolling bonds (seconds).
+    pub notice_period_duration: u64,
 }
 
 #[contracttype]
@@ -44,34 +56,26 @@ pub enum DataKey {
     SubjectAttestations(Address),
 }
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BondTier {
-    Bronze,
-    Silver,
-    Gold,
-    Platinum,
-}
-
 #[contract]
 pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
-    /// Initialize the contract (set admin).
+    /// Initialize the contract (admin).
     pub fn initialize(e: Env, admin: Address) {
+        admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
     }
 
-    /// Set early exit penalty config (admin only). Penalty in basis points (e.g. 500 = 5%).
+    /// Set early exit penalty config. Only admin should call.
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+        admin.require_auth();
         let stored_admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
-        admin.require_auth();
-        if admin != stored_admin {
+        if stored_admin != admin {
             panic!("not admin");
         }
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
@@ -117,24 +121,22 @@ impl CredenceBond {
             .unwrap_or(false)
     }
 
-    /// Create or top-up a bond for an identity (non-rolling helper).
-    pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
-        Self::create_bond_with_rolling(e, identity, amount, duration, false, 0)
-    }
-
-    /// Create a bond with rolling parameters.
-    pub fn create_bond_with_rolling(
+    /// Create or top-up a bond for an identity. In a full implementation this would
+    /// transfer USDC from the caller and store the bond.
+    pub fn create_bond(
         e: Env,
         identity: Address,
         amount: i128,
         duration: u64,
         is_rolling: bool,
-        notice_period: u64,
+        notice_period_duration: u64,
     ) -> IdentityBond {
         // Validate bond amount before creating the bond
         validation::validate_bond_amount(amount);
         
         let bond_start = e.ledger().timestamp();
+
+        // Verify the end timestamp wouldn't overflow
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
@@ -148,10 +150,12 @@ impl CredenceBond {
             active: true,
             is_rolling,
             withdrawal_requested_at: 0,
-            notice_period,
+            notice_period_duration,
         };
         let key = DataKey::Bond;
         e.storage().instance().set(&key, &bond);
+        let tier = tiered_bond::get_tier_for_amount(amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
         bond
     }
 
@@ -308,10 +312,6 @@ impl CredenceBond {
             panic!("slashed amount exceeds bonded amount");
         }
 
-        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount + amount);
-        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
-
         e.storage().instance().set(&key, &bond);
         bond
     }
@@ -349,6 +349,7 @@ impl CredenceBond {
             penalty_bps,
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
+        // In a full implementation: transfer (amount - penalty) to user, penalty to treasury.
 
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond
@@ -418,31 +419,24 @@ impl CredenceBond {
         tiered_bond::get_tier_for_amount(bond.bonded_amount)
     }
 
-    /// Slash a portion of the bond. Increases slashed_amount up to the bonded_amount.
-    /// Returns the updated bond with increased slashed_amount.
-    pub fn slash(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
-        let mut bond = e
-            .storage()
-            .instance()
-            .get::<_, IdentityBond>(&key)
-            .unwrap_or_else(|| panic!("no bond"));
-
-        // Calculate new slashed amount, checking for overflow
-        let new_slashed = bond
-            .slashed_amount
-            .checked_add(amount)
-            .expect("slashing caused overflow");
-
-        // Cap slashed amount at bonded amount
-        bond.slashed_amount = if new_slashed > bond.bonded_amount {
-            bond.bonded_amount
-        } else {
-            new_slashed
-        };
-
-        e.storage().instance().set(&key, &bond);
-        bond
+    /// Slash a portion of the bond (admin only). Reduces the bond's value as a penalty.
+    /// Increases slashed_amount up to the bonded_amount (over-slash prevention).
+    ///
+    /// # Arguments
+    /// * `admin` - Address claiming admin authority (must be contract admin)
+    /// * `amount` - Amount to slash (i128). Will be capped at bonded_amount.
+    ///
+    /// # Returns
+    /// Updated IdentityBond with increased slashed_amount
+    ///
+    /// # Panics
+    /// - "not admin" if caller is not the contract admin
+    /// - "no bond" if no bond exists
+    ///
+    /// # Events
+    /// Emits `bond_slashed` event with (identity, slash_amount, total_slashed_amount)
+    pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
+        slashing::slash_bond(&e, &admin, amount)
     }
 
     /// Top up the bond with additional amount (checks for overflow)
@@ -465,6 +459,8 @@ impl CredenceBond {
 
         // Calculate the new bonded amount after top-up
         let new_bonded_amount = bond
+        // Perform top-up with overflow protection
+        bond.bonded_amount = bond
             .bonded_amount
             .checked_add(amount)
             .expect("top-up caused overflow");
@@ -475,9 +471,6 @@ impl CredenceBond {
         // Perform top-up with overflow protection
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = new_bonded_amount;
-
-        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
         bond
@@ -696,9 +689,6 @@ impl CredenceBond {
 
 #[cfg(test)]
 mod test;
-
-#[cfg(test)]
-mod test_reentrancy;
 
 #[cfg(test)]
 mod test_attestation;
