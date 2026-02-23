@@ -120,7 +120,16 @@ fn gas_get_dispute() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     let _ = client.get_dispute(&id);
@@ -138,7 +147,16 @@ fn gas_cast_vote_first() {
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
     let arbitrator = Address::generate(&env);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     client.cast_vote(&arbitrator, &id, &true);
@@ -153,7 +171,16 @@ fn gas_cast_vote_nth() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     for _ in 0..4 {
         client.cast_vote(&Address::generate(&env), &id, &true);
@@ -175,7 +202,16 @@ fn gas_resolve_dispute_favor_disputer() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 100);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        100,
+    );
 
     client.cast_vote(&Address::generate(&env), &id, &true);
     client.cast_vote(&Address::generate(&env), &id, &false);
@@ -195,7 +231,16 @@ fn gas_resolve_dispute_favor_slasher() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 100);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        100,
+    );
 
     client.cast_vote(&Address::generate(&env), &id, &false);
     client.cast_vote(&Address::generate(&env), &id, &false);
@@ -216,7 +261,16 @@ fn gas_expire_dispute() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 100);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        100,
+    );
 
     env.ledger().set_timestamp(env.ledger().timestamp() + 200);
     env.cost_estimate().budget().reset_default();
@@ -235,7 +289,16 @@ fn gas_has_voted_false() {
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
     let arbitrator = Address::generate(&env);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     let _ = client.has_voted(&id, &arbitrator);
@@ -251,7 +314,16 @@ fn gas_has_voted_true() {
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
     let arbitrator = Address::generate(&env);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
     client.cast_vote(&arbitrator, &id, &true);
 
     env.cost_estimate().budget().reset_default();
@@ -280,7 +352,16 @@ fn gas_get_dispute_count_nonzero() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     let _ = client.get_dispute_count();
@@ -315,7 +396,9 @@ fn gas_batch_vs_individual_create_dispute() {
         let (cpu, mem) = batch_create_cost(n);
         std::println!(
             "  {:>3} dispute(s) | cpu: {:>12} | mem: {:>12} | cpu/op: {:>10}",
-            n, cpu, mem,
+            n,
+            cpu,
+            mem,
             cpu / n as u64,
         );
     }
@@ -329,7 +412,16 @@ fn batch_vote_cost(n: u32) -> (u64, u64) {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     for _ in 0..n {
@@ -346,7 +438,9 @@ fn gas_batch_vs_individual_cast_vote() {
         let (cpu, mem) = batch_vote_cost(n);
         std::println!(
             "  {:>3} vote(s)     | cpu: {:>12} | mem: {:>12} | cpu/op: {:>10}",
-            n, cpu, mem,
+            n,
+            cpu,
+            mem,
             cpu / n as u64,
         );
     }
@@ -364,7 +458,16 @@ fn gas_get_dispute_repeated_read_ttl_stability() {
     let admin = Address::generate(&env);
     let (contract_id, token_id, token_client) = setup(&env, &admin, &disputer, 5_000);
     let client = DisputeContractClient::new(&env, &contract_id);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     let _ = client.get_dispute(&id);
@@ -376,7 +479,8 @@ fn gas_get_dispute_repeated_read_ttl_stability() {
 
     std::println!(
         "[GAS] get_dispute repeated reads: 1st={} 2nd={} delta={}",
-        first_cpu, second_cpu,
+        first_cpu,
+        second_cpu,
         (second_cpu as i64 - first_cpu as i64).abs(),
     );
 
@@ -399,7 +503,16 @@ fn gas_cast_vote_vs_has_voted_ratio() {
     let client = DisputeContractClient::new(&env, &contract_id);
     let arb1 = Address::generate(&env);
     let arb2 = Address::generate(&env);
-    let id = create_one(&env, &client, &disputer, &contract_id, &token_id, &token_client, 500, 3600);
+    let id = create_one(
+        &env,
+        &client,
+        &disputer,
+        &contract_id,
+        &token_id,
+        &token_client,
+        500,
+        3600,
+    );
 
     env.cost_estimate().budget().reset_default();
     client.cast_vote(&arb1, &id, &true);
