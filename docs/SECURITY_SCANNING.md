@@ -35,7 +35,7 @@ Install the required tools:
 cargo install cargo-audit --version 0.20.1 --locked
 
 # Install cargo-geiger (version pinned to match CI)
-cargo install cargo-geiger --version 0.11.8 --locked
+cargo install cargo-geiger --version 0.12.0 --locked
 
 # Clippy is included with rustup
 rustup component add clippy
@@ -319,7 +319,7 @@ cargo audit
 | Tool | Current Version | Last Updated |
 |------|----------------|--------------|
 | cargo-audit | 0.20.1 | 2024-02-23 |
-| cargo-geiger | 0.11.8 | 2024-02-23 |
+| cargo-geiger | 0.12.0 | 2024-02-23 |
 | clippy | stable | (follows Rust toolchain) |
 
 ## Adjusting Severity Thresholds
