@@ -30,7 +30,7 @@ fn create_test_env() -> (Env, CredenceBondClient<'static>, Vec<Address>, Address
         gov_member3.clone(),
     ];
 
-    client.initialize(&admin, &2, &gov_members_vec);
+    client.initialize_with_governance(&admin, &2, &gov_members_vec);
 
     let governance_members = vec![&e, gov_member1, gov_member2, gov_member3];
 
@@ -790,7 +790,7 @@ fn test_governance_initialization() {
     let gov_members_vec = vec![&e, gov_member1.clone(), gov_member2.clone()];
 
     // Initialize with 1 required approval
-    client.initialize(&admin, &1, &gov_members_vec);
+    client.initialize_with_governance(&admin, &1, &gov_members_vec);
 
     let config = client.get_governance_config();
     assert_eq!(config.admin, admin);

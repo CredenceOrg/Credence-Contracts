@@ -94,16 +94,69 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
+    /// Initialize the contract (set admin). Simple version for backward compatibility.
+    pub fn initialize(e: Env, admin: Address) {
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
     /// Initialize the contract with admin and governance members.
-    pub fn initialize(
+    pub fn initialize_with_governance(
         e: Env,
         admin: Address,
         required_approvals: u32,
         governance_members: Vec<Address>,
     ) {
-    /// Initialize the contract (set admin).
-    pub fn initialize(e: Env, admin: Address) {
-        e.storage().instance().set(&DataKey::Admin, &admin);
+        admin.require_auth();
+
+        e.storage()
+            .instance()
+            .set(&DataKey::Admin, &admin);
+        
+        let config = GovernanceConfig {
+            admin,
+            required_approvals,
+            governance_members: governance_members.clone(),
+            slash_request_counter: 0,
+        };
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "config"), &config);
+        // Store governance members for quick lookup
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "gov_members"), &governance_members);
+    }
+
+    /// Set governance configuration (admin only).
+    pub fn set_governance_config(
+        e: Env,
+        admin: Address,
+        required_approvals: u32,
+        governance_members: Vec<Address>,
+    ) {
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        admin.require_auth();
+        if admin != stored_admin {
+            panic!("not admin");
+        }
+        
+        let config = GovernanceConfig {
+            admin,
+            required_approvals,
+            governance_members: governance_members.clone(),
+            slash_request_counter: 0,
+        };
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "config"), &config);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "gov_members"), &governance_members);
     }
 
     /// Set early exit penalty config (admin only). Penalty in basis points (e.g. 500 = 5%).
@@ -128,28 +181,35 @@ impl CredenceBond {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
         admin.require_auth();
+        e.storage()
+            .instance()
+            .set(&DataKey::Attester(attester.clone()), &true);
+    }
 
+    /// Unregister an authorized attester (only admin can call).
+    pub fn unregister_attester(e: Env, attester: Address) {
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        admin.require_auth();
         e.storage()
             .instance()
-            .set(&Symbol::new(&e, "admin"), &admin);
-        let config = GovernanceConfig {
-            admin,
-            required_approvals,
-            governance_members: governance_members.clone(),
-            slash_request_counter: 0,
-        };
+            .set(&DataKey::Attester(attester), &false);
+    }
+
+    /// Check if an address is an authorized attester.
+    pub fn is_attester(e: Env, address: Address) -> bool {
         e.storage()
             .instance()
-            .set(&Symbol::new(&e, "config"), &config);
-        // Store governance members for quick lookup
-        e.storage()
-            .instance()
-            .set(&Symbol::new(&e, "gov_members"), &governance_members);
+            .get(&DataKey::Attester(address))
+            .unwrap_or(false)
     }
 
     /// Create or top-up a bond for an identity (non-rolling helper).
     pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
-        Self::create_bond_with_rolling(e, identity, amount, duration, false, 0)
+        CredenceBond::create_bond_with_rolling(e, identity, amount, duration, false, 0)
     }
 
     /// Create a bond with rolling parameters.
@@ -360,7 +420,7 @@ impl CredenceBond {
         let admin = e
             .storage()
             .instance()
-            .get::<_, Address>(&Symbol::new(&e, "admin"))
+            .get::<_, Address>(&DataKey::Admin)
             .unwrap();
 
         // In practice, we'd verify the caller is admin via auth
@@ -762,7 +822,7 @@ impl CredenceBond {
 
     /// Get current tier for the bond's bonded amount.
     pub fn get_tier(e: Env) -> BondTier {
-        let bond = Self::get_identity_state(e);
+        let bond = CredenceBond::get_identity_state(e);
         tiered_bond::get_tier_for_amount(bond.bonded_amount)
     }
 
@@ -852,7 +912,7 @@ impl CredenceBond {
     /// Uses a reentrancy guard to prevent re-entrance during external calls.
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
         identity.require_auth();
-        Self::acquire_lock(&e);
+        CredenceBond::acquire_lock(&e);
 
         let bond_key = DataKey::Bond;
         let bond: IdentityBond = e
@@ -862,11 +922,11 @@ impl CredenceBond {
             .unwrap_or_else(|| panic!("no bond"));
 
         if bond.identity != identity {
-            Self::release_lock(&e);
+            CredenceBond::release_lock(&e);
             panic!("not bond owner");
         }
         if !bond.active {
-            Self::release_lock(&e);
+            CredenceBond::release_lock(&e);
             panic!("bond not active");
         }
 
@@ -880,6 +940,9 @@ impl CredenceBond {
             bond_duration: bond.bond_duration,
             slashed_amount: bond.slashed_amount,
             active: false,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
 
@@ -938,6 +1001,9 @@ impl CredenceBond {
             bond_duration: bond.bond_duration,
             slashed_amount: new_slashed,
             active: bond.active,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
 
@@ -1032,5 +1098,9 @@ mod test_reentrancy;
 #[cfg(test)]
 mod test_attestation;
 
+#[cfg(test)]
+mod test_governance;
+
 // #[cfg(test)]
 // mod security;
+
