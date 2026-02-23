@@ -528,6 +528,9 @@ impl CredenceBond {
             bond_duration: bond.bond_duration,
             slashed_amount: bond.slashed_amount,
             active: false,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
 
@@ -586,6 +589,9 @@ impl CredenceBond {
             bond_duration: bond.bond_duration,
             slashed_amount: new_slashed,
             active: bond.active,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period: bond.notice_period,
         };
         e.storage().instance().set(&bond_key, &updated);
 

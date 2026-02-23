@@ -14,7 +14,7 @@ fn setup<'a>(
     treasury: &Address,
     penalty_bps: u32,
 ) -> (CredenceBondClient<'a>, Address) {
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     client.initialize(&admin);
@@ -97,7 +97,7 @@ fn test_early_exit_rejected_after_lock_up() {
 fn test_early_exit_fails_without_config() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -110,7 +110,7 @@ fn test_early_exit_fails_without_config() {
 #[should_panic(expected = "not admin")]
 fn test_set_early_exit_config_unauthorized() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -123,7 +123,7 @@ fn test_set_early_exit_config_unauthorized() {
 #[should_panic(expected = "penalty_bps must be <= 10000")]
 fn test_set_early_exit_config_invalid_bps() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);

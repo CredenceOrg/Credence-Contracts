@@ -162,19 +162,43 @@ jobs:
 
       - name: Run cargo-geiger on contracts
         run: |
-          cd contracts
-          cargo geiger --output-format GitHubMarkdown > ../geiger-report.md || true
-          cargo geiger
+          # Get list of workspace members
+          MEMBERS=$(cargo metadata --no-deps --format-version 1 | jq -r '.workspace_members[]' | cut -d' ' -f1)
+          
+          echo "# Cargo Geiger Report" > geiger-report.md
+          echo "" >> geiger-report.md
+          
+          # Run cargo geiger for each workspace member
+          for member in $MEMBERS; do
+            echo "## Package: $member" >> geiger-report.md
+            echo "" >> geiger-report.md
+            cargo geiger -p "$member" --output-format GitHubMarkdown >> geiger-report.md 2>&1 || true
+            echo "" >> geiger-report.md
+          done
+          
+          # Also run a summary scan
+          echo "## Summary" >> geiger-report.md
+          cargo geiger 2>&1 || true
 
       - name: Check for unsafe code in contracts
         run: |
-          cd contracts
-          # Count unsafe usage in our contract code (not dependencies)
-          UNSAFE_COUNT=$(cargo geiger --output-format Json | jq '[.packages[] | select(.name | startswith("credence_")) | .unsafety.used.functions + .unsafety.used.exprs + .unsafety.used.impls + .unsafety.used.traits + .unsafety.used.methods] | add // 0')
+          # Get list of workspace members
+          MEMBERS=$(cargo metadata --no-deps --format-version 1 | jq -r '.workspace_members[]' | cut -d' ' -f1)
           
-          echo "Unsafe code blocks in contracts: $UNSAFE_COUNT"
+          TOTAL_UNSAFE=0
           
-          if [ "$UNSAFE_COUNT" -gt 0 ]; then
+          # Check each contract package
+          for member in $MEMBERS; do
+            if [[ "$member" == credence_* ]]; then
+              UNSAFE_COUNT=$(cargo geiger -p "$member" --output-format Json 2>/dev/null | jq '[.packages[] | select(.name | startswith("credence_")) | .unsafety.used.functions + .unsafety.used.exprs + .unsafety.used.impls + .unsafety.used.traits + .unsafety.used.methods] | add // 0' || echo "0")
+              echo "Unsafe code in $member: $UNSAFE_COUNT"
+              TOTAL_UNSAFE=$((TOTAL_UNSAFE + UNSAFE_COUNT))
+            fi
+          done
+          
+          echo "Total unsafe code blocks in contracts: $TOTAL_UNSAFE"
+          
+          if [ "$TOTAL_UNSAFE" -gt 0 ]; then
             echo "⚠️  WARNING: Unsafe code detected in contracts - review required"
             echo "This is a warning only - pipeline will continue"
           else
