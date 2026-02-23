@@ -13,7 +13,7 @@ pub enum SlashRequestStatus {
     Disputed,
 }
 
-/// A slash request submitted by a governance member
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct SlashRequest {
