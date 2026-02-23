@@ -12,9 +12,15 @@ const KEY_PENALTY_BPS: &str = "early_exit_penalty_bps";
 
 /// Returns (treasury, penalty_bps). Panics if config not set.
 pub fn get_config(e: &Env) -> (Address, u32) {
-    let treasury = e.storage().instance().get::<_, Address>(&Symbol::new(e, KEY_TREASURY))
+    let treasury = e
+        .storage()
+        .instance()
+        .get::<_, Address>(&Symbol::new(e, KEY_TREASURY))
         .unwrap_or_else(|| panic!("early exit config not set"));
-    let bps = e.storage().instance().get::<_, u32>(&Symbol::new(e, KEY_PENALTY_BPS))
+    let bps = e
+        .storage()
+        .instance()
+        .get::<_, u32>(&Symbol::new(e, KEY_PENALTY_BPS))
         .unwrap_or_else(|| panic!("early exit penalty bps not set"));
     (treasury, bps)
 }
@@ -24,8 +30,12 @@ pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
     if penalty_bps > 10_000 {
         panic!("penalty_bps must be <= 10000 (100%)");
     }
-    e.storage().instance().set(&Symbol::new(e, KEY_TREASURY), &treasury);
-    e.storage().instance().set(&Symbol::new(e, KEY_PENALTY_BPS), &penalty_bps);
+    e.storage()
+        .instance()
+        .set(&Symbol::new(e, KEY_TREASURY), &treasury);
+    e.storage()
+        .instance()
+        .set(&Symbol::new(e, KEY_PENALTY_BPS), &penalty_bps);
 }
 
 /// Calculate early exit penalty based on remaining lock time.
@@ -56,6 +66,11 @@ pub fn emit_penalty_event(
 ) {
     e.events().publish(
         (Symbol::new(e, "early_exit_penalty"),),
-        (identity.clone(), withdraw_amount, penalty_amount, treasury.clone()),
+        (
+            identity.clone(),
+            withdraw_amount,
+            penalty_amount,
+            treasury.clone(),
+        ),
     );
 }
