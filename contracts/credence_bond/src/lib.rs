@@ -11,6 +11,9 @@ pub struct IdentityBond {
     pub bond_duration: u64,
     pub slashed_amount: i128,
     pub active: bool,
+    pub is_rolling: bool,
+    pub withdrawal_requested_at: u64,
+    pub notice_period: u64,
 }
 
 #[contracttype]
@@ -102,6 +105,9 @@ impl CredenceBond {
             bond_duration: duration,
             slashed_amount: 0,
             active: true,
+            is_rolling: false,
+            withdrawal_requested_at: 0,
+            notice_period: 0,
         };
         let key = DataKey::Bond;
         e.storage().instance().set(&key, &bond);
