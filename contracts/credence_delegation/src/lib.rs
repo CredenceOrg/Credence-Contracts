@@ -11,6 +11,14 @@ pub enum DelegationType {
 
 #[contracttype]
 #[derive(Clone, Debug)]
+pub enum AttestationStatus {
+    Active,
+    Revoked,
+    NotFound,
+}
+
+#[contracttype]
+#[derive(Clone, Debug)]
 pub struct Delegation {
     pub owner: Address,
     pub delegate: Address,
@@ -97,6 +105,32 @@ impl CredenceDelegation {
             .publish((Symbol::new(&e, "delegation_revoked"),), d);
     }
 
+    pub fn revoke_attestation(e: Env, attester: Address, subject: Address) {
+        attester.require_auth();
+
+        let key = DataKey::Delegation(
+            attester.clone(),
+            subject.clone(),
+            DelegationType::Attestation,
+        );
+
+        let mut d: Delegation = e
+            .storage()
+            .instance()
+            .get(&key)
+            .unwrap_or_else(|| panic!("attestation not found"));
+
+        if d.revoked {
+            panic!("attestation already revoked");
+        }
+
+        d.revoked = true;
+        e.storage().instance().set(&key, &d);
+
+        e.events()
+            .publish((Symbol::new(&e, "attestation_revoked"),), d);
+    }
+
     /// Retrieve a stored delegation.
     pub fn get_delegation(
         e: Env,
@@ -122,6 +156,24 @@ impl CredenceDelegation {
         match e.storage().instance().get::<_, Delegation>(&key) {
             Some(d) => !d.revoked && d.expires_at > e.ledger().timestamp(),
             None => false,
+        }
+    }
+
+    pub fn get_attestation_status(
+        e: Env,
+        attester: Address,
+        subject: Address,
+    ) -> AttestationStatus {
+        let key = DataKey::Delegation(attester, subject, DelegationType::Attestation);
+        match e.storage().instance().get::<_, Delegation>(&key) {
+            Some(d) => {
+                if d.revoked {
+                    AttestationStatus::Revoked
+                } else {
+                    AttestationStatus::Active
+                }
+            }
+            None => AttestationStatus::NotFound,
         }
     }
 }

@@ -9,7 +9,11 @@ use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
-fn setup<'a>(e: &'a Env, treasury: &Address, penalty_bps: u32) -> (CredenceBondClient<'a>, Address) {
+fn setup<'a>(
+    e: &'a Env,
+    treasury: &Address,
+    penalty_bps: u32,
+) -> (CredenceBondClient<'a>, Address) {
     let contract_id = e.register_contract(None, CredenceBond);
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);

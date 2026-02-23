@@ -65,7 +65,13 @@ fn test_tier_unchanged_within_threshold() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &(TIER_BRONZE_MAX / 2), &86400_u64, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &(TIER_BRONZE_MAX / 2),
+        &86400_u64,
+        &false,
+        &0_u64,
+    );
     assert_eq!(client.get_tier(), BondTier::Bronze);
     client.top_up(&(TIER_BRONZE_MAX / 2 - 1));
     assert_eq!(client.get_tier(), BondTier::Bronze);

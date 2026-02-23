@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["contracts/credence_bond", "contracts/credence_delegation", "contracts/credence_treasury"]
+members = ["contracts/credence_bond", "contracts/credence_delegation", "contracts/credence_treasury","contracts/dispute_resolution"]
 
 [workspace.package]
 version = "0.1.0"
