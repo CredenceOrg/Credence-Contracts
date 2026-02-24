@@ -80,7 +80,7 @@ fn test_request_cooldown_withdrawal() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &3600);
 
     let req = client.request_cooldown_withdrawal(&identity, &500);
@@ -97,7 +97,7 @@ fn test_request_cooldown_withdrawal_full_amount() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     let req = client.request_cooldown_withdrawal(&identity, &1000);
@@ -112,7 +112,7 @@ fn test_request_cooldown_zero_amount() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &0);
@@ -126,7 +126,7 @@ fn test_request_cooldown_negative_amount() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &-10);
@@ -140,7 +140,7 @@ fn test_request_cooldown_exceeds_balance() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &1001);
@@ -154,8 +154,8 @@ fn test_request_cooldown_exceeds_available_after_slash() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
-    client.slash(&300);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
+    client.slash(&admin, &300);
     client.set_cooldown_period(&admin, &100);
 
     // Available is 1000 - 300 = 700, requesting 701 should fail
@@ -171,7 +171,7 @@ fn test_request_cooldown_duplicate() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &500);
@@ -198,7 +198,7 @@ fn test_request_cooldown_wrong_identity() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     let other = Address::generate(&e);
@@ -217,7 +217,7 @@ fn test_execute_cooldown_withdrawal_after_period() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &400);
 
@@ -235,7 +235,7 @@ fn test_execute_cooldown_withdrawal_exact_boundary() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &250);
 
@@ -253,7 +253,7 @@ fn test_execute_cooldown_removes_request() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &400);
 
@@ -275,7 +275,7 @@ fn test_execute_cooldown_with_zero_period() {
     let (client, _admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     // Cooldown period defaults to 0 (instant)
     client.request_cooldown_withdrawal(&identity, &300);
 
@@ -293,7 +293,7 @@ fn test_execute_cooldown_too_early() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &500);
 
@@ -310,7 +310,7 @@ fn test_execute_cooldown_no_request() {
     let (client, _admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.execute_cooldown_withdrawal(&identity);
 }
 
@@ -323,12 +323,12 @@ fn test_execute_cooldown_balance_slashed_during_cooldown() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &800);
 
     // Slash the bond while cooldown is pending
-    client.slash(&500);
+    client.slash(&admin, &500);
 
     // Now available = 1000 - 500 = 500, but request is for 800
     e.ledger().with_mut(|li| li.timestamp = 1101);
@@ -347,7 +347,7 @@ fn test_cancel_cooldown() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &500);
 
@@ -378,7 +378,7 @@ fn test_execute_after_cancel() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &500);
     client.cancel_cooldown(&identity);
@@ -399,7 +399,7 @@ fn test_get_cooldown_request() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &750);
 
@@ -494,7 +494,7 @@ fn test_full_cooldown_lifecycle() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &5000, &86400);
+    client.create_bond(&identity, &5000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &3600);
 
     // Request withdrawal
@@ -527,7 +527,7 @@ fn test_cancel_and_rerequest_lifecycle() {
     let (client, admin) = setup(&e);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &800);
