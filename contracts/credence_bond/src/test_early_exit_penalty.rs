@@ -2,8 +2,6 @@
 //! Covers: penalty calculation from remaining lock time, configurable rates,
 //! penalty event emission, and security (zero/max penalty edge cases).
 
-#![cfg(test)]
-
 use crate::early_exit_penalty;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};

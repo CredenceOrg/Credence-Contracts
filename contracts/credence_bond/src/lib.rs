@@ -1,11 +1,20 @@
 #![no_std]
 
-mod early_exit_penalty;
+pub mod early_exit_penalty;
 mod emergency;
-mod rolling_bond;
-mod tiered_bond;
+mod fees;
+pub mod governance_approval;
+mod nonce;
+pub mod rolling_bond;
+mod slashing;
+pub mod tiered_bond;
+mod weighted_attestation;
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+pub mod types;
+
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+
+pub use types::Attestation;
 
 /// Identity tier based on bonded amount (Bronze < Silver < Gold < Platinum).
 #[contracttype]
@@ -34,33 +43,95 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
+#[contracttype]
+pub enum DataKey {
+    Admin,
+    Bond,
+    Attester(Address),
+    Attestation(u64),
+    AttestationCounter,
+    SubjectAttestations(Address),
+    /// Per-identity attestation count (updated on add/revoke).
+    SubjectAttestationCount(Address),
+    /// Per-identity nonce for replay prevention.
+    Nonce(Address),
+    /// Attester stake used for weighted attestation.
+    AttesterStake(Address),
+    // Governance approval for slashing
+    GovernanceNextProposalId,
+    GovernanceProposal(u64),
+    GovernanceVote(u64, Address),
+    GovernanceDelegate(Address),
+    GovernanceGovernors,
+    GovernanceQuorumBps,
+    GovernanceMinGovernors,
+    // Bond creation fee
+    FeeTreasury,
+    FeeBps,
+}
+
 #[contract]
 pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
-    /// Initialize the contract (admin).
-    pub fn initialize(e: Env, admin: Address) {
-        e.storage()
-            .instance()
-            .set(&Symbol::new(&e, "admin"), &admin);
+    fn acquire_lock(e: &Env) {
+        e.storage().instance().set(&Self::lock_key(e), &true);
     }
 
-    /// Set early exit penalty config (admin only). Penalty in basis points (e.g. 500 = 5%).
-    pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+    fn release_lock(e: &Env) {
+        e.storage().instance().set(&Self::lock_key(e), &false);
+    }
+
+    fn check_lock(e: &Env) -> bool {
+        e.storage()
+            .instance()
+            .get(&Self::lock_key(e))
+            .unwrap_or(false)
+    }
+
+    fn lock_key(e: &Env) -> Symbol {
+        Symbol::new(e, "lock")
+    }
+
+    fn callback_key(e: &Env) -> Symbol {
+        Symbol::new(e, "callback")
+    }
+
+    fn with_reentrancy_guard<T, F: FnOnce() -> T>(e: &Env, f: F) -> T {
+        if Self::check_lock(e) {
+            panic!("reentrancy detected");
+        }
+        Self::acquire_lock(e);
+        let result = f();
+        Self::release_lock(e);
+        result
+    }
+
+    fn require_admin(e: &Env, admin: &Address) {
         let stored_admin: Address = e
             .storage()
             .instance()
-            .get(&Symbol::new(&e, "admin"))
+            .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
-        if admin != stored_admin {
+        if stored_admin != *admin {
             panic!("not admin");
         }
+    }
+
+    /// Initialize the contract (admin).
+    pub fn initialize(e: Env, admin: Address) {
+        e.storage().instance().set(&DataKey::Admin, &admin);
+    }
+
+    /// Set early exit penalty config. Only admin should call.
+    pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+        Self::require_admin(&e, &admin);
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
 
     /// @notice Configure emergency withdrawal controls.
-    /// @dev Requires admin authorization and sets governance approver, treasury, fee, and enabled mode.
+    /// @dev Requires admin authorization and stores governance approver, treasury, fee, and enabled mode.
     /// @param admin Admin address authorized to configure emergency settings.
     /// @param governance Governance address required for elevated approval on emergency withdrawals.
     /// @param treasury Treasury receiving emergency fees.
@@ -74,14 +145,7 @@ impl CredenceBond {
         emergency_fee_bps: u32,
         enabled: bool,
     ) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&Symbol::new(&e, "admin"))
-            .unwrap_or_else(|| panic!("not initialized"));
-        if admin != stored_admin {
-            panic!("not admin");
-        }
+        Self::require_admin(&e, &admin);
         admin.require_auth();
         emergency::set_config(&e, governance, treasury, emergency_fee_bps, enabled);
     }
@@ -92,14 +156,7 @@ impl CredenceBond {
     /// @param governance Governance approver.
     /// @param enabled New emergency mode status.
     pub fn set_emergency_mode(e: Env, admin: Address, governance: Address, enabled: bool) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&Symbol::new(&e, "admin"))
-            .unwrap_or_else(|| panic!("not initialized"));
-        if admin != stored_admin {
-            panic!("not admin");
-        }
+        Self::require_admin(&e, &admin);
         let cfg = emergency::get_config(&e);
         if governance != cfg.governance {
             panic!("not governance");
@@ -124,14 +181,7 @@ impl CredenceBond {
         amount: i128,
         reason: Symbol,
     ) -> IdentityBond {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&Symbol::new(&e, "admin"))
-            .unwrap_or_else(|| panic!("not initialized"));
-        if admin != stored_admin {
-            panic!("not admin");
-        }
+        Self::require_admin(&e, &admin);
 
         let cfg = emergency::get_config(&e);
         if governance != cfg.governance {
@@ -147,11 +197,11 @@ impl CredenceBond {
         admin.require_auth();
         governance.require_auth();
 
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = e
             .storage()
             .instance()
-            .get::<_, IdentityBond>(&key)
+            .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
         let available = bond
@@ -205,23 +255,61 @@ impl CredenceBond {
     }
 
     /// @notice Return current emergency configuration.
+    /// @return Emergency configuration struct.
     pub fn get_emergency_config(e: Env) -> emergency::EmergencyConfig {
         emergency::get_config(&e)
     }
 
     /// @notice Return latest emergency withdrawal record id (0 when none).
+    /// @return Latest record id.
     pub fn get_latest_emergency_record_id(e: Env) -> u64 {
         emergency::latest_record_id(&e)
     }
 
     /// @notice Return immutable emergency withdrawal record by id.
+    /// @param id Emergency record id.
+    /// @return Emergency withdrawal audit record.
     pub fn get_emergency_record(e: Env, id: u64) -> emergency::EmergencyWithdrawalRecord {
         emergency::get_record(&e, id)
     }
 
-    /// Create or top-up a bond for an identity. In a full implementation this would
-    /// transfer USDC from the caller and store the bond.
-    /// For rolling bonds, set is_rolling true and notice_period_duration > 0.
+    pub fn register_attester(e: Env, attester: Address) {
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
+        e.storage()
+            .instance()
+            .set(&DataKey::Attester(attester.clone()), &true);
+        e.events()
+            .publish((Symbol::new(&e, "attester_registered"),), attester);
+    }
+
+    pub fn unregister_attester(e: Env, attester: Address) {
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
+        e.storage()
+            .instance()
+            .remove(&DataKey::Attester(attester.clone()));
+        e.events()
+            .publish((Symbol::new(&e, "attester_unregistered"),), attester);
+    }
+
+    pub fn is_attester(e: Env, attester: Address) -> bool {
+        e.storage()
+            .instance()
+            .get(&DataKey::Attester(attester))
+            .unwrap_or(false)
+    }
+
+    /// Create a bond for an identity.
+    /// Bond creation fee (if configured) is deducted and recorded for treasury.
     pub fn create_bond(
         e: Env,
         identity: Address,
@@ -232,13 +320,22 @@ impl CredenceBond {
     ) -> IdentityBond {
         let bond_start = e.ledger().timestamp();
 
+        // Verify end timestamp wouldn't overflow.
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
 
+        let (fee, net_amount) = fees::calculate_fee(&e, amount);
+        if fee > 0 {
+            let (treasury_opt, _) = fees::get_config(&e);
+            if let Some(treasury) = treasury_opt {
+                fees::record_fee(&e, &identity, amount, fee, &treasury);
+            }
+        }
+
         let bond = IdentityBond {
             identity: identity.clone(),
-            bonded_amount: amount,
+            bonded_amount: net_amount,
             bond_start,
             bond_duration: duration,
             slashed_amount: 0,
@@ -247,76 +344,222 @@ impl CredenceBond {
             withdrawal_requested_at: 0,
             notice_period_duration,
         };
-        let key = Symbol::new(&e, "bond");
-        e.storage().instance().set(&key, &bond);
-        let tier = tiered_bond::get_tier_for_amount(amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
+
+        e.storage().instance().set(&DataKey::Bond, &bond);
+
+        let old_tier = BondTier::Bronze;
+        let new_tier = tiered_bond::get_tier_for_amount(net_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
         bond
     }
 
-    /// Return current bond state for an identity (simplified: single bond per contract instance).
+    pub fn create_bond_with_rolling(
+        e: Env,
+        identity: Address,
+        amount: i128,
+        duration: u64,
+        is_rolling: bool,
+        notice_period_duration: u64,
+    ) -> IdentityBond {
+        Self::create_bond(
+            e,
+            identity,
+            amount,
+            duration,
+            is_rolling,
+            notice_period_duration,
+        )
+    }
+
     pub fn get_identity_state(e: Env) -> IdentityBond {
         e.storage()
             .instance()
-            .get::<_, IdentityBond>(&Symbol::new(&e, "bond"))
+            .get::<_, IdentityBond>(&DataKey::Bond)
             .unwrap_or_else(|| panic!("no bond"))
     }
 
-    /// Withdraw from bond (no penalty). Use when lock-up has ended or after notice period for rolling bonds.
-    /// Checks that the bond has sufficient balance after accounting for slashed amount.
-    pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
+    /// Add an attestation for a subject (only authorized attesters can call).
+    /// Requires correct nonce for replay prevention; rejects duplicate (verifier, identity, data).
+    /// Weight is computed from attester stake.
+    pub fn add_attestation(
+        e: Env,
+        attester: Address,
+        subject: Address,
+        attestation_data: String,
+        nonce: u64,
+    ) -> Attestation {
+        attester.require_auth();
+
+        let is_authorized: bool = e
             .storage()
             .instance()
-            .get::<_, IdentityBond>(&key)
-            .unwrap_or_else(|| panic!("no bond"));
-
-        let available = bond
-            .bonded_amount
-            .checked_sub(bond.slashed_amount)
-            .expect("slashed amount exceeds bonded amount");
-        if amount > available {
-            panic!("insufficient balance for withdrawal");
+            .get(&DataKey::Attester(attester.clone()))
+            .unwrap_or(false);
+        if !is_authorized {
+            panic!("unauthorized attester");
         }
 
-        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond
-            .bonded_amount
-            .checked_sub(amount)
-            .expect("withdrawal caused underflow");
-        if bond.slashed_amount > bond.bonded_amount {
-            panic!("slashed amount exceeds bonded amount");
-        }
-        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+        nonce::consume_nonce(&e, &attester, nonce);
 
-        e.storage().instance().set(&key, &bond);
-        bond
+        let dedup_key = types::AttestationDedupKey {
+            verifier: attester.clone(),
+            identity: subject.clone(),
+            attestation_data: attestation_data.clone(),
+        };
+        if e.storage().instance().has(&dedup_key) {
+            panic!("duplicate attestation");
+        }
+
+        let counter_key = DataKey::AttestationCounter;
+        let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
+        let next_id = id.checked_add(1).expect("attestation counter overflow");
+        e.storage().instance().set(&counter_key, &next_id);
+
+        let weight = weighted_attestation::compute_weight(&e, &attester);
+        types::Attestation::validate_weight(weight);
+
+        let attestation = Attestation {
+            id,
+            verifier: attester.clone(),
+            identity: subject.clone(),
+            timestamp: e.ledger().timestamp(),
+            weight,
+            attestation_data: attestation_data.clone(),
+            revoked: false,
+        };
+
+        e.storage()
+            .instance()
+            .set(&DataKey::Attestation(id), &attestation);
+        e.storage().instance().set(&dedup_key, &id);
+
+        let subject_key = DataKey::SubjectAttestations(subject.clone());
+        let mut attestations: Vec<u64> = e
+            .storage()
+            .instance()
+            .get(&subject_key)
+            .unwrap_or(Vec::new(&e));
+        attestations.push_back(id);
+        e.storage().instance().set(&subject_key, &attestations);
+
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&count_key, &count.saturating_add(1));
+
+        e.events().publish(
+            (Symbol::new(&e, "attestation_added"), subject),
+            (id, attester, attestation_data, weight),
+        );
+
+        attestation
     }
 
-    /// Withdraw before lock-up end; applies early exit penalty and transfers penalty to treasury.
-    /// Net amount to user = amount - penalty. Use when lock-up has not yet ended.
+    /// Revoke an attestation (only original attester). Requires correct nonce.
+    pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
+        attester.require_auth();
+        nonce::consume_nonce(&e, &attester, nonce);
+
+        let key = DataKey::Attestation(attestation_id);
+        let mut attestation: Attestation = e
+            .storage()
+            .instance()
+            .get(&key)
+            .unwrap_or_else(|| panic!("attestation not found"));
+
+        if attestation.verifier != attester {
+            panic!("only original attester can revoke");
+        }
+        if attestation.revoked {
+            panic!("attestation already revoked");
+        }
+
+        attestation.revoked = true;
+        e.storage().instance().set(&key, &attestation);
+
+        let dedup_key = types::AttestationDedupKey {
+            verifier: attestation.verifier.clone(),
+            identity: attestation.identity.clone(),
+            attestation_data: attestation.attestation_data.clone(),
+        };
+        e.storage().instance().remove(&dedup_key);
+
+        let count_key = DataKey::SubjectAttestationCount(attestation.identity.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&count_key, &count.saturating_sub(1));
+
+        e.events().publish(
+            (
+                Symbol::new(&e, "attestation_revoked"),
+                attestation.identity.clone(),
+            ),
+            (attestation_id, attester),
+        );
+    }
+
+    pub fn get_attestation(e: Env, attestation_id: u64) -> Attestation {
+        e.storage()
+            .instance()
+            .get(&DataKey::Attestation(attestation_id))
+            .unwrap_or_else(|| panic!("attestation not found"))
+    }
+
+    pub fn get_subject_attestations(e: Env, subject: Address) -> Vec<u64> {
+        e.storage()
+            .instance()
+            .get(&DataKey::SubjectAttestations(subject))
+            .unwrap_or(Vec::new(&e))
+    }
+
+    pub fn get_subject_attestation_count(e: Env, subject: Address) -> u32 {
+        e.storage()
+            .instance()
+            .get(&DataKey::SubjectAttestationCount(subject))
+            .unwrap_or(0)
+    }
+
+    pub fn get_nonce(e: Env, identity: Address) -> u64 {
+        nonce::get_nonce(&e, &identity)
+    }
+
+    pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
+        Self::require_admin(&e, &admin);
+        weighted_attestation::set_attester_stake(&e, &attester, amount);
+    }
+
+    pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
+        Self::require_admin(&e, &admin);
+        weighted_attestation::set_weight_config(&e, multiplier_bps, max_weight);
+    }
+
+    pub fn get_weight_config(e: Env) -> (u32, u32) {
+        weighted_attestation::get_weight_config(&e)
+    }
+
+    /// Early withdrawal path (only valid before lock-up end).
     pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
-        let key = Symbol::new(&e, "bond");
+        let key = DataKey::Bond;
         let mut bond = e
             .storage()
             .instance()
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic!("no bond"));
-
-        let available = bond
-            .bonded_amount
-            .checked_sub(bond.slashed_amount)
-            .expect("slashed amount exceeds bonded amount");
-        if amount > available {
-            panic!("insufficient balance for withdrawal");
-        }
 
         let now = e.ledger().timestamp();
         let end = bond.bond_start.saturating_add(bond.bond_duration);
         if now >= end {
             panic!("use withdraw for post lock-up");
+        }
+
+        let available = bond
+            .bonded_amount
+            .checked_sub(bond.slashed_amount)
+            .expect("slashed amount exceeds bonded amount");
+        if amount > available {
+            panic!("insufficient balance for withdrawal");
         }
 
         let (treasury, penalty_bps) = early_exit_penalty::get_config(&e);
@@ -328,16 +571,17 @@ impl CredenceBond {
             penalty_bps,
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
-        // In a full implementation: transfer (amount - penalty) to user, penalty to treasury.
 
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond
             .bonded_amount
             .checked_sub(amount)
             .expect("withdrawal caused underflow");
+
         if bond.slashed_amount > bond.bonded_amount {
             panic!("slashed amount exceeds bonded amount");
         }
+
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
@@ -345,13 +589,60 @@ impl CredenceBond {
         bond
     }
 
-    /// Request withdrawal (rolling bonds). Withdrawal allowed after notice period.
-    pub fn request_withdrawal(e: Env) -> IdentityBond {
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
+    /// Withdraw from bond. For rolling bonds requires prior notice and elapsed notice period.
+    pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = e
             .storage()
             .instance()
-            .get::<_, IdentityBond>(&key)
+            .get(&key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        if bond.is_rolling {
+            if bond.withdrawal_requested_at == 0 {
+                panic!("withdrawal not requested");
+            }
+            let now = e.ledger().timestamp();
+            if !rolling_bond::can_withdraw_after_notice(
+                now,
+                bond.withdrawal_requested_at,
+                bond.notice_period_duration,
+            ) {
+                panic!("notice period not elapsed");
+            }
+        }
+
+        let available = bond
+            .bonded_amount
+            .checked_sub(bond.slashed_amount)
+            .expect("slashed amount exceeds bonded amount");
+        if amount > available {
+            panic!("insufficient balance for withdrawal");
+        }
+
+        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount)
+            .expect("withdrawal caused underflow");
+
+        if bond.slashed_amount > bond.bonded_amount {
+            panic!("slashed amount exceeds bonded amount");
+        }
+
+        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+
+        e.storage().instance().set(&key, &bond);
+        bond
+    }
+
+    pub fn request_withdrawal(e: Env) -> IdentityBond {
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = e
+            .storage()
+            .instance()
+            .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
         if !bond.is_rolling {
             panic!("not a rolling bond");
@@ -359,6 +650,7 @@ impl CredenceBond {
         if bond.withdrawal_requested_at != 0 {
             panic!("withdrawal already requested");
         }
+
         bond.withdrawal_requested_at = e.ledger().timestamp();
         e.storage().instance().set(&key, &bond);
         e.events().publish(
@@ -368,21 +660,22 @@ impl CredenceBond {
         bond
     }
 
-    /// If bond is rolling and period has ended, renew (new period start = now). Emits renewal event.
     pub fn renew_if_rolling(e: Env) -> IdentityBond {
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = e
             .storage()
             .instance()
-            .get::<_, IdentityBond>(&key)
+            .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
         if !bond.is_rolling {
             return bond;
         }
+
         let now = e.ledger().timestamp();
         if !rolling_bond::is_period_ended(now, bond.bond_start, bond.bond_duration) {
             return bond;
         }
+
         rolling_bond::apply_renewal(&mut bond, now);
         e.storage().instance().set(&key, &bond);
         e.events().publish(
@@ -392,55 +685,165 @@ impl CredenceBond {
         bond
     }
 
-    /// Get current tier for the bond's bonded amount.
     pub fn get_tier(e: Env) -> BondTier {
         let bond = Self::get_identity_state(e);
         tiered_bond::get_tier_for_amount(bond.bonded_amount)
     }
 
-    /// Slash a portion of the bond (admin only). Increases slashed_amount up to the bonded_amount.
-    /// Returns the updated bond with increased slashed_amount.
     pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&Symbol::new(&e, "admin"))
-            .unwrap_or_else(|| panic!("not initialized"));
-        if admin != stored_admin {
-            panic!("not admin");
-        }
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
-            .storage()
-            .instance()
-            .get::<_, IdentityBond>(&key)
-            .unwrap_or_else(|| panic!("no bond"));
-
-        let new_slashed = bond
-            .slashed_amount
-            .checked_add(amount)
-            .expect("slashing caused overflow");
-        bond.slashed_amount = if new_slashed > bond.bonded_amount {
-            bond.bonded_amount
-        } else {
-            new_slashed
-        };
-
-        e.storage().instance().set(&key, &bond);
-        e.events().publish(
-            (Symbol::new(&e, "slashed"),),
-            (bond.identity.clone(), amount, bond.slashed_amount),
-        );
-        bond
+        slashing::slash_bond(&e, &admin, amount)
     }
 
-    /// Top up the bond with additional amount (checks for overflow). May emit tier_changed.
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
+    pub fn initialize_governance(
+        e: Env,
+        admin: Address,
+        governors: Vec<Address>,
+        quorum_bps: u32,
+        min_governors: u32,
+    ) {
+        Self::require_admin(&e, &admin);
+        governance_approval::initialize_governance(&e, governors, quorum_bps, min_governors);
+    }
+
+    pub fn propose_slash(e: Env, proposer: Address, amount: i128) -> u64 {
+        proposer.require_auth();
+        let admin: Address = e
             .storage()
             .instance()
-            .get::<_, IdentityBond>(&key)
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        let governors = governance_approval::get_governors(&e);
+        let is_governor = governors.iter().any(|g| g == proposer);
+        if proposer != admin && !is_governor {
+            panic!("not admin or governor");
+        }
+        governance_approval::propose_slash(&e, &proposer, amount)
+    }
+
+    pub fn governance_vote(e: Env, voter: Address, proposal_id: u64, approve: bool) {
+        voter.require_auth();
+        governance_approval::vote(&e, &voter, proposal_id, approve);
+    }
+
+    pub fn governance_delegate(e: Env, governor: Address, to: Address) {
+        governance_approval::delegate(&e, &governor, &to);
+    }
+
+    pub fn execute_slash_with_governance(
+        e: Env,
+        proposer: Address,
+        proposal_id: u64,
+    ) -> IdentityBond {
+        proposer.require_auth();
+        let proposal = governance_approval::get_proposal(&e, proposal_id)
+            .unwrap_or_else(|| panic!("proposal not found"));
+        if proposal.proposed_by != proposer {
+            panic!("only proposer can execute");
+        }
+        let executed = governance_approval::execute_slash_if_approved(&e, proposal_id);
+        if !executed {
+            panic!("proposal not approved");
+        }
+        slashing::slash_bond(&e, &proposer, proposal.amount)
+    }
+
+    pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        Self::require_admin(&e, &admin);
+        fees::set_config(&e, treasury, fee_bps);
+    }
+
+    pub fn get_fee_config(e: Env) -> (Option<Address>, u32) {
+        fees::get_config(&e)
+    }
+
+    pub fn collect_fees(e: Env, admin: Address) -> i128 {
+        Self::require_admin(&e, &admin);
+        let key = Symbol::new(&e, "fees");
+        let collected: i128 = e.storage().instance().get(&key).unwrap_or(0);
+        e.storage().instance().set(&key, &0_i128);
+        collected
+    }
+
+    pub fn deposit_fees(e: Env, amount: i128) {
+        let key = Symbol::new(&e, "fees");
+        let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
+        let next = current.checked_add(amount).expect("fee pool overflow");
+        e.storage().instance().set(&key, &next);
+    }
+
+    pub fn set_callback(e: Env, callback: Address) {
+        e.storage()
+            .instance()
+            .set(&Self::callback_key(&e), &callback);
+    }
+
+    pub fn is_locked(e: Env) -> bool {
+        e.storage()
+            .instance()
+            .get(&Self::lock_key(&e))
+            .unwrap_or(false)
+    }
+
+    pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
+        let key = DataKey::Bond;
+        Self::with_reentrancy_guard(&e, || {
+            let mut bond: IdentityBond = e
+                .storage()
+                .instance()
+                .get(&key)
+                .unwrap_or_else(|| panic!("no bond"));
+            if bond.identity != identity {
+                panic!("not bond identity");
+            }
+
+            let amount = bond
+                .bonded_amount
+                .checked_sub(bond.slashed_amount)
+                .expect("slashed amount exceeds bonded amount");
+            bond.bonded_amount = 0;
+            bond.active = false;
+            e.storage().instance().set(&key, &bond);
+            amount
+        })
+    }
+
+    pub fn slash_bond(e: Env, admin: Address, amount: i128) -> i128 {
+        Self::with_reentrancy_guard(&e, || {
+            let before = Self::get_identity_state(e.clone()).slashed_amount;
+            let after = slashing::slash_bond(&e, &admin, amount).slashed_amount;
+            after.checked_sub(before).expect("slashing delta underflow")
+        })
+    }
+
+    pub fn get_slash_proposal(
+        e: Env,
+        proposal_id: u64,
+    ) -> Option<governance_approval::SlashProposal> {
+        governance_approval::get_proposal(&e, proposal_id)
+    }
+
+    pub fn get_governance_vote(e: Env, proposal_id: u64, voter: Address) -> Option<bool> {
+        governance_approval::get_vote(&e, proposal_id, &voter)
+    }
+
+    pub fn get_governors(e: Env) -> Vec<Address> {
+        governance_approval::get_governors(&e)
+    }
+
+    pub fn get_governance_delegate(e: Env, governor: Address) -> Option<Address> {
+        governance_approval::get_delegate(&e, &governor)
+    }
+
+    pub fn get_quorum_config(e: Env) -> (u32, u32) {
+        governance_approval::get_quorum_config(&e)
+    }
+
+    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = e
+            .storage()
+            .instance()
+            .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
@@ -449,28 +852,25 @@ impl CredenceBond {
             .checked_add(amount)
             .expect("top-up caused overflow");
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
         bond
     }
 
-    /// Extend bond duration (checks for u64 overflow on timestamps)
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
-        let key = Symbol::new(&e, "bond");
-        let mut bond = e
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = e
             .storage()
             .instance()
-            .get::<_, IdentityBond>(&key)
+            .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
-        // Perform duration extension with overflow protection
         bond.bond_duration = bond
             .bond_duration
             .checked_add(additional_duration)
             .expect("duration extension caused overflow");
 
-        // Also verify the end timestamp wouldn't overflow
         let _end_timestamp = bond
             .bond_start
             .checked_add(bond.bond_duration)
@@ -485,10 +885,34 @@ impl CredenceBond {
 mod test;
 
 #[cfg(test)]
+mod test_attestation;
+
+#[cfg(test)]
+mod test_attestation_types;
+
+#[cfg(test)]
+mod test_weighted_attestation;
+
+#[cfg(test)]
+mod test_replay_prevention;
+
+#[cfg(test)]
+mod test_governance_approval;
+
+#[cfg(test)]
+mod test_fees;
+
+#[cfg(test)]
+mod integration;
+
+#[cfg(test)]
 mod security;
 
 #[cfg(test)]
 mod test_early_exit_penalty;
+
+#[cfg(test)]
+mod test_emergency;
 
 #[cfg(test)]
 mod test_rolling_bond;
@@ -500,4 +924,4 @@ mod test_tiered_bond;
 mod test_slashing;
 
 #[cfg(test)]
-mod test_emergency;
+mod test_withdraw_bond;

@@ -1,8 +1,6 @@
 //! Comprehensive tests for governance approval for slashing (#7).
 //! Covers multi-sig verification, vote tracking, quorum, delegation, and events.
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, Vec};

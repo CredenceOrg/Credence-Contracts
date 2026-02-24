@@ -2,8 +2,6 @@
 //! Covers governance approvals, emergency mode gating, fee application,
 //! immutable audit trail, and crisis-only behavior.
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, Symbol};

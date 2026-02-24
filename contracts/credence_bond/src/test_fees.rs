@@ -1,8 +1,6 @@
 //! Comprehensive tests for bond creation fee mechanism (#15).
 //! Covers fee calculation, treasury config, fee waiver, events, and edge cases.
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};

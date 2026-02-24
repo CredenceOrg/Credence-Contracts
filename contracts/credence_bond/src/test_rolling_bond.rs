@@ -1,7 +1,5 @@
 //! Tests for Rolling Bond: auto-renewal, withdrawal request with notice period, renewal events.
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};

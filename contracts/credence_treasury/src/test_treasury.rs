@@ -2,8 +2,6 @@
 //! Covers: initialization, fees, depositors, multi-sig (signers, threshold,
 //! propose/approve/execute), fund source tracking, events, and security.
 
-#![cfg(test)]
-
 use crate::{CredenceTreasury, CredenceTreasuryClient, FundSource};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};

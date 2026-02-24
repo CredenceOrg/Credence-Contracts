@@ -1,4 +1,3 @@
-#![cfg(test)]
 //! Security tests for reentrancy protection in the Credence Bond contract.
 //!
 //! These tests verify that:

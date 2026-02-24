@@ -102,7 +102,7 @@ Emergency tests validate:
 - Balance safety under slashing constraints.
 - Invalid amount and invalid fee configuration rejection.
 
-## Verification Snapshot (2026-02-23)
+## Verification Snapshot (2026-02-24)
 
-- `cargo test -p credence_bond`: **69 passed, 0 failed**.
-- `cargo llvm-cov -p credence_bond --summary-only`: **96.74% line coverage** (meets 95% minimum guideline).
+- `cargo test -p credence_bond`: **175 passed, 0 failed**.
+- `cargo llvm-cov -p credence_bond --summary-only`: **96.71% region coverage** and **94.52% line coverage**.

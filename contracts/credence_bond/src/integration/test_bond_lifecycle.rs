@@ -1,8 +1,6 @@
 //! Integration tests covering full bond lifecycle: create, top-up, slash, withdraw.
 //! Verifies state consistency and happy path / edge scenarios.
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};

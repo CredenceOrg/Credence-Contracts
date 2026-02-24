@@ -1,7 +1,5 @@
 //! Tests for weighted attestation: weight from attester stake, config, cap.
 
-#![cfg(test)]
-
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String};
