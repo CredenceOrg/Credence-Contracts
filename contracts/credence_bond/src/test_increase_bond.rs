@@ -20,7 +20,7 @@ fn test_increase_bond_success() {
     let increase_amount = 500_i128;
 
     // Create initial bond
-    let bond = client.create_bond(&identity, &initial_amount, &86400_u64);
+    let bond = client.create_bond(&identity, &initial_amount, &86400_u64, &false, &0_u64);
     assert_eq!(bond.bonded_amount, initial_amount);
 
     // Increase bond
@@ -44,7 +44,7 @@ fn test_increase_bond_unauthorized() {
     let unauthorized = Address::generate(&e);
 
     // Create bond for identity
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     // Try to increase bond from unauthorized address
     client.increase_bond(&unauthorized, &500_i128);
@@ -65,7 +65,7 @@ fn test_increase_bond_zero_amount() {
     let identity = Address::generate(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     // Try to increase with zero amount
     client.increase_bond(&identity, &0_i128);
@@ -86,7 +86,7 @@ fn test_increase_bond_negative_amount() {
     let identity = Address::generate(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     // Try to increase with negative amount
     client.increase_bond(&identity, &(-100_i128));
@@ -125,7 +125,7 @@ fn test_increase_bond_overflow() {
     let identity = Address::generate(&e);
 
     // Create bond with max amount
-    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64);
+    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
     assert_eq!(bond.bonded_amount, i128::MAX);
 
     // Try to increase (should overflow)
@@ -148,7 +148,7 @@ fn test_increase_bond_usdc_amount() {
     let increase_usdc = 500_000000_i128; // 500 USDC
 
     // Create bond
-    let bond = client.create_bond(&identity, &initial_usdc, &86400_u64);
+    let bond = client.create_bond(&identity, &initial_usdc, &86400_u64, &false, &0_u64);
     assert_eq!(bond.bonded_amount, initial_usdc);
 
     // Increase bond
@@ -171,7 +171,7 @@ fn test_increase_bond_sequential() {
     let initial_amount = 1000_i128;
 
     // Create initial bond
-    client.create_bond(&identity, &initial_amount, &86400_u64);
+    client.create_bond(&identity, &initial_amount, &86400_u64, &false, &0_u64);
 
     // Multiple increases
     let increases = [100_i128, 200_i128, 300_i128];
@@ -205,7 +205,7 @@ fn test_increase_bond_preserves_properties() {
     let increase_amount = 500_i128;
 
     // Create bond
-    let bond = client.create_bond(&identity, &initial_amount, &duration);
+    let bond = client.create_bond(&identity, &initial_amount, &duration, &false, &0_u64);
     let start_time = bond.bond_start;
 
     // Increase bond
@@ -234,7 +234,7 @@ fn test_increase_bond_reentrancy() {
     let identity = Address::generate(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     // Verify not locked initially
     assert!(!client.is_locked());
@@ -262,7 +262,7 @@ fn test_increase_bond_large_amount() {
     let large_increase = 1_000_000_000_i128; // 1 billion
 
     // Create bond
-    client.create_bond(&identity, &initial_amount, &86400_u64);
+    client.create_bond(&identity, &initial_amount, &86400_u64, &false, &0_u64);
 
     // Increase with large amount
     let bond = client.increase_bond(&identity, &large_increase);
@@ -283,7 +283,7 @@ fn test_increase_bond_inactive_bond() {
     let identity = Address::generate(&e);
 
     // Create and then withdraw (makes bond inactive)
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     let _ = client.withdraw_bond(&identity);
 
     // Try to increase on inactive bond - should still work (bond exists, owner is correct)
