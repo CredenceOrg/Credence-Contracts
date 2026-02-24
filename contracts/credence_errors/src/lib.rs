@@ -45,9 +45,7 @@ pub enum ErrorCategory {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ContractError {
-
     // --- Initialization (1-99) ---
-
     /// Contract has not been initialized yet.
     /// Replaces: panic!("not initialized")
     /// Contracts: bond, registry, delegation, treasury
@@ -59,7 +57,6 @@ pub enum ContractError {
     AlreadyInitialized = 2,
 
     // --- Authorization (100-199) ---
-
     /// Caller is not the admin.
     /// Replaces: panic!("not admin")
     /// Contracts: bond, registry, delegation
@@ -92,7 +89,6 @@ pub enum ContractError {
     UnauthorizedDepositor = 105,
 
     // --- Bond (200-299) ---
-
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
     /// Contracts: bond
@@ -155,7 +151,6 @@ pub enum ContractError {
     InvalidPenaltyBps = 211,
 
     // --- Attestation (300-399) ---
-
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
     /// Contracts: bond
@@ -182,7 +177,6 @@ pub enum ContractError {
     AttestationWeightExceedsMax = 304,
 
     // --- Registry (400-499) ---
-
     /// Identity has already been registered in the registry.
     /// Replaces: panic!("identity already registered")
     /// Contracts: registry
@@ -214,7 +208,6 @@ pub enum ContractError {
     AlreadyActive = 405,
 
     // --- Delegation (500-599) ---
-
     /// Delegation expiry timestamp must be in the future.
     /// Replaces: panic!("expiry must be in the future")
     /// Contracts: delegation
@@ -231,7 +224,6 @@ pub enum ContractError {
     AlreadyRevoked = 502,
 
     // --- Treasury (600-699) ---
-
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
     /// Contracts: treasury
@@ -263,7 +255,6 @@ pub enum ContractError {
     InsufficientApprovals = 605,
 
     // --- Arithmetic (700-799) ---
-
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
     /// Contracts: bond, treasury
@@ -349,39 +340,61 @@ impl ErrorExt for ContractError {
             ContractError::UnauthorizedAttester => "Caller is not an authorized attester",
             ContractError::NotOriginalAttester => "Only the original attester can revoke",
             ContractError::NotSigner => "Caller is not a registered multi-sig signer",
-            ContractError::UnauthorizedDepositor => "Caller is neither admin nor an authorized depositor",
+            ContractError::UnauthorizedDepositor => {
+                "Caller is neither admin nor an authorized depositor"
+            }
             ContractError::BondNotFound => "No bond found for the given key",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
             ContractError::SlashExceedsBond => "Slash amount exceeds the bonded amount",
             ContractError::LockupNotExpired => "Lock-up period has not yet expired",
             ContractError::NotRollingBond => "Bond is not configured as a rolling bond",
-            ContractError::WithdrawalAlreadyRequested => "A withdrawal has already been requested for this bond",
+            ContractError::WithdrawalAlreadyRequested => {
+                "A withdrawal has already been requested for this bond"
+            }
             ContractError::ReentrancyDetected => "Reentrancy detected; call rejected",
             ContractError::InvalidNonce => "Nonce is replayed or out of order",
             ContractError::NegativeStake => "Attester stake cannot be negative",
-            ContractError::EarlyExitConfigNotSet => "Early-exit configuration has not been set for this bond",
+            ContractError::EarlyExitConfigNotSet => {
+                "Early-exit configuration has not been set for this bond"
+            }
             ContractError::InvalidPenaltyBps => "Penalty bps must be in range 0-10000",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
             ContractError::InvalidAttestationWeight => "Attestation weight must be positive",
-            ContractError::AttestationWeightExceedsMax => "Attestation weight exceeds the configured maximum",
-            ContractError::IdentityAlreadyRegistered => "Identity has already been registered in the registry",
-            ContractError::BondContractAlreadyRegistered => "Bond contract address has already been registered",
+            ContractError::AttestationWeightExceedsMax => {
+                "Attestation weight exceeds the configured maximum"
+            }
+            ContractError::IdentityAlreadyRegistered => {
+                "Identity has already been registered in the registry"
+            }
+            ContractError::BondContractAlreadyRegistered => {
+                "Bond contract address has already been registered"
+            }
             ContractError::IdentityNotRegistered => "Identity is not registered in the registry",
-            ContractError::BondContractNotRegistered => "Bond contract is not registered in the registry",
+            ContractError::BondContractNotRegistered => {
+                "Bond contract is not registered in the registry"
+            }
             ContractError::AlreadyDeactivated => "Record is already in the deactivated state",
             ContractError::AlreadyActive => "Record is already in the active state",
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
             ContractError::AlreadyRevoked => "Delegation has already been revoked",
             ContractError::AmountMustBePositive => "Amount must be strictly positive (> 0)",
-            ContractError::ThresholdExceedsSigners => "Threshold cannot exceed the current signer count",
-            ContractError::InsufficientTreasuryBalance => "Treasury balance is insufficient for withdrawal",
+            ContractError::ThresholdExceedsSigners => {
+                "Threshold cannot exceed the current signer count"
+            }
+            ContractError::InsufficientTreasuryBalance => {
+                "Treasury balance is insufficient for withdrawal"
+            }
             ContractError::ProposalNotFound => "Withdrawal proposal not found",
-            ContractError::ProposalAlreadyExecuted => "Withdrawal proposal has already been executed",
-            ContractError::InsufficientApprovals => "Proposal does not have enough approvals to execute",
+            ContractError::ProposalAlreadyExecuted => {
+                "Withdrawal proposal has already been executed"
+            }
+            ContractError::InsufficientApprovals => {
+                "Proposal does not have enough approvals to execute"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
         }
