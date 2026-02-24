@@ -5,7 +5,6 @@ mod fees;
 pub mod governance_approval;
 mod nonce;
 mod parameters;
-mod rolling_bond;
 pub mod rolling_bond;
 mod slashing;
 pub mod tiered_bond;
@@ -13,9 +12,7 @@ mod weighted_attestation;
 
 pub mod types;
 
-use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 
 pub use types::Attestation;
 
@@ -134,7 +131,7 @@ impl CredenceBond {
     }
 
     pub fn register_attester(e: Env, attester: Address) {
-        let admin: Address = e
+        let _admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
@@ -148,7 +145,7 @@ impl CredenceBond {
     }
 
     pub fn unregister_attester(e: Env, attester: Address) {
-        let admin: Address = e
+        let _admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
@@ -612,28 +609,6 @@ impl CredenceBond {
         fees::set_config(&e, treasury, fee_bps);
     }
 
-        // State update BEFORE external interaction (checks-effects-interactions)
-        let updated = IdentityBond {
-            identity: identity.clone(),
-            bonded_amount: 0,
-            bond_start: bond.bond_start,
-            bond_duration: bond.bond_duration,
-            slashed_amount: bond.slashed_amount,
-            is_rolling: bond.is_rolling,
-            notice_period_duration: bond.notice_period_duration,
-            withdrawal_requested_at: bond.withdrawal_requested_at,
-            active: false,
-        };
-        e.storage().instance().set(&bond_key, &updated);
-
-        // External call: invoke callback if a callback contract is registered.
-        // In production this would be a token transfer; here we use a hook for testing.
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
-            let fn_name = Symbol::new(&e, "on_withdraw");
-            let args: Vec<Val> = Vec::from_array(&e, [withdraw_amount.into_val(&e)]);
-            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
-        }
     pub fn get_fee_config(e: Env) -> (Option<Address>, u32) {
         fees::get_config(&e)
     }
@@ -657,13 +632,6 @@ impl CredenceBond {
         e.storage()
             .instance()
             .set(&Self::callback_key(&e), &callback);
-    }
-
-    pub fn is_locked(e: Env) -> bool {
-        e.storage()
-            .instance()
-            .get(&Self::lock_key(&e))
-            .unwrap_or(false)
     }
 
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
@@ -708,27 +676,6 @@ impl CredenceBond {
         governance_approval::get_vote(&e, proposal_id, &voter)
     }
 
-        // State update BEFORE external interaction
-        let updated = IdentityBond {
-            identity: bond.identity.clone(),
-            bonded_amount: bond.bonded_amount,
-            bond_start: bond.bond_start,
-            bond_duration: bond.bond_duration,
-            slashed_amount: new_slashed,
-            is_rolling: bond.is_rolling,
-            notice_period_duration: bond.notice_period_duration,
-            withdrawal_requested_at: bond.withdrawal_requested_at,
-            active: bond.active,
-        };
-        e.storage().instance().set(&bond_key, &updated);
-
-        // External call: invoke callback if registered
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
-            let fn_name = Symbol::new(&e, "on_slash");
-            let args: Vec<Val> = Vec::from_array(&e, [slash_amount.into_val(&e)]);
-            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
-        }
     pub fn get_governors(e: Env) -> Vec<Address> {
         governance_approval::get_governors(&e)
     }
@@ -766,7 +713,21 @@ impl CredenceBond {
         let mut bond: IdentityBond = e
             .storage()
             .instance()
-            .set(&Symbol::new(&e, "callback"), &addr);
+            .get(&key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        bond.bond_duration = bond
+            .bond_duration
+            .checked_add(additional_duration)
+            .expect("duration extension caused overflow");
+
+        let _end_timestamp = bond
+            .bond_start
+            .checked_add(bond.bond_duration)
+            .expect("bond end timestamp would overflow");
+
+        e.storage().instance().set(&key, &bond);
+        bond
     }
 
     /// Check if the reentrancy lock is currently held.
@@ -854,24 +815,6 @@ impl CredenceBond {
     /// Set platinum tier threshold. Governance-only.
     pub fn set_platinum_threshold(e: Env, admin: Address, value: i128) {
         parameters::set_platinum_threshold(&e, &admin, value)
-    }
-
-    // --- Reentrancy guard helpers ---
-            .get(&key)
-            .unwrap_or_else(|| panic!("no bond"));
-
-        bond.bond_duration = bond
-            .bond_duration
-            .checked_add(additional_duration)
-            .expect("duration extension caused overflow");
-
-        let _end_timestamp = bond
-            .bond_start
-            .checked_add(bond.bond_duration)
-            .expect("bond end timestamp would overflow");
-
-        e.storage().instance().set(&key, &bond);
-        bond
     }
 }
 
