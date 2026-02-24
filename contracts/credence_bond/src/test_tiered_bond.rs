@@ -1,14 +1,12 @@
 //! Tests for Tiered Bond System: Bronze, Silver, Gold, Platinum by bonded amount.
 
-#![cfg(test)]
-
 use crate::tiered_bond::{get_tier_for_amount, TIER_BRONZE_MAX, TIER_GOLD_MAX, TIER_SILVER_MAX};
 use crate::{BondTier, CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     client.initialize(&admin);

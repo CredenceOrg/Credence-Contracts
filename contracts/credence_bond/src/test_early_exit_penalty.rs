@@ -2,8 +2,6 @@
 //! Covers: penalty calculation from remaining lock time, configurable rates,
 //! penalty event emission, and security (zero/max penalty edge cases).
 
-#![cfg(test)]
-
 use crate::early_exit_penalty;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
@@ -14,7 +12,7 @@ fn setup<'a>(
     treasury: &Address,
     penalty_bps: u32,
 ) -> (CredenceBondClient<'a>, Address) {
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     client.initialize(&admin);
@@ -27,7 +25,7 @@ fn test_early_exit_penalty_calculation_zero_penalty_rate() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let treasury = Address::generate(&e);
-    let (client, admin) = setup(&e, &treasury, 0);
+    let (client, _admin) = setup(&e, &treasury, 0);
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
 
@@ -97,7 +95,7 @@ fn test_early_exit_rejected_after_lock_up() {
 fn test_early_exit_fails_without_config() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -110,7 +108,7 @@ fn test_early_exit_fails_without_config() {
 #[should_panic(expected = "not admin")]
 fn test_set_early_exit_config_unauthorized() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -123,7 +121,7 @@ fn test_set_early_exit_config_unauthorized() {
 #[should_panic(expected = "penalty_bps must be <= 10000")]
 fn test_set_early_exit_config_invalid_bps() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -133,7 +131,6 @@ fn test_set_early_exit_config_invalid_bps() {
 
 #[test]
 fn test_calculate_penalty_unit() {
-    let e = Env::default();
     // remaining = total -> full penalty rate applied
     let p = early_exit_penalty::calculate_penalty(1000, 100, 100, 500);
     assert_eq!(p, 50); // 5% of 1000
