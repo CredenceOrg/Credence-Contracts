@@ -288,7 +288,7 @@ dependencies = [
 name = "credence_arbitration"
 version = "0.1.0"
 dependencies = [
- "soroban-sdk",
+ "soroban-sdk 22.0.10",
 ]
 
 [[package]]
@@ -316,7 +316,7 @@ dependencies = [
 name = "credence_treasury"
 version = "0.1.0"
 dependencies = [
- "soroban-sdk",
+ "soroban-sdk 22.0.10",
 ]
 
 [[package]]
