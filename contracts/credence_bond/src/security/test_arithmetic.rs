@@ -429,7 +429,6 @@ fn test_slashing_normal_amount() {
 
     // Slash normal amount
     let bond = client.slash(&admin, &300);
-    let bond = client.slash(&admin, &300);
     assert_eq!(bond.slashed_amount, 300);
     assert_eq!(bond.bonded_amount, 1000);
 }
@@ -471,14 +470,11 @@ fn test_multiple_slashing_operations() {
 
     // Multiple slashing operations
     let bond = client.slash(&admin, &200);
-    let bond = client.slash(&admin, &200);
     assert_eq!(bond.slashed_amount, 200);
 
     let bond = client.slash(&admin, &300);
-    let bond = client.slash(&admin, &300);
     assert_eq!(bond.slashed_amount, 500);
 
-    let bond = client.slash(&admin, &100);
     let bond = client.slash(&admin, &100);
     assert_eq!(bond.slashed_amount, 600);
 }
@@ -522,7 +518,6 @@ fn test_slashing_after_withdrawal() {
 
     // Then slash (should still reference original bonded amount)
     let bond = client.slash(&admin, &400);
-    let bond = client.slash(&admin, &400);
     assert_eq!(bond.slashed_amount, 400);
     assert_eq!(bond.bonded_amount, 700); // After withdrawal
 }
@@ -542,7 +537,6 @@ fn test_slashing_with_max_values() {
     client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
 
     // Slash large amount
-    let bond = client.slash(&admin, &(i128::MAX / 2));
     let bond = client.slash(&admin, &(i128::MAX / 2));
     assert_eq!(bond.slashed_amount, i128::MAX / 2);
 }
@@ -571,7 +565,6 @@ fn test_complex_arithmetic_scenario() {
     assert_eq!(bond.bonded_amount, 15000);
 
     // Slash some
-    let bond = client.slash(&admin, &3000);
     let bond = client.slash(&admin, &3000);
     assert_eq!(bond.slashed_amount, 3000);
 
