@@ -99,13 +99,7 @@ fn test_create_bond_min_duration() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    let bond = client.create_bond(
-        &identity,
-        &1000_i128,
-        &MIN_BOND_DURATION,
-        &false,
-        &0_u64,
-    );
+    let bond = client.create_bond(&identity, &1000_i128, &MIN_BOND_DURATION, &false, &0_u64);
     assert!(bond.active);
     assert_eq!(bond.bond_duration, MIN_BOND_DURATION);
 }
@@ -117,13 +111,7 @@ fn test_create_bond_max_duration() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    let bond = client.create_bond(
-        &identity,
-        &1000_i128,
-        &MAX_BOND_DURATION,
-        &false,
-        &0_u64,
-    );
+    let bond = client.create_bond(&identity, &1000_i128, &MAX_BOND_DURATION, &false, &0_u64);
     assert!(bond.active);
     assert_eq!(bond.bond_duration, MAX_BOND_DURATION);
 }
@@ -160,13 +148,7 @@ fn test_create_bond_below_min_duration_rejected() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(
-        &identity,
-        &1000_i128,
-        &(MIN_BOND_DURATION - 1),
-        &false,
-        &0_u64,
-    );
+    client.create_bond(&identity, &1000_i128, &(MIN_BOND_DURATION - 1), &false, &0_u64);
 }
 
 /// Bond creation with duration above maximum must be rejected.
@@ -177,13 +159,7 @@ fn test_create_bond_above_max_duration_rejected() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(
-        &identity,
-        &1000_i128,
-        &(MAX_BOND_DURATION + 1),
-        &false,
-        &0_u64,
-    );
+    client.create_bond(&identity, &1000_i128, &(MAX_BOND_DURATION + 1), &false, &0_u64);
 }
 
 /// Rolling bond creation with valid duration succeeds.
@@ -193,13 +169,7 @@ fn test_create_rolling_bond_valid_duration() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    let bond = client.create_bond(
-        &identity,
-        &1000_i128,
-        &MIN_BOND_DURATION,
-        &true,
-        &3600_u64,
-    );
+    let bond = client.create_bond(&identity, &1000_i128, &MIN_BOND_DURATION, &true, &3600_u64);
     assert!(bond.active);
     assert!(bond.is_rolling);
     assert_eq!(bond.bond_duration, MIN_BOND_DURATION);
