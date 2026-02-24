@@ -11,6 +11,9 @@
 //! 8. Cumulative slashing scenarios
 
 #![cfg(test)]
+//! Comprehensive unit tests for slashing functionality.
+//! Covers: successful slash, unauthorized rejection, over-slash prevention,
+//! slash history (via events), and slash events.
 
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
@@ -98,6 +101,8 @@ fn test_slash_unauthorized_rejection() {
     let e = Env::default();
     let (client, _admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
 
+    let (client, _admin, identity) = setup(&e);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     let other = Address::generate(&e);
     client.slash(&other, &100_i128);
 }

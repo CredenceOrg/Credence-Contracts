@@ -2,8 +2,6 @@
 //! Covers: penalty calculation from remaining lock time, configurable rates,
 //! penalty event emission, and security (zero/max penalty edge cases).
 
-#![cfg(test)]
-
 use crate::early_exit_penalty;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
@@ -27,7 +25,7 @@ fn test_early_exit_penalty_calculation_zero_penalty_rate() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let treasury = Address::generate(&e);
-    let (client, admin) = setup(&e, &treasury, 0);
+    let (client, _admin) = setup(&e, &treasury, 0);
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
 
@@ -133,7 +131,6 @@ fn test_set_early_exit_config_invalid_bps() {
 
 #[test]
 fn test_calculate_penalty_unit() {
-    let e = Env::default();
     // remaining = total -> full penalty rate applied
     let p = early_exit_penalty::calculate_penalty(1000, 100, 100, 500);
     assert_eq!(p, 50); // 5% of 1000

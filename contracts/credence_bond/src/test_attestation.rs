@@ -9,8 +9,6 @@
 //! 6. Event emission
 //! 7. Edge cases and boundary conditions
 
-#![cfg(test)]
-
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String};
@@ -511,8 +509,8 @@ fn test_events_published() {
     );
     client.revoke_attestation(&attester, &att.id, &client.get_nonce(&attester));
 
-    // Events are published during operations (verified by no panics)
-    assert!(true);
+    let revoked = client.get_attestation(&att.id);
+    assert!(revoked.revoked);
 }
 
 // ============================================================================
