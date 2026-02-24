@@ -10,33 +10,39 @@ use soroban_sdk::{
 fn test_lifecycle_event_emissions() {
     let e = Env::default();
     e.mock_all_auths();
-    
+
     let contract_id = e.register_contract(None, CredenceBond);
     let client = CredenceBondClient::new(&e, &contract_id);
-    
+
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
-    
+
     client.initialize(&admin);
-    
+
     // --- 1. Test Create Bond Event ---
     let initial_amount = 10_000_i128;
     let duration = 86400_u64;
     let is_rolling = false;
     let notice_period = 0_u64;
-    
-    client.create_bond(&identity, &initial_amount, &duration, &is_rolling, &notice_period);
-    
+
+    client.create_bond(
+        &identity,
+        &initial_amount,
+        &duration,
+        &is_rolling,
+        &notice_period,
+    );
+
     let mut events = e.events().all();
     let create_event = events.pop_back().unwrap();
-    
+
     // Decode Topics
     let topic_name = Symbol::from_val(&e, &create_event.1.get(0).unwrap());
     let topic_ident = Address::from_val(&e, &create_event.1.get(1).unwrap());
-    
+
     assert_eq!(topic_name, Symbol::new(&e, "bond_created"));
     assert_eq!(topic_ident, identity);
-    
+
     // Decode Data
     let create_data = <(i128, u64, bool)>::from_val(&e, &create_event.2);
     assert_eq!(create_data, (initial_amount, duration, is_rolling));
@@ -44,16 +50,16 @@ fn test_lifecycle_event_emissions() {
     // --- 2. Test Top Up Event (Increase) ---
     let top_up_amount = 5_000_i128;
     let expected_total_after_top_up = 15_000_i128;
-    
+
     client.top_up(&top_up_amount);
-    
+
     events = e.events().all();
     let top_up_event = events.pop_back().unwrap();
-    
+
     // Decode Topics
     let topic_name = Symbol::from_val(&e, &top_up_event.1.get(0).unwrap());
     let topic_ident = Address::from_val(&e, &top_up_event.1.get(1).unwrap());
-    
+
     assert_eq!(topic_name, Symbol::new(&e, "bond_increased"));
     assert_eq!(topic_ident, identity);
 
@@ -65,16 +71,16 @@ fn test_lifecycle_event_emissions() {
     let withdraw_amount = 3_000_i128;
     // Current bonded = 15,000. After withdrawing 3,000, expected remaining = 12,000.
     let expected_remaining_bonded = 12_000_i128;
-    
+
     client.withdraw(&withdraw_amount);
-    
+
     events = e.events().all();
     let withdraw_event = events.pop_back().unwrap();
-    
+
     // Decode Topics
     let topic_name = Symbol::from_val(&e, &withdraw_event.1.get(0).unwrap());
     let topic_ident = Address::from_val(&e, &withdraw_event.1.get(1).unwrap());
-    
+
     assert_eq!(topic_name, Symbol::new(&e, "bond_withdrawn"));
     assert_eq!(topic_ident, identity);
 
