@@ -5,6 +5,7 @@ mod fees;
 mod governance_approval;
 mod nonce;
 mod rolling_bond;
+mod slash_history;
 mod slashing;
 mod tiered_bond;
 mod weighted_attestation;
