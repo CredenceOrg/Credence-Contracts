@@ -7,6 +7,7 @@ mod nonce;
 mod rolling_bond;
 mod slashing;
 mod tiered_bond;
+mod validation;
 mod weighted_attestation;
 
 pub mod types;
@@ -148,6 +149,9 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        // Validate bond duration is within allowed range
+        validation::validate_bond_duration(duration);
+
         let bond_start = e.ledger().timestamp();
 
         // Verify the end timestamp wouldn't overflow
@@ -908,3 +912,6 @@ mod integration;
 
 #[cfg(test)]
 mod security;
+
+#[cfg(test)]
+mod test_duration_validation;
