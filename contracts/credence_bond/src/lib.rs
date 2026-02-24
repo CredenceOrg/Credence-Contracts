@@ -11,7 +11,9 @@ mod weighted_attestation;
 
 pub mod types;
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
+};
 
 pub use types::Attestation;
 
@@ -714,7 +716,6 @@ impl CredenceBond {
         bond
     }
 
-<<<<<<< feature/increase-bond
     /// Increase the bond with additional USDC from the caller.
     /// Requires the caller to be the bond owner and authenticates the caller.
     /// Transfers USDC from caller to contract via callback, then updates bonded_amount.
@@ -798,9 +799,6 @@ impl CredenceBond {
         bond
     }
 
-    /// Extend bond duration (checks for u64 overflow on timestamps)
-=======
->>>>>>> main
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
