@@ -674,19 +674,19 @@ impl CredenceBond {
     /// Increase the bond with additional USDC from the caller.
     /// Requires the caller to be the bond owner and authenticates the caller.
     /// Transfers USDC from caller to contract via callback, then updates bonded_amount.
-    /// 
+    ///
     /// # Arguments
     /// * `caller` - The address of the user calling this function (must be bond owner)
     /// * `amount` - The amount of USDC to add to the bond
-    /// 
+    ///
     /// # Returns
     /// * The updated IdentityBond with increased bonded_amount
-    /// 
+    ///
     /// # Panics
     /// * If no bond exists
     /// * If caller is not the bond owner
     /// * If amount is zero or negative
-    /// 
+    ///
     /// # Events
     /// Emits `bond_increased` event with (caller, old_amount, new_amount)
     pub fn increase_bond(e: Env, caller: Address, amount: i128) -> IdentityBond {
@@ -739,7 +739,8 @@ impl CredenceBond {
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
             let fn_name = Symbol::new(&e, "on_increase_bond");
-            let args: Vec<Val> = Vec::from_array(&e, [caller.clone().into_val(&e), amount.into_val(&e)]);
+            let args: Vec<Val> =
+                Vec::from_array(&e, [caller.clone().into_val(&e), amount.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
@@ -752,7 +753,6 @@ impl CredenceBond {
         Self::release_lock(&e);
         bond
     }
-
 
     /// Extend bond duration (checks for u64 overflow on timestamps)
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
