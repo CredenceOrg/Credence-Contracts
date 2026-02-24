@@ -464,6 +464,89 @@ impl CredenceBond {
         bond
     }
 
+    /// Increase the bond with additional USDC from the caller.
+    /// Requires the caller to be the bond owner and authenticates the caller.
+    /// Transfers USDC from caller to contract via callback, then updates bonded_amount.
+    /// 
+    /// # Arguments
+    /// * `caller` - The address of the user calling this function (must be bond owner)
+    /// * `amount` - The amount of USDC to add to the bond
+    /// 
+    /// # Returns
+    /// * The updated IdentityBond with increased bonded_amount
+    /// 
+    /// # Panics
+    /// * If no bond exists
+    /// * If caller is not the bond owner
+    /// * If amount is zero or negative
+    /// 
+    /// # Events
+    /// Emits `bond_increased` event with (caller, old_amount, new_amount)
+    pub fn increase_bond(e: Env, caller: Address, amount: i128) -> IdentityBond {
+        // Require authentication from the caller
+        caller.require_auth();
+
+        // Get the existing bond
+        let key = DataKey::Bond;
+        let mut bond = e
+            .storage()
+            .instance()
+            .get::<_, IdentityBond>(&key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        // Verify caller owns the bond
+        if bond.identity != caller {
+            panic!("not bond owner");
+        }
+
+        // Reentrancy guard to prevent re-entrance during external calls
+        Self::acquire_lock(&e);
+
+        // Validate amount is positive
+        if amount <= 0 {
+            Self::release_lock(&e);
+            panic!("amount must be positive");
+        }
+
+        // Store old amount for event emission
+        let old_amount = bond.bonded_amount;
+
+        // Calculate new bonded amount with overflow protection
+        let new_amount = old_amount
+            .checked_add(amount)
+            .expect("bond increase caused overflow");
+
+        // Update tier if needed (before state change)
+        let old_tier = tiered_bond::get_tier_for_amount(old_amount);
+        let new_tier = tiered_bond::get_tier_for_amount(new_amount);
+
+        // Update bonded_amount in storage (effects)
+        bond.bonded_amount = new_amount;
+        e.storage().instance().set(&key, &bond);
+
+        // Emit tier change event if needed
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+
+        // External call: Transfer USDC from caller to contract
+        // This invokes a callback on a registered token contract to transfer tokens
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_increase_bond");
+            let args: Vec<Val> = Vec::from_array(&e, [caller.clone().into_val(&e), amount.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+        }
+
+        // Emit bond increased event
+        e.events().publish(
+            (Symbol::new(&e, "bond_increased"),),
+            (caller, old_amount, new_amount),
+        );
+
+        Self::release_lock(&e);
+        bond
+    }
+
+
     /// Extend bond duration (checks for u64 overflow on timestamps)
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
         let key = DataKey::Bond;
@@ -683,6 +766,9 @@ mod test_reentrancy;
 
 #[cfg(test)]
 mod test_attestation;
+
+#[cfg(test)]
+mod test_increase_bond;
 
 #[cfg(test)]
 mod security;
