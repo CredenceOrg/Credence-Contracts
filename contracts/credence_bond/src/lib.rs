@@ -12,8 +12,8 @@ mod rolling_bond;
 mod slash_history;
 mod slashing;
 pub mod tiered_bond;
-pub mod verifier;
 mod validation;
+pub mod verifier;
 mod weighted_attestation;
 
 pub mod types;
