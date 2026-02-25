@@ -38,15 +38,21 @@ pub struct RegistryEntry {
 #[contracttype]
 #[derive(Clone)]
 enum DataKey {
-    /// Admin address
     Admin,
-    /// Identity to bond contract mapping: Identity -> RegistryEntry
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     IdentityToBond(Address),
-    /// Reverse mapping: BondContract -> Identity
     BondToIdentity(Address),
-    /// List of all registered identities
     RegisteredIdentities,
 }
+
+pub mod pausable;
 
 #[contract]
 pub struct CredenceRegistry;
@@ -68,6 +74,10 @@ impl CredenceRegistry {
         admin.require_auth();
 
         e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage().instance().set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage().instance().set(&DataKey::PauseProposalCounter, &0_u64);
 
         // Initialize empty registered identities list
         let identities: Vec<Address> = Vec::new(&e);
@@ -96,6 +106,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_registered` with the `RegistryEntry`
     pub fn register(e: Env, identity: Address, bond_contract: Address) -> RegistryEntry {
+        pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
             .storage()
@@ -214,6 +225,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_deactivated` with the updated `RegistryEntry`
     pub fn deactivate(e: Env, identity: Address) {
+        pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
             .storage()
@@ -254,6 +266,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_reactivated` with the updated `RegistryEntry`
     pub fn reactivate(e: Env, identity: Address) {
+        pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
             .storage()
@@ -317,6 +330,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `admin_transferred` with the new admin address
     pub fn transfer_admin(e: Env, new_admin: Address) {
+        pausable::require_not_paused(&e);
         // Verify current admin authorization
         let admin: Address = e
             .storage()
@@ -331,7 +345,76 @@ impl CredenceRegistry {
         e.events()
             .publish((Symbol::new(&e, "admin_transferred"),), new_admin);
     }
+
+    /// Pause the registry contract.
+    ///
+    /// # Arguments
+    /// * `caller` - The address of the caller
+    ///
+    /// # Returns
+    /// The proposal ID if the pause is proposed, `None` if the pause is immediate
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    /// Unpause the registry contract.
+    ///
+    /// # Arguments
+    /// * `caller` - The address of the caller
+    ///
+    /// # Returns
+    /// The proposal ID if the unpause is proposed, `None` if the unpause is immediate
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    /// Check if the registry contract is paused.
+    ///
+    /// # Returns
+    /// `true` if the contract is paused, `false` otherwise
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    /// Set a pause signer.
+    ///
+    /// # Arguments
+    /// * `admin` - The admin address
+    /// * `signer` - The signer address
+    /// * `enabled` - Whether the signer is enabled
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    /// Set the pause threshold.
+    ///
+    /// # Arguments
+    /// * `admin` - The admin address
+    /// * `threshold` - The new threshold
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    /// Approve a pause proposal.
+    ///
+    /// # Arguments
+    /// * `signer` - The signer address
+    /// * `proposal_id` - The proposal ID
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    /// Execute a pause proposal.
+    ///
+    /// # Arguments
+    /// * `proposal_id` - The proposal ID
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
+    }
 }
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_pausable;
