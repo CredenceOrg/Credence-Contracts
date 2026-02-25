@@ -2,6 +2,8 @@
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Map, String, Symbol};
 
+pub mod pausable;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
@@ -17,6 +19,14 @@ pub struct Dispute {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     Arbitrator(Address),
     Dispute(u64),
     DisputeCounter,
@@ -35,10 +45,15 @@ impl CredenceArbitration {
             panic!("already initialized");
         }
         e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage().instance().set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage().instance().set(&DataKey::PauseProposalCounter, &0_u64);
     }
 
     /// Register or update an arbitrator with a specific voting weight.
     pub fn register_arbitrator(e: Env, arbitrator: Address, weight: i128) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -62,6 +77,7 @@ impl CredenceArbitration {
 
     /// Remove an arbitrator.
     pub fn unregister_arbitrator(e: Env, arbitrator: Address) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -79,6 +95,7 @@ impl CredenceArbitration {
 
     /// Create a new dispute for arbitration.
     pub fn create_dispute(e: Env, creator: Address, description: String, duration: u64) -> u64 {
+        pausable::require_not_paused(&e);
         creator.require_auth();
 
         let counter_key = DataKey::DisputeCounter;
@@ -109,6 +126,7 @@ impl CredenceArbitration {
 
     /// Cast a weighted vote for a dispute outcome.
     pub fn vote(e: Env, voter: Address, dispute_id: u64, outcome: u32) {
+        pausable::require_not_paused(&e);
         voter.require_auth();
 
         if outcome == 0 {
@@ -169,6 +187,7 @@ impl CredenceArbitration {
 
     /// Resolve a dispute after the voting period has ended.
     pub fn resolve_dispute(e: Env, dispute_id: u64) -> u32 {
+        pausable::require_not_paused(&e);
         let mut dispute: Dispute = e
             .storage()
             .instance()
@@ -243,7 +262,38 @@ impl CredenceArbitration {
 
         votes.get(outcome).unwrap_or(0)
     }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
+    }
 }
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_pausable;
