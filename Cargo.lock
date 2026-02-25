@@ -268,6 +268,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "credence_arbitration"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
+]
+
+[[package]]
 name = "credence_bond"
 version = "0.1.0"
 dependencies = [
