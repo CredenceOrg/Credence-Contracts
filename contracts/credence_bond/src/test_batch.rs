@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{BatchBondParams, CredenceBond, CredenceBondClient};
+use crate::{test_helpers::setup_with_token, BatchBondParams, CredenceBond, CredenceBondClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, Vec,
@@ -327,13 +327,7 @@ fn test_batch_total_overflow() {
 #[should_panic(expected = "bond already exists")]
 fn test_duplicate_bond_in_batch_fails() {
     let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&env);
+    let (client, _admin, identity, _token, _contract_id) = setup_with_token(&env);
 
     // Create first bond
     client.create_bond(&identity, &1000, &86400, &false, &0);

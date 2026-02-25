@@ -1,18 +1,13 @@
 use super::*;
+use crate::test_helpers;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Env;
 
 #[test]
 fn test_create_bond() {
     let e = Env::default();
-    e.mock_all_auths();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     assert!(bond.active);

@@ -34,7 +34,7 @@ Tests verify safe handling of bond amounts using i128 integers:
 - All i128 arithmetic operations use `checked_add()` and `checked_sub()`
 - Overflow/underflow conditions properly panic with descriptive messages
 - Maximum value bonds (i128::MAX) are handled correctly
-- Negative values are technically allowed (may need business logic validation)
+- Negative amounts are now rejected with `amount must be non-negative`
 
 ### 2. u64 Timestamp Overflow Tests (5 tests)
 
@@ -232,6 +232,30 @@ contracts/credence_bond/src/
 - **Underflow scenarios:** 14 tests
 - **Timestamp overflow scenarios:** 5 tests
 - **Complex scenarios:** 2 tests
+
+## Withdraw Bond and Token Integration
+
+### withdraw_bond()
+
+The `withdraw_bond` function enforces:
+
+- **Lock-up:** For non-rolling bonds, `now >= bond_start + bond_duration` must hold.
+- **Cooldown:** For rolling bonds, withdrawal must be requested and `notice_period_duration` must have elapsed.
+- **Balance:** Amount must not exceed `bonded_amount - slashed_amount`.
+
+`withdraw` delegates to `withdraw_bond`, so the same validation applies.
+
+### Token (USDC) Flows
+
+- **create_bond / top_up:** Pull USDC from identity via `transfer_from`; identity must approve the contract.
+- **withdraw_bond / withdraw:** Transfer USDC to identity via `transfer` from contract balance.
+- **withdraw_early:** Transfer `amount - penalty` to identity and `penalty` to treasury.
+
+### Security Considerations
+
+- **CEI pattern:** In `top_up`, overflow is checked before token transfer.
+- **Reentrancy:** Soroban’s execution model limits reentrancy; no token callbacks into the bond contract.
+- **Arithmetic:** All token-related arithmetic uses `checked_add` / `checked_sub`.
 
 ## Conclusion
 

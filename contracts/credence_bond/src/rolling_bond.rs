@@ -14,7 +14,6 @@ pub fn is_period_ended(now: u64, bond_start: u64, bond_duration: u64) -> bool {
 
 /// Returns true if a withdrawal was requested and the notice period has elapsed.
 #[must_use]
-#[allow(dead_code)] // Public API for off-chain / frontends
 pub fn can_withdraw_after_notice(
     now: u64,
     withdrawal_requested_at: u64,
