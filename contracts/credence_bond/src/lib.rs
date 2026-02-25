@@ -3,8 +3,10 @@
 pub mod early_exit_penalty;
 mod fees;
 pub mod governance_approval;
+mod math;
 mod nonce;
-pub mod rolling_bond;
+mod rolling_bond;
+mod slash_history;
 mod slashing;
 pub mod tiered_bond;
 mod weighted_attestation;
@@ -14,6 +16,11 @@ pub mod types;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
 };
+
+
+
+use soroban_sdk::token::TokenClient;
+
 
 pub use types::Attestation;
 
@@ -48,6 +55,7 @@ pub struct IdentityBond {
 pub enum DataKey {
     Admin,
     Bond,
+    Token,
     Attester(Address),
     Attestation(u64),
     AttestationCounter,
@@ -166,8 +174,24 @@ impl CredenceBond {
             .unwrap_or(false)
     }
 
+    /// Set the token contract address (admin only). Required before `create_bond`, `top_up`,
+    /// and `withdraw_bond`.
+    pub fn set_token(e: Env, admin: Address, token: Address) {
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        admin.require_auth();
+        if admin != stored_admin {
+            panic!("not admin");
+        }
+        e.storage().instance().set(&DataKey::Token, &token);
+    }
+
     /// Create a bond for an identity.
-    /// Bond creation fee (if configured) is deducted and recorded for treasury.
+    /// Transfers USDC from the identity to the contract (token must be set and approved).
+    /// Bond creation fee (if configured) is deducted and recorded for the treasury.
     pub fn create_bond(
         e: Env,
         identity: Address,
@@ -176,6 +200,36 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        Self::create_bond_with_rolling(
+            e,
+            identity,
+            amount,
+            duration,
+            is_rolling,
+            notice_period_duration,
+        )
+    }
+
+    /// Create a bond with rolling parameters.
+    pub fn create_bond_with_rolling(
+        e: Env,
+        identity: Address,
+        amount: i128,
+        duration: u64,
+        is_rolling: bool,
+        notice_period_duration: u64,
+    ) -> IdentityBond {
+        if amount < 0 {
+            panic!("amount must be non-negative");
+        }
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic!("token not set"));
+        let contract = e.current_contract_address();
+        TokenClient::new(&e, &token).transfer_from(&contract, &identity, &contract, &amount);
+
         let bond_start = e.ledger().timestamp();
 
         // Verify end timestamp wouldn't overflow.
@@ -209,24 +263,6 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(net_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
         bond
-    }
-
-    pub fn create_bond_with_rolling(
-        e: Env,
-        identity: Address,
-        amount: i128,
-        duration: u64,
-        is_rolling: bool,
-        notice_period_duration: u64,
-    ) -> IdentityBond {
-        Self::create_bond(
-            e,
-            identity,
-            amount,
-            duration,
-            is_rolling,
-            notice_period_duration,
-        )
     }
 
     pub fn get_identity_state(e: Env) -> IdentityBond {
@@ -397,7 +433,79 @@ impl CredenceBond {
         weighted_attestation::get_weight_config(&e)
     }
 
-    /// Early withdrawal path (only valid before lock-up end).
+    /// Withdraw from bond (no penalty). Alias for `withdraw_bond`. Use when lock-up has ended
+    /// or after the notice period for rolling bonds.
+    pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
+        Self::withdraw_bond(e, amount)
+    }
+
+    /// Withdraw USDC from bond after lock-up has elapsed and (for rolling bonds) the cooldown
+    /// window has passed. Verifies:
+    /// 1. Lock-up period has elapsed for non-rolling bonds.
+    /// 2. For rolling bonds, withdrawal was requested and the notice period has elapsed.
+    /// 3. `amount` does not exceed the available balance (`bonded_amount - slashed_amount`).
+    /// Transfers USDC to the identity owner and updates tiers.
+    pub fn withdraw_bond(e: Env, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond;
+        let mut bond = e
+            .storage()
+            .instance()
+            .get::<_, IdentityBond>(&key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        let now = e.ledger().timestamp();
+        let end = bond.bond_start.saturating_add(bond.bond_duration);
+
+        if bond.is_rolling {
+            if bond.withdrawal_requested_at == 0 {
+                panic!("cooldown window not elapsed; request_withdrawal first");
+            }
+            if !rolling_bond::can_withdraw_after_notice(
+                now,
+                bond.withdrawal_requested_at,
+                bond.notice_period_duration,
+            ) {
+                panic!("cooldown window not elapsed; request_withdrawal first");
+            }
+        } else if now < end {
+            panic!("lock-up period not elapsed; use withdraw_early");
+        }
+
+        let available = bond
+            .bonded_amount
+            .checked_sub(bond.slashed_amount)
+            .expect("slashed amount exceeds bonded amount");
+
+        if amount > available {
+            panic!("insufficient balance for withdrawal");
+        }
+
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic!("token not set"));
+        let contract = e.current_contract_address();
+        TokenClient::new(&e, &token).transfer(&contract, &bond.identity, &amount);
+
+        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount)
+            .expect("withdrawal caused underflow");
+
+        if bond.slashed_amount > bond.bonded_amount {
+            bond.slashed_amount = bond.bonded_amount;
+        }
+        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+
+        e.storage().instance().set(&key, &bond);
+        bond
+    }
+
+    /// Early withdrawal path (only valid before lock-up end). Applies an early exit penalty and
+    /// transfers the penalty to the configured treasury.
     pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond = e
@@ -430,54 +538,18 @@ impl CredenceBond {
         );
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
 
-        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond
-            .bonded_amount
-            .checked_sub(amount)
-            .expect("withdrawal caused underflow");
-
-        if bond.slashed_amount > bond.bonded_amount {
-            panic!("slashed amount exceeds bonded amount");
-        }
-
-        let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
-
-        e.storage().instance().set(&key, &bond);
-        bond
-    }
-
-    /// Withdraw from bond. For rolling bonds requires prior notice and elapsed notice period.
-    pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
+        let token: Address = e
             .storage()
             .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic!("no bond"));
-
-        if bond.is_rolling {
-            if bond.withdrawal_requested_at == 0 {
-                panic!("withdrawal not requested");
-            }
-            let now = e.ledger().timestamp();
-            if !rolling_bond::can_withdraw_after_notice(
-                now,
-                bond.withdrawal_requested_at,
-                bond.notice_period_duration,
-            ) {
-                panic!("notice period not elapsed");
-            }
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic!("token not set"));
+        let contract = e.current_contract_address();
+        let token_client = TokenClient::new(&e, &token);
+        let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
+        token_client.transfer(&contract, &bond.identity, &net_amount);
+        if penalty > 0 {
+            token_client.transfer(&contract, &treasury, &penalty);
         }
-
-        let available = bond
-            .bonded_amount
-            .checked_sub(bond.slashed_amount)
-            .expect("slashed amount exceeds bonded amount");
-        if amount > available {
-            panic!("insufficient balance for withdrawal");
-        }
-
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         bond.bonded_amount = bond
             .bonded_amount
@@ -616,14 +688,6 @@ impl CredenceBond {
         fees::get_config(&e)
     }
 
-    pub fn collect_fees(e: Env, admin: Address) -> i128 {
-        Self::require_admin(&e, &admin);
-        let key = Symbol::new(&e, "fees");
-        let collected: i128 = e.storage().instance().get(&key).unwrap_or(0);
-        e.storage().instance().set(&key, &0_i128);
-        collected
-    }
-
     pub fn deposit_fees(e: Env, amount: i128) {
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
@@ -642,37 +706,6 @@ impl CredenceBond {
             .instance()
             .get(&Self::lock_key(&e))
             .unwrap_or(false)
-    }
-
-    pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
-        let key = DataKey::Bond;
-        Self::with_reentrancy_guard(&e, || {
-            let mut bond: IdentityBond = e
-                .storage()
-                .instance()
-                .get(&key)
-                .unwrap_or_else(|| panic!("no bond"));
-            if bond.identity != identity {
-                panic!("not bond identity");
-            }
-
-            let amount = bond
-                .bonded_amount
-                .checked_sub(bond.slashed_amount)
-                .expect("slashed amount exceeds bonded amount");
-            bond.bonded_amount = 0;
-            bond.active = false;
-            e.storage().instance().set(&key, &bond);
-            amount
-        })
-    }
-
-    pub fn slash_bond(e: Env, admin: Address, amount: i128) -> i128 {
-        Self::with_reentrancy_guard(&e, || {
-            let before = Self::get_identity_state(e.clone()).slashed_amount;
-            let after = slashing::slash_bond(&e, &admin, amount).slashed_amount;
-            after.checked_sub(before).expect("slashing delta underflow")
-        })
     }
 
     pub fn get_slash_proposal(
@@ -708,15 +741,26 @@ impl CredenceBond {
             .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
-        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond
+        // Overflow check before token transfer (CEI pattern)
+        let new_bonded = bond
             .bonded_amount
             .checked_add(amount)
             .expect("top-up caused overflow");
+
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic!("token not set"));
+        let contract = e.current_contract_address();
+        TokenClient::new(&e, &token).transfer_from(&contract, &bond.identity, &contract, &amount);
+
+        let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
+        bond.bonded_amount = new_bonded;
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
         bond
     }
 
@@ -741,7 +785,154 @@ impl CredenceBond {
         e.storage().instance().set(&key, &bond);
         bond
     }
+    /// Withdraw the full bonded amount back to the identity (callback-based, for reentrancy tests).
+    /// Uses a reentrancy guard to prevent re-entrance during external calls.
+    pub fn withdraw_bond_full(e: Env, identity: Address) -> i128 {
+        identity.require_auth();
+        Self::acquire_lock(&e);
+
+        let bond_key = DataKey::Bond;
+        let bond: IdentityBond = e
+            .storage()
+            .instance()
+            .get(&bond_key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        if bond.identity != identity {
+            Self::release_lock(&e);
+            panic!("not bond owner");
+        }
+        if !bond.active {
+            Self::release_lock(&e);
+            panic!("bond not active");
+        }
+
+        let withdraw_amount = bond.bonded_amount - bond.slashed_amount;
+
+        // State update BEFORE external interaction (checks-effects-interactions)
+        let updated = IdentityBond {
+            identity: identity.clone(),
+            bonded_amount: 0,
+            bond_start: bond.bond_start,
+            bond_duration: bond.bond_duration,
+            slashed_amount: bond.slashed_amount,
+            active: false,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period_duration: bond.notice_period_duration,
+        };
+        e.storage().instance().set(&bond_key, &updated);
+
+        // External call: invoke callback if a callback contract is registered.
+        // In production this would be a token transfer; here we use a hook for testing.
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_withdraw");
+            let args: Vec<Val> = Vec::from_array(&e, [withdraw_amount.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+        }
+
+        Self::release_lock(&e);
+        withdraw_amount
+    }
+
+    /// Slash a portion of a bond. Only callable by admin.
+    /// Uses a reentrancy guard to prevent re-entrance during external calls.
+    pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
+        admin.require_auth();
+        Self::acquire_lock(&e);
+
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("no admin"));
+        if stored_admin != admin {
+            Self::release_lock(&e);
+            panic!("not admin");
+        }
+
+        let bond_key = DataKey::Bond;
+        let bond: IdentityBond = e
+            .storage()
+            .instance()
+            .get(&bond_key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        if !bond.active {
+            Self::release_lock(&e);
+            panic!("bond not active");
+        }
+
+        let new_slashed = bond.slashed_amount + slash_amount;
+        if new_slashed > bond.bonded_amount {
+            Self::release_lock(&e);
+            panic!("slash exceeds bond");
+        }
+
+        // State update BEFORE external interaction
+        let updated = IdentityBond {
+            identity: bond.identity.clone(),
+            bonded_amount: bond.bonded_amount,
+            bond_start: bond.bond_start,
+            bond_duration: bond.bond_duration,
+            slashed_amount: new_slashed,
+            active: bond.active,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period_duration: bond.notice_period_duration,
+        };
+        e.storage().instance().set(&bond_key, &updated);
+
+        // External call: invoke callback if registered
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_slash");
+            let args: Vec<Val> = Vec::from_array(&e, [slash_amount.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+        }
+
+        Self::release_lock(&e);
+        new_slashed
+    }
+
+    /// Collect accumulated protocol fees. Only callable by admin.
+    /// Uses a reentrancy guard to prevent re-entrance during external calls.
+    pub fn collect_fees(e: Env, admin: Address) -> i128 {
+        admin.require_auth();
+        Self::acquire_lock(&e);
+
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("no admin"));
+        if stored_admin != admin {
+            Self::release_lock(&e);
+            panic!("not admin");
+        }
+
+        let fee_key = Symbol::new(&e, "fees");
+        let fees: i128 = e.storage().instance().get(&fee_key).unwrap_or(0);
+
+        // State update BEFORE external interaction
+        e.storage().instance().set(&fee_key, &0_i128);
+
+        // External call: invoke callback if registered
+        let cb_key = Symbol::new(&e, "callback");
+        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+            let fn_name = Symbol::new(&e, "on_collect");
+            let args: Vec<Val> = Vec::from_array(&e, [fees.into_val(&e)]);
+            e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
+        }
+
+        Self::release_lock(&e);
+        fees
+    }
 }
+
+#[cfg(test)]
+mod test_helpers;
 
 #[cfg(test)]
 mod test;
@@ -784,3 +975,6 @@ mod test_slashing;
 
 #[cfg(test)]
 mod test_withdraw_bond;
+
+#[cfg(test)]
+mod test_math;
