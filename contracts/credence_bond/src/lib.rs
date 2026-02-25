@@ -11,6 +11,7 @@ mod slash_history;
 mod slashing;
 pub mod tiered_bond;
 mod weighted_attestation;
+pub mod verifier;
 
 pub mod types;
 
@@ -156,6 +157,8 @@ impl CredenceBond {
         e.storage()
             .instance()
             .set(&DataKey::Attester(attester.clone()), &true);
+        // Ensure verifier info exists for reputation tracking (legacy admin path).
+        verifier::register_legacy(&e, &attester);
         e.events()
             .publish((Symbol::new(&e, "attester_registered"),), attester);
     }
@@ -169,15 +172,80 @@ impl CredenceBond {
         require_admin(&e, &admin);
         admin.require_auth();
         remove_verifier_role(&e, &admin, &attester);
-        e.storage()
-            .instance()
-            .remove(&DataKey::Attester(attester.clone()));
+        verifier::deactivate_if_exists(&e, &attester, Symbol::new(&e, "admin"));
         e.events()
             .publish((Symbol::new(&e, "attester_unregistered"),), attester);
     }
 
     pub fn is_attester(e: Env, attester: Address) -> bool {
         is_verifier(&e, &attester)
+    }
+
+    /// @notice Set the minimum stake required to register/activate as a verifier (admin only).
+    pub fn set_verifier_stake_requirement(e: Env, admin: Address, min_stake: i128) {
+        admin.require_auth();
+        Self::require_admin_internal(&e, &admin);
+        verifier::set_min_stake(&e, min_stake);
+    }
+
+    /// @notice Get the minimum stake required to register/activate as a verifier.
+    pub fn get_verifier_stake_requirement(e: Env) -> i128 {
+        verifier::get_min_stake(&e)
+    }
+
+    /// @notice Register (or reactivate) as a verifier by staking the configured token.
+    /// @dev Caller must approve the contract to transfer the stake amount via `transfer_from`.
+    pub fn register_verifier(e: Env, verifier_addr: Address, stake_deposit: i128) -> verifier::VerifierInfo {
+        verifier_addr.require_auth();
+        Self::with_reentrancy_guard(&e, || {
+            verifier::register_with_stake(&e, &verifier_addr, stake_deposit)
+        })
+    }
+
+    /// @notice Deactivate the caller as a verifier (self-deactivation).
+    pub fn deactivate_verifier(e: Env, verifier_addr: Address) -> verifier::VerifierInfo {
+        verifier_addr.require_auth();
+        verifier::deactivate_verifier(&e, &verifier_addr, Symbol::new(&e, "self"))
+    }
+
+    /// @notice Deactivate a verifier (admin only).
+    pub fn deactivate_verifier_by_admin(
+        e: Env,
+        admin: Address,
+        verifier_addr: Address,
+    ) -> verifier::VerifierInfo {
+        admin.require_auth();
+        Self::require_admin_internal(&e, &admin);
+        verifier::deactivate_verifier(&e, &verifier_addr, Symbol::new(&e, "admin"))
+    }
+
+    /// @notice Withdraw staked tokens after deactivation.
+    pub fn withdraw_verifier_stake(
+        e: Env,
+        verifier_addr: Address,
+        amount: i128,
+    ) -> verifier::VerifierInfo {
+        verifier_addr.require_auth();
+        Self::with_reentrancy_guard(&e, || {
+            verifier::withdraw_stake(&e, &verifier_addr, amount)
+        })
+    }
+
+    /// @notice Get verifier info (stake, reputation, status), if present.
+    pub fn get_verifier_info(e: Env, verifier_addr: Address) -> Option<verifier::VerifierInfo> {
+        verifier::get_verifier_info(&e, &verifier_addr)
+    }
+
+    /// @notice Set verifier reputation (admin only).
+    pub fn set_verifier_reputation(
+        e: Env,
+        admin: Address,
+        verifier_addr: Address,
+        new_reputation: i128,
+    ) {
+        admin.require_auth();
+        Self::require_admin_internal(&e, &admin);
+        verifier::set_reputation(&e, &verifier_addr, new_reputation, Symbol::new(&e, "admin"));
     }
 
     /// Set the token contract address (admin only). Required before `create_bond`, `top_up`,
@@ -354,6 +422,8 @@ impl CredenceBond {
             (id, attester, attestation_data, weight),
         );
 
+        verifier::record_attestation_issued(&e, &attestation.verifier, attestation.weight);
+
         attestation
     }
 
@@ -399,6 +469,8 @@ impl CredenceBond {
             ),
             (attestation_id, attester),
         );
+
+        verifier::record_attestation_revoked(&e, &attestation.verifier, attestation.weight);
     }
 
     pub fn get_attestation(e: Env, attestation_id: u64) -> Attestation {
@@ -973,6 +1045,9 @@ mod test_access_control;
 
 #[cfg(test)]
 mod test_early_exit_penalty;
+
+#[cfg(test)]
+mod test_verifier;
 
 #[cfg(test)]
 mod test_rolling_bond;
