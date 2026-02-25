@@ -1,9 +1,6 @@
-#![cfg(test)]
-
 use crate::*;
 use soroban_sdk::{Address, Env};
 
-#[cfg(test)]
 mod pausable_tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
