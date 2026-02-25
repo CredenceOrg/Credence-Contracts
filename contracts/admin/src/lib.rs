@@ -199,7 +199,7 @@ impl AdminContract {
         // Create admin info
         let admin_info = AdminInfo {
             address: new_admin.clone(),
-            role: role,
+            role,
             assigned_at: e.ledger().timestamp(),
             assigned_by: caller.clone(),
             active: true,

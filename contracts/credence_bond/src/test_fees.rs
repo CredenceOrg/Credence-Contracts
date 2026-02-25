@@ -19,7 +19,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
 #[test]
 fn test_fee_zero_when_not_configured() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, _admin, identity) = setup(&e);
     let (treasury, fee_bps) = client.get_fee_config();
     assert!(treasury.is_none());
     assert_eq!(fee_bps, 0);
@@ -30,7 +30,7 @@ fn test_fee_zero_when_not_configured() {
 #[test]
 fn test_set_fee_config() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, admin, _identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &100_u32);
     let (t, bps) = client.get_fee_config();
@@ -82,7 +82,7 @@ fn test_fee_max_bps_capped() {
 #[should_panic(expected = "fee_bps must be <= 10000")]
 fn test_fee_over_max_rejected() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, admin, _identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &10_001_u32);
 }
@@ -91,7 +91,7 @@ fn test_fee_over_max_rejected() {
 #[should_panic(expected = "not admin")]
 fn test_set_fee_config_unauthorized() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, _admin, _identity) = setup(&e);
     let other = Address::generate(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&other, &treasury, &100_u32);

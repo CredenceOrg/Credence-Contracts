@@ -32,7 +32,7 @@ fn test_i128_bond_amount_at_max() {
 
     let identity = Address::generate(&e);
     // Test creating bond with maximum i128 value
-    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
     let bond = client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
 
     assert_eq!(bond.bonded_amount, i128::MAX);
@@ -121,7 +121,7 @@ fn test_i128_large_bond_operations() {
     let large_amount = i128::MAX / 2;
 
     // Create bond with large amount
-    let bond = client.create_bond(&identity, &large_amount, &86400_u64, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &large_amount, &86400_u64, &false, &0_u64);
     let bond = client.create_bond(&identity, &large_amount, &86400_u64, &false, &0_u64);
     assert_eq!(bond.bonded_amount, large_amount);
 
@@ -144,7 +144,7 @@ fn test_negative_bond_amount_handling() {
 
     // Test with negative amount (technically allowed by i128, but may be business logic violation)
     // This documents current behavior
-    let bond = client.create_bond(&identity, &(-1000), &86400_u64, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &(-1000), &86400_u64, &false, &0_u64);
     let bond = client.create_bond(&identity, &(-1000), &86400_u64, &false, &0_u64);
     assert_eq!(bond.bonded_amount, -1000);
 }
@@ -165,7 +165,7 @@ fn test_u64_max_duration() {
 
     let identity = Address::generate(&e);
     // Test creating bond with maximum u64 duration
-    let bond = client.create_bond(&identity, &1000, &u64::MAX, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &1000, &u64::MAX, &false, &0_u64);
     let bond = client.create_bond(&identity, &1000, &u64::MAX, &false, &0_u64);
 
     assert_eq!(bond.bond_duration, u64::MAX);
@@ -228,7 +228,7 @@ fn test_u64_large_duration_extension() {
     let duration = u64::MAX / 2;
 
     // Create bond with large duration
-    let bond = client.create_bond(&identity, &1000, &duration, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &1000, &duration, &false, &0_u64);
     let bond = client.create_bond(&identity, &1000, &duration, &false, &0_u64);
     assert_eq!(bond.bond_duration, duration);
 
@@ -254,7 +254,7 @@ fn test_timestamp_boundary_conditions() {
 
     let identity = Address::generate(&e);
     // Create bond with safe duration
-    let bond = client.create_bond(&identity, &1000, &5000, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &1000, &5000, &false, &0_u64);
     let bond = client.create_bond(&identity, &1000, &5000, &false, &0_u64);
 
     assert_eq!(bond.bond_duration, 5000);
@@ -448,7 +448,7 @@ fn test_slashing_exceeds_bonded_amount() {
     client.create_bond(&identity, &1000, &86400_u64, &false, &0_u64);
 
     // Slash more than bonded amount (should cap at bonded amount)
-    let bond = client.slash(&admin, &2000);
+    let _bond = client.slash(&admin, &2000);
     let bond = client.slash(&admin, &2000);
     assert_eq!(bond.slashed_amount, 1000); // Capped at bonded_amount
     assert_eq!(bond.bonded_amount, 1000);
@@ -494,7 +494,7 @@ fn test_slashing_zero_amount() {
     client.create_bond(&identity, &1000, &86400_u64, &false, &0_u64);
 
     // Slash zero amount
-    let bond = client.slash(&admin, &0);
+    let _bond = client.slash(&admin, &0);
     let bond = client.slash(&admin, &0);
     assert_eq!(bond.slashed_amount, 0);
 }
@@ -613,12 +613,12 @@ fn test_boundary_arithmetic_with_zero_values() {
 
     let identity = Address::generate(&e);
     // Create bond with zero amount
-    let bond = client.create_bond(&identity, &0, &86400_u64, &false, &0_u64);
+    let _bond = client.create_bond(&identity, &0, &86400_u64, &false, &0_u64);
     let bond = client.create_bond(&identity, &0, &86400_u64, &false, &0_u64);
     assert_eq!(bond.bonded_amount, 0);
 
     // Try operations on zero bond
-    let bond = client.slash(&admin, &0);
+    let _bond = client.slash(&admin, &0);
     let bond = client.slash(&admin, &0);
     assert_eq!(bond.slashed_amount, 0);
 

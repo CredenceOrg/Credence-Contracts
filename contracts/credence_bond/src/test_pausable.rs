@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::{BondTier, CredenceBond, CredenceBondClient};
+use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
