@@ -90,6 +90,9 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// - Slashing is monotonic (always increases or stays same, never decreases)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond {
+    if amount < 0 {
+        panic!("slash amount must be non-negative");
+    }
     // 1. Authorization check
     validate_admin(e, admin);
 
@@ -141,6 +144,9 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 /// - "not admin" if not authorized
 /// - If amount would reduce slashed_amount below 0
 pub fn unslash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond {
+    if amount < 0 {
+        panic!("unslash amount must be non-negative");
+    }
     validate_admin(e, admin);
 
     let key = crate::DataKey::Bond;

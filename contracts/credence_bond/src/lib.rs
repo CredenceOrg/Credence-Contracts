@@ -228,6 +228,7 @@ impl CredenceBond {
         if amount < 0 {
             panic!("amount must be non-negative");
         }
+        identity.require_auth();
         let token: Address = e
             .storage()
             .instance()
@@ -460,6 +461,11 @@ impl CredenceBond {
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
+        if amount < 0 {
+            panic!("amount must be non-negative");
+        }
+        bond.identity.require_auth();
+
         let now = e.ledger().timestamp();
         let end = bond.bond_start.saturating_add(bond.bond_duration);
 
@@ -521,6 +527,11 @@ impl CredenceBond {
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
+        if amount < 0 {
+            panic!("amount must be non-negative");
+        }
+        bond.identity.require_auth();
+
         let now = e.ledger().timestamp();
         let end = bond.bond_start.saturating_add(bond.bond_duration);
         if now >= end {
@@ -581,6 +592,7 @@ impl CredenceBond {
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
+        bond.identity.require_auth();
         if !bond.is_rolling {
             panic!("not a rolling bond");
         }
@@ -628,6 +640,11 @@ impl CredenceBond {
     }
 
     pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
+        admin.require_auth();
+        Self::require_admin_internal(&e, &admin);
+        if amount < 0 {
+            panic!("slash amount must be non-negative");
+        }
         slashing::slash_bond(&e, &admin, amount)
     }
 
@@ -748,6 +765,11 @@ impl CredenceBond {
             .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
 
+        if amount < 0 {
+            panic!("amount must be non-negative");
+        }
+        bond.identity.require_auth();
+
         // Overflow check before token transfer (CEI pattern)
         let new_bonded = bond
             .bonded_amount
@@ -778,6 +800,8 @@ impl CredenceBond {
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic!("no bond"));
+
+        bond.identity.require_auth();
 
         bond.bond_duration = bond
             .bond_duration
@@ -847,6 +871,9 @@ impl CredenceBond {
     /// Uses a reentrancy guard to prevent re-entrance during external calls.
     pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
         admin.require_auth();
+        if slash_amount < 0 {
+            panic!("slash amount must be non-negative");
+        }
         Self::acquire_lock(&e);
 
         let stored_admin: Address = e
@@ -871,7 +898,10 @@ impl CredenceBond {
             panic!("bond not active");
         }
 
-        let new_slashed = bond.slashed_amount + slash_amount;
+        let new_slashed = bond
+            .slashed_amount
+            .checked_add(slash_amount)
+            .expect("slashing caused overflow");
         if new_slashed > bond.bonded_amount {
             Self::release_lock(&e);
             panic!("slash exceeds bond");
@@ -967,6 +997,9 @@ mod integration;
 
 #[cfg(test)]
 mod security;
+
+#[cfg(test)]
+mod fuzz;
 
 #[cfg(test)]
 mod test_access_control;
