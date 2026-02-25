@@ -1,120 +1,170 @@
-//! Comprehensive unit tests for bond withdrawal flows.
-//! Scenarios covered:
-//! - successful withdrawal
-//! - partial withdrawal
-//! - insufficient balance rejection
-//! - early-withdraw path rejection after lock-up
-//! - cooldown/notice-period enforcement helper behavior
+//! Comprehensive tests for withdraw_bond functionality.
+//! Covers: lock-up enforcement, cooldown (notice period), partial withdrawals,
+//! insufficient balance, slashing interaction, and edge cases.
 
-use crate::{rolling_bond, CredenceBond, CredenceBondClient};
+#![cfg(test)]
+
+use crate::test_helpers;
+use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
+use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env};
 
-fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    client.initialize(&admin);
-    (client, admin)
+fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {
+    test_helpers::setup_with_token(e)
 }
 
 #[test]
-fn test_withdraw_bond_successful() {
+fn test_withdraw_bond_after_lockup_non_rolling() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
     client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
-    let bond = client.withdraw(&1000_i128);
 
-    assert_eq!(bond.bonded_amount, 0);
-    assert_eq!(bond.slashed_amount, 0);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
+    let bond = client.withdraw_bond(&500);
+    assert_eq!(bond.bonded_amount, 500);
+}
+
+#[test]
+#[should_panic(expected = "lock-up period not elapsed; use withdraw_early")]
+fn test_withdraw_bond_before_lockup_panics() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+
+    e.ledger().with_mut(|li| li.timestamp = 1050);
+    client.withdraw_bond(&500);
+}
+
+#[test]
+#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
+fn test_withdraw_bond_rolling_before_notice_panics() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
+
+    client.withdraw_bond(&500);
+}
+
+#[test]
+#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
+fn test_withdraw_bond_rolling_before_cooldown_panics() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    client.request_withdrawal();
+    e.ledger().with_mut(|li| li.timestamp = 1005);
+
+    client.withdraw_bond(&500);
+}
+
+#[test]
+fn test_withdraw_bond_rolling_after_cooldown() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    client.request_withdrawal();
+    e.ledger().with_mut(|li| li.timestamp = 1011);
+
+    let bond = client.withdraw_bond(&500);
+    assert_eq!(bond.bonded_amount, 500);
 }
 
 #[test]
 fn test_withdraw_bond_partial_withdrawal() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
     client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
-    let bond = client.withdraw(&400_i128);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
 
-    assert_eq!(bond.bonded_amount, 600);
-    assert_eq!(bond.slashed_amount, 0);
+    let bond = client.withdraw_bond(&300);
+    assert_eq!(bond.bonded_amount, 700);
+    let bond = client.withdraw_bond(&200);
+    assert_eq!(bond.bonded_amount, 500);
+    let bond = client.withdraw_bond(&500);
+    assert_eq!(bond.bonded_amount, 0);
 }
 
 #[test]
 #[should_panic(expected = "insufficient balance for withdrawal")]
 fn test_withdraw_bond_insufficient_balance() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond(&identity, &500_i128, &100_u64, &false, &0_u64);
-    client.withdraw(&501_i128);
-}
-
-#[test]
-#[should_panic(expected = "use withdraw for post lock-up")]
-fn test_withdraw_bond_early_withdrawal_rejection() {
-    let e = Env::default();
-    e.ledger().with_mut(|li| li.timestamp = 1_000);
-
-    let (client, admin) = setup(&e);
-    let treasury = Address::generate(&e);
-    let identity = Address::generate(&e);
-
-    // Configure penalty so early withdraw path is active.
-    client.set_early_exit_config(&admin, &treasury, &500);
     client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
 
-    // Advance past lock-up and ensure early path is rejected.
-    e.ledger().with_mut(|li| li.timestamp = 1_101);
-    client.withdraw_early(&100_i128);
+    client.withdraw_bond(&1001);
 }
 
 #[test]
-fn test_withdraw_bond_cooldown_enforcement_helper() {
-    let requested_at = 1_000_u64;
-    let notice = 50_u64;
-
-    // During cooldown.
-    assert!(!rolling_bond::can_withdraw_after_notice(
-        1_049,
-        requested_at,
-        notice
-    ));
-    // Exactly at cooldown end.
-    assert!(rolling_bond::can_withdraw_after_notice(
-        1_050,
-        requested_at,
-        notice
-    ));
-    // Well after cooldown.
-    assert!(rolling_bond::can_withdraw_after_notice(
-        1_500,
-        requested_at,
-        notice
-    ));
-}
-
-#[test]
-fn test_withdraw_bond_cooldown_requires_request() {
-    // If no withdrawal request was made, cooldown must not pass.
-    assert!(!rolling_bond::can_withdraw_after_notice(2_000, 0, 30));
-}
-
-#[test]
-fn test_withdraw_bond_exact_available_after_slash() {
+fn test_withdraw_bond_after_slash() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
-    let identity = Address::generate(&e);
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond(&identity, &1_000_i128, &100_u64, &false, &0_u64);
-    client.slash(&admin, &250_i128);
+    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+    client.slash(&admin, &400);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
 
-    let bond = client.withdraw(&750_i128);
-    assert_eq!(bond.bonded_amount, 250);
-    assert_eq!(bond.slashed_amount, 250);
+    let bond = client.withdraw_bond(&600);
+    assert_eq!(bond.bonded_amount, 400);
+    assert_eq!(bond.slashed_amount, 400);
+}
+
+#[test]
+fn test_withdraw_bond_zero_amount() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
+
+    let bond = client.withdraw_bond(&0);
+    assert_eq!(bond.bonded_amount, 1000);
+}
+
+#[test]
+fn test_withdraw_bond_full_withdrawal() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, token_id, bond_contract_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
+
+    let bond = client.withdraw_bond(&1000);
+    assert_eq!(bond.bonded_amount, 0);
+
+    let token_client = TokenClient::new(&e, &token_id);
+    let balance = token_client.balance(&bond_contract_id);
+    assert_eq!(balance, 0);
+}
+
+#[test]
+fn test_withdraw_alias_calls_withdraw_bond() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
+
+    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 1101);
+
+    let bond = client.withdraw(&500);
+    assert_eq!(bond.bonded_amount, 500);
 }

@@ -6,6 +6,8 @@
 
 use soroban_sdk::{Address, Env, Symbol};
 
+use crate::math;
+
 /// Max fee in basis points (100%).
 const MAX_FEE_BPS: u32 = 10_000;
 
@@ -42,7 +44,12 @@ pub fn calculate_fee(e: &Env, amount: i128) -> (i128, i128) {
     if fee_bps == 0 || amount <= 0 {
         return (0, amount);
     }
-    let fee = (amount * (fee_bps as i128)) / 10_000;
+    let fee = math::bps(
+        amount,
+        fee_bps,
+        "fee calculation overflow",
+        "fee calculation div-by-zero",
+    );
     let net = amount.checked_sub(fee).expect("fee calculation underflow");
     (fee, net)
 }

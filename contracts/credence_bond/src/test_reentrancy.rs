@@ -10,6 +10,7 @@
 //! - Sequential operations work after lock release
 
 use super::*;
+use crate::test_helpers;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Env;
 
@@ -40,7 +41,7 @@ mod withdraw_attacker {
                 .get(&Symbol::new(&e, "identity"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.withdraw_bond(&victim_identity);
+            client.withdraw_bond_full(&victim_identity);
         }
 
         pub fn setup(e: Env, target: Address, identity: Address) {
@@ -194,6 +195,9 @@ fn setup_bond(e: &Env) -> (Address, Address, Address) {
     client.create_bond(&identity, &10_000_i128, &86400_u64);
 
     (contract_id, admin, identity)
+    let (client, admin, identity, _token_id, bond_id) = test_helpers::setup_with_token(e);
+    client.create_bond(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    (bond_id, admin, identity)
 }
 
 // ===========================================================================
@@ -212,7 +216,7 @@ fn test_withdraw_reentrancy_blocked() {
     attacker_client.setup(&bond_id, &identity);
     client.set_callback(&attacker_id);
 
-    client.withdraw_bond(&identity);
+    client.withdraw_bond_full(&identity);
 }
 
 // ===========================================================================
@@ -281,7 +285,7 @@ fn test_lock_released_after_withdraw() {
     let benign_id = e.register(BenignCallback, ());
     client.set_callback(&benign_id);
 
-    client.withdraw_bond(&identity);
+    client.withdraw_bond_full(&identity);
     assert!(!client.is_locked());
 }
 
@@ -332,7 +336,7 @@ fn test_normal_withdraw_succeeds() {
     let (bond_id, _admin, identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let amount = client.withdraw_bond(&identity);
+    let amount = client.withdraw_bond_full(&identity);
     assert_eq!(amount, 10_000_i128);
 
     let state = client.get_identity_state();
@@ -391,7 +395,7 @@ fn test_sequential_operations_succeed() {
     assert_eq!(fees, 100_i128);
     assert!(!client.is_locked());
 
-    let withdrawn = client.withdraw_bond(&identity);
+    let withdrawn = client.withdraw_bond_full(&identity);
     assert_eq!(withdrawn, 9_000_i128);
     assert!(!client.is_locked());
 }
@@ -422,7 +426,7 @@ fn test_withdraw_non_owner_rejected() {
     let client = CredenceBondClient::new(&e, &bond_id);
 
     let stranger = Address::generate(&e);
-    client.withdraw_bond(&stranger);
+    client.withdraw_bond_full(&stranger);
 }
 
 // ===========================================================================
@@ -436,8 +440,8 @@ fn test_double_withdraw_rejected() {
     let (bond_id, _admin, identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    client.withdraw_bond(&identity);
-    client.withdraw_bond(&identity);
+    client.withdraw_bond_full(&identity);
+    client.withdraw_bond_full(&identity);
 }
 
 // ===========================================================================
@@ -456,5 +460,5 @@ fn test_cross_function_reentrancy_blocked() {
     attacker_client.setup(&bond_id, &admin);
     client.set_callback(&attacker_id);
 
-    client.withdraw_bond(&identity);
+    client.withdraw_bond_full(&identity);
 }
