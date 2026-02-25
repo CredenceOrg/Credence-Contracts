@@ -160,7 +160,6 @@ impl CredenceBond {
     /// Set early exit penalty config. Only admin should call.
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
         pausable::require_not_paused(&e);
-        Self::require_admin(&e, &admin);
         Self::require_admin_internal(&e, &admin);
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
@@ -172,9 +171,9 @@ impl CredenceBond {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
-        require_admin(&e, &admin);
-        admin.require_auth();
-        add_verifier_role(&e, &admin, &attester);
+        require_admin(&e, &_admin);
+        _admin.require_auth();
+        add_verifier_role(&e, &_admin, &attester);
         e.storage()
             .instance()
             .set(&DataKey::Attester(attester.clone()), &true);
@@ -189,9 +188,9 @@ impl CredenceBond {
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
-        require_admin(&e, &admin);
-        admin.require_auth();
-        remove_verifier_role(&e, &admin, &attester);
+        require_admin(&e, &_admin);
+        _admin.require_auth();
+        remove_verifier_role(&e, &_admin, &attester);
         e.storage()
             .instance()
             .remove(&DataKey::Attester(attester.clone()));
@@ -645,7 +644,6 @@ impl CredenceBond {
         min_governors: u32,
     ) {
         pausable::require_not_paused(&e);
-        Self::require_admin(&e, &admin);
         Self::require_admin_internal(&e, &admin);
         governance_approval::initialize_governance(&e, governors, quorum_bps, min_governors);
     }
@@ -698,7 +696,6 @@ impl CredenceBond {
 
     pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
         pausable::require_not_paused(&e);
-        Self::require_admin(&e, &admin);
         Self::require_admin_internal(&e, &admin);
         fees::set_config(&e, treasury, fee_bps);
     }
