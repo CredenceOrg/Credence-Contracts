@@ -3,6 +3,7 @@
 pub mod early_exit_penalty;
 mod fees;
 pub mod governance_approval;
+mod math;
 mod nonce;
 mod rolling_bond;
 mod slash_history;
@@ -967,3 +968,6 @@ mod test_slashing;
 
 #[cfg(test)]
 mod test_withdraw_bond;
+
+#[cfg(test)]
+mod test_math;
