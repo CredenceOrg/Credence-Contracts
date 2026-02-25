@@ -1,0 +1,17 @@
+[package]
+name = "fixed_duration_bond"
+version = "0.1.0"
+edition = "2021"
+description = "Fixed-duration USDC bond — lock tokens for an exact predetermined period with enforced expiry."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
+
+[features]
+testutils = ["soroban-sdk/testutils"]
