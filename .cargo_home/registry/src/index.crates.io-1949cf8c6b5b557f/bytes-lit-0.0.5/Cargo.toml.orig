@@ -1,0 +1,24 @@
+[package]
+name = "bytes-lit"
+description = "Create byte slices from literal integers."
+homepage = "https://github.com/stellar/bytes-lit"
+repository = "https://github.com/stellar/bytes-lit"
+authors = ["Stellar Development Foundation <info@stellar.org>"]
+readme = "README.md"
+license = "Apache-2.0"
+version = "0.0.5"
+edition = "2021"
+rust-version = "1.66"
+
+[lib]
+proc-macro = true
+doctest = false
+
+[dependencies]
+syn = {version="2.0",features=["full", "extra-traits"]}
+quote = "1.0"
+proc-macro2 = "1.0"
+num-bigint = "0.4.3"
+
+[dev_dependencies]
+pretty_assertions = "1.2.1"

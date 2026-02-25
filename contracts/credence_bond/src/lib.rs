@@ -10,8 +10,8 @@ mod rolling_bond;
 mod slash_history;
 mod slashing;
 pub mod tiered_bond;
-mod weighted_attestation;
 pub mod verifier;
+mod weighted_attestation;
 
 pub mod types;
 
@@ -195,7 +195,11 @@ impl CredenceBond {
 
     /// @notice Register (or reactivate) as a verifier by staking the configured token.
     /// @dev Caller must approve the contract to transfer the stake amount via `transfer_from`.
-    pub fn register_verifier(e: Env, verifier_addr: Address, stake_deposit: i128) -> verifier::VerifierInfo {
+    pub fn register_verifier(
+        e: Env,
+        verifier_addr: Address,
+        stake_deposit: i128,
+    ) -> verifier::VerifierInfo {
         verifier_addr.require_auth();
         Self::with_reentrancy_guard(&e, || {
             verifier::register_with_stake(&e, &verifier_addr, stake_deposit)
@@ -226,9 +230,7 @@ impl CredenceBond {
         amount: i128,
     ) -> verifier::VerifierInfo {
         verifier_addr.require_auth();
-        Self::with_reentrancy_guard(&e, || {
-            verifier::withdraw_stake(&e, &verifier_addr, amount)
-        })
+        Self::with_reentrancy_guard(&e, || verifier::withdraw_stake(&e, &verifier_addr, amount))
     }
 
     /// @notice Get verifier info (stake, reputation, status), if present.

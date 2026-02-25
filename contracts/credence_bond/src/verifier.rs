@@ -134,17 +134,11 @@ pub fn register_with_stake(e: &Env, verifier: &Address, stake_deposit: i128) -> 
                 if stake_deposit == 0 {
                     panic!("verifier already active");
                 }
-                i.stake = i
-                    .stake
-                    .checked_add(stake_deposit)
-                    .expect("stake overflow");
+                i.stake = i.stake.checked_add(stake_deposit).expect("stake overflow");
                 (i, RegistrationKind::TopUp)
             } else {
                 // Reactivation requires min stake to be satisfied.
-                i.stake = i
-                    .stake
-                    .checked_add(stake_deposit)
-                    .expect("stake overflow");
+                i.stake = i.stake.checked_add(stake_deposit).expect("stake overflow");
                 if i.stake < min_stake {
                     panic!("insufficient verifier stake");
                 }
@@ -293,7 +287,13 @@ pub fn set_reputation(e: &Env, verifier: &Address, new_reputation: i128, reason:
     info.reputation = new_reputation;
     put_verifier_info(e, verifier, &info);
 
-    emit_reputation_event(e, verifier, new_reputation.checked_sub(old).unwrap_or(0), &info, reason);
+    emit_reputation_event(
+        e,
+        verifier,
+        new_reputation.checked_sub(old).unwrap_or(0),
+        &info,
+        reason,
+    );
 }
 
 /// @notice Records that an attestation was issued; updates reputation.
@@ -361,9 +361,7 @@ fn role_key(e: &Env, verifier: &Address) -> (Symbol, Address) {
 }
 
 fn put_verifier_info(e: &Env, verifier: &Address, info: &VerifierInfo) {
-    e.storage()
-        .instance()
-        .set(&info_key(e, verifier), info);
+    e.storage().instance().set(&info_key(e, verifier), info);
 }
 
 fn set_verifier_role(e: &Env, verifier: &Address, enabled: bool) {
