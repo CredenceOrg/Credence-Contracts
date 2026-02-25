@@ -4,6 +4,8 @@
 
 This document describes the reentrancy attack vectors relevant to the Credence Bond contract, the protection mechanisms in place, and the test results verifying their effectiveness.
 
+For other security topics (including overflow-safe arithmetic for financial calculations), see `docs/security.md`.
+
 ## Reentrancy in Soroban vs EVM
 
 Unlike EVM-based contracts (Solidity), Soroban smart contracts on Stellar benefit from **runtime-level reentrancy protection**. The Soroban VM prevents a contract from being re-entered while it is already executing — any cross-contract call that attempts to invoke the originating contract will fail with:

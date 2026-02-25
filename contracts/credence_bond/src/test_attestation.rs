@@ -230,7 +230,7 @@ fn test_add_attestation_empty_data() {
 // ============================================================================
 
 #[test]
-#[should_panic(expected = "unauthorized attester")]
+#[should_panic(expected = "not verifier")]
 fn test_unauthorized_attester_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -249,7 +249,7 @@ fn test_unauthorized_attester_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "unauthorized attester")]
+#[should_panic(expected = "not verifier")]
 fn test_unregistered_attester_cannot_attest() {
     let e = Env::default();
     e.mock_all_auths();
