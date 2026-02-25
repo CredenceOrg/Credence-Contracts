@@ -6,10 +6,13 @@ mod fees;
 pub mod governance_approval;
 mod math;
 mod nonce;
+mod parameters;
+
 mod rolling_bond;
 mod slash_history;
 mod slashing;
 pub mod tiered_bond;
+mod validation;
 mod weighted_attestation;
 
 pub mod types;
@@ -35,6 +38,8 @@ pub enum BondTier {
     Platinum,
 }
 
+pub mod cooldown;
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct IdentityBond {
@@ -52,6 +57,16 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
+/// A pending cooldown withdrawal request. Created when a bond holder signals
+/// intent to withdraw; the withdrawal can only execute after the cooldown
+/// period elapses.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CooldownRequest {
+    pub requester: Address,
+    pub amount: i128,
+    pub requested_at: u64,
+}
 #[contracttype]
 pub enum DataKey {
     Admin,
@@ -67,6 +82,7 @@ pub enum DataKey {
     Nonce(Address),
     /// Attester stake used for weighted attestation.
     AttesterStake(Address),
+    CooldownReq(Address),
     // Governance approval for slashing
     GovernanceNextProposalId,
     GovernanceProposal(u64),
@@ -209,6 +225,8 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        // Validate bond duration is within allowed range
+        validation::validate_bond_duration(duration);
         Self::create_bond_with_rolling(
             e,
             identity,
@@ -698,6 +716,19 @@ impl CredenceBond {
         fees::get_config(&e)
     }
 
+    pub fn deposit_fees(e: Env, amount: i128) {
+        let key = Symbol::new(&e, "fees");
+        let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
+        let next = current.checked_add(amount).expect("fee pool overflow");
+        e.storage().instance().set(&key, &next);
+    }
+
+    pub fn set_callback(e: Env, callback: Address) {
+        e.storage()
+            .instance()
+            .set(&Self::callback_key(&e), &callback);
+    }
+
     pub fn get_slash_proposal(
         e: Env,
         proposal_id: u64,
@@ -776,12 +807,91 @@ impl CredenceBond {
         bond
     }
 
-    /// Deposit fees into the contract's fee pool.
-    pub fn deposit_fees(e: Env, amount: i128) {
-        let key = Symbol::new(&e, "fees");
-        let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
-        let next = current.checked_add(amount).expect("fee pool overflow");
-        e.storage().instance().set(&key, &next);
+    /// Check if the reentrancy lock is currently held.
+    pub fn is_locked(e: Env) -> bool {
+        Self::check_lock(&e)
+    }
+
+    // --- Protocol Parameters (Governance-Controlled) ---
+
+    /// Get protocol fee rate in basis points.
+    pub fn get_protocol_fee_bps(e: Env) -> u32 {
+        parameters::get_protocol_fee_bps(&e)
+    }
+
+    /// Set protocol fee rate. Governance-only.
+    pub fn set_protocol_fee_bps(e: Env, admin: Address, value: u32) {
+        parameters::set_protocol_fee_bps(&e, &admin, value)
+    }
+
+    /// Get attestation fee rate in basis points.
+    pub fn get_attestation_fee_bps(e: Env) -> u32 {
+        parameters::get_attestation_fee_bps(&e)
+    }
+
+    /// Set attestation fee rate. Governance-only.
+    pub fn set_attestation_fee_bps(e: Env, admin: Address, value: u32) {
+        parameters::set_attestation_fee_bps(&e, &admin, value)
+    }
+
+    /// Get withdrawal cooldown period in seconds.
+    pub fn get_withdrawal_cooldown_secs(e: Env) -> u64 {
+        parameters::get_withdrawal_cooldown_secs(&e)
+    }
+
+    /// Set withdrawal cooldown period. Governance-only.
+    pub fn set_withdrawal_cooldown_secs(e: Env, admin: Address, value: u64) {
+        parameters::set_withdrawal_cooldown_secs(&e, &admin, value)
+    }
+
+    /// Get slash cooldown period in seconds.
+    pub fn get_slash_cooldown_secs(e: Env) -> u64 {
+        parameters::get_slash_cooldown_secs(&e)
+    }
+
+    /// Set slash cooldown period. Governance-only.
+    pub fn set_slash_cooldown_secs(e: Env, admin: Address, value: u64) {
+        parameters::set_slash_cooldown_secs(&e, &admin, value)
+    }
+
+    /// Get bronze tier threshold.
+    pub fn get_bronze_threshold(e: Env) -> i128 {
+        parameters::get_bronze_threshold(&e)
+    }
+
+    /// Set bronze tier threshold. Governance-only.
+    pub fn set_bronze_threshold(e: Env, admin: Address, value: i128) {
+        parameters::set_bronze_threshold(&e, &admin, value)
+    }
+
+    /// Get silver tier threshold.
+    pub fn get_silver_threshold(e: Env) -> i128 {
+        parameters::get_silver_threshold(&e)
+    }
+
+    /// Set silver tier threshold. Governance-only.
+    pub fn set_silver_threshold(e: Env, admin: Address, value: i128) {
+        parameters::set_silver_threshold(&e, &admin, value)
+    }
+
+    /// Get gold tier threshold.
+    pub fn get_gold_threshold(e: Env) -> i128 {
+        parameters::get_gold_threshold(&e)
+    }
+
+    /// Set gold tier threshold. Governance-only.
+    pub fn set_gold_threshold(e: Env, admin: Address, value: i128) {
+        parameters::set_gold_threshold(&e, &admin, value)
+    }
+
+    /// Get platinum tier threshold.
+    pub fn get_platinum_threshold(e: Env) -> i128 {
+        parameters::get_platinum_threshold(&e)
+    }
+
+    /// Set platinum tier threshold. Governance-only.
+    pub fn set_platinum_threshold(e: Env, admin: Address, value: i128) {
+        parameters::set_platinum_threshold(&e, &admin, value)
     }
 
     /// Withdraw the full bonded amount back to the identity (callback-based, for reentrancy tests).
@@ -929,16 +1039,165 @@ impl CredenceBond {
         fees
     }
 
-    /// Register a callback contract address (for testing external call hooks).
-    pub fn set_callback(e: Env, addr: Address) {
-        e.storage()
+    // ------------------------------------------------------------------
+    // Cooldown window methods
+    // ------------------------------------------------------------------
+
+    /// Set the cooldown period (in seconds). Only the admin may call this.
+    /// @param admin Caller who must be the contract admin
+    /// @param period Duration in seconds that must elapse between request and withdrawal
+    pub fn set_cooldown_period(e: Env, admin: Address, period: u64) {
+        let stored_admin: Address = e
+            .storage()
             .instance()
-            .set(&Symbol::new(&e, "callback"), &addr);
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+        if admin != stored_admin {
+            panic!("not admin");
+        }
+        admin.require_auth();
+
+        let old = cooldown::get_cooldown_period(&e);
+        cooldown::set_cooldown_period(&e, period);
+        cooldown::emit_cooldown_period_updated(&e, old, period);
     }
 
-    /// Check if the reentrancy lock is currently held.
-    pub fn is_locked(e: Env) -> bool {
-        Self::check_lock(&e)
+    /// Read the current cooldown period.
+    pub fn get_cooldown_period(e: Env) -> u64 {
+        cooldown::get_cooldown_period(&e)
+    }
+
+    /// Request a cooldown withdrawal. Records the caller's intent plus the
+    /// requested amount and the current ledger timestamp. Panics if a request
+    /// already exists for the same address, or if the amount exceeds the
+    /// available bond balance.
+    /// @param requester The bond holder requesting the withdrawal
+    /// @param amount    The amount to withdraw after cooldown
+    pub fn request_cooldown_withdrawal(
+        e: Env,
+        requester: Address,
+        amount: i128,
+    ) -> CooldownRequest {
+        requester.require_auth();
+
+        if amount <= 0 {
+            panic!("amount must be positive");
+        }
+
+        // Verify a bond exists and the requester matches the bond identity
+        let bond = e
+            .storage()
+            .instance()
+            .get::<_, IdentityBond>(&DataKey::Bond)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        if bond.identity != requester {
+            panic!("requester is not the bond holder");
+        }
+
+        // Check available balance
+        let available = bond
+            .bonded_amount
+            .checked_sub(bond.slashed_amount)
+            .expect("slashed amount exceeds bonded amount");
+
+        if amount > available {
+            panic!("amount exceeds available balance");
+        }
+
+        // Reject if a cooldown request already exists for this address
+        let req_key = DataKey::CooldownReq(requester.clone());
+        if e.storage().instance().has(&req_key) {
+            panic!("cooldown request already pending");
+        }
+
+        let request = CooldownRequest {
+            requester: requester.clone(),
+            amount,
+            requested_at: e.ledger().timestamp(),
+        };
+        e.storage().instance().set(&req_key, &request);
+
+        cooldown::emit_cooldown_requested(&e, &requester, amount);
+        request
+    }
+
+    /// Execute a previously requested cooldown withdrawal. Panics if the
+    /// cooldown period has not yet elapsed, no request exists, or the bond
+    /// balance is insufficient at execution time.
+    /// @param requester The address that originally requested the withdrawal
+    pub fn execute_cooldown_withdrawal(e: Env, requester: Address) -> IdentityBond {
+        requester.require_auth();
+
+        let req_key = DataKey::CooldownReq(requester.clone());
+        let request: CooldownRequest = e
+            .storage()
+            .instance()
+            .get(&req_key)
+            .unwrap_or_else(|| panic!("no cooldown request"));
+
+        let period = cooldown::get_cooldown_period(&e);
+        let now = e.ledger().timestamp();
+
+        if !cooldown::can_withdraw(now, request.requested_at, period) {
+            panic!("cooldown period has not elapsed");
+        }
+
+        // Perform the actual withdrawal on the bond
+        let bond_key = DataKey::Bond;
+        let mut bond = e
+            .storage()
+            .instance()
+            .get::<_, IdentityBond>(&bond_key)
+            .unwrap_or_else(|| panic!("no bond"));
+
+        let available = bond
+            .bonded_amount
+            .checked_sub(bond.slashed_amount)
+            .expect("slashed amount exceeds bonded amount");
+
+        if request.amount > available {
+            panic!("insufficient balance for withdrawal");
+        }
+
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(request.amount)
+            .expect("withdrawal caused underflow");
+
+        if bond.slashed_amount > bond.bonded_amount {
+            panic!("slashed amount exceeds bonded amount after withdrawal");
+        }
+
+        e.storage().instance().set(&bond_key, &bond);
+        e.storage().instance().remove(&req_key);
+
+        cooldown::emit_cooldown_executed(&e, &requester, request.amount);
+        bond
+    }
+
+    /// Cancel a pending cooldown withdrawal request. Only the original
+    /// requester may cancel.
+    /// @param requester The address that originally requested the withdrawal
+    pub fn cancel_cooldown(e: Env, requester: Address) {
+        requester.require_auth();
+
+        let req_key = DataKey::CooldownReq(requester.clone());
+        if !e.storage().instance().has(&req_key) {
+            panic!("no cooldown request to cancel");
+        }
+
+        e.storage().instance().remove(&req_key);
+        cooldown::emit_cooldown_cancelled(&e, &requester);
+    }
+
+    /// Read the pending cooldown request for an address, if any.
+    /// @param requester The address to query
+    pub fn get_cooldown_request(e: Env, requester: Address) -> CooldownRequest {
+        e.storage()
+            .instance()
+            .get(&DataKey::CooldownReq(requester))
+            .unwrap_or_else(|| panic!("no cooldown request"))
     }
 }
 
@@ -964,6 +1223,9 @@ mod test_replay_prevention;
 mod test_governance_approval;
 
 #[cfg(test)]
+mod test_parameters;
+
+#[cfg(test)]
 mod test_fees;
 
 #[cfg(test)]
@@ -973,7 +1235,13 @@ mod integration;
 mod security;
 
 #[cfg(test)]
+mod test_duration_validation;
+
+#[cfg(test)]
 mod test_access_control;
+
+#[cfg(test)]
+mod test_cooldown;
 
 #[cfg(test)]
 mod test_early_exit_penalty;
