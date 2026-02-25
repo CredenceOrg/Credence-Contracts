@@ -15,11 +15,11 @@
 //! ## Security
 //! - Admin-controlled registration
 //! - Prevents duplicate registrations
-//! - Validates addresses before registration
-//! - Emits events for audit trail
+//! - validates addresses before registration
+//! - emits events for audit trail
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
-
+pub mod idempotency;
 /// Represents a registry entry mapping an identity to their bond contract
 #[contracttype]
 #[derive(Clone, Debug)]
