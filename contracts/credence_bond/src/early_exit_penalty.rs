@@ -5,6 +5,8 @@
 
 use soroban_sdk::{Address, Env, Symbol};
 
+use crate::math;
+
 /// Storage key for treasury address.
 const KEY_TREASURY: &str = "treasury";
 /// Storage key for early exit penalty rate in basis points (e.g. 500 = 5%).
@@ -51,8 +53,18 @@ pub fn calculate_penalty(
     if total_duration == 0 || penalty_bps == 0 {
         return 0;
     }
-    let base = amount.checked_mul(penalty_bps as i128).unwrap_or(0) / 10_000;
-    (base * (remaining_time as i128)) / (total_duration as i128)
+    let base = math::bps(
+        amount,
+        penalty_bps,
+        "early exit penalty overflow",
+        "early exit penalty div-by-zero",
+    );
+    let scaled = math::mul_i128(base, remaining_time as i128, "early exit penalty overflow");
+    math::div_i128(
+        scaled,
+        total_duration as i128,
+        "early exit penalty div-by-zero",
+    )
 }
 
 /// Emit early exit penalty event.

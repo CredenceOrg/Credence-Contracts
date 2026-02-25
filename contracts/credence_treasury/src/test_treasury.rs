@@ -42,6 +42,15 @@ fn test_receive_fee_as_admin() {
 }
 
 #[test]
+#[should_panic(expected = "total balance overflow")]
+fn test_receive_fee_overflow_panics() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    client.receive_fee(&admin, &i128::MAX, &FundSource::ProtocolFee);
+    client.receive_fee(&admin, &1, &FundSource::ProtocolFee);
+}
+
+#[test]
 fn test_receive_fee_as_depositor() {
     let e = Env::default();
     let (client, _admin) = setup(&e);

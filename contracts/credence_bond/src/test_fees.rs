@@ -3,17 +3,15 @@
 
 #![cfg(test)]
 
-use crate::{CredenceBond, CredenceBondClient};
+use crate::test_helpers;
+use crate::CredenceBondClient;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
-    e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    client.initialize(&admin);
-    (client, admin, Address::generate(e))
+    // Shared helper configures token + approvals so create_bond works with fees.
+    let (client, admin, identity, ..) = test_helpers::setup_with_token(e);
+    (client, admin, identity)
 }
 
 #[test]
