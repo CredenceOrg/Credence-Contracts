@@ -120,9 +120,13 @@ impl CredenceMultiSig {
         }
 
         e.storage().instance().set(&DataKey::Admin, &admin);
-        e.storage().instance().set(&DataKey::SignerCount, &signer_count);
+        e.storage()
+            .instance()
+            .set(&DataKey::SignerCount, &signer_count);
         e.storage().instance().set(&DataKey::Threshold, &threshold);
-        e.storage().instance().set(&DataKey::ProposalCounter, &0_u64);
+        e.storage()
+            .instance()
+            .set(&DataKey::ProposalCounter, &0_u64);
         e.storage().instance().set(&DataKey::SignerList, &signers);
 
         for signer in signers.iter() {
@@ -182,7 +186,9 @@ impl CredenceMultiSig {
             .get(&DataKey::SignerList)
             .unwrap_or(Vec::new(&e));
         signer_list.push_back(signer.clone());
-        e.storage().instance().set(&DataKey::SignerList, &signer_list);
+        e.storage()
+            .instance()
+            .set(&DataKey::SignerList, &signer_list);
 
         e.events()
             .publish((Symbol::new(&e, "signer_added"),), signer);
@@ -251,10 +257,8 @@ impl CredenceMultiSig {
         let threshold: u32 = e.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
         if threshold > new_count {
             e.storage().instance().set(&DataKey::Threshold, &new_count);
-            e.events().publish(
-                (Symbol::new(&e, "threshold_auto_adjusted"),),
-                new_count,
-            );
+            e.events()
+                .publish((Symbol::new(&e, "threshold_auto_adjusted"),), new_count);
         }
 
         e.events()
@@ -521,10 +525,8 @@ impl CredenceMultiSig {
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
 
-        e.events().publish(
-            (Symbol::new(&e, "proposal_rejected"), proposal_id),
-            admin,
-        );
+        e.events()
+            .publish((Symbol::new(&e, "proposal_rejected"), proposal_id), admin);
     }
 
     // ==================== Query Functions ====================
@@ -568,7 +570,10 @@ impl CredenceMultiSig {
 
     /// Get current signer count.
     pub fn get_signer_count(e: Env) -> u32 {
-        e.storage().instance().get(&DataKey::SignerCount).unwrap_or(0)
+        e.storage()
+            .instance()
+            .get(&DataKey::SignerCount)
+            .unwrap_or(0)
     }
 
     /// Get list of all signers.
@@ -624,9 +629,7 @@ impl CredenceMultiSig {
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
 
-        e.events().publish(
-            (Symbol::new(&e, "proposal_expired"), proposal_id),
-            (),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "proposal_expired"), proposal_id), ());
     }
 }

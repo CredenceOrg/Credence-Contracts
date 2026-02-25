@@ -1,7 +1,8 @@
-use crate::{
-    ActionType, CredenceMultiSig, CredenceMultiSigClient, ProposalStatus,
+use crate::{ActionType, CredenceMultiSig, CredenceMultiSigClient, ProposalStatus};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, String, Vec,
 };
-use soroban_sdk::{testutils::{Address as _, Ledger}, Address, Env, String, Vec};
 
 fn setup(e: &Env) -> (CredenceMultiSigClient, Address, Vec<Address>) {
     let contract_id = e.register(CredenceMultiSig, ());
@@ -842,18 +843,9 @@ fn test_complex_scenario_multiple_proposals() {
     client.sign_proposal(&signers.get(0).unwrap(), &id3);
 
     // Verify statuses
-    assert_eq!(
-        client.get_proposal(&id1).status,
-        ProposalStatus::Executed
-    );
-    assert_eq!(
-        client.get_proposal(&id2).status,
-        ProposalStatus::Rejected
-    );
-    assert_eq!(
-        client.get_proposal(&id3).status,
-        ProposalStatus::Pending
-    );
+    assert_eq!(client.get_proposal(&id1).status, ProposalStatus::Executed);
+    assert_eq!(client.get_proposal(&id2).status, ProposalStatus::Rejected);
+    assert_eq!(client.get_proposal(&id3).status, ProposalStatus::Pending);
     assert_eq!(client.get_signature_count(&id3), 1);
 }
 
