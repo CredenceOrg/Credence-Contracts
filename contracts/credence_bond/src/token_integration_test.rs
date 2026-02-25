@@ -17,7 +17,9 @@ fn test_set_usdc_token_and_network() {
     let admin = Address::generate(&e);
     client.initialize(&admin);
 
-    let token = e.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = e
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let network = String::from_str(&e, "testnet");
     client.set_usdc_token(&admin, &token, &network);
 
@@ -51,7 +53,9 @@ fn test_set_usdc_token_rejects_unknown_network() {
     let admin = Address::generate(&e);
     client.initialize(&admin);
 
-    let token = e.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = e
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let network = String::from_str(&e, "futurenet");
     client.set_usdc_token(&admin, &token, &network);
 }
@@ -88,7 +92,9 @@ fn test_create_bond_without_approval_panics() {
     let identity = Address::generate(&e);
     client.initialize(&admin);
 
-    let token_id = e.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_id = e
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let stellar_asset = StellarAssetClient::new(&e, &token_id);
     stellar_asset.set_authorized(&identity, &true);
     stellar_asset.mint(&identity, &10_000_i128);
@@ -110,7 +116,9 @@ fn test_set_token_rejects_non_admin() {
     let attacker = Address::generate(&e);
     client.initialize(&admin);
 
-    let token = e.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token = e
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     client.set_token(&attacker, &token);
 }
 
@@ -140,7 +148,9 @@ fn test_top_up_requires_remaining_allowance() {
     let identity = Address::generate(&e);
     client.initialize(&admin);
 
-    let token_id = e.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_id = e
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let stellar_asset = StellarAssetClient::new(&e, &token_id);
     stellar_asset.set_authorized(&identity, &true);
     stellar_asset.mint(&identity, &10_000_i128);

@@ -9,8 +9,8 @@ mod nonce;
 mod rolling_bond;
 mod slash_history;
 mod slashing;
-mod token_integration;
 pub mod tiered_bond;
+mod token_integration;
 mod weighted_attestation;
 
 pub mod types;
