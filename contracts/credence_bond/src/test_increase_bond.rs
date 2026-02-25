@@ -30,6 +30,7 @@ fn setup<'a>(
     let token_client = soroban_sdk::token::Client::new(e, &token_id);
 
     token_admin_client.mint(&identity, &10_000_000_000_i128);
+    client.set_token(&admin, &token_id);
     client.set_bond_token(&admin, &token_id);
 
     (client, contract_id, identity, token_client)
@@ -40,9 +41,10 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
-    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    // Approve enough for both create_bond (1000) and increase_bond (500)
+    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
-    token_client.approve(&identity, &contract_id, &500_i128, &1000_u32);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     let before_user = token_client.balance(&identity);
     let before_contract = token_client.balance(&contract_id);
@@ -55,7 +57,7 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
 }
 
 #[test]
-#[should_panic(expected = "bond token not configured")]
+#[should_panic(expected = "token not set")]
 fn test_increase_bond_fails_without_token_configuration() {
     let e = Env::default();
     e.mock_all_auths();
@@ -78,8 +80,12 @@ fn test_increase_bond_fails_for_non_owner() {
     let (client, contract_id, identity, token_client) = setup(&e);
 
     let stranger = Address::generate(&e);
-    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+
+    // Approve for create_bond (1000) and increase_bond (500)
+    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
     token_client.approve(&stranger, &contract_id, &500_i128, &1000_u32);
+
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     client.increase_bond(&stranger, &500_i128);
 }
@@ -88,7 +94,10 @@ fn test_increase_bond_fails_for_non_owner() {
 #[should_panic(expected = "amount must be positive")]
 fn test_increase_bond_rejects_zero_amount() {
     let e = Env::default();
-    let (client, _, identity, _) = setup(&e);
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    // Approve for create_bond
+    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     client.increase_bond(&identity, &0_i128);
@@ -100,20 +109,28 @@ fn test_increase_bond_overflow_protection() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
-    client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
-    token_client.approve(&identity, &contract_id, &1_i128, &1000_u32);
+    // First create a bond with a normal amount
+    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
-    client.increase_bond(&identity, &1_i128);
+    // Now try to increase by i128::MAX - this should cause overflow
+    token_client.approve(&identity, &contract_id, &i128::MAX, &1000_u32);
+
+    client.increase_bond(&identity, &i128::MAX);
 }
 
 #[test]
 #[should_panic(expected = "HostError")]
 fn test_increase_bond_fails_without_allowance() {
     let e = Env::default();
-    let (client, _contract_id, identity, _token_client) = setup(&e);
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    // Approve for create_bond only
+    token_client.approve(&identity, &contract_id, &1000_i128, &1000_u32);
 
     client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
+    // No approval for increase_bond - should fail
     client.increase_bond(&identity, &500_i128);
 }
 
@@ -122,8 +139,10 @@ fn test_increase_bond_emits_event() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
+    // Approve for create_bond (1000) and increase_bond (250)
+    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
+
     client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
-    token_client.approve(&identity, &contract_id, &250_i128, &1000_u32);
 
     let _ = client.increase_bond(&identity, &250_i128);
 
@@ -156,8 +175,10 @@ fn test_increase_bond_preserves_other_fields() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
+    // Approve for create_bond (1000) and increase_bond (150)
+    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
+
     let original = client.create_bond(&identity, &1000_i128, &86400_u64, &true, &7200_u64);
-    token_client.approve(&identity, &contract_id, &150_i128, &1000_u32);
 
     let updated = client.increase_bond(&identity, &150_i128);
 

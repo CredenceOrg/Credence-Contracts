@@ -147,12 +147,12 @@ impl CredenceBond {
     }
 
     pub fn register_attester(e: Env, attester: Address) {
-        let _admin: Address = e
+        let admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
-        require_admin(&e, &admin);
+        Self::require_admin_internal(&e, &admin);
         admin.require_auth();
         add_verifier_role(&e, &admin, &attester);
         e.storage()
@@ -163,12 +163,12 @@ impl CredenceBond {
     }
 
     pub fn unregister_attester(e: Env, attester: Address) {
-        let _admin: Address = e
+        let admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
-        require_admin(&e, &admin);
+        Self::require_admin_internal(&e, &admin);
         admin.require_auth();
         remove_verifier_role(&e, &admin, &attester);
         e.storage()
@@ -713,7 +713,7 @@ impl CredenceBond {
     /// Configure the USDC token contract used by `increase_bond`.
     /// Only admin may set this.
     pub fn set_bond_token(e: Env, admin: Address, token: Address) {
-        Self::require_admin(&e, &admin);
+        Self::require_admin_internal(&e, &admin);
         e.storage().instance().set(&DataKey::BondToken, &token);
     }
 
@@ -825,7 +825,7 @@ impl CredenceBond {
                 .checked_add(amount)
                 .expect("bond increase caused overflow");
 
-            let token_client = token::Client::new(&e, &token_addr);
+            let token_client = TokenClient::new(&e, &token_addr);
             let contract_address = e.current_contract_address();
             token_client.transfer_from(&contract_address, &caller, &contract_address, &amount);
 
