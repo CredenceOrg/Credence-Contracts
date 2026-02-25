@@ -123,7 +123,7 @@ impl CredenceArbitration {
             .unwrap_or_else(|| panic!("voter is not an authorized arbitrator"));
 
         // Verify dispute exists and is within voting period
-        let mut dispute: Dispute = e
+        let dispute: Dispute = e
             .storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
