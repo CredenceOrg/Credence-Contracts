@@ -29,10 +29,12 @@ fn test_pause_blocks_state_changes_but_allows_reads() {
     // State changes should fail - test functions that don't require token setup
     let attester = Address::generate(&e);
     assert!(client.try_register_attester(&attester).is_err());
-    
+
     // Test fee config changes (admin function that should be paused)
     let treasury = Address::generate(&e);
-    assert!(client.try_set_fee_config(&admin, &treasury, &100_u32).is_err());
+    assert!(client
+        .try_set_fee_config(&admin, &treasury, &100_u32)
+        .is_err());
 
     client.unpause(&admin);
     assert!(!client.is_paused());
