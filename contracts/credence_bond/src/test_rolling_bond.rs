@@ -17,7 +17,7 @@ fn test_rolling_bond_creation() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    let bond = client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &true, &10_u64);
     assert!(bond.is_rolling);
     assert_eq!(bond.notice_period_duration, 10);
     assert_eq!(bond.withdrawal_requested_at, 0);
@@ -28,7 +28,7 @@ fn test_request_withdrawal() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &true, &10_u64);
     let bond = client.request_withdrawal();
     assert_eq!(bond.withdrawal_requested_at, 1000);
 }
@@ -38,7 +38,7 @@ fn test_request_withdrawal() {
 fn test_request_withdrawal_non_rolling() {
     let e = Env::default();
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     client.request_withdrawal();
 }
 
@@ -48,7 +48,7 @@ fn test_request_withdrawal_twice() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &true, &10_u64);
     client.request_withdrawal();
     client.request_withdrawal();
 }
@@ -58,13 +58,13 @@ fn test_renew_if_rolling_advances_period() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &true, &10_u64);
     let bond = client.get_identity_state();
     assert_eq!(bond.bond_start, 1000);
 
-    e.ledger().with_mut(|li| li.timestamp = 1101);
+    e.ledger().with_mut(|li| li.timestamp = 87401);
     let bond = client.renew_if_rolling();
-    assert_eq!(bond.bond_start, 1101);
+    assert_eq!(bond.bond_start, 87401);
     assert_eq!(bond.withdrawal_requested_at, 0);
 }
 
@@ -73,8 +73,8 @@ fn test_renew_if_rolling_no_op_before_period_end() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
-    e.ledger().with_mut(|li| li.timestamp = 1050);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &true, &10_u64);
+    e.ledger().with_mut(|li| li.timestamp = 44200);
     let bond = client.renew_if_rolling();
     assert_eq!(bond.bond_start, 1000);
 }
@@ -84,8 +84,8 @@ fn test_renew_if_rolling_no_op_for_non_rolling() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &false, &0_u64);
-    e.ledger().with_mut(|li| li.timestamp = 1101);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 87401);
     let bond = client.renew_if_rolling();
     assert_eq!(bond.bond_start, 1000);
 }
@@ -95,7 +95,7 @@ fn test_withdraw_after_notice_period() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
-    client.create_bond(&identity, &1000_i128, &100_u64, &true, &10_u64);
+    client.create_bond(&identity, &1000_i128, &86400_u64, &true, &10_u64);
     client.request_withdrawal();
     e.ledger().with_mut(|li| li.timestamp = 1011);
     let bond = client.withdraw(&500);
