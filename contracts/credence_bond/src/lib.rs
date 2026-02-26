@@ -10,6 +10,7 @@ mod tiered_bond;
 pub mod access_control;
 mod batch;
 pub mod early_exit_penalty;
+mod events;
 mod emergency;
 mod fees;
 pub mod governance_approval;
@@ -483,6 +484,8 @@ impl CredenceBond {
         let old_tier = BondTier::Bronze;
         let new_tier = tiered_bond::get_tier_for_amount(net_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
+
+        events::emit_bond_created(&e, &identity, amount, duration, is_rolling);
         bond
     }
 
@@ -719,6 +722,8 @@ impl CredenceBond {
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
+
+        events::emit_bond_withdrawn(&e, &bond.identity, amount, bond.bonded_amount);
         bond
     }
 
@@ -782,6 +787,7 @@ impl CredenceBond {
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
+        events::emit_bond_withdrawn(&e, &bond.identity, amount, bond.bonded_amount);
         bond
     }
 
@@ -1016,6 +1022,7 @@ impl CredenceBond {
         bond.bonded_amount = new_bonded;
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+        events::emit_bond_increased(&e, &bond.identity, amount, bond.bonded_amount);
 
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
@@ -1552,8 +1559,9 @@ mod test_duration_validation;
 #[cfg(test)]
 mod test_access_control;
 
-#[cfg(test)]
 mod test_cooldown;
+#[cfg(test)]
+mod test_events;
 
 #[cfg(test)]
 mod test_early_exit_penalty;
