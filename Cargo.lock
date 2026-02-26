@@ -356,6 +356,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "credence_multisig"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk 22.0.10",
+]
+
+[[package]]
 name = "credence_registry"
 version = "0.1.0"
 dependencies = [
