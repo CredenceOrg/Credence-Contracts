@@ -2,8 +2,6 @@
 //! Covers: penalty calculation from remaining lock time, configurable rates,
 //! penalty event emission, and security (zero/max penalty edge cases).
 
-#![cfg(test)]
-
 use crate::early_exit_penalty;
 use crate::test_helpers;
 use crate::{CredenceBond, CredenceBondClient};
@@ -100,7 +98,7 @@ fn test_early_exit_fails_without_config() {
 fn test_set_early_exit_config_unauthorized() {
     let e = Env::default();
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);
@@ -114,7 +112,7 @@ fn test_set_early_exit_config_unauthorized() {
 fn test_set_early_exit_config_invalid_bps() {
     let e = Env::default();
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     client.initialize(&admin);

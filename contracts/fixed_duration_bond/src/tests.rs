@@ -1,7 +1,5 @@
 //! Comprehensive tests for the fixed_duration_bond contract.
 
-#![cfg(test)]
-
 use crate::test_helpers::*;
 use crate::{FixedDurationBond, FixedDurationBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};

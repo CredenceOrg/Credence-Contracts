@@ -408,3 +408,5 @@ impl DisputeContract {
 }
 
 mod test;
+#[cfg(test)]
+mod test_gas;
