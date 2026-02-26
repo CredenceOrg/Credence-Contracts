@@ -16,8 +16,9 @@ mod fees;
 pub mod governance_approval;
 mod math;
 mod nonce;
+pub mod pausable;
+pub mod rolling_bond;
 mod parameters;
-
 mod rolling_bond;
 mod slash_history;
 mod slashing;
@@ -26,7 +27,6 @@ mod validation;
 pub mod tiered_bond;
 mod validation;
 mod weighted_attestation;
-
 pub mod types;
 
 use crate::access_control::{
@@ -125,6 +125,15 @@ pub enum BondTier {
     // Bond creation fee
     FeeTreasury,
     FeeBps,
+    // Pause mechanism
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     // USDC token used for bond operations requiring token transfers.
     BondToken,
 }
@@ -185,6 +194,15 @@ impl CredenceBond {
     /// Initialize the contract (admin).
     pub fn initialize(e: Env, admin: Address) {
         e.storage().instance().set(&DataKey::Admin, &admin);
+        // Initialize pause state
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
         // Keep legacy admin key for shared access-control helpers.
         e.storage()
             .instance()
@@ -193,6 +211,7 @@ impl CredenceBond {
 
     /// Set early exit penalty config (admin only). Penalty in basis points (e.g. 500 = 5%).
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+        pausable::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -349,11 +368,15 @@ impl CredenceBond {
     }
 
     pub fn register_attester(e: Env, attester: Address) {
-        let admin: Address = e
+        pausable::require_not_paused(&e);
+        let _admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
+        require_admin(&e, &_admin);
+        _admin.require_auth();
+        add_verifier_role(&e, &_admin, &attester);
         Self::require_admin_internal(&e, &admin);
         admin.require_auth();
         add_verifier_role(&e, &admin, &attester);
@@ -365,11 +388,15 @@ impl CredenceBond {
     }
 
     pub fn unregister_attester(e: Env, attester: Address) {
-        let admin: Address = e
+        pausable::require_not_paused(&e);
+        let _admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic!("not initialized"));
+        require_admin(&e, &_admin);
+        _admin.require_auth();
+        remove_verifier_role(&e, &_admin, &attester);
         Self::require_admin_internal(&e, &admin);
         admin.require_auth();
         remove_verifier_role(&e, &admin, &attester);
@@ -417,6 +444,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period: u64,
     ) -> IdentityBond {
+        pausable::require_not_paused(&e);
         // Validate bond amount before creating the bond
         validation::validate_bond_amount(amount);
         
@@ -451,7 +479,6 @@ impl CredenceBond {
             .unwrap_or_else(|| panic!("token not set"));
         let contract = e.current_contract_address();
         TokenClient::new(&e, &token).transfer_from(&contract, &identity, &contract, &amount);
-
         let bond_start = e.ledger().timestamp();
 
         // Verify end timestamp wouldn't overflow.
@@ -577,6 +604,7 @@ impl CredenceBond {
     pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64) {
     /// Revoke an attestation (only original attester). Requires correct nonce.
     pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
+        pausable::require_not_paused(&e);
         attester.require_auth();
 
         // Get attestation
@@ -794,6 +822,7 @@ impl CredenceBond {
     }
 
     pub fn request_withdrawal(e: Env) -> IdentityBond {
+        pausable::require_not_paused(&e);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
@@ -882,11 +911,13 @@ impl CredenceBond {
         quorum_bps: u32,
         min_governors: u32,
     ) {
+        pausable::require_not_paused(&e);
         Self::require_admin_internal(&e, &admin);
         governance_approval::initialize_governance(&e, governors, quorum_bps, min_governors);
     }
 
     pub fn propose_slash(e: Env, proposer: Address, amount: i128) -> u64 {
+        pausable::require_not_paused(&e);
         proposer.require_auth();
         let admin: Address = e
             .storage()
@@ -902,11 +933,13 @@ impl CredenceBond {
     }
 
     pub fn governance_vote(e: Env, voter: Address, proposal_id: u64, approve: bool) {
+        pausable::require_not_paused(&e);
         voter.require_auth();
         governance_approval::vote(&e, &voter, proposal_id, approve);
     }
 
     pub fn governance_delegate(e: Env, governor: Address, to: Address) {
+        pausable::require_not_paused(&e);
         governance_approval::delegate(&e, &governor, &to);
     }
 
@@ -915,6 +948,7 @@ impl CredenceBond {
         proposer: Address,
         proposal_id: u64,
     ) -> IdentityBond {
+        pausable::require_not_paused(&e);
         proposer.require_auth();
         let proposal = governance_approval::get_proposal(&e, proposal_id)
             .unwrap_or_else(|| panic!("proposal not found"));
@@ -929,6 +963,7 @@ impl CredenceBond {
     }
 
     pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        pausable::require_not_paused(&e);
         Self::require_admin_internal(&e, &admin);
         fees::set_config(&e, treasury, fee_bps);
     }
@@ -1636,6 +1671,41 @@ mod test_increase_bond;
 
 #[cfg(test)]
 mod security;
+
+// Pause mechanism entrypoints
+#[contractimpl]
+impl CredenceBond {
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
+    }
+}
+
+#[cfg(test)]
+mod test_pausable;
 
 #[cfg(test)]
 mod test_duration_validation;

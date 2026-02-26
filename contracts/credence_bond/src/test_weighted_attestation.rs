@@ -11,7 +11,7 @@ use soroban_sdk::{Env, String};
 fn setup(
     e: &Env,
 ) -> (
-    CredenceBondClient,
+    CredenceBondClient<'_>,
     soroban_sdk::Address,
     soroban_sdk::Address,
 ) {

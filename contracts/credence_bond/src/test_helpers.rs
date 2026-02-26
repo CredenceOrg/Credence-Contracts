@@ -49,7 +49,7 @@ pub fn setup_with_token_mint(
     stellar_client.mint(&identity, &mint_amount);
 
     let token_client = TokenClient::new(e, &stellar_asset);
-    let expiration = e.ledger().sequence().saturating_add(10000) as u32;
+    let expiration = e.ledger().sequence().saturating_add(10000);
     token_client.approve(&identity, &contract_id, &mint_amount, &expiration);
 
     client.set_token(&admin, &stellar_asset);

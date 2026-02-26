@@ -1,23 +1,6 @@
 #![no_std]
 
-//! # Admin Role Management Contract
-//!
-//! Comprehensive admin role management system with role hierarchy, assignment,
-//! and revocation capabilities for the Credence trust protocol.
-//!
-//! ## Features
-//! - Role hierarchy (Super Admin > Admin > Operator)
-//! - Multiple admin addresses support
-//! - Role assignment and revocation
-//! - Self-removal protection for last admin
-//! - Event emission for all role changes
-//! - Secure authorization checks
-//!
-//! ## Security
-//! - Prevents self-removal of last admin
-//! - Role-based access control
-//! - Audit trail through events
-//! - Input validation and bounds checking
+pub mod pausable;
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
@@ -65,6 +48,15 @@ enum DataKey {
     MinAdmins,
     /// Maximum number of admins allowed
     MaxAdmins,
+    // Pause mechanism
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
 }
 
 #[contract]
@@ -104,6 +96,16 @@ impl AdminContract {
         e.storage().instance().set(&DataKey::Initialized, &true);
         e.storage().instance().set(&DataKey::MinAdmins, &min_admins);
         e.storage().instance().set(&DataKey::MaxAdmins, &max_admins);
+
+        // Initialize pause state
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
 
         // Create initial super admin
         let admin_info = AdminInfo {
@@ -163,6 +165,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_added` with the new admin information
     pub fn add_admin(e: Env, caller: Address, new_admin: Address, role: AdminRole) -> AdminInfo {
+        pausable::require_not_paused(&e);
         caller.require_auth();
 
         // Verify caller authorization
@@ -196,7 +199,7 @@ impl AdminContract {
         // Create admin info
         let admin_info = AdminInfo {
             address: new_admin.clone(),
-            role: role.clone(),
+            role,
             assigned_at: e.ledger().timestamp(),
             assigned_by: caller.clone(),
             active: true,
@@ -220,7 +223,7 @@ impl AdminContract {
         let mut role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(role.clone()))
+            .get(&DataKey::RoleAdmins(role))
             .unwrap_or(Vec::new(&e));
         role_admins.push_back(new_admin.clone());
         e.storage()
@@ -248,6 +251,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_removed` with the removed admin information
     pub fn remove_admin(e: Env, caller: Address, admin_to_remove: Address) {
+        pausable::require_not_paused(&e);
         caller.require_auth();
 
         // Get admin info
@@ -267,13 +271,13 @@ impl AdminContract {
         let role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(admin_info.role.clone()))
+            .get(&DataKey::RoleAdmins(admin_info.role))
             .unwrap_or(Vec::new(&e));
 
         let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
 
         // Special protection for super admins
-        if admin_info.role == AdminRole::SuperAdmin && (role_admins.len() as u32) <= min_admins {
+        if admin_info.role == AdminRole::SuperAdmin && role_admins.len() <= min_admins {
             panic!("cannot remove last super admin");
         }
 
@@ -298,14 +302,14 @@ impl AdminContract {
         let mut role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(admin_info.role.clone()))
+            .get(&DataKey::RoleAdmins(admin_info.role))
             .unwrap_or(Vec::new(&e));
         let role_index = role_admins.iter().position(|x| x == admin_to_remove);
         if let Some(index) = role_index {
             role_admins.remove(index.try_into().unwrap());
             e.storage()
                 .instance()
-                .set(&DataKey::RoleAdmins(admin_info.role.clone()), &role_admins);
+                .set(&DataKey::RoleAdmins(admin_info.role), &role_admins);
         }
 
         e.events()
@@ -335,6 +339,7 @@ impl AdminContract {
         admin_address: Address,
         new_role: AdminRole,
     ) -> AdminInfo {
+        pausable::require_not_paused(&e);
         caller.require_auth();
 
         // Get current admin info
@@ -353,35 +358,35 @@ impl AdminContract {
             panic!("cannot assign equal or higher role to self");
         }
 
-        let old_role = admin_info.role.clone();
+        let old_role = admin_info.role;
 
         // Remove from old role list
         let mut old_role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(old_role.clone()))
+            .get(&DataKey::RoleAdmins(old_role))
             .unwrap_or(Vec::new(&e));
         let old_index = old_role_admins.iter().position(|x| x == admin_address);
         if let Some(index) = old_index {
             old_role_admins.remove(index.try_into().unwrap());
             e.storage()
                 .instance()
-                .set(&DataKey::RoleAdmins(old_role.clone()), &old_role_admins);
+                .set(&DataKey::RoleAdmins(old_role), &old_role_admins);
         }
 
         // Add to new role list
         let mut new_role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(new_role.clone()))
+            .get(&DataKey::RoleAdmins(new_role))
             .unwrap_or(Vec::new(&e));
         new_role_admins.push_back(admin_address.clone());
         e.storage()
             .instance()
-            .set(&DataKey::RoleAdmins(new_role.clone()), &new_role_admins);
+            .set(&DataKey::RoleAdmins(new_role), &new_role_admins);
 
         // Update admin info
-        admin_info.role = new_role.clone();
+        admin_info.role = new_role;
         admin_info.assigned_at = e.ledger().timestamp();
         admin_info.assigned_by = caller.clone();
 
@@ -393,7 +398,7 @@ impl AdminContract {
 
         e.events().publish(
             (Symbol::new(&e, "admin_role_updated"),),
-            (admin_address, old_role.clone(), new_role.clone()),
+            (admin_address, old_role, new_role),
         );
 
         admin_info
@@ -413,6 +418,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_deactivated` with the deactivated admin information
     pub fn deactivate_admin(e: Env, caller: Address, admin_address: Address) {
+        pausable::require_not_paused(&e);
         caller.require_auth();
 
         let mut admin_info: AdminInfo = e
@@ -455,6 +461,7 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_reactivated` with the reactivated admin information
     pub fn reactivate_admin(e: Env, caller: Address, admin_address: Address) {
+        pausable::require_not_paused(&e);
         caller.require_auth();
 
         let mut admin_info: AdminInfo = e
@@ -583,7 +590,7 @@ impl AdminContract {
     /// # Returns
     /// The total count of admins
     pub fn get_admin_count(e: Env) -> u32 {
-        Self::get_all_admins(e).len() as u32
+        Self::get_all_admins(e).len()
     }
 
     /// Get the number of active admins.
@@ -659,6 +666,41 @@ impl AdminContract {
 
 #[cfg(test)]
 mod test;
+
+// Pause mechanism entrypoints
+#[contractimpl]
+impl AdminContract {
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
+    }
+}
+
+#[cfg(test)]
+mod test_pausable;
 
 #[cfg(test)]
 mod test_basic;
