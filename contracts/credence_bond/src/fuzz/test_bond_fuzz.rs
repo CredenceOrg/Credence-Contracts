@@ -280,9 +280,25 @@ fn fuzz_bond_operations() {
 
         // First, run a few fixed "known good" scenarios so invariants are always exercised.
         let fixed = [
-            (1_000_i128, 100_u64, false, 0_u64),
-            (50_000_i128, 0_u64, false, 0_u64),
-            (1_000_i128, 100_u64, true, 10_u64),
+            // Use durations that pass `validation::validate_bond_duration`.
+            (
+                1_000_i128,
+                crate::validation::MIN_BOND_DURATION,
+                false,
+                0_u64,
+            ),
+            (
+                50_000_i128,
+                crate::validation::MIN_BOND_DURATION.saturating_mul(30),
+                false,
+                0_u64,
+            ),
+            (
+                1_000_i128,
+                crate::validation::MIN_BOND_DURATION,
+                true,
+                60_u64,
+            ),
         ];
 
         for (amount, duration, is_rolling, notice) in fixed {
