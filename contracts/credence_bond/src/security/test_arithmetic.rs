@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Arithmetic Security Tests
 //!
 //!
@@ -14,7 +15,7 @@
 
 use crate::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::Env;
+use soroban_sdk::{Address, Env};
 
 // ============================================================================
 // i128 OVERFLOW TESTS
@@ -31,6 +32,8 @@ fn test_i128_bond_amount_at_max() {
     client.initialize(&admin);
 
     let identity = Address::generate(&e);
+    // FIX: create_bond takes 3 arguments: identity, amount, duration
+    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64);
     // Test creating bond with maximum i128 value
     let bond = client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
     let bond = client.create_bond(&identity, &i128::MAX, &86400_u64, &false, &0_u64);
@@ -51,11 +54,12 @@ fn test_i128_overflow_on_top_up() {
     client.initialize(&admin);
 
     let identity = Address::generate(&e);
+    client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64);
     // Create bond with max - 1000
     client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64, &false, &0_u64);
     client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64, &false, &0_u64);
 
-    // Attempt to top up by 2000, which should overflow
+    // FIX: Passes value instead of reference
     client.top_up(&2000);
 }
 
@@ -91,6 +95,7 @@ fn test_i128_overflow_on_massive_slashing() {
     client.initialize(&admin);
 
     let identity = Address::generate(&e);
+    client.create_bond(&identity, &(i128::MAX / 2), &86400_u64);
     // Create bond with large amount
     client.create_bond(&identity, &(i128::MAX / 2), &86400_u64, &false, &0_u64);
     client.create_bond(&identity, &(i128::MAX / 2), &86400_u64, &false, &0_u64);
@@ -140,8 +145,10 @@ fn test_negative_bond_amount_handling() {
     let admin = Address::generate(&e);
     client.initialize(&admin);
 
-    let identity = Address::generate(&e);
+    client.slash(&(i128::MAX / 2));
 
+    // Attempt to slash more, causing overflow in the slashed_amount tracker
+    client.slash(&(i128::MAX / 2 + 2));
     // Test with negative amount (technically allowed by i128, but may be business logic violation)
     // This documents current behavior
     let bond = client.create_bond(&identity, &(-1000), &86400_u64, &false, &0_u64);
@@ -195,6 +202,10 @@ fn test_u64_overflow_on_duration_extension() {
 fn test_u64_overflow_on_end_timestamp() {
     let e = Env::default();
     e.mock_all_auths();
+
+    // Set current timestamp to near max
+    e.ledger().with_mut(|li| {
+        li.timestamp = u64::MAX - 1000;
     e.ledger().with_mut(|li| {
         // Set current timestamp to a very high value
         li.timestamp = u64::MAX - 86400;
@@ -251,6 +262,8 @@ fn test_timestamp_boundary_conditions() {
     client.initialize(&admin);
 
     let identity = Address::generate(&e);
+    // This should panic inside the contract if you have: bond_start.checked_add(duration)
+    client.create_bond(&identity, &1000, &2000);
     // Create bond with minimum valid duration that still fits within timestamp range
     let bond = client.create_bond(&identity, &1000, &86400_u64, &false, &0_u64);
 
@@ -407,7 +420,7 @@ fn test_withdrawal_when_fully_slashed() {
 }
 
 // ============================================================================
-// SLASHING UNDERFLOW TESTS
+// SLASHING & WITHDRAWAL LOGIC
 // ============================================================================
 
 #[test]
@@ -441,6 +454,7 @@ fn test_slashing_exceeds_bonded_amount() {
     client.initialize(&admin);
 
     let identity = Address::generate(&e);
+    client.create_bond(&identity, &1000, &86400_u64);
     client.create_bond(&identity, &1000, &86400_u64, &false, &0_u64);
     client.create_bond(&identity, &1000, &86400_u64, &false, &0_u64);
 
@@ -619,6 +633,7 @@ fn test_boundary_arithmetic_with_zero_values() {
     let bond = client.slash(&admin, &0);
     assert_eq!(bond.slashed_amount, 0);
 
-    let bond = client.withdraw(&0);
-    assert_eq!(bond.bonded_amount, 0);
+    // If your slash function caps at bonded_amount:
+    let bond = client.slash(&2000);
+    assert_eq!(bond.slashed_amount, 1000);
 }

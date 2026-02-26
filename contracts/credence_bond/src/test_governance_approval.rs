@@ -1,8 +1,6 @@
 //! Comprehensive tests for governance approval for slashing (#7).
 //! Covers multi-sig verification, vote tracking, quorum, delegation, and events.
 
-#![cfg(test)]
-
 use crate::test_helpers;
 use crate::CredenceBondClient;
 use soroban_sdk::testutils::Address as _;
@@ -49,7 +47,7 @@ fn test_initialize_governance() {
 #[should_panic(expected = "not admin")]
 fn test_initialize_governance_unauthorized() {
     let e = Env::default();
-    let (client, admin, _) = setup(&e);
+    let (client, _admin, _) = setup(&e);
     let other = Address::generate(&e);
     let governors = Vec::from_array(&e, [other.clone()]);
     client.initialize_governance(&other, &governors, &5100_u32, &1_u32);
@@ -59,7 +57,9 @@ fn test_initialize_governance_unauthorized() {
 fn test_propose_slash() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, identity) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
+    let (client, admin, _identity) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
     let id = client.propose_slash(&admin, &100_i128);
     assert_eq!(id, 0);
     let prop = client.get_slash_proposal(&id);
@@ -76,7 +76,9 @@ fn test_propose_slash() {
 fn test_vote_approve_and_execute() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, identity) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
+    let (client, admin, _identity) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
     let _id = client.propose_slash(&admin, &100_i128);
     client.governance_vote(&g1, &0_u64, &true);
     let bond = client.execute_slash_with_governance(&admin, &0_u64);
@@ -88,7 +90,8 @@ fn test_vote_approve_and_execute() {
 fn test_vote_reject_then_execute_fails() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _identity) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     let _id = client.propose_slash(&admin, &100_i128);
     client.governance_vote(&g1, &0_u64, &false);
     client.execute_slash_with_governance(&admin, &0_u64);
@@ -128,7 +131,8 @@ fn test_delegate_vote() {
 fn test_get_governance_vote() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
+    let (client, admin, _) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     client.propose_slash(&admin, &10_i128);
     assert!(client.get_governance_vote(&0_u64, &g1).is_none());
     client.governance_vote(&g1, &0_u64, &true);
@@ -140,7 +144,8 @@ fn test_get_governance_vote() {
 fn test_double_vote_rejected() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
+    let (client, admin, _) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     client.propose_slash(&admin, &10_i128);
     client.governance_vote(&g1, &0_u64, &true);
     client.governance_vote(&g1, &0_u64, &false);
@@ -151,7 +156,8 @@ fn test_double_vote_rejected() {
 fn test_non_governor_cannot_vote() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _) = setup_with_bond_and_governance(&e, &[g1.clone()], 5100, 1);
+    let (client, admin, _) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     client.propose_slash(&admin, &10_i128);
     let other = Address::generate(&e);
     client.governance_vote(&other, &0_u64, &true);

@@ -5,6 +5,8 @@
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
+use crate::pausable;
+
 /// Fund source for accounting and reporting.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -34,6 +36,14 @@ pub struct WithdrawalProposal {
 #[contracttype]
 pub enum DataKey {
     Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     /// Total balance (sum of all sources).
     TotalBalance,
     /// Balance per source: ProtocolFee, SlashedFunds.
@@ -67,6 +77,14 @@ impl CredenceTreasury {
     pub fn initialize(e: Env, admin: Address) {
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
         e.storage().instance().set(&DataKey::TotalBalance, &0_i128);
         e.storage()
             .instance()
@@ -89,6 +107,7 @@ impl CredenceTreasury {
     /// @param amount Amount to credit
     /// @param source Fund source (ProtocolFee or SlashedFunds)
     pub fn receive_fee(e: Env, from: Address, amount: i128, source: FundSource) {
+        pausable::require_not_paused(&e);
         from.require_auth();
         if amount <= 0 {
             panic!("amount must be positive");
@@ -131,6 +150,7 @@ impl CredenceTreasury {
     /// @param e The contract environment
     /// @param depositor Address to allow as depositor
     pub fn add_depositor(e: Env, depositor: Address) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -146,6 +166,7 @@ impl CredenceTreasury {
 
     /// Remove a depositor.
     pub fn remove_depositor(e: Env, depositor: Address) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -161,6 +182,7 @@ impl CredenceTreasury {
 
     /// Add a signer for multi-sig withdrawals. Threshold must be <= signer count after add.
     pub fn add_signer(e: Env, signer: Address) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -193,6 +215,7 @@ impl CredenceTreasury {
 
     /// Remove a signer. Threshold is auto-capped to new signer count if needed.
     pub fn remove_signer(e: Env, signer: Address) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -229,6 +252,7 @@ impl CredenceTreasury {
 
     /// Set the number of approvals required to execute a withdrawal. Must be <= signer count.
     pub fn set_threshold(e: Env, threshold: u32) {
+        pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -251,6 +275,7 @@ impl CredenceTreasury {
     /// Propose a withdrawal. Only a signer can propose. Creates a proposal that can be approved and executed.
     /// @return proposal_id The id of the new proposal
     pub fn propose_withdrawal(e: Env, proposer: Address, recipient: Address, amount: i128) -> u64 {
+        pausable::require_not_paused(&e);
         proposer.require_auth();
         let is_signer = e
             .storage()
@@ -302,6 +327,7 @@ impl CredenceTreasury {
 
     /// Approve a withdrawal proposal. Only signers can approve. When approval count >= threshold, anyone can call execute_withdrawal.
     pub fn approve_withdrawal(e: Env, approver: Address, proposal_id: u64) {
+        pausable::require_not_paused(&e);
         approver.require_auth();
         let is_signer = e
             .storage()
@@ -347,6 +373,7 @@ impl CredenceTreasury {
 
     /// Execute a withdrawal proposal. Callable by anyone once approval count >= threshold. Deducts from total and from both source buckets proportionally (by ratio of source/total at execution time) for accounting; for simplicity we deduct from total only and leave source balances as-is for reporting (so we track "received" by source; withdrawals are from the pool). Actually the issue says "track fund sources" — so we need to either (1) deduct from total only and keep source balances as "total ever received per source" (then total = sum of sources minus withdrawals would require a separate "withdrawn" counter), or (2) deduct from total and also deduct from each source proportionally. Simpler: total balance is the only withdrawable amount; balance_by_source is informational (total received per source). So on withdraw we only subtract from TotalBalance. Then balance_by_source no longer sums to total after withdrawals. Alternative: on withdraw we subtract from total and also reduce each source proportionally. That way get_balance_by_source still reflects "available from this source". Let me do proportional deduction so that source tracking stays consistent: when we withdraw, we deduct from TotalBalance and from each BalanceBySource in proportion to their share. So: total T, protocol P, slashed S. Withdraw W. New total = T - W. Ratio: P/T and S/T. Deduct from P: W * P / T, from S: W * S / T. So both get reduced proportionally.
     pub fn execute_withdrawal(e: Env, proposal_id: u64) {
+        pausable::require_not_paused(&e);
         let mut proposal: WithdrawalProposal = e
             .storage()
             .instance()
@@ -455,5 +482,33 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::Approval(proposal_id, signer))
             .unwrap_or(false)
+    }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
     }
 }

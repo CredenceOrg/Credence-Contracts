@@ -10,8 +10,6 @@
 //! 7. Tier threshold parameters (bronze, silver, gold, platinum)
 //! 8. State persistence and retrieval
 
-#![cfg(test)]
-
 use crate::parameters::*;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
