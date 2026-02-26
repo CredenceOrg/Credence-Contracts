@@ -1,7 +1,5 @@
 //! Tests for weighted attestation: weight from attester stake, config, cap.
 
-#![cfg(test)]
-
 use crate::types::attestation::MAX_ATTESTATION_WEIGHT;
 use crate::weighted_attestation;
 use crate::*;
@@ -11,12 +9,12 @@ use soroban_sdk::{Env, String};
 fn setup(
     e: &Env,
 ) -> (
-    CredenceBondClient,
+    CredenceBondClient<'_>,
     soroban_sdk::Address,
     soroban_sdk::Address,
 ) {
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = soroban_sdk::Address::generate(e);
     client.initialize(&admin);
@@ -85,7 +83,7 @@ fn get_weight_config_returns_set_values() {
 fn get_attester_stake_default_zero() {
     let e = Env::default();
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
     client.initialize(&admin);
@@ -101,7 +99,7 @@ fn get_attester_stake_default_zero() {
 fn compute_weight_zero_stake_returns_default() {
     let e = Env::default();
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let _client = CredenceBondClient::new(&e, &contract_id);
     let attester = soroban_sdk::Address::generate(&e);
     let w = e.as_contract(&contract_id, || {
@@ -115,7 +113,7 @@ fn compute_weight_zero_stake_returns_default() {
 fn set_attester_stake_negative_panics() {
     let e = Env::default();
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
     client.initialize(&admin);

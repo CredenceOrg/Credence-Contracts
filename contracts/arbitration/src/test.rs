@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Env, String};
@@ -30,7 +28,7 @@ fn test_arbitration_flow() {
     // Initial state
     let dispute = client.get_dispute(&dispute_id);
     assert_eq!(dispute.id, 0);
-    assert_eq!(dispute.resolved, false);
+    assert!(!dispute.resolved);
 
     // Voting
     client.vote(&arb1, &dispute_id, &1); // outcome 1, weight 10
@@ -58,7 +56,7 @@ fn test_arbitration_flow() {
     assert_eq!(winner, 1);
 
     let resolved_dispute = client.get_dispute(&dispute_id);
-    assert_eq!(resolved_dispute.resolved, true);
+    assert!(resolved_dispute.resolved);
     assert_eq!(resolved_dispute.outcome, 1);
 }
 

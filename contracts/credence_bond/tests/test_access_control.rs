@@ -5,7 +5,7 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     env.mock_all_auths();
 
-    let contract_id = env.register_contract(None, CredenceBond);
+    let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(env, &contract_id);
 
     let admin = Address::generate(env);
@@ -15,7 +15,9 @@ fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     client.initialize(&admin);
 
     // Register token
-    let token_id = env.register_stellar_asset_contract(admin.clone());
+    let token_id = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     client.set_token(&admin, &token_id);
 
     // 🔹 Use StellarAssetClient for minting

@@ -55,6 +55,7 @@ pub fn calculate_fee(e: &Env, amount: i128) -> (i128, i128) {
 }
 
 /// Check if fee is waived for this bond (e.g. zero amount, or future: whitelisted identity).
+#[allow(dead_code)]
 #[must_use]
 pub fn is_fee_waived(e: &Env, amount: i128, _identity: &Address) -> bool {
     let (_, fee_bps) = get_config(e);
