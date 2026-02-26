@@ -185,6 +185,16 @@ use withdraw_attacker::{WithdrawAttacker, WithdrawAttackerClient};
 // Helper: set up a bond contract with admin, identity, and a bond.
 // ---------------------------------------------------------------------------
 fn setup_bond(e: &Env) -> (Address, Address, Address) {
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(e, &contract_id);
+
+    let admin = Address::generate(e);
+    let identity = Address::generate(e);
+
+    client.initialize(&admin);
+    client.create_bond(&identity, &10_000_i128, &86400_u64);
+
+    (contract_id, admin, identity)
     let (client, admin, identity, _token_id, bond_id) = test_helpers::setup_with_token(e);
     client.create_bond(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
     (bond_id, admin, identity)
@@ -201,7 +211,7 @@ fn test_withdraw_reentrancy_blocked() {
     let (bond_id, _admin, identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let attacker_id = e.register_contract(None, WithdrawAttacker);
+    let attacker_id = e.register(WithdrawAttacker, ());
     let attacker_client = WithdrawAttackerClient::new(&e, &attacker_id);
     attacker_client.setup(&bond_id, &identity);
     client.set_callback(&attacker_id);
@@ -220,7 +230,7 @@ fn test_slash_reentrancy_blocked() {
     let (bond_id, admin, _identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let attacker_id = e.register_contract(None, SlashAttacker);
+    let attacker_id = e.register(SlashAttacker, ());
     let attacker_client = SlashAttackerClient::new(&e, &attacker_id);
     attacker_client.setup(&bond_id, &admin);
     client.set_callback(&attacker_id);
@@ -241,7 +251,7 @@ fn test_fee_collection_reentrancy_blocked() {
 
     client.deposit_fees(&500_i128);
 
-    let attacker_id = e.register_contract(None, FeeAttacker);
+    let attacker_id = e.register(FeeAttacker, ());
     let attacker_client = FeeAttackerClient::new(&e, &attacker_id);
     attacker_client.setup(&bond_id, &admin);
     client.set_callback(&attacker_id);
@@ -272,7 +282,7 @@ fn test_lock_released_after_withdraw() {
     let (bond_id, _admin, identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let benign_id = e.register_contract(None, BenignCallback);
+    let benign_id = e.register(BenignCallback, ());
     client.set_callback(&benign_id);
 
     client.withdraw_bond_full(&identity);
@@ -289,7 +299,7 @@ fn test_lock_released_after_slash() {
     let (bond_id, admin, _identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let benign_id = e.register_contract(None, BenignCallback);
+    let benign_id = e.register(BenignCallback, ());
     client.set_callback(&benign_id);
 
     client.slash_bond(&admin, &100_i128);
@@ -308,7 +318,7 @@ fn test_lock_released_after_fee_collection() {
 
     client.deposit_fees(&200_i128);
 
-    let benign_id = e.register_contract(None, BenignCallback);
+    let benign_id = e.register(BenignCallback, ());
     client.set_callback(&benign_id);
 
     let collected = client.collect_fees(&admin);
@@ -445,7 +455,7 @@ fn test_cross_function_reentrancy_blocked() {
     let (bond_id, admin, identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let attacker_id = e.register_contract(None, CrossAttacker);
+    let attacker_id = e.register(CrossAttacker, ());
     let attacker_client = CrossAttackerClient::new(&e, &attacker_id);
     attacker_client.setup(&bond_id, &admin);
     client.set_callback(&attacker_id);
