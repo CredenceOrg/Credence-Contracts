@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
@@ -64,7 +62,7 @@ fn test_register_identity() {
 
     assert_eq!(entry.identity, identity);
     assert_eq!(entry.bond_contract, bond_contract);
-    assert_eq!(entry.active, true);
+    assert!(entry.active);
 }
 
 #[test]
@@ -165,13 +163,13 @@ fn test_is_registered() {
     env.mock_all_auths();
 
     // Not registered initially
-    assert_eq!(client.is_registered(&identity), false);
+    assert!(!client.is_registered(&identity));
 
     // Register
     client.register(&identity, &bond_contract);
 
     // Now registered
-    assert_eq!(client.is_registered(&identity), true);
+    assert!(client.is_registered(&identity));
 }
 
 #[test]
@@ -185,14 +183,14 @@ fn test_deactivate() {
     env.mock_all_auths();
 
     client.register(&identity, &bond_contract);
-    assert_eq!(client.is_registered(&identity), true);
+    assert!(client.is_registered(&identity));
 
     client.deactivate(&identity);
-    assert_eq!(client.is_registered(&identity), false);
+    assert!(!client.is_registered(&identity));
 
     // Entry should still exist but be inactive
     let entry = client.get_bond_contract(&identity);
-    assert_eq!(entry.active, false);
+    assert!(!entry.active);
 }
 
 #[test]
@@ -223,13 +221,13 @@ fn test_reactivate() {
 
     client.register(&identity, &bond_contract);
     client.deactivate(&identity);
-    assert_eq!(client.is_registered(&identity), false);
+    assert!(!client.is_registered(&identity));
 
     client.reactivate(&identity);
-    assert_eq!(client.is_registered(&identity), true);
+    assert!(client.is_registered(&identity));
 
     let entry = client.get_bond_contract(&identity);
-    assert_eq!(entry.active, true);
+    assert!(entry.active);
 }
 
 #[test]
@@ -363,7 +361,7 @@ fn test_multiple_registrations() {
         assert_eq!(found_identity, identity);
 
         // Verify registration status
-        assert_eq!(client.is_registered(&identity), true);
+        assert!(client.is_registered(&identity));
     }
 
     // Verify all 5 are in the list
@@ -389,7 +387,7 @@ fn test_deactivate_and_reactivate_preserves_mapping() {
     // Mappings should still exist
     let entry = client.get_bond_contract(&identity);
     assert_eq!(entry.bond_contract, bond_contract);
-    assert_eq!(entry.active, false);
+    assert!(!entry.active);
 
     let found_identity = client.get_identity(&bond_contract);
     assert_eq!(found_identity, identity);
@@ -400,7 +398,7 @@ fn test_deactivate_and_reactivate_preserves_mapping() {
     // Verify everything is back to active
     let entry = client.get_bond_contract(&identity);
     assert_eq!(entry.bond_contract, bond_contract);
-    assert_eq!(entry.active, true);
+    assert!(entry.active);
 }
 
 #[test]

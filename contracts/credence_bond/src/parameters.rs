@@ -231,7 +231,7 @@ pub fn get_platinum_threshold(e: &Env) -> i128 {
 pub fn set_protocol_fee_bps(e: &Env, admin: &Address, value: u32) {
     validate_admin(e, admin);
 
-    if value < MIN_PROTOCOL_FEE_BPS || value > MAX_PROTOCOL_FEE_BPS {
+    if !(MIN_PROTOCOL_FEE_BPS..=MAX_PROTOCOL_FEE_BPS).contains(&value) {
         panic!("protocol_fee_bps out of bounds");
     }
 
@@ -268,7 +268,7 @@ pub fn set_protocol_fee_bps(e: &Env, admin: &Address, value: u32) {
 pub fn set_attestation_fee_bps(e: &Env, admin: &Address, value: u32) {
     validate_admin(e, admin);
 
-    if value < MIN_ATTESTATION_FEE_BPS || value > MAX_ATTESTATION_FEE_BPS {
+    if !(MIN_ATTESTATION_FEE_BPS..=MAX_ATTESTATION_FEE_BPS).contains(&value) {
         panic!("attestation_fee_bps out of bounds");
     }
 
@@ -305,7 +305,7 @@ pub fn set_attestation_fee_bps(e: &Env, admin: &Address, value: u32) {
 pub fn set_withdrawal_cooldown_secs(e: &Env, admin: &Address, value: u64) {
     validate_admin(e, admin);
 
-    if value < MIN_WITHDRAWAL_COOLDOWN_SECS || value > MAX_WITHDRAWAL_COOLDOWN_SECS {
+    if !(MIN_WITHDRAWAL_COOLDOWN_SECS..=MAX_WITHDRAWAL_COOLDOWN_SECS).contains(&value) {
         panic!("withdrawal_cooldown_secs out of bounds");
     }
 
@@ -342,7 +342,7 @@ pub fn set_withdrawal_cooldown_secs(e: &Env, admin: &Address, value: u64) {
 pub fn set_slash_cooldown_secs(e: &Env, admin: &Address, value: u64) {
     validate_admin(e, admin);
 
-    if value < MIN_SLASH_COOLDOWN_SECS || value > MAX_SLASH_COOLDOWN_SECS {
+    if !(MIN_SLASH_COOLDOWN_SECS..=MAX_SLASH_COOLDOWN_SECS).contains(&value) {
         panic!("slash_cooldown_secs out of bounds");
     }
 
@@ -379,7 +379,7 @@ pub fn set_slash_cooldown_secs(e: &Env, admin: &Address, value: u64) {
 pub fn set_bronze_threshold(e: &Env, admin: &Address, value: i128) {
     validate_admin(e, admin);
 
-    if value < MIN_BRONZE_THRESHOLD || value > MAX_BRONZE_THRESHOLD {
+    if !(MIN_BRONZE_THRESHOLD..=MAX_BRONZE_THRESHOLD).contains(&value) {
         panic!("bronze_threshold out of bounds");
     }
 
@@ -410,7 +410,7 @@ pub fn set_bronze_threshold(e: &Env, admin: &Address, value: i128) {
 pub fn set_silver_threshold(e: &Env, admin: &Address, value: i128) {
     validate_admin(e, admin);
 
-    if value < MIN_SILVER_THRESHOLD || value > MAX_SILVER_THRESHOLD {
+    if !(MIN_SILVER_THRESHOLD..=MAX_SILVER_THRESHOLD).contains(&value) {
         panic!("silver_threshold out of bounds");
     }
 
@@ -441,7 +441,7 @@ pub fn set_silver_threshold(e: &Env, admin: &Address, value: i128) {
 pub fn set_gold_threshold(e: &Env, admin: &Address, value: i128) {
     validate_admin(e, admin);
 
-    if value < MIN_GOLD_THRESHOLD || value > MAX_GOLD_THRESHOLD {
+    if !(MIN_GOLD_THRESHOLD..=MAX_GOLD_THRESHOLD).contains(&value) {
         panic!("gold_threshold out of bounds");
     }
 
@@ -472,7 +472,7 @@ pub fn set_gold_threshold(e: &Env, admin: &Address, value: i128) {
 pub fn set_platinum_threshold(e: &Env, admin: &Address, value: i128) {
     validate_admin(e, admin);
 
-    if value < MIN_PLATINUM_THRESHOLD || value > MAX_PLATINUM_THRESHOLD {
+    if !(MIN_PLATINUM_THRESHOLD..=MAX_PLATINUM_THRESHOLD).contains(&value) {
         panic!("platinum_threshold out of bounds");
     }
 

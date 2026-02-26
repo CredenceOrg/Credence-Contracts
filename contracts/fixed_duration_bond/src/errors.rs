@@ -10,6 +10,7 @@ pub const ERR_DURATION_OVERFLOW: &str = "bond expiry timestamp would overflow";
 pub const ERR_BOND_ACTIVE: &str = "bond already active for this owner";
 pub const ERR_NO_BOND: &str = "no active bond found";
 pub const ERR_LOCK_PERIOD_NOT_ELAPSED: &str = "lock period has not elapsed yet";
+#[allow(dead_code)]
 pub const ERR_INSUFFICIENT_BALANCE: &str = "insufficient bond balance";
 pub const ERR_TOKEN_NOT_SET: &str = "token not set";
 pub const ERR_NO_FEES: &str = "no fees to collect";

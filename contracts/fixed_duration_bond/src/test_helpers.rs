@@ -1,7 +1,5 @@
 //! Shared test helpers for fixed_duration_bond tests.
 
-#![cfg(test)]
-
 use crate::{FixedDurationBond, FixedDurationBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
@@ -54,7 +52,7 @@ pub fn setup_with_mint(
     asset_admin.mint(&owner, &mint_amount);
 
     let token = TokenClient::new(e, &stellar_asset);
-    let expiry_ledger = e.ledger().sequence().saturating_add(10_000) as u32;
+    let expiry_ledger = e.ledger().sequence().saturating_add(10_000);
     token.approve(&owner, &contract_id, &mint_amount, &expiry_ledger);
 
     client.initialize(&admin, &stellar_asset);

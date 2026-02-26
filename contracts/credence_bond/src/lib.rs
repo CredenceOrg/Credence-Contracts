@@ -2,18 +2,22 @@
 
 pub mod access_control;
 pub mod early_exit_penalty;
+#[allow(dead_code)]
 mod fees;
 pub mod governance_approval;
+#[allow(dead_code)]
 mod math;
 mod nonce;
 mod parameters;
 
 mod rolling_bond;
+#[allow(dead_code)]
 mod slash_history;
+#[allow(dead_code)]
 mod slashing;
 pub mod tiered_bond;
-mod validation;
 mod token_integration;
+mod validation;
 mod weighted_attestation;
 
 pub mod types;
@@ -123,6 +127,7 @@ impl CredenceBond {
         Symbol::new(e, "callback")
     }
 
+    #[allow(dead_code)]
     fn with_reentrancy_guard<T, F: FnOnce() -> T>(e: &Env, f: F) -> T {
         if Self::check_lock(e) {
             panic!("reentrancy detected");

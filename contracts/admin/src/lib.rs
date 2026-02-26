@@ -196,7 +196,7 @@ impl AdminContract {
         // Create admin info
         let admin_info = AdminInfo {
             address: new_admin.clone(),
-            role: role.clone(),
+            role,
             assigned_at: e.ledger().timestamp(),
             assigned_by: caller.clone(),
             active: true,
@@ -220,7 +220,7 @@ impl AdminContract {
         let mut role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(role.clone()))
+            .get(&DataKey::RoleAdmins(role))
             .unwrap_or(Vec::new(&e));
         role_admins.push_back(new_admin.clone());
         e.storage()
@@ -267,13 +267,13 @@ impl AdminContract {
         let role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(admin_info.role.clone()))
+            .get(&DataKey::RoleAdmins(admin_info.role))
             .unwrap_or(Vec::new(&e));
 
         let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
 
         // Special protection for super admins
-        if admin_info.role == AdminRole::SuperAdmin && (role_admins.len() as u32) <= min_admins {
+        if admin_info.role == AdminRole::SuperAdmin && role_admins.len() <= min_admins {
             panic!("cannot remove last super admin");
         }
 
@@ -298,14 +298,14 @@ impl AdminContract {
         let mut role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(admin_info.role.clone()))
+            .get(&DataKey::RoleAdmins(admin_info.role))
             .unwrap_or(Vec::new(&e));
         let role_index = role_admins.iter().position(|x| x == admin_to_remove);
         if let Some(index) = role_index {
             role_admins.remove(index.try_into().unwrap());
             e.storage()
                 .instance()
-                .set(&DataKey::RoleAdmins(admin_info.role.clone()), &role_admins);
+                .set(&DataKey::RoleAdmins(admin_info.role), &role_admins);
         }
 
         e.events()
@@ -353,35 +353,35 @@ impl AdminContract {
             panic!("cannot assign equal or higher role to self");
         }
 
-        let old_role = admin_info.role.clone();
+        let old_role = admin_info.role;
 
         // Remove from old role list
         let mut old_role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(old_role.clone()))
+            .get(&DataKey::RoleAdmins(old_role))
             .unwrap_or(Vec::new(&e));
         let old_index = old_role_admins.iter().position(|x| x == admin_address);
         if let Some(index) = old_index {
             old_role_admins.remove(index.try_into().unwrap());
             e.storage()
                 .instance()
-                .set(&DataKey::RoleAdmins(old_role.clone()), &old_role_admins);
+                .set(&DataKey::RoleAdmins(old_role), &old_role_admins);
         }
 
         // Add to new role list
         let mut new_role_admins: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::RoleAdmins(new_role.clone()))
+            .get(&DataKey::RoleAdmins(new_role))
             .unwrap_or(Vec::new(&e));
         new_role_admins.push_back(admin_address.clone());
         e.storage()
             .instance()
-            .set(&DataKey::RoleAdmins(new_role.clone()), &new_role_admins);
+            .set(&DataKey::RoleAdmins(new_role), &new_role_admins);
 
         // Update admin info
-        admin_info.role = new_role.clone();
+        admin_info.role = new_role;
         admin_info.assigned_at = e.ledger().timestamp();
         admin_info.assigned_by = caller.clone();
 
@@ -393,7 +393,7 @@ impl AdminContract {
 
         e.events().publish(
             (Symbol::new(&e, "admin_role_updated"),),
-            (admin_address, old_role.clone(), new_role.clone()),
+            (admin_address, old_role, new_role),
         );
 
         admin_info
@@ -583,7 +583,7 @@ impl AdminContract {
     /// # Returns
     /// The total count of admins
     pub fn get_admin_count(e: Env) -> u32 {
-        Self::get_all_admins(e).len() as u32
+        Self::get_all_admins(e).len()
     }
 
     /// Get the number of active admins.

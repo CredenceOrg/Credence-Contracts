@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use crate::test_helpers;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
@@ -11,7 +9,7 @@ fn test_set_usdc_token_and_network() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
@@ -32,7 +30,7 @@ fn test_get_usdc_network_none_when_unset() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
@@ -47,7 +45,7 @@ fn test_set_usdc_token_rejects_unknown_network() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
@@ -70,7 +68,7 @@ fn test_create_bond_moves_tokens_into_contract() {
     let contract_before = token_client.balance(&bond_contract_id);
 
     let amount = 2_500_i128;
-    client.create_bond(&identity, &amount, &100_u64, &false, &0_u64);
+    client.create_bond(&identity, &amount, &86400_u64, &false, &0_u64);
 
     let balance_after = token_client.balance(&identity);
     let contract_after = token_client.balance(&bond_contract_id);
@@ -85,7 +83,7 @@ fn test_create_bond_without_approval_panics() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
@@ -100,7 +98,7 @@ fn test_create_bond_without_approval_panics() {
     stellar_asset.mint(&identity, &10_000_i128);
 
     client.set_token(&admin, &token_id);
-    client.create_bond(&identity, &1_000_i128, &100_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
 }
 
 #[test]
@@ -109,7 +107,7 @@ fn test_set_token_rejects_non_admin() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
@@ -128,7 +126,7 @@ fn test_get_usdc_token_without_configuration_panics() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
@@ -142,7 +140,7 @@ fn test_top_up_requires_remaining_allowance() {
     let e = Env::default();
     e.mock_all_auths();
 
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
@@ -156,11 +154,11 @@ fn test_top_up_requires_remaining_allowance() {
     stellar_asset.mint(&identity, &10_000_i128);
 
     let token_client = TokenClient::new(&e, &token_id);
-    let expiration = e.ledger().sequence().saturating_add(10_000) as u32;
+    let expiration = e.ledger().sequence().saturating_add(10_000);
     token_client.approve(&identity, &contract_id, &1_000_i128, &expiration);
 
     client.set_token(&admin, &token_id);
-    client.create_bond(&identity, &1_000_i128, &100_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     client.top_up(&1_i128);
 }
 
@@ -170,13 +168,13 @@ fn test_withdraw_transfers_tokens_back_to_identity() {
     e.ledger().with_mut(|li| li.timestamp = 1_000);
     let (client, _admin, identity, token_id, bond_contract_id) = test_helpers::setup_with_token(&e);
 
-    client.create_bond(&identity, &1_000_i128, &100_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
 
     let token_client = TokenClient::new(&e, &token_id);
     let identity_before = token_client.balance(&identity);
     let contract_before = token_client.balance(&bond_contract_id);
 
-    e.ledger().with_mut(|li| li.timestamp = 1_101);
+    e.ledger().with_mut(|li| li.timestamp = 87_401);
     client.withdraw_bond(&400_i128);
 
     let identity_after = token_client.balance(&identity);
@@ -191,7 +189,7 @@ fn test_withdraw_transfers_tokens_back_to_identity() {
 fn test_top_up_negative_amount_panics() {
     let e = Env::default();
     let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
-    client.create_bond(&identity, &1_000_i128, &100_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     client.top_up(&-1_i128);
 }
 
@@ -201,7 +199,7 @@ fn test_withdraw_negative_amount_panics() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1_000);
     let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
-    client.create_bond(&identity, &1_000_i128, &100_u64, &false, &0_u64);
-    e.ledger().with_mut(|li| li.timestamp = 1_101);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 87_401);
     client.withdraw_bond(&-1_i128);
 }
