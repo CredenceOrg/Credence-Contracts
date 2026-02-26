@@ -52,6 +52,15 @@ impl Attestation {
         }
     }
 
+    /// Validates this attestation (weight bounds). Use after deserialization or before storage.
+    ///
+    /// # Errors
+    /// Panics if `self.weight` is zero or exceeds `MAX_ATTESTATION_WEIGHT`.
+    #[inline]
+    pub fn validate(&self) {
+        Self::validate_weight(self.weight);
+    }
+
     /// Returns true if this attestation is currently active (not revoked).
     #[must_use]
     #[inline]

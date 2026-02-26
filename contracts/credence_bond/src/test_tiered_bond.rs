@@ -2,17 +2,14 @@
 
 #![cfg(test)]
 
+use crate::test_helpers;
 use crate::tiered_bond::{get_tier_for_amount, TIER_BRONZE_MAX, TIER_GOLD_MAX, TIER_SILVER_MAX};
 use crate::{BondTier, CredenceBond, CredenceBondClient};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
-fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
-    let contract_id = e.register_contract(None, CredenceBond);
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    client.initialize(&admin);
-    (client, admin)
+fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {
+    test_helpers::setup_with_token(e)
 }
 
 #[test]
@@ -30,8 +27,7 @@ fn test_tier_thresholds() {
 #[test]
 fn test_get_tier_after_create_bond() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    let (client, _admin, identity, ..) = setup(&e);
     client.create_bond(&identity, &(TIER_SILVER_MAX), &86400_u64, &false, &0_u64);
     let tier = client.get_tier();
     assert_eq!(tier, BondTier::Gold);
@@ -40,8 +36,7 @@ fn test_get_tier_after_create_bond() {
 #[test]
 fn test_tier_upgrade_on_top_up() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    let (client, _admin, identity, ..) = setup(&e);
     client.create_bond(&identity, &(TIER_BRONZE_MAX), &86400_u64, &false, &0_u64);
     assert_eq!(client.get_tier(), BondTier::Silver);
     client.top_up(&(TIER_SILVER_MAX - TIER_BRONZE_MAX));
@@ -51,10 +46,11 @@ fn test_tier_upgrade_on_top_up() {
 #[test]
 fn test_tier_downgrade_on_withdraw() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    e.ledger().with_mut(|li| li.timestamp = 0);
+    let (client, _admin, identity, ..) = setup(&e);
     client.create_bond(&identity, &(TIER_GOLD_MAX), &86400_u64, &false, &0_u64);
     assert_eq!(client.get_tier(), BondTier::Platinum);
+    e.ledger().with_mut(|li| li.timestamp = 86401);
     let withdraw_to_silver = TIER_GOLD_MAX - TIER_SILVER_MAX + 1;
     client.withdraw(&withdraw_to_silver);
     assert_eq!(client.get_tier(), BondTier::Silver);
@@ -63,8 +59,7 @@ fn test_tier_downgrade_on_withdraw() {
 #[test]
 fn test_tier_unchanged_within_threshold() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
-    let identity = Address::generate(&e);
+    let (client, _admin, identity, ..) = setup(&e);
     client.create_bond(
         &identity,
         &(TIER_BRONZE_MAX / 2),

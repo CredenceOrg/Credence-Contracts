@@ -4,4 +4,6 @@
 
 pub mod attestation;
 
-pub use attestation::{Attestation, AttestationDedupKey};
+pub use attestation::{
+    Attestation, AttestationDedupKey, DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT,
+};

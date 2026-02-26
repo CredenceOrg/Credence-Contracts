@@ -2,8 +2,6 @@
 //! Covers: initialization, fees, depositors, multi-sig (signers, threshold,
 //! propose/approve/execute), fund source tracking, events, and security.
 
-#![cfg(test)]
-
 use crate::{CredenceTreasury, CredenceTreasuryClient, FundSource};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
@@ -39,6 +37,15 @@ fn test_receive_fee_as_admin() {
     client.receive_fee(&admin, &500, &FundSource::SlashedFunds);
     assert_eq!(client.get_balance(), 1500);
     assert_eq!(client.get_balance_by_source(&FundSource::SlashedFunds), 500);
+}
+
+#[test]
+#[should_panic(expected = "total balance overflow")]
+fn test_receive_fee_overflow_panics() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    client.receive_fee(&admin, &i128::MAX, &FundSource::ProtocolFee);
+    client.receive_fee(&admin, &1, &FundSource::ProtocolFee);
 }
 
 #[test]

@@ -1,7 +1,5 @@
 //! Tests for replay attack prevention: nonce validation and rejection of replayed transactions.
 
-#![cfg(test)]
-
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String};
