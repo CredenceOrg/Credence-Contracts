@@ -1,7 +1,5 @@
 //! Tests for Attestation data structure: validation, serialization, and dedup key.
 
-#![cfg(test)]
-
 use crate::types::attestation::{DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT};
 use crate::types::{Attestation, AttestationDedupKey};
 use soroban_sdk::testutils::Address as _;
