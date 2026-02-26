@@ -1,0 +1,11 @@
+[package]
+name = "timelock"
+version = "0.1.0"
+edition = "2021"
+description = "Credence timelock — enforces delay before protocol parameter changes take effect"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }

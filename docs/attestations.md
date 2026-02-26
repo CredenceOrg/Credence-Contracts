@@ -9,9 +9,10 @@ Verifiers add credibility attestations to identity bonds. Only authorized attest
 
 ## Authorization
 
-- **register_attester(attester)** — Admin only. Registers an authorized verifier.
-- **unregister_attester(attester)** — Admin only.
-- **is_attester(attester)** — Returns whether the address is an authorized attester.
+- **register_verifier(verifier, stake_deposit)** — Stake-based registration (see verifiers.md).
+- **deactivate_verifier(verifier)** / **deactivate_verifier_by_admin(admin, verifier)** — Disables attestation rights.
+- **register_attester(attester)** / **unregister_attester(attester)** — Legacy admin-managed authorization (backwards compatible).
+- **is_attester(attester)** — Returns whether the address is currently authorized to attest.
 
 ## Adding attestations
 

@@ -347,10 +347,6 @@ impl FixedDurationBond {
             .get(&DataKey::Bond(owner))
             .unwrap_or_else(|| panic!("{}", ERR_NO_BOND));
         let now = e.ledger().timestamp();
-        if now >= bond.bond_expiry {
-            0_u64
-        } else {
-            bond.bond_expiry - now
-        }
+        bond.bond_expiry.saturating_sub(now)
     }
 }

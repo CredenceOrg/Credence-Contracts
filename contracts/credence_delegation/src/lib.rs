@@ -2,6 +2,8 @@
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
+pub mod pausable;
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub enum DelegationType {
@@ -31,6 +33,14 @@ pub struct Delegation {
 #[derive(Clone)]
 enum DataKey {
     Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     Delegation(Address, Address, DelegationType),
 }
 
@@ -45,6 +55,14 @@ impl CredenceDelegation {
             panic!("already initialized");
         }
         e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::Paused, &false);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
     }
 
     /// Create a delegation from owner to delegate with a given type and expiry.
@@ -55,6 +73,7 @@ impl CredenceDelegation {
         delegation_type: DelegationType,
         expires_at: u64,
     ) -> Delegation {
+        pausable::require_not_paused(&e);
         owner.require_auth();
 
         if expires_at <= e.ledger().timestamp() {
@@ -85,6 +104,7 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
     ) {
+        pausable::require_not_paused(&e);
         owner.require_auth();
 
         let key = DataKey::Delegation(owner.clone(), delegate.clone(), delegation_type.clone());
@@ -106,6 +126,7 @@ impl CredenceDelegation {
     }
 
     pub fn revoke_attestation(e: Env, attester: Address, subject: Address) {
+        pausable::require_not_paused(&e);
         attester.require_auth();
 
         let key = DataKey::Delegation(
@@ -176,7 +197,38 @@ impl CredenceDelegation {
             None => AttestationStatus::NotFound,
         }
     }
+
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        pausable::set_pause_signer(&e, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        pausable::approve_pause_proposal(&e, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        pausable::execute_pause_proposal(&e, proposal_id)
+    }
 }
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_pausable;

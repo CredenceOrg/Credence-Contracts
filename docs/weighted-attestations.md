@@ -10,6 +10,7 @@ Attestation value depends on the attester's credibility (stake). Weight is deriv
 ## Attester stake
 
 - **set_attester_stake(admin, attester, amount)** — Admin only. Sets the stake used to compute attestation weight for that attester. Can reflect bond amount or delegated credibility.
+- **register_verifier(verifier, stake_deposit)** — When using stake-based verifier registration, the verifier's staked amount is mirrored into attester stake so weights reflect real locked stake.
 - If no stake is set, attestations use default weight 1.
 
 ## Weight computation

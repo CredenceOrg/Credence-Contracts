@@ -3,8 +3,6 @@
 //! Covers minimum and maximum duration enforcement, boundary conditions,
 //! and clear error message verification on bond creation.
 
-#![cfg(test)]
-
 use crate::test_helpers;
 use crate::validation::{self, MAX_BOND_DURATION, MIN_BOND_DURATION};
 use crate::{CredenceBond, CredenceBondClient};
@@ -12,7 +10,7 @@ use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
 fn setup(e: &Env) -> CredenceBondClient<'_> {
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     client.initialize(&admin);
@@ -196,5 +194,4 @@ fn test_create_rolling_bond_invalid_duration_rejected() {
 fn test_duration_constants() {
     assert_eq!(MIN_BOND_DURATION, 86_400);
     assert_eq!(MAX_BOND_DURATION, 31_536_000);
-    assert!(MIN_BOND_DURATION < MAX_BOND_DURATION);
 }

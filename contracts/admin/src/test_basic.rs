@@ -8,7 +8,7 @@ mod basic_tests {
 
     #[test]
     fn test_role_hierarchy() {
-        let env = Env::default();
+        let _env = Env::default();
 
         // Test role comparisons
         assert!(AdminRole::SuperAdmin > AdminRole::Admin);

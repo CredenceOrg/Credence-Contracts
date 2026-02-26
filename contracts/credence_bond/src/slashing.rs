@@ -19,6 +19,7 @@ use soroban_sdk::{Address, Env, Symbol};
 
 /// Storage key for tracking accumulated slashed funds (for treasury transfer purposes).
 /// Not currently used for fund transfers in this implementation, but reserved for future use.
+#[allow(dead_code)]
 const KEY_SLASHED_FUNDS_POOL: &str = "slashed_funds_pool";
 
 /// NatSpec-style: Returns the current slashed amount for a bond.
@@ -29,6 +30,7 @@ const KEY_SLASHED_FUNDS_POOL: &str = "slashed_funds_pool";
 ///
 /// # Returns
 /// The accumulated slashed amount (i128). Returns 0 if no bond exists.
+#[allow(dead_code)]
 #[must_use]
 pub fn get_slashed_amount(e: &Env, _bond_identity: &Address) -> i128 {
     let storage_key = crate::DataKey::Bond;
@@ -143,6 +145,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 /// # Panics
 /// - "not admin" if not authorized
 /// - If amount would reduce slashed_amount below 0
+#[allow(dead_code)]
 pub fn unslash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond {
     if amount < 0 {
         panic!("unslash amount must be non-negative");
@@ -175,6 +178,7 @@ pub fn unslash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBo
 ///
 /// # Returns
 /// Available balance = bonded_amount - slashed_amount
+#[allow(dead_code)]
 #[must_use]
 pub fn get_available_balance(bonded_amount: i128, slashed_amount: i128) -> i128 {
     bonded_amount
@@ -193,6 +197,7 @@ pub fn get_available_balance(bonded_amount: i128, slashed_amount: i128) -> i128 
 ///
 /// # Returns
 /// `true` if fully slashed, `false` otherwise
+#[allow(dead_code)]
 #[must_use]
 pub fn is_fully_slashed(bonded_amount: i128, slashed_amount: i128) -> bool {
     slashed_amount >= bonded_amount
@@ -209,6 +214,7 @@ pub fn is_fully_slashed(bonded_amount: i128, slashed_amount: i128) -> bool {
 ///
 /// # Returns
 /// `true` if this is a partial slash, `false` if full slash
+#[allow(dead_code)]
 #[must_use]
 pub fn is_partial_slash(slash_amount: i128, bonded_amount: i128) -> bool {
     slash_amount < bonded_amount
@@ -235,6 +241,7 @@ pub fn emit_slashing_event(e: &Env, identity: &Address, slash_amount: i128, tota
 /// * `identity` - Address of the identity being unslashed
 /// * `unslash_amount` - The amount being unslashed/reverted
 /// * `total_slashed` - The cumulative slashed amount after reversion
+#[allow(dead_code)]
 pub fn emit_unslashing_event(
     e: &Env,
     identity: &Address,
@@ -249,6 +256,7 @@ pub fn emit_unslashing_event(
 
 /// Initialize the slashed funds pool for treasury transfers.
 /// Called during contract initialization.
+#[allow(dead_code)]
 pub fn initialize_slashed_pool(e: &Env) {
     e.storage()
         .instance()

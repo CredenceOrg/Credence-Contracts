@@ -1,6 +1,6 @@
 # Credence Contracts
 
-Soroban smart contracts for the Credence economic trust protocol. This workspace holds the identity bond contract (lock USDC, track duration, slashing hooks).
+Soroban smart contracts for the Credence economic trust protocol. This workspace holds the identity bond and delegation contracts.
 
 ## About
 
@@ -30,20 +30,25 @@ cargo build --target wasm32-unknown-unknown --release -p credence_bond
 
 ```bash
 cargo test -p credence_bond
+cargo test -p credence_delegation
 ```
 
 ## Project layout
 
 - `contracts/credence_bond/` — Identity bond contract
-  - `create_bond()` — lock USDC (stub: stores amount and duration)
-  - `get_identity_state()` — return current bond for this instance
+  - `create_bond()` / `top_up()` / `withdraw()` / `withdraw_early()`
+  - Rolling bonds: `request_withdrawal()` and `renew_if_rolling()`
+  - Tiering: `get_tier()` with auto-upgrade/downgrade events
+  - Slashing: `slash()` with available-balance enforcement
+  - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
+  - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
+- `contracts/credence_delegation/` — Delegation contract
+- `docs/` — Feature docs (`rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`)
 
-A full implementation would add:
+Known simplifications:
 
-- Token transfer (USDC) on `create_bond` / `increase_bond` / `withdraw_bond`
-- `slash_bond()` with governance checks
-- `add_attestation()` / `revoke_attestation()`
-- Per-identity storage (e.g. by `Address` key) instead of a single bond
+- Token transfer (USDC) is stubbed in this reference implementation.
+- Bond storage is currently single-bond-per-contract instance, not per-identity map.
 
 ## Deploy (Soroban CLI)
 

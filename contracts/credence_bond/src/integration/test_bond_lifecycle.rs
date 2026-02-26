@@ -24,7 +24,7 @@ fn setup(
 #[test]
 fn test_lifecycle_create_then_withdraw() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, _admin, identity) = setup(&e);
     let amount = 1000_i128;
     let duration = 86400_u64;
     client.create_bond(&identity, &amount, &duration, &false, &0_u64);
@@ -45,7 +45,7 @@ fn test_lifecycle_create_then_withdraw() {
 #[test]
 fn test_lifecycle_create_topup_withdraw() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, _admin, identity) = setup(&e);
     let duration = 86400_u64;
     client.create_bond(&identity, &500_i128, &duration, &false, &0_u64);
     let after_topup = client.top_up(&300_i128);
@@ -126,7 +126,7 @@ fn test_lifecycle_state_consistency() {
 #[test]
 fn test_lifecycle_extend_duration() {
     let e = Env::default();
-    let (client, admin, identity) = setup(&e);
+    let (client, _admin, identity) = setup(&e);
     client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     let before = client.get_identity_state();
     client.extend_duration(&86400_u64);
