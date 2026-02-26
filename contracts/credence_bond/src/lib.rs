@@ -74,6 +74,9 @@ pub struct IdentityBond {
     pub notice_period: u64,
 }
 
+// Re-export batch types
+pub use batch::{BatchBondParams, BatchBondResult};
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Attestation {
@@ -1385,6 +1388,8 @@ impl CredenceBond {
         batch::get_batch_total_amount(&params_list)
     }
 
+    // ==================== Protocol Parameters (Governance-Controlled) ====================
+
     // ==================== Reentrancy Test Functions ====================
     /// Check if the reentrancy lock is currently held.
     pub fn is_locked(e: Env) -> bool {
@@ -1800,6 +1805,9 @@ mod test_attestation;
 
 #[cfg(test)]
 mod test_batch;
+
+#[cfg(test)]
+mod test_attestation_types;
 
 #[cfg(test)]
 mod test_validation;
