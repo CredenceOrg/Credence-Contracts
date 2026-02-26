@@ -1,7 +1,5 @@
 //! Tests for overflow-safe arithmetic helpers.
 
-#![cfg(test)]
-
 use crate::math;
 
 #[test]

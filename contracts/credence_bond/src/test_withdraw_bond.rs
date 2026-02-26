@@ -2,8 +2,6 @@
 //! Covers: lock-up enforcement, cooldown (notice period), partial withdrawals,
 //! insufficient balance, slashing interaction, and edge cases.
 
-#![cfg(test)]
-
 use crate::test_helpers;
 use crate::CredenceBondClient;
 use soroban_sdk::testutils::Ledger;

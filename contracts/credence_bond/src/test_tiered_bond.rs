@@ -1,7 +1,5 @@
 //! Tests for Tiered Bond System: Bronze, Silver, Gold, Platinum by bonded amount.
 
-#![cfg(test)]
-
 use crate::test_helpers;
 use crate::tiered_bond::{get_tier_for_amount, TIER_BRONZE_MAX, TIER_GOLD_MAX, TIER_SILVER_MAX};
 use crate::{BondTier, CredenceBondClient};

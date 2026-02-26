@@ -1,7 +1,5 @@
 //! Tests for Rolling Bond: auto-renewal, withdrawal request with notice period, renewal events.
 
-#![cfg(test)]
-
 use crate::test_helpers;
 use crate::CredenceBondClient;
 use soroban_sdk::testutils::Ledger;

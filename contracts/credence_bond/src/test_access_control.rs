@@ -2,8 +2,6 @@
 //! Covers admin/verifier/identity-owner checks, role composition, unauthorized paths,
 //! and access denial event emission.
 
-#![cfg(test)]
-
 extern crate std;
 
 use crate::access_control::{
@@ -63,7 +61,7 @@ impl AccessControlHarness {
 }
 
 fn setup(e: &Env) -> (AccessControlHarnessClient<'_>, Address) {
-    let contract_id = e.register_contract(None, AccessControlHarness);
+    let contract_id = e.register(AccessControlHarness, ());
     let client = AccessControlHarnessClient::new(e, &contract_id);
     let admin = Address::generate(e);
     client.initialize(&admin);
@@ -114,7 +112,7 @@ fn test_require_admin_unauthorized() {
 #[should_panic(expected = "not initialized")]
 fn test_require_admin_not_initialized() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, AccessControlHarness);
+    let contract_id = e.register(AccessControlHarness, ());
     let client = AccessControlHarnessClient::new(&e, &contract_id);
 
     let caller = Address::generate(&e);
@@ -251,7 +249,7 @@ fn test_multiple_verifiers() {
 #[test]
 fn test_access_denied_event_for_not_admin() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, AccessControlHarness);
+    let contract_id = e.register(AccessControlHarness, ());
     let client = AccessControlHarnessClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     let unauthorized = Address::generate(&e);
@@ -270,7 +268,7 @@ fn test_access_denied_event_for_not_admin() {
 #[test]
 fn test_access_denied_event_for_not_verifier() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, AccessControlHarness);
+    let contract_id = e.register(AccessControlHarness, ());
     let client = AccessControlHarnessClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     let unauthorized = Address::generate(&e);
@@ -289,7 +287,7 @@ fn test_access_denied_event_for_not_verifier() {
 #[test]
 fn test_access_denied_event_for_not_identity_owner() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, AccessControlHarness);
+    let contract_id = e.register(AccessControlHarness, ());
     let client = AccessControlHarnessClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     let unauthorized = Address::generate(&e);
@@ -309,7 +307,7 @@ fn test_access_denied_event_for_not_identity_owner() {
 #[test]
 fn test_access_denied_event_for_admin_or_verifier() {
     let e = Env::default();
-    let contract_id = e.register_contract(None, AccessControlHarness);
+    let contract_id = e.register(AccessControlHarness, ());
     let client = AccessControlHarnessClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     let unauthorized = Address::generate(&e);

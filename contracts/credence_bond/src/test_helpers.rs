@@ -1,8 +1,6 @@
 //! Shared test helpers for credence_bond tests.
 //! Provides token setup for tests that need create_bond, top_up, withdraw, etc.
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
@@ -34,7 +32,7 @@ pub fn setup_with_token_mint(
     mint_amount: i128,
 ) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {
     e.mock_all_auths();
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     let identity = Address::generate(e);
