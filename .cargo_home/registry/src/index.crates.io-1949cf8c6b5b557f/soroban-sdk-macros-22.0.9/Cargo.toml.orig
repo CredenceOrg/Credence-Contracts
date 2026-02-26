@@ -1,0 +1,34 @@
+[package]
+name = "soroban-sdk-macros"
+description = "Soroban SDK macros."
+homepage = "https://github.com/stellar/rs-soroban-sdk"
+repository = "https://github.com/stellar/rs-soroban-sdk"
+authors = ["Stellar Development Foundation <info@stellar.org>"]
+readme = "../README.md"
+license = "Apache-2.0"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+
+[lib]
+proc-macro = true
+doctest = false
+
+[build-dependencies]
+rustc_version = "0.4.0"
+crate-git-revision = "0.0.6"
+
+[dependencies]
+soroban-spec = { workspace = true }
+soroban-spec-rust = { workspace = true }
+soroban-env-common = { workspace = true }
+stellar-xdr = { workspace = true, features = ["curr", "std"] }
+syn = {version="2.0.77",features=["full"]}
+quote = "1.0"
+proc-macro2 = "1.0"
+itertools = "0.10.5"
+darling = "0.20.0"
+sha2 = "0.10.7"
+
+[features]
+testutils = []
