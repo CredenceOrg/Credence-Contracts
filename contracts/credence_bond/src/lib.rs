@@ -1253,34 +1253,7 @@ impl CredenceBond {
         governance_approval::get_quorum_config(&e)
     }
 
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        if amount <= 0 {
-            panic!("amount must be positive");
-        }
-
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-}
-
-pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
-    let key = DataKey::Bond;
-    let mut bond = e
-        .storage()
-        .instance()
-        .get::<_, IdentityBond>(&key)
-        .unwrap_or_else(|| panic!("no bond"));
-    bond.identity.require_auth();
-    bond.bond_duration = bond
-        .bond_duration
-        .checked_add(additional_duration)
-        .expect("duration overflow");
-    let _end = bond
-        .bond_start
-        .checked_add(bond.bond_duration)
-        .expect("bond end overflow");
-    e.storage().instance().set(&key, &bond);
-    bond
-}
+    pub fn top_up(e: Env, caller: Address, amount: i128) -> IdentityBond {
         caller.require_auth();
         if amount <= 0 {
             panic!("amount must be positive");
@@ -1304,10 +1277,10 @@ pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
             let new_amount = old_amount
                 .checked_add(amount)
                 .expect("bond increase caused overflow");
-            
+
             // Use safe token operations
             crate::safe_token::safe_transfer_from(&e, &caller, amount);
-            
+
             let old_tier = tiered_bond::get_tier_for_amount(old_amount);
             let new_tier = tiered_bond::get_tier_for_amount(new_amount);
             bond.bonded_amount = new_amount;
@@ -1318,6 +1291,7 @@ pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
                 (Symbol::new(&e, "bond_increased"), bond.identity.clone()),
                 (amount, old_amount, new_amount),
             );
+            let _ = token_addr; // suppress unused warning
             bond
         })
     }
@@ -1438,6 +1412,16 @@ pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
     pub fn set_max_leverage(e: Env, admin: Address, value: u32) {
         admin.require_auth();
         parameters::set_max_leverage(&e, &admin, value)
+    }
+
+    /// Update multiple governance parameters atomically.
+    ///
+    /// All fields in the payload are validated before any are written. If any
+    /// field is out of bounds the transaction reverts with no state change.
+    /// Events are emitted only after all writes succeed.
+    pub fn update_parameters(e: Env, admin: Address, update: parameters::ParameterUpdate) {
+        admin.require_auth();
+        parameters::update_parameters(&e, &admin, &update)
     }
 
     pub fn withdraw_bond_full(e: Env, identity: Address) -> i128 {

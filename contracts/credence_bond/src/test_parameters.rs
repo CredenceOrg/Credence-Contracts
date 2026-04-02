@@ -861,3 +861,243 @@ fn test_no_duplicate_events_on_parameter_update() {
     // Exactly one event emitted per setter call
     assert_eq!(events_after - events_before, 1, "expected exactly 1 event per setter");
 }
+
+// ============================================================================
+// Category 11: Atomic Batch Updates (update_parameters)
+// ============================================================================
+
+fn all_none() -> ParameterUpdate {
+    ParameterUpdate {
+        protocol_fee_bps: None,
+        attestation_fee_bps: None,
+        withdrawal_cooldown_secs: None,
+        slash_cooldown_secs: None,
+        bronze_threshold: None,
+        silver_threshold: None,
+        gold_threshold: None,
+        platinum_threshold: None,
+        max_leverage: None,
+    }
+}
+
+#[test]
+fn test_update_parameters_all_valid_applies_all() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(100),
+        attestation_fee_bps: Some(50),
+        withdrawal_cooldown_secs: Some(86_400),
+        slash_cooldown_secs: Some(43_200),
+        bronze_threshold: Some(200_000_000),
+        silver_threshold: Some(2_000_000_000),
+        gold_threshold: Some(20_000_000_000),
+        platinum_threshold: Some(200_000_000_000),
+        max_leverage: Some(500),
+    };
+
+    client.update_parameters(&admin, &update);
+
+    assert_eq!(client.get_protocol_fee_bps(), 100);
+    assert_eq!(client.get_attestation_fee_bps(), 50);
+    assert_eq!(client.get_withdrawal_cooldown_secs(), 86_400);
+    assert_eq!(client.get_slash_cooldown_secs(), 43_200);
+    assert_eq!(client.get_bronze_threshold(), 200_000_000);
+    assert_eq!(client.get_silver_threshold(), 2_000_000_000);
+    assert_eq!(client.get_gold_threshold(), 20_000_000_000);
+    assert_eq!(client.get_platinum_threshold(), 200_000_000_000);
+    assert_eq!(client.get_max_leverage(), 500);
+}
+
+#[test]
+fn test_update_parameters_all_none_is_noop() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Record state before
+    let fee_before = client.get_protocol_fee_bps();
+    let cooldown_before = client.get_withdrawal_cooldown_secs();
+
+    client.update_parameters(&admin, &all_none());
+
+    // Nothing should change
+    assert_eq!(client.get_protocol_fee_bps(), fee_before);
+    assert_eq!(client.get_withdrawal_cooldown_secs(), cooldown_before);
+}
+
+#[test]
+fn test_update_parameters_partial_only_changes_some_fields() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Set a known baseline
+    client.set_protocol_fee_bps(&admin, &200);
+    client.set_attestation_fee_bps(&admin, &30);
+
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(300),
+        ..all_none()
+    };
+    client.update_parameters(&admin, &update);
+
+    assert_eq!(client.get_protocol_fee_bps(), 300, "protocol_fee_bps should be updated");
+    assert_eq!(client.get_attestation_fee_bps(), 30, "attestation_fee_bps must be untouched");
+}
+
+#[test]
+#[should_panic(expected = "protocol_fee_bps out of bounds")]
+fn test_update_parameters_invalid_first_field_reverts_all() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Set a known baseline state
+    client.set_attestation_fee_bps(&admin, &20);
+
+    let update = ParameterUpdate {
+        // Invalid: above MAX_PROTOCOL_FEE_BPS (1000)
+        protocol_fee_bps: Some(MAX_PROTOCOL_FEE_BPS + 1),
+        // Valid field after invalid one
+        attestation_fee_bps: Some(40),
+        ..all_none()
+    };
+
+    // Must panic before any write, so attestation_fee_bps stays at 20
+    client.update_parameters(&admin, &update);
+}
+
+#[test]
+#[should_panic(expected = "silver_threshold out of bounds")]
+fn test_update_parameters_invalid_mid_field_reverts_all() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Pre-set bronze to a known value
+    client.set_bronze_threshold(&admin, &100_000_000);
+
+    let update = ParameterUpdate {
+        // Valid field first
+        protocol_fee_bps: Some(100),
+        // Valid field
+        bronze_threshold: Some(200_000_000),
+        // Invalid: below MIN_SILVER_THRESHOLD (100_000_000)
+        silver_threshold: Some(MIN_SILVER_THRESHOLD - 1),
+        ..all_none()
+    };
+
+    // Must panic before writing protocol_fee_bps or bronze_threshold
+    client.update_parameters(&admin, &update);
+}
+
+/// Verify that a call panic from `test_update_parameters_invalid_mid_field_reverts_all`
+/// leaves the state at its pre-call values (no partial write).
+#[test]
+fn test_update_parameters_no_partial_state_on_invalid_mid_field() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Establish baseline
+    client.set_protocol_fee_bps(&admin, &75);
+    client.set_bronze_threshold(&admin, &100_000_000);
+
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(200),           // valid
+        bronze_threshold: Some(300_000_000),    // valid
+        silver_threshold: Some(MIN_SILVER_THRESHOLD - 1), // invalid
+        ..all_none()
+    };
+
+    // Capture result — should panic
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.update_parameters(&admin, &update);
+    }));
+    assert!(result.is_err(), "expected panic on out-of-bounds silver_threshold");
+
+    // State must be unchanged — validation runs before any write
+    assert_eq!(client.get_protocol_fee_bps(), 75, "protocol_fee_bps must not be written");
+    assert_eq!(client.get_bronze_threshold(), 100_000_000, "bronze_threshold must not be written");
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn test_update_parameters_non_admin_rejected() {
+    let e = Env::default();
+    let (client, _admin) = setup(&e);
+
+    let attacker = Address::generate(&e);
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(100),
+        ..all_none()
+    };
+
+    client.update_parameters(&attacker, &update);
+}
+
+#[test]
+fn test_update_parameters_emits_one_event_per_changed_field() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    let events_before = e.events().all().len();
+
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(100),
+        attestation_fee_bps: Some(20),
+        withdrawal_cooldown_secs: Some(3600),
+        ..all_none()
+    };
+    client.update_parameters(&admin, &update);
+
+    let events_after = e.events().all().len();
+    assert_eq!(
+        events_after - events_before,
+        3,
+        "expected exactly one event per written field"
+    );
+}
+
+#[test]
+fn test_update_parameters_emits_correct_event_payload() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Establish old value
+    client.set_protocol_fee_bps(&admin, &50);
+
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(150),
+        ..all_none()
+    };
+    client.update_parameters(&admin, &update);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        if let soroban_sdk::Val::Symbol(s) = topics.get(0).unwrap() {
+            s == soroban_sdk::Symbol::new(&e, "parameter_changed")
+        } else {
+            false
+        }
+    });
+    assert!(last.is_some(), "parameter_changed event not emitted");
+    let (_, _, data) = last.unwrap();
+    let (_, old_val, new_val, _, _): (soroban_sdk::String, i128, i128, Address, u64) =
+        data.into_val(&e);
+    assert_eq!(old_val, 50i128, "old_value mismatch");
+    assert_eq!(new_val, 150i128, "new_value mismatch");
+}
+
+#[test]
+#[should_panic(expected = "max_leverage out of bounds")]
+fn test_update_parameters_invalid_last_field_reverts_all() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    let update = ParameterUpdate {
+        protocol_fee_bps: Some(100), // valid
+        max_leverage: Some(MAX_MAX_LEVERAGE + 1), // invalid
+        ..all_none()
+    };
+
+    // Must panic due to max_leverage; protocol_fee_bps must not be written
+    client.update_parameters(&admin, &update);
+}

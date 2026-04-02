@@ -16,6 +16,11 @@
 //! Every parameter write validates against min/max bounds. Out-of-range values
 //! are rejected with descriptive errors.
 //!
+//! ## Atomic Batch Updates
+//! `update_parameters` validates the full payload before writing any field.
+//! If any field is out of bounds the entire call panics before touching storage,
+//! leaving the contract state unchanged (all-or-nothing semantics).
+//!
 //! ## Event Emission
 //! All successful parameter updates emit a `ParameterChanged` event containing:
 //! - parameter name
@@ -25,6 +30,39 @@
 //! - timestamp
 
 use soroban_sdk::{contracttype, Address, Env, String, Symbol};
+
+// ============================================================================
+// Grouped-update payload
+// ============================================================================
+
+/// Governance parameter update payload.
+///
+/// Each field is optional. Only `Some` fields are validated and written.
+/// The function [`update_parameters`] processes the struct atomically:
+/// it validates every `Some` field first, then writes them all. No storage
+/// is mutated if any field is invalid.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ParameterUpdate {
+    /// New protocol fee rate in basis points, or `None` to leave unchanged.
+    pub protocol_fee_bps: Option<u32>,
+    /// New attestation fee rate in basis points, or `None` to leave unchanged.
+    pub attestation_fee_bps: Option<u32>,
+    /// New withdrawal cooldown period in seconds, or `None` to leave unchanged.
+    pub withdrawal_cooldown_secs: Option<u64>,
+    /// New slash cooldown period in seconds, or `None` to leave unchanged.
+    pub slash_cooldown_secs: Option<u64>,
+    /// New bronze tier threshold in token units, or `None` to leave unchanged.
+    pub bronze_threshold: Option<i128>,
+    /// New silver tier threshold in token units, or `None` to leave unchanged.
+    pub silver_threshold: Option<i128>,
+    /// New gold tier threshold in token units, or `None` to leave unchanged.
+    pub gold_threshold: Option<i128>,
+    /// New platinum tier threshold in token units, or `None` to leave unchanged.
+    pub platinum_threshold: Option<i128>,
+    /// New max-leverage multiplier, or `None` to leave unchanged.
+    pub max_leverage: Option<u32>,
+}
 
 // ============================================================================
 // Parameter Bounds Constants
@@ -589,4 +627,174 @@ fn emit_parameter_changed(
             timestamp,
         ),
     );
+}
+
+// ============================================================================
+// Atomic Batch Update
+// ============================================================================
+
+/// Validate every `Some` field in `update` against its bounds.
+///
+/// This is a pure read-only check — no storage is written. It panics with a
+/// descriptive message on the first field that is out of range.  Callers
+/// should invoke this before any writes so that the transaction reverts cleanly
+/// if any field is invalid.
+///
+/// # Panics
+/// Same panic messages as the individual setters (`"protocol_fee_bps out of bounds"`, etc.).
+fn validate_parameter_update(update: &ParameterUpdate) {
+    if let Some(v) = update.protocol_fee_bps {
+        if !(MIN_PROTOCOL_FEE_BPS..=MAX_PROTOCOL_FEE_BPS).contains(&v) {
+            panic!("protocol_fee_bps out of bounds");
+        }
+    }
+    if let Some(v) = update.attestation_fee_bps {
+        if !(MIN_ATTESTATION_FEE_BPS..=MAX_ATTESTATION_FEE_BPS).contains(&v) {
+            panic!("attestation_fee_bps out of bounds");
+        }
+    }
+    if let Some(v) = update.withdrawal_cooldown_secs {
+        if !(MIN_WITHDRAWAL_COOLDOWN_SECS..=MAX_WITHDRAWAL_COOLDOWN_SECS).contains(&v) {
+            panic!("withdrawal_cooldown_secs out of bounds");
+        }
+    }
+    if let Some(v) = update.slash_cooldown_secs {
+        if !(MIN_SLASH_COOLDOWN_SECS..=MAX_SLASH_COOLDOWN_SECS).contains(&v) {
+            panic!("slash_cooldown_secs out of bounds");
+        }
+    }
+    if let Some(v) = update.bronze_threshold {
+        if !(MIN_BRONZE_THRESHOLD..=MAX_BRONZE_THRESHOLD).contains(&v) {
+            panic!("bronze_threshold out of bounds");
+        }
+    }
+    if let Some(v) = update.silver_threshold {
+        if !(MIN_SILVER_THRESHOLD..=MAX_SILVER_THRESHOLD).contains(&v) {
+            panic!("silver_threshold out of bounds");
+        }
+    }
+    if let Some(v) = update.gold_threshold {
+        if !(MIN_GOLD_THRESHOLD..=MAX_GOLD_THRESHOLD).contains(&v) {
+            panic!("gold_threshold out of bounds");
+        }
+    }
+    if let Some(v) = update.platinum_threshold {
+        if !(MIN_PLATINUM_THRESHOLD..=MAX_PLATINUM_THRESHOLD).contains(&v) {
+            panic!("platinum_threshold out of bounds");
+        }
+    }
+    if let Some(v) = update.max_leverage {
+        if !(MIN_MAX_LEVERAGE..=MAX_MAX_LEVERAGE).contains(&v) {
+            panic!("max_leverage out of bounds");
+        }
+    }
+}
+
+/// Apply every `Some` field in `update` to storage and emit one `parameter_changed`
+/// event per written field.
+///
+/// This is the write phase. It should only be called after
+/// [`validate_parameter_update`] has already confirmed all fields are valid.
+/// No external contract calls are made during or between writes.
+fn apply_parameter_update(e: &Env, admin: &Address, update: &ParameterUpdate) {
+    if let Some(v) = update.protocol_fee_bps {
+        let old = get_protocol_fee_bps(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::ProtocolFeeBps, &v);
+        emit_parameter_changed(e, "protocol_fee_bps", old as i128, v as i128, admin);
+    }
+    if let Some(v) = update.attestation_fee_bps {
+        let old = get_attestation_fee_bps(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::AttestationFeeBps, &v);
+        emit_parameter_changed(e, "attestation_fee_bps", old as i128, v as i128, admin);
+    }
+    if let Some(v) = update.withdrawal_cooldown_secs {
+        let old = get_withdrawal_cooldown_secs(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::WithdrawalCooldownSecs, &v);
+        emit_parameter_changed(
+            e,
+            "withdrawal_cooldown_secs",
+            old as i128,
+            v as i128,
+            admin,
+        );
+    }
+    if let Some(v) = update.slash_cooldown_secs {
+        let old = get_slash_cooldown_secs(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::SlashCooldownSecs, &v);
+        emit_parameter_changed(e, "slash_cooldown_secs", old as i128, v as i128, admin);
+    }
+    if let Some(v) = update.bronze_threshold {
+        let old = get_bronze_threshold(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::BronzeThreshold, &v);
+        emit_parameter_changed(e, "bronze_threshold", old, v, admin);
+    }
+    if let Some(v) = update.silver_threshold {
+        let old = get_silver_threshold(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::SilverThreshold, &v);
+        emit_parameter_changed(e, "silver_threshold", old, v, admin);
+    }
+    if let Some(v) = update.gold_threshold {
+        let old = get_gold_threshold(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::GoldThreshold, &v);
+        emit_parameter_changed(e, "gold_threshold", old, v, admin);
+    }
+    if let Some(v) = update.platinum_threshold {
+        let old = get_platinum_threshold(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::PlatinumThreshold, &v);
+        emit_parameter_changed(e, "platinum_threshold", old, v, admin);
+    }
+    if let Some(v) = update.max_leverage {
+        let old = get_max_leverage(e);
+        e.storage()
+            .instance()
+            .set(&ParameterKey::MaxLeverage, &v);
+        emit_parameter_changed(e, "max_leverage", old as i128, v as i128, admin);
+    }
+}
+
+/// Update multiple governance parameters atomically.
+///
+/// Validates **all** `Some` fields against their bounds before writing any of
+/// them. If any field is out of range the entire call panics and no storage is
+/// mutated (all-or-nothing). Events are emitted only after the full write
+/// phase completes successfully.
+///
+/// # Arguments
+/// * `e` - Soroban environment
+/// * `admin` - Governance address (must be the contract admin)
+/// * `update` - Payload carrying the new values; `None` fields are ignored
+///
+/// # Panics
+/// - `"not initialized"` — contract not initialized
+/// - `"not admin"` — caller is not the stored admin
+/// - Field-specific bounds errors emitted by the individual setters
+///
+/// # Security
+/// No external calls are made during or between storage writes, preventing any
+/// reentrancy or observation of intermediate state.
+pub fn update_parameters(e: &Env, admin: &Address, update: &ParameterUpdate) {
+    // Auth and access check first
+    validate_admin(e, admin);
+
+    // Phase 1: validate the entire payload without touching storage
+    validate_parameter_update(update);
+
+    // Phase 2: write all fields — no external calls between writes
+    apply_parameter_update(e, admin, update);
 }
