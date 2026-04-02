@@ -287,6 +287,10 @@ pub enum ContractError {
     /// Contracts: treasury
     FlashLoanRepaymentFailed = 607,
 
+    /// Rescue amount exceeds the balance available for rescue.
+    /// Contracts: treasury
+    ExceedsRescueableAmount = 608,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -365,7 +369,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalAlreadyExecuted
             | ContractError::InsufficientApprovals
             | ContractError::InvalidFlashLoanCallback
-            | ContractError::FlashLoanRepaymentFailed => ErrorCategory::Treasury,
+            | ContractError::FlashLoanRepaymentFailed
+            | ContractError::ExceedsRescueableAmount => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
         }
@@ -447,6 +452,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::FlashLoanRepaymentFailed => {
                 "Flashloan principal plus fee was not fully repaid"
+            }
+            ContractError::ExceedsRescueableAmount => {
+                "Rescue amount exceeds the balance available for rescue"
             }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::Underflow => "Integer underflow in checked arithmetic",

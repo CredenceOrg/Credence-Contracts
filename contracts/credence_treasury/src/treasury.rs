@@ -5,7 +5,7 @@
 
 use credence_errors::ContractError;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, token, Address, Bytes, Env, Symbol};
 
 use crate::pausable;
 use crate::receiver::{FlashLoanReceiverClient, FLASH_LOAN_SUCCESS};
@@ -86,6 +86,12 @@ pub enum DataKey {
     ApprovalCount(u64),
     /// Minimum liquidity that must remain in the treasury after a withdrawal.
     MinLiquidity,
+    /// Token address used for flash loans.
+    Token,
+    /// Flash loan fee in basis points (e.g. 50 = 0.5%).
+    FlashLoanFee,
+    /// Reentrancy guard for flash loans.
+    FlashLoanLock,
 }
 
 #[contract]
@@ -749,7 +755,7 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         if stored_admin != admin {
-            panic_with_error!(&e, ContractError::Unauthorized);
+            panic_with_error!(&e, ContractError::NotAdmin);
         }
 
         // Zero-address check - skip for now as it's causing test issues
@@ -788,6 +794,147 @@ impl CredenceTreasury {
         e.events().publish(
             (Symbol::new(&e, "native_rescued"),),
             (to, amount, admin),
+        );
+    }
+
+    /// Set the token address used for flash loans. Only admin can call.
+    pub fn set_token(e: Env, token: Address) {
+        pausable::require_not_paused(&e);
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::Token, &token);
+    }
+
+    /// Set the flash loan fee in basis points (e.g. 50 = 0.5%). Only admin can call.
+    pub fn set_flash_loan_fee(e: Env, fee_bps: i128) {
+        pausable::require_not_paused(&e);
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::FlashLoanFee, &fee_bps);
+    }
+
+    /// Execute a flash loan. Transfers `amount` tokens to `receiver`, invokes the receiver
+    /// callback, then verifies full repayment (principal + fee) before returning.
+    ///
+    /// Reverts early with `AmountMustBePositive` before any external call when `amount <= 0`,
+    /// preventing callback overhead and event log spam from zero-amount requests.
+    ///
+    /// # Arguments
+    /// * `initiator` - Address initiating the flash loan (must authorize)
+    /// * `receiver`  - Contract implementing `FlashLoanReceiver`
+    /// * `amount`    - Token amount to loan; must be > 0
+    /// * `data`      - Arbitrary data forwarded to the receiver callback
+    ///
+    /// # Panics
+    /// * `AmountMustBePositive` if `amount <= 0`
+    /// * `ReentrancyDetected` if called re-entrantly
+    /// * `NotInitialized` if no token has been configured
+    /// * `InvalidFlashLoanCallback` if receiver returns wrong magic value
+    /// * `FlashLoanRepaymentFailed` if receiver does not repay principal + fee
+    pub fn flash_loan(
+        e: Env,
+        initiator: Address,
+        receiver: Address,
+        amount: i128,
+        data: Bytes,
+    ) {
+        pausable::require_not_paused(&e);
+        initiator.require_auth();
+
+        // Reject zero-amount requests before any external callback.
+        if amount <= 0 {
+            panic_with_error!(&e, ContractError::AmountMustBePositive);
+        }
+
+        // Reentrancy guard: reject re-entrant calls.
+        let locked: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::FlashLoanLock)
+            .unwrap_or(false);
+        if locked {
+            panic_with_error!(&e, ContractError::ReentrancyDetected);
+        }
+        e.storage().instance().set(&DataKey::FlashLoanLock, &true);
+
+        let token_addr: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+
+        let fee_bps: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::FlashLoanFee)
+            .unwrap_or(0);
+        let fee = (amount * fee_bps) / 10_000;
+
+        let treasury = e.current_contract_address();
+        let token_client = token::TokenClient::new(&e, &token_addr);
+
+        // Snapshot actual token balance before transfer to verify repayment afterward.
+        let balance_before = token_client.balance(&treasury);
+
+        // Transfer loan principal to receiver.
+        token_client.transfer(&treasury, &receiver, &amount);
+
+        // Invoke receiver callback.
+        let receiver_client = FlashLoanReceiverClient::new(&e, &receiver);
+        let magic = receiver_client.on_flash_loan(&initiator, &token_addr, &amount, &fee, &data);
+
+        // Verify receiver returned the expected magic value.
+        if magic != Symbol::new(&e, FLASH_LOAN_SUCCESS) {
+            panic_with_error!(&e, ContractError::InvalidFlashLoanCallback);
+        }
+
+        // Verify full repayment: treasury balance must be at least balance_before + fee.
+        let balance_after = token_client.balance(&treasury);
+        if balance_after < balance_before + fee {
+            panic_with_error!(&e, ContractError::FlashLoanRepaymentFailed);
+        }
+
+        // Credit fee to ProtocolFee accounting.
+        if fee > 0 {
+            let total: i128 = e
+                .storage()
+                .instance()
+                .get(&DataKey::TotalBalance)
+                .unwrap_or(0);
+            let new_total = total
+                .checked_add(fee)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+            let protocol_balance: i128 = e
+                .storage()
+                .instance()
+                .get(&DataKey::BalanceBySource(FundSource::ProtocolFee))
+                .unwrap_or(0);
+            let new_protocol = protocol_balance
+                .checked_add(fee)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+            e.storage()
+                .instance()
+                .set(&DataKey::TotalBalance, &new_total);
+            e.storage().instance().set(
+                &DataKey::BalanceBySource(FundSource::ProtocolFee),
+                &new_protocol,
+            );
+        }
+
+        // Release reentrancy lock.
+        e.storage().instance().set(&DataKey::FlashLoanLock, &false);
+
+        e.events().publish(
+            (Symbol::new(&e, "flash_loan"), initiator),
+            (receiver, token_addr, amount, fee),
         );
     }
 }
