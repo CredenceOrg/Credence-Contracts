@@ -18,7 +18,7 @@ Instead of pushing payments directly to users (which can fail due to contract fa
 
 The claims module provides cursor+limit pagination for safe enumeration of large claim sets without unbounded gas consumption.
 
-### Functions
+### Pagination Functions
 
 #### `get_pending_claims_paginated`
 
@@ -31,19 +31,11 @@ pub fn get_pending_claims_paginated(
 ) -> Vec<PendingClaim>
 ```
 
-Returns paginated pending claims using cursor-based pagination:
-- `cursor`: Starting claim_id (0 for first page, or last_seen_id from previous page)
-- `limit`: Maximum claims to return (capped at MAX_PAGINATION_LIMIT = 100)
+Retrieve paginated pending claims for a user:
+- `cursor`: Starting claim_id (0 for the first page).
+- `limit`: Maximum number of claims to return (capped at `MAX_PAGINATION_LIMIT`).
 
-**Deterministic ordering**: Claims are ordered by `claim_id`, ensuring consistent results across pages even when claims are added/removed.
-
-#### `get_pending_claims_count`
-
-```rust
-pub fn get_pending_claims_count(e: &Env, user: &Address) -> u32
-```
-
-Returns the count of unprocessed pending claims for a user.
+**Deterministic ordering**: Claims are ordered by `claim_id`.
 
 #### `process_claims_paginated`
 
@@ -58,25 +50,31 @@ pub fn process_claims_paginated(
 ```
 
 Process claims with offset-based pagination:
-- `offset`: Number of claims to skip
-- `limit`: Maximum claims to process (capped at MAX_BATCH_CLAIMS = 50)
-- `claim_types`: Optional filter for specific claim types
+- `offset`: Number of claims to skip.
+- `limit`: Maximum claims to process (capped at `MAX_BATCH_CLAIMS`).
+- `claim_types`: Optional filter for specific claim types.
 
-#### `get_claim_by_id`
+### Examples
 
-```rust
-pub fn get_claim_by_id(e: &Env, claim_id: u64) -> PendingClaim
-```
-
-Retrieve a specific claim by ID.
-
-#### `process_claim_by_id`
+#### Retrieve Paginated Claims
 
 ```rust
-pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResult
+let claims = get_pending_claims_paginated(&env, &user, 0, 10);
+assert_eq!(claims.len(), 10);
 ```
 
-Process a single specific claim by ID.
+#### Process Paginated Claims
+
+```rust
+let result = process_claims_paginated(
+    &env,
+    &user,
+    0,
+    20,
+    Vec::from_slice(&env, &[ClaimType::VerifierReward]),
+);
+assert_eq!(result.processed_count, 20);
+```
 
 ## Constants
 

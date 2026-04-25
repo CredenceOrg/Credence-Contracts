@@ -16,6 +16,9 @@ use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 /// Maximum number of claims that can be processed in a single batch
 const MAX_BATCH_CLAIMS: u32 = 50;
 
+/// Maximum limit for pagination
+const MAX_PAGINATION_LIMIT: u32 = 100;
+
 /// Default claim expiry period (30 days in seconds)
 const DEFAULT_CLAIM_EXPIRY: u64 = 30 * 24 * 60 * 60;
 
@@ -215,6 +218,48 @@ pub fn get_claimable_amount(e: &Env, user: &Address) -> i128 {
         .unwrap_or(0)
 }
 
+/// Retrieve paginated pending claims for a user
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address of the user
+/// * `cursor` - Starting claim_id (0 for the first page)
+/// * `limit` - Maximum number of claims to return (capped at MAX_PAGINATION_LIMIT)
+///
+/// # Returns
+/// A vector of pending claims, ordered by claim_id.
+pub fn get_pending_claims_paginated(
+    e: &Env,
+    user: &Address,
+    cursor: u64,
+    limit: u32,
+) -> Vec<PendingClaim> {
+    let limit = limit.min(MAX_PAGINATION_LIMIT);
+
+    let claims: Vec<PendingClaim> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::PendingClaims(user.clone()))
+        .unwrap_or(Vec::new(e));
+
+    let mut result = Vec::new(e);
+    let mut count = 0u32;
+
+    for i in 0..claims.len() {
+        if count >= limit {
+            break;
+        }
+        if let Some(claim) = claims.get(i) {
+            if claim.claim_id >= cursor {
+                result.push_back(claim);
+                count += 1;
+            }
+        }
+    }
+
+    result
+}
+
 /// Process claims for a user (pull-payment pattern)
 ///
 /// # Arguments
@@ -356,6 +401,89 @@ pub fn process_claims(
     events::emit_claims_processed(e, user, &result, &processed_claims);
 
     result
+}
+
+/// Process paginated claims for a user
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address of the user
+/// * `offset` - Number of claims to skip
+/// * `limit` - Maximum number of claims to process
+/// * `claim_types` - Optional filter for specific claim types
+///
+/// # Returns
+/// A result containing the number of claims processed and the total amount claimed.
+pub fn process_claims_paginated(
+    e: &Env,
+    user: &Address,
+    offset: u32,
+    limit: u32,
+    claim_types: Vec<ClaimType>,
+) -> ClaimResult {
+    let limit = limit.min(MAX_BATCH_CLAIMS);
+
+    let mut claims: Vec<PendingClaim> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::PendingClaims(user.clone()))
+        .unwrap_or(Vec::new(e));
+
+    let mut processed_count = 0u32;
+    let mut total_amount = 0i128;
+    let mut processed_types = Vec::new(e);
+    let mut remaining_claims = Vec::new(e);
+    let mut skipped = 0u32;
+
+    for i in 0..claims.len() {
+        if let Some(claim) = claims.get(i) {
+            // Skip until we reach offset
+            if skipped < offset {
+                remaining_claims.push_back(claim);
+                skipped += 1;
+                continue;
+            }
+
+            // Stop if we've processed limit claims
+            if processed_count >= limit {
+                remaining_claims.push_back(claim);
+                continue;
+            }
+
+            // Check if claim type matches filter
+            let type_matches = if claim_types.is_empty() {
+                true
+            } else {
+                let mut matches = false;
+                for j in 0..claim_types.len() {
+                    if claim_types.get(j).unwrap() == claim.claim_type {
+                        matches = true;
+                        break;
+                    }
+                }
+                matches
+            };
+            
+            if type_matches {
+                total_amount += claim.amount;
+                processed_types.push_back(claim.claim_type);
+                processed_count += 1;
+            } else {
+                remaining_claims.push_back(claim);
+            }
+        }
+    }
+
+    // Update storage with remaining claims
+    e.storage()
+        .persistent()
+        .set(&DataKey::PendingClaims(user.clone()), &remaining_claims);
+
+    ClaimResult {
+        processed_count,
+        total_amount,
+        claim_types: processed_types,
+    }
 }
 
 /// Clean up expired claims for a user (can be called by anyone for gas efficiency)

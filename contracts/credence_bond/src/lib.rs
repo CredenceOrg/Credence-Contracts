@@ -2162,6 +2162,8 @@ mod test_attestation_types;
 #[cfg(test)]
 mod test_batch;
 #[cfg(test)]
+mod test_claim_pagination;
+#[cfg(test)]
 mod test_cooldown;
 #[cfg(test)]
 mod test_create_bond;
