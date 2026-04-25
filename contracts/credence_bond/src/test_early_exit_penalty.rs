@@ -72,7 +72,7 @@ fn test_early_exit_emits_penalty_event() {
 }
 
 #[test]
-#[should_panic(expected = "use withdraw for post lock-up")]
+#[should_panic(expected = "Error(Contract, #204)")]
 fn test_early_exit_rejected_after_lock_up() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);

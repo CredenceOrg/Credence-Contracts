@@ -7,7 +7,9 @@
 #![cfg(test)]
 
 use super::parameters::DEFAULT_MAX_LEVERAGE;
-use super::validation::{validate_bond_amount, MAX_BOND_AMOUNT, MIN_BOND_AMOUNT};
+use super::validation::{
+    validate_bond_amount as validate_bond_amount_with_env, MAX_BOND_AMOUNT, MIN_BOND_AMOUNT,
+};
 use super::{CredenceBond, CredenceBondClient};
 use crate::test_helpers;
 use soroban_sdk::testutils::Address as _;
@@ -26,6 +28,11 @@ fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     (client, admin, identity)
 }
 
+fn validate_bond_amount(amount: i128) {
+    let e = Env::default();
+    validate_bond_amount_with_env(&e, amount);
+}
+
 // ============================================================================
 // UNIT TESTS FOR VALIDATION MODULE
 // ============================================================================
@@ -41,37 +48,37 @@ fn test_validate_bond_amount_valid() {
 }
 
 #[test]
-#[should_panic(expected = "bond amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_bond_amount_below_minimum() {
     validate_bond_amount(MIN_BOND_AMOUNT - 1);
 }
 
 #[test]
-#[should_panic(expected = "bond amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_bond_amount_zero() {
     validate_bond_amount(0);
 }
 
 #[test]
-#[should_panic(expected = "bond amount cannot be negative")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_bond_amount_negative() {
     validate_bond_amount(-1);
 }
 
 #[test]
-#[should_panic(expected = "bond amount cannot be negative")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_bond_amount_large_negative() {
     validate_bond_amount(-1000);
 }
 
 #[test]
-#[should_panic(expected = "bond amount exceeds maximum allowed")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_bond_amount_above_maximum() {
     validate_bond_amount(MAX_BOND_AMOUNT + 1);
 }
 
 #[test]
-#[should_panic(expected = "bond amount exceeds maximum allowed")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_bond_amount_max_i128() {
     validate_bond_amount(i128::MAX);
 }
@@ -98,7 +105,7 @@ fn test_create_bond_with_valid_amount() {
 }
 
 #[test]
-#[should_panic(expected = "bond amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_with_amount_below_minimum() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
@@ -107,7 +114,7 @@ fn test_create_bond_with_amount_below_minimum() {
 }
 
 #[test]
-#[should_panic(expected = "bond amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_with_zero_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
@@ -116,7 +123,7 @@ fn test_create_bond_with_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "bond amount cannot be negative")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_with_negative_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
@@ -125,7 +132,7 @@ fn test_create_bond_with_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "bond amount exceeds maximum allowed")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_with_amount_above_maximum() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
@@ -152,7 +159,7 @@ fn test_top_up_with_valid_amount() {
 }
 
 #[test]
-#[should_panic(expected = "top-up amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_top_up_with_zero_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
@@ -165,7 +172,7 @@ fn test_top_up_with_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "top-up amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_top_up_with_negative_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
@@ -201,15 +208,13 @@ fn test_boundary_values() {
 // ============================================================================
 
 #[test]
-#[should_panic(expected = "bond amount below minimum required: 999 (minimum: 1000)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_error_message_includes_amount_and_minimum() {
     validate_bond_amount(999); // MIN_BOND_AMOUNT - 1
 }
 
 #[test]
-#[should_panic(
-    expected = "bond amount exceeds maximum allowed: 100000000000001 (maximum: 100000000000000)"
-)]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_error_message_includes_amount_and_maximum() {
     validate_bond_amount(MAX_BOND_AMOUNT + 1);
 }
@@ -237,7 +242,7 @@ fn test_create_bond_then_top_up_valid_scenario() {
 }
 
 #[test]
-#[should_panic(expected = "top-up amount below minimum required")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_with_min_amount_then_invalid_top_up() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);

@@ -107,7 +107,7 @@ fn test_supply_cap_enforcement_below_cap() {
 }
 
 #[test]
-#[should_panic(expected = "supply cap exceeded")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_supply_cap_enforcement_above_cap() {
     let e = Env::default();
     let contract_id = e.register(CredenceBond, ());
@@ -244,7 +244,7 @@ fn test_create_bond_max_duration() {
 
 /// Test bond creation with duration that causes timestamp overflow
 #[test]
-#[should_panic(expected = "bond end timestamp would overflow")]
+#[should_panic(expected = "Error(Contract, #700)")]
 fn test_create_bond_duration_overflow() {
     let e = Env::default();
     e.ledger().with_mut(|li| {

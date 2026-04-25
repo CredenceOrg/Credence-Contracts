@@ -170,6 +170,19 @@ pub enum ContractError {
     /// Contracts: bond, dispute_resolution, fixed_duration_bond
     UnsupportedToken = 213,
 
+    /// Bond input/configuration is invalid for this operation.
+    /// Replaces: panic!("amount must be positive")
+    ///           panic!("amount must be non-negative")
+    ///           panic!("bond amount cannot be negative")
+    ///           panic!("bond amount below minimum required: ...")
+    ///           panic!("bond amount exceeds maximum allowed: ...")
+    ///           panic!("bond duration too short: ...")
+    ///           panic!("bond duration too long: ...")
+    ///           panic!("supply cap exceeded")
+    ///           panic!("bond token not configured")
+    /// Contracts: bond
+    InvalidBondInput = 214,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -338,7 +351,8 @@ impl ErrorExt for ContractError {
             | ContractError::EarlyExitConfigNotSet
             | ContractError::InvalidPenaltyBps
             | ContractError::LeverageExceeded
-            | ContractError::UnsupportedToken => ErrorCategory::Bond,
+            | ContractError::UnsupportedToken
+            | ContractError::InvalidBondInput => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -403,6 +417,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPenaltyBps => "Penalty bps must be in range 0-10000",
             ContractError::LeverageExceeded => "Resulting leverage exceeds the configured maximum",
             ContractError::UnsupportedToken => "Token transfer resulted in different amount than requested (fee-on-transfer tokens not supported)",
+            ContractError::InvalidBondInput => {
+                "Bond input/configuration is invalid for this operation"
+            }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",

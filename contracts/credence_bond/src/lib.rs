@@ -3,6 +3,7 @@
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Val, Vec,
 };
+use credence_errors::ContractError;
 
 pub mod access_control;
 mod batch;
@@ -490,8 +491,8 @@ impl CredenceBond {
 
     pub fn create_bond(e: Env, identity: Address, amount: i128, duration: u64) -> IdentityBond {
         pausable::require_not_paused(&e);
-        validation::validate_bond_amount(amount);
-        validation::validate_bond_duration(duration);
+        validation::validate_bond_amount(&e, amount);
+        validation::validate_bond_duration(&e, duration);
         leverage::validate_leverage(amount, parameters::get_max_leverage(&e));
         Self::create_bond_with_rolling(e, identity, amount, duration, false, 0)
     }
@@ -504,7 +505,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
-        validation::validate_bond_amount(amount);
+        validation::validate_bond_amount(&e, amount);
         if e.storage()
             .instance()
             .has(&parameters::ParameterKey::MaxLeverage)
@@ -513,13 +514,15 @@ impl CredenceBond {
         }
         // Validate duration early so callers that expect validation errors do not
         // require token configuration (token may be unset in unit tests).
-        validation::validate_bond_duration(duration);
+        validation::validate_bond_duration(&e, duration);
 
         pausable::require_not_paused(&e);
         identity.require_auth();
         token_integration::transfer_into_contract(&e, &identity, amount);
         let bond_start = e.ledger().timestamp();
-        let _end = bond_start.checked_add(duration).expect("bond end overflow");
+        let _end = bond_start
+            .checked_add(duration)
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Overflow));
         let (fee, net_amount) = fees::calculate_fee(&e, amount);
 
         // Enforce supply cap - check after calculating net_amount
@@ -528,9 +531,9 @@ impl CredenceBond {
             let current_total_supply = Self::get_total_supply(e.clone());
             let new_total_supply = current_total_supply
                 .checked_add(net_amount)
-                .expect("total supply overflow");
+                .unwrap_or_else(|| e.panic_with_error(ContractError::Overflow));
             if new_total_supply > supply_cap {
-                panic!("supply cap exceeded");
+                e.panic_with_error(ContractError::InvalidBondInput);
             }
         }
 
@@ -545,7 +548,7 @@ impl CredenceBond {
         let current_total_supply = Self::get_total_supply(e.clone());
         let new_total_supply = current_total_supply
             .checked_add(net_amount)
-            .expect("total supply overflow");
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Overflow));
         e.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_total_supply);
@@ -801,10 +804,10 @@ impl CredenceBond {
         notice_period_duration: u64,
     ) {
         // 1. Validate bond amount using existing validation
-        validation::validate_bond_amount(amount);
+        validation::validate_bond_amount(e, amount);
 
         // 2. Validate bond duration using existing validation
-        validation::validate_bond_duration(duration);
+        validation::validate_bond_duration(e, duration);
 
         // 3. Validate token configuration is complete
         let token_addr = e
@@ -812,7 +815,7 @@ impl CredenceBond {
             .instance()
             .get::<_, Address>(&DataKey::BondToken);
         if token_addr.is_none() {
-            panic!("bond token not configured - cannot activate bond");
+            e.panic_with_error(ContractError::InvalidBondInput);
         }
 
         // 4. Validate fee configuration is set
@@ -951,11 +954,11 @@ impl CredenceBond {
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| {
                 Self::release_lock(&e);
-                panic!("no bond")
+                e.panic_with_error(ContractError::BondNotFound)
             });
         if amount < 0 {
             Self::release_lock(&e);
-            panic!("amount must be non-negative");
+            e.panic_with_error(ContractError::InvalidBondInput);
         }
         bond.identity.require_auth();
         let now = e.ledger().timestamp();
@@ -963,7 +966,7 @@ impl CredenceBond {
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
                 Self::release_lock(&e);
-                panic!("cooldown window not elapsed; request_withdrawal first");
+                e.panic_with_error(ContractError::LockupNotExpired);
             }
             if !rolling_bond::can_withdraw_after_notice(
                 now,
@@ -971,26 +974,29 @@ impl CredenceBond {
                 bond.notice_period_duration,
             ) {
                 Self::release_lock(&e);
-                panic!("cooldown window not elapsed; request_withdrawal first");
+                e.panic_with_error(ContractError::LockupNotExpired);
             }
         } else if now < end {
             Self::release_lock(&e);
-            panic!("lock-up period not elapsed; use withdraw_early");
+            e.panic_with_error(ContractError::LockupNotExpired);
         }
         let available = bond
             .bonded_amount
             .checked_sub(bond.slashed_amount)
-            .expect("slashed exceeds bonded");
+            .unwrap_or_else(|| e.panic_with_error(ContractError::SlashExceedsBond));
         if amount > available {
             Self::release_lock(&e);
-            panic!("insufficient balance for withdrawal");
+            e.panic_with_error(ContractError::InsufficientBalance);
         }
         token_integration::transfer_from_contract(&e, &bond.identity, amount);
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount)
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Underflow));
         if bond.slashed_amount > bond.bonded_amount {
             Self::release_lock(&e);
-            panic!("slashed amount exceeds bonded amount");
+            e.panic_with_error(ContractError::SlashExceedsBond);
         }
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
@@ -999,7 +1005,7 @@ impl CredenceBond {
         let current_total_supply = Self::get_total_supply(e.clone());
         let new_total_supply = current_total_supply
             .checked_sub(amount)
-            .expect("total supply underflow");
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Underflow));
         e.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_total_supply);
@@ -1029,25 +1035,25 @@ impl CredenceBond {
             .storage()
             .instance()
             .get::<_, IdentityBond>(&key)
-            .unwrap_or_else(|| panic!("no bond"));
+            .unwrap_or_else(|| e.panic_with_error(ContractError::BondNotFound));
         if amount < 0 {
             Self::release_lock(&e);
-            panic!("amount must be non-negative");
+            e.panic_with_error(ContractError::InvalidBondInput);
         }
         bond.identity.require_auth();
         let now = e.ledger().timestamp();
         let end = crate::rolling_bond::period_end(bond.bond_start, bond.bond_duration);
         if now >= end {
             Self::release_lock(&e);
-            panic!("use withdraw for post lock-up");
+            e.panic_with_error(ContractError::LockupNotExpired);
         }
         let available = bond
             .bonded_amount
             .checked_sub(bond.slashed_amount)
-            .expect("slashed exceeds bonded");
+            .unwrap_or_else(|| e.panic_with_error(ContractError::SlashExceedsBond));
         if amount > available {
             Self::release_lock(&e);
-            panic!("insufficient balance for withdrawal");
+            e.panic_with_error(ContractError::InsufficientBalance);
         }
         let (treasury, penalty_bps) = early_exit_penalty::get_config(&e);
         let remaining = end.saturating_sub(now);
@@ -1060,7 +1066,9 @@ impl CredenceBond {
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
 
         // Calculate net amount and transfer to user
-        let net_amount = amount.checked_sub(penalty).expect("penalty exceeds amount");
+        let net_amount = amount
+            .checked_sub(penalty)
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Underflow));
         token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
 
         // Instead of transferring penalty to treasury immediately,
@@ -1087,10 +1095,13 @@ impl CredenceBond {
         }
 
         let old_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
-        bond.bonded_amount = bond.bonded_amount.checked_sub(amount).expect("underflow");
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount)
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Underflow));
         if bond.slashed_amount > bond.bonded_amount {
             Self::release_lock(&e);
-            panic!("slashed exceeds bonded");
+            e.panic_with_error(ContractError::SlashExceedsBond);
         }
         let new_tier = tiered_bond::get_tier_for_amount(bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
@@ -1099,7 +1110,7 @@ impl CredenceBond {
         let current_total_supply = Self::get_total_supply(e.clone());
         let new_total_supply = current_total_supply
             .checked_sub(amount)
-            .expect("total supply underflow");
+            .unwrap_or_else(|| e.panic_with_error(ContractError::Underflow));
         e.storage()
             .instance()
             .set(&DataKey::TotalSupply, &new_total_supply);
@@ -1304,7 +1315,7 @@ impl CredenceBond {
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
         pausable::require_not_paused(&e);
         if amount <= 0 {
-            panic!("amount must be positive");
+            e.panic_with_error(ContractError::InvalidBondInput);
         }
         Self::with_reentrancy_guard(&e, || {
             let key = DataKey::Bond;
@@ -1312,18 +1323,18 @@ impl CredenceBond {
                 .storage()
                 .instance()
                 .get::<_, IdentityBond>(&key)
-                .unwrap_or_else(|| panic!("no bond"));
+                .unwrap_or_else(|| e.panic_with_error(ContractError::BondNotFound));
             let caller = bond.identity.clone();
             caller.require_auth();
             let _token_addr: Address = e
                 .storage()
                 .instance()
                 .get(&DataKey::BondToken)
-                .unwrap_or_else(|| panic!("bond token not configured"));
+                .unwrap_or_else(|| e.panic_with_error(ContractError::InvalidBondInput));
             let old_amount = bond.bonded_amount;
             let new_amount = old_amount
                 .checked_add(amount)
-                .expect("bond increase caused overflow");
+                .unwrap_or_else(|| e.panic_with_error(ContractError::Overflow));
 
             // Use safe token operations
             crate::safe_token::safe_transfer_from(&e, &caller, amount);

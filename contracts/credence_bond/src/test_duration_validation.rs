@@ -4,7 +4,10 @@
 //! and clear error message verification on bond creation.
 
 use crate::test_helpers;
-use crate::validation::{self, MAX_BOND_DURATION, MIN_BOND_DURATION};
+use crate::validation::{
+    self, validate_bond_duration as validate_bond_duration_with_env, MAX_BOND_DURATION,
+    MIN_BOND_DURATION,
+};
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
@@ -17,6 +20,11 @@ fn setup(e: &Env) -> CredenceBondClient<'_> {
     client
 }
 
+fn validate_bond_duration(duration: u64) {
+    let e = Env::default();
+    validate_bond_duration_with_env(&e, duration);
+}
+
 // ────────────────────────────────────────────────────────────────
 // Unit tests for validate_bond_duration
 // ────────────────────────────────────────────────────────────────
@@ -24,67 +32,67 @@ fn setup(e: &Env) -> CredenceBondClient<'_> {
 /// Duration at the exact minimum boundary should pass.
 #[test]
 fn test_validate_duration_at_minimum() {
-    validation::validate_bond_duration(MIN_BOND_DURATION);
+    validate_bond_duration(MIN_BOND_DURATION);
 }
 
 /// Duration at the exact maximum boundary should pass.
 #[test]
 fn test_validate_duration_at_maximum() {
-    validation::validate_bond_duration(MAX_BOND_DURATION);
+    validate_bond_duration(MAX_BOND_DURATION);
 }
 
 /// Duration above minimum should pass.
 #[test]
 fn test_validate_duration_above_minimum() {
-    validation::validate_bond_duration(MIN_BOND_DURATION + 1);
+    validate_bond_duration(MIN_BOND_DURATION + 1);
 }
 
 /// Duration below maximum should pass.
 #[test]
 fn test_validate_duration_below_maximum() {
-    validation::validate_bond_duration(MAX_BOND_DURATION - 1);
+    validate_bond_duration(MAX_BOND_DURATION - 1);
 }
 
 /// Duration in the middle of the valid range should pass.
 #[test]
 fn test_validate_duration_mid_range() {
     // 30 days
-    validation::validate_bond_duration(2_592_000);
+    validate_bond_duration(2_592_000);
 }
 
 /// Zero duration must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_duration_zero() {
-    validation::validate_bond_duration(0);
+    validate_bond_duration(0);
 }
 
 /// Duration one second below minimum must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_duration_just_below_minimum() {
-    validation::validate_bond_duration(MIN_BOND_DURATION - 1);
+    validate_bond_duration(MIN_BOND_DURATION - 1);
 }
 
 /// Very small duration (1 second) must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_duration_one_second() {
-    validation::validate_bond_duration(1);
+    validate_bond_duration(1);
 }
 
 /// Duration one second above maximum must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too long: maximum is 31536000 seconds (365 days)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_duration_just_above_maximum() {
-    validation::validate_bond_duration(MAX_BOND_DURATION + 1);
+    validate_bond_duration(MAX_BOND_DURATION + 1);
 }
 
 /// u64::MAX duration must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too long: maximum is 31536000 seconds (365 days)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_validate_duration_u64_max() {
-    validation::validate_bond_duration(u64::MAX);
+    validate_bond_duration(u64::MAX);
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -137,7 +145,7 @@ fn test_create_bond_typical_duration() {
 
 /// Bond creation with zero duration must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_zero_duration_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -148,7 +156,7 @@ fn test_create_bond_zero_duration_rejected() {
 
 /// Bond creation with duration below minimum must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_below_min_duration_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -165,7 +173,7 @@ fn test_create_bond_below_min_duration_rejected() {
 
 /// Bond creation with duration above maximum must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too long: maximum is 31536000 seconds (365 days)")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_create_bond_above_max_duration_rejected() {
     let e = Env::default();
     e.mock_all_auths();

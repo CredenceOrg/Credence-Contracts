@@ -26,7 +26,7 @@ fn test_withdraw_bond_after_lockup_non_rolling() {
 }
 
 #[test]
-#[should_panic(expected = "lock-up period not elapsed; use withdraw_early")]
+#[should_panic(expected = "Error(Contract, #204)")]
 fn test_withdraw_bond_before_lockup_panics() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
@@ -39,7 +39,7 @@ fn test_withdraw_bond_before_lockup_panics() {
 }
 
 #[test]
-#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
+#[should_panic(expected = "Error(Contract, #204)")]
 fn test_withdraw_bond_rolling_before_notice_panics() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
@@ -52,7 +52,7 @@ fn test_withdraw_bond_rolling_before_notice_panics() {
 }
 
 #[test]
-#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
+#[should_panic(expected = "Error(Contract, #204)")]
 fn test_withdraw_bond_rolling_before_cooldown_panics() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
@@ -97,7 +97,7 @@ fn test_withdraw_bond_partial_withdrawal() {
 }
 
 #[test]
-#[should_panic(expected = "insufficient balance for withdrawal")]
+#[should_panic(expected = "Error(Contract, #202)")]
 fn test_withdraw_bond_insufficient_balance() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);

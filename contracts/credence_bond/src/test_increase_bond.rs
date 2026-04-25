@@ -91,7 +91,7 @@ fn test_increase_bond_fails_for_non_owner() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #214)")]
 fn test_increase_bond_rejects_zero_amount() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
@@ -104,7 +104,7 @@ fn test_increase_bond_rejects_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "bond increase caused overflow")]
+#[should_panic(expected = "Error(Contract, #700)")]
 fn test_increase_bond_overflow_protection() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
