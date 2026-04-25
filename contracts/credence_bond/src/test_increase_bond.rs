@@ -89,7 +89,7 @@ fn test_increase_bond_fails_for_non_owner() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "top-up amount below minimum")]
 fn test_increase_bond_rejects_zero_amount() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
