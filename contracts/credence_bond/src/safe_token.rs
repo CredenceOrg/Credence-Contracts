@@ -45,7 +45,7 @@ fn validate_amount(amount: i128) {
 /// Gets the configured token address with validation
 pub fn get_token(e: &Env) -> Address {
     let token = crate::token_integration::get_token(e);
-    validate_token_address(e, &token);
+    validate_token_address(&token);
     token
 }
 
