@@ -321,3 +321,27 @@ pub fn emit_upgrade_executed(
     let data = (new_implementation.clone(), proposal_id);
     e.events().publish(topics, data);
 }
+
+
+/// Emitted when a protocol parameter is updated.
+/// 
+/// # Topics (Indexed)
+/// * `Symbol` - "param_updated"
+/// * `Symbol` - Parameter Key (e.g., "leverage")
+/// * `Symbol` - Category (e.g., "risk")
+/// * `Address` - Admin who performed the update
+///
+/// # Data
+/// * `i128` - Old value
+/// * `i128` - New value
+pub fn emit_parameter_updated(
+    e: &Env,
+    key: Symbol,
+    category: Symbol,
+    admin: &Address,
+    old_value: i128,
+    new_value: i128,
+) {
+    let topics = (Symbol::new(e, "param_updated"), key, category, admin.clone());
+    e.events().publish(topics, (old_value, new_value));
+}

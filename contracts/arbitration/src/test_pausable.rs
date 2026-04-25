@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, String};
 
 fn setup() -> (Env, Address, CredenceArbitrationClient<'static>) {
@@ -12,6 +12,19 @@ fn setup() -> (Env, Address, CredenceArbitrationClient<'static>) {
     let client = CredenceArbitrationClient::new(&env, &contract_id);
     client.initialize(&admin);
     (env, admin, client)
+}
+
+fn advance(e: &Env, secs: u64) {
+    e.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        timestamp: e.ledger().timestamp() + secs,
+        protocol_version: 22,
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 1000,
+    });
 }
 
 #[test]
@@ -73,4 +86,5 @@ fn test_pause_does_not_block_existing_tests_flow_when_unpaused() {
     let description = String::from_str(&env, "Dispute");
     let dispute_id = client.create_dispute(&creator, &description, &3600u64);
     let _ = client.get_dispute(&dispute_id);
+    let _ = advance; // suppress unused warning
 }

@@ -3,6 +3,9 @@
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Map, String, Symbol};
 
 pub mod pausable;
+pub mod status;
+
+use status::{require_transition, ArbitrationError, DisputeStatus};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -12,8 +15,10 @@ pub struct Dispute {
     pub description: String,
     pub voting_start: u64,
     pub voting_end: u64,
-    pub resolved: bool,
-    pub outcome: u32, // 0 for unresolved/tie, >0 for specific outcomes
+    /// Canonical status — replaces the old `resolved: bool`.
+    pub status: DisputeStatus,
+    /// Winning outcome (0 = unresolved/tie, >0 = specific outcome).
+    pub outcome: u32,
 }
 
 #[contracttype]
@@ -30,8 +35,8 @@ pub enum DataKey {
     Arbitrator(Address),
     Dispute(u64),
     DisputeCounter,
-    DisputeVotes(u64),         // Map<u32, i128> (outcome -> total_weight)
-    VoterCasted(u64, Address), // (dispute_id, voter) -> bool
+    DisputeVotes(u64),
+    VoterCasted(u64, Address),
 }
 
 #[contract]
@@ -40,33 +45,34 @@ pub struct CredenceArbitration;
 #[contractimpl]
 impl CredenceArbitration {
     /// Initialize the contract with an admin address.
-    pub fn initialize(e: Env, admin: Address) {
+    pub fn initialize(e: Env, admin: Address) -> Result<(), ArbitrationError> {
         if e.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
+            return Err(ArbitrationError::AlreadyInitialized);
         }
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
-        e.storage()
-            .instance()
-            .set(&DataKey::PauseSignerCount, &0_u32);
+        e.storage().instance().set(&DataKey::PauseSignerCount, &0_u32);
         e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
-        e.storage()
-            .instance()
-            .set(&DataKey::PauseProposalCounter, &0_u64);
+        e.storage().instance().set(&DataKey::PauseProposalCounter, &0_u64);
+        Ok(())
     }
 
     /// Register or update an arbitrator with a specific voting weight.
-    pub fn register_arbitrator(e: Env, arbitrator: Address, weight: i128) {
+    pub fn register_arbitrator(
+        e: Env,
+        arbitrator: Address,
+        weight: i128,
+    ) -> Result<(), ArbitrationError> {
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized");
+            .ok_or(ArbitrationError::NotInitialized)?;
         admin.require_auth();
 
         if weight <= 0 {
-            panic!("weight must be positive");
+            return Err(ArbitrationError::WeightNotPositive);
         }
 
         e.storage()
@@ -77,16 +83,20 @@ impl CredenceArbitration {
             (Symbol::new(&e, "arbitrator_registered"), arbitrator),
             weight,
         );
+        Ok(())
     }
 
     /// Remove an arbitrator.
-    pub fn unregister_arbitrator(e: Env, arbitrator: Address) {
+    pub fn unregister_arbitrator(
+        e: Env,
+        arbitrator: Address,
+    ) -> Result<(), ArbitrationError> {
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .expect("not initialized");
+            .ok_or(ArbitrationError::NotInitialized)?;
         admin.require_auth();
 
         e.storage()
@@ -95,10 +105,17 @@ impl CredenceArbitration {
 
         e.events()
             .publish((Symbol::new(&e, "arbitrator_unregistered"), arbitrator), ());
+        Ok(())
     }
 
-    /// Create a new dispute for arbitration.
-    pub fn create_dispute(e: Env, creator: Address, description: String, duration: u64) -> u64 {
+    /// Create a new dispute. Status starts as Open, then immediately transitions
+    /// to Voting (voting period begins at creation).
+    pub fn create_dispute(
+        e: Env,
+        creator: Address,
+        description: String,
+        duration: u64,
+    ) -> Result<u64, ArbitrationError> {
         pausable::require_not_paused(&e);
         creator.require_auth();
 
@@ -110,64 +127,119 @@ impl CredenceArbitration {
         let start = e.ledger().timestamp();
         let end = start.checked_add(duration).expect("duration overflow");
 
+        // Open → Voting is the initial transition on creation
+        require_transition(DisputeStatus::Open, DisputeStatus::Voting)?;
+
         let dispute = Dispute {
             id,
             creator: creator.clone(),
             description,
             voting_start: start,
             voting_end: end,
-            resolved: false,
+            status: DisputeStatus::Voting,
             outcome: 0,
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
 
+        // Lifecycle events: created + status transition
         e.events()
             .publish((Symbol::new(&e, "dispute_created"), id), creator);
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), id),
+            (DisputeStatus::Open as u32, DisputeStatus::Voting as u32),
+        );
 
-        id
+        Ok(id)
+    }
+
+    /// Cancel a dispute. Allowed from Open or Voting by creator or admin.
+    pub fn cancel_dispute(
+        e: Env,
+        caller: Address,
+        dispute_id: u64,
+    ) -> Result<(), ArbitrationError> {
+        pausable::require_not_paused(&e);
+        caller.require_auth();
+
+        let mut dispute: Dispute = e
+            .storage()
+            .instance()
+            .get(&DataKey::Dispute(dispute_id))
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        // Only creator or admin may cancel
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ArbitrationError::NotInitialized)?;
+        if caller != dispute.creator && caller != admin {
+            return Err(ArbitrationError::NotAuthorized);
+        }
+
+        let from = dispute.status.clone();
+        require_transition(from, DisputeStatus::Cancelled)?;
+
+        dispute.status = DisputeStatus::Cancelled;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+
+        e.events().publish(
+            (Symbol::new(&e, "dispute_cancelled"), dispute_id),
+            caller,
+        );
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (from as u32, DisputeStatus::Cancelled as u32),
+        );
+
+        Ok(())
     }
 
     /// Cast a weighted vote for a dispute outcome.
-    pub fn vote(e: Env, voter: Address, dispute_id: u64, outcome: u32) {
+    pub fn vote(
+        e: Env,
+        voter: Address,
+        dispute_id: u64,
+        outcome: u32,
+    ) -> Result<(), ArbitrationError> {
         pausable::require_not_paused(&e);
         voter.require_auth();
 
         if outcome == 0 {
-            panic!("invalid outcome");
+            return Err(ArbitrationError::InvalidOutcome);
         }
 
-        // Verify voter is a registered arbitrator
         let weight: i128 = e
             .storage()
             .instance()
             .get(&DataKey::Arbitrator(voter.clone()))
-            .unwrap_or_else(|| panic!("voter is not an authorized arbitrator"));
+            .ok_or(ArbitrationError::NotArbitrator)?;
 
-        // Verify dispute exists and is within voting period
         let dispute: Dispute = e
             .storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
-            .unwrap_or_else(|| panic!("dispute not found"));
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        // Must be in Voting status
+        if dispute.status != DisputeStatus::Voting {
+            return Err(ArbitrationError::VotingInactive);
+        }
 
         let now = e.ledger().timestamp();
         if now < dispute.voting_start || now > dispute.voting_end {
-            panic!("voting period is inactive");
+            return Err(ArbitrationError::VotingInactive);
         }
 
-        if dispute.resolved {
-            panic!("dispute already resolved");
-        }
-
-        // Prevent double voting
         let voter_casted_key = DataKey::VoterCasted(dispute_id, voter.clone());
         if e.storage().instance().has(&voter_casted_key) {
-            panic!("arbitrator already voted on this dispute");
+            return Err(ArbitrationError::AlreadyVoted);
         }
         e.storage().instance().set(&voter_casted_key, &true);
 
-        // Tally the vote
         let votes_key = DataKey::DisputeVotes(dispute_id);
         let mut votes: Map<u32, i128> = e
             .storage()
@@ -180,33 +252,45 @@ impl CredenceArbitration {
             outcome,
             current_tally.checked_add(weight).expect("weight overflow"),
         );
-
         e.storage().instance().set(&votes_key, &votes);
 
         e.events().publish(
             (Symbol::new(&e, "vote_cast"), dispute_id, voter),
             (outcome, weight),
         );
+
+        Ok(())
     }
 
-    /// Resolve a dispute after the voting period has ended.
-    pub fn resolve_dispute(e: Env, dispute_id: u64) -> u32 {
+    /// Transition Voting → Resolving → Resolved after the voting period ends.
+    pub fn resolve_dispute(
+        e: Env,
+        dispute_id: u64,
+    ) -> Result<u32, ArbitrationError> {
         pausable::require_not_paused(&e);
+
         let mut dispute: Dispute = e
             .storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
-            .unwrap_or_else(|| panic!("dispute not found"));
+            .ok_or(ArbitrationError::DisputeNotFound)?;
 
-        if dispute.resolved {
-            panic!("dispute already resolved");
-        }
+        // Must be Voting to start resolution
+        require_transition(dispute.status.clone(), DisputeStatus::Resolving)?;
 
         let now = e.ledger().timestamp();
         if now <= dispute.voting_end {
-            panic!("voting period has not ended");
+            return Err(ArbitrationError::VotingNotEnded);
         }
 
+        // Voting → Resolving
+        dispute.status = DisputeStatus::Resolving;
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (DisputeStatus::Voting as u32, DisputeStatus::Resolving as u32),
+        );
+
+        // Tally
         let votes_key = DataKey::DisputeVotes(dispute_id);
         let votes: Map<u32, i128> = e
             .storage()
@@ -214,8 +298,8 @@ impl CredenceArbitration {
             .get(&votes_key)
             .unwrap_or(Map::new(&e));
 
-        let mut winning_outcome = 0;
-        let mut max_weight = -1;
+        let mut winning_outcome = 0u32;
+        let mut max_weight: i128 = -1;
         let mut is_tie = false;
 
         for (outcome, weight) in votes.iter() {
@@ -228,31 +312,36 @@ impl CredenceArbitration {
             }
         }
 
-        // If there's a tie, the outcome remains 0 (unresolved/tie)
         if is_tie {
             winning_outcome = 0;
         }
 
-        dispute.resolved = true;
+        // Resolving → Resolved
+        require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
+        dispute.status = DisputeStatus::Resolved;
         dispute.outcome = winning_outcome;
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
 
         e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (DisputeStatus::Resolving as u32, DisputeStatus::Resolved as u32),
+        );
+        e.events().publish(
             (Symbol::new(&e, "dispute_resolved"), dispute_id),
             winning_outcome,
         );
 
-        winning_outcome
+        Ok(winning_outcome)
     }
 
     /// Get dispute details.
-    pub fn get_dispute(e: Env, dispute_id: u64) -> Dispute {
+    pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
         e.storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
-            .unwrap_or_else(|| panic!("dispute not found"))
+            .ok_or(ArbitrationError::DisputeNotFound)
     }
 
     /// Get current total weight for an outcome.
@@ -263,7 +352,6 @@ impl CredenceArbitration {
             .instance()
             .get(&votes_key)
             .unwrap_or(Map::new(&e));
-
         votes.get(outcome).unwrap_or(0)
     }
 
@@ -301,3 +389,6 @@ mod test;
 
 #[cfg(test)]
 mod test_pausable;
+
+#[cfg(test)]
+mod test_lifecycle;

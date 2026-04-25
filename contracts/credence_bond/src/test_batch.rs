@@ -3,9 +3,10 @@
 extern crate std;
 
 use crate::{
-    test_helpers::setup_with_token, BatchBondParams, CredenceBond, CredenceBondClient,
-    MAX_BATCH_BOND_SIZE,
+    batch::MAX_BATCH_BOND_SIZE, test_helpers::setup_with_token, BatchBondParams, CredenceBond,
+    CredenceBondClient,
 };
+use std::panic::AssertUnwindSafe;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, Vec,
@@ -495,9 +496,9 @@ fn test_atomic_failure_on_second_bond() {
 
     // The entire batch should fail atomically
     // Validation happens before any state changes
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         client.create_batch_bonds(&params_list);
-    });
+    }));
 
     assert!(result.is_err(), "Batch should fail atomically");
 
@@ -791,9 +792,9 @@ fn test_all_bonds_validated_before_any_created() {
     });
 
     // Should fail before creating any bonds
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         client.create_batch_bonds(&params_list);
-    });
+    }));
 
     assert!(result.is_err());
 
@@ -963,9 +964,9 @@ fn test_validation_order_size_before_content() {
     }
 
     // Should fail with "batch too large" before checking invalid amounts
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         client.create_batch_bonds(&params_list);
-    });
+    }));
 
     assert!(result.is_err());
     // Note: We can't easily check the exact panic message in this context
@@ -982,9 +983,9 @@ fn test_empty_batch_fails_before_size_check() {
 
     let params_list = Vec::new(&env);
 
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         client.create_batch_bonds(&params_list);
-    });
+    }));
 
     assert!(result.is_err());
 }

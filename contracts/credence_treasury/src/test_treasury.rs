@@ -9,19 +9,28 @@ use soroban_sdk::{Address, Env};
 
 const CUMULATIVE_SEGMENT: u128 = (i128::MAX as u128) + 1;
 
-fn setup(e: &Env) -> (CredenceTreasuryClient<'_>, Address) {
+fn setup(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address) {
     let contract_id = e.register(CredenceTreasury, ());
     let client = CredenceTreasuryClient::new(e, &contract_id);
     let admin = Address::generate(e);
+
+    let token_admin = Address::generate(e);
+    let token_id = e.register_stellar_asset_contract(token_admin.clone());
+
     e.mock_all_auths();
-    client.initialize(&admin);
-    (client, admin)
+    client.initialize(&admin, &token_id);
+
+    // Give admin some tokens so they can deposit
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(e, &token_id);
+    stellar_client.mint(&admin, &(i128::MAX / 2));
+
+    (client, admin, token_id)
 }
 
 #[test]
 fn test_initialize() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     assert_eq!(client.get_admin(), _admin);
     assert_eq!(client.get_balance(), 0);
     assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 0);
@@ -45,10 +54,13 @@ fn counter_to_u128(counter: &CumulativeAmount) -> u128 {
 fn withdraw_all(
     e: &Env,
     client: &CredenceTreasuryClient<'_>,
+    _token_id: &Address,
     amount: i128,
 ) -> (Address, Address, u64) {
     let signer = Address::generate(e);
     let recipient = Address::generate(e);
+
+    // Note: Treasury is assumed to be already funded via receive_fee in the calling test
     client.add_signer(&signer);
     client.set_threshold(&1);
     let proposal_id = client.propose_withdrawal(&signer, &recipient, &amount);
@@ -60,7 +72,7 @@ fn withdraw_all(
 #[test]
 fn test_receive_fee_as_admin() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     assert_eq!(client.get_balance(), 1000);
     assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 1000);
@@ -74,16 +86,31 @@ fn test_receive_fee_as_admin() {
 #[should_panic(expected = "Error(Contract, #700)")]
 fn test_receive_fee_overflow_panics() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, token_id) = setup(&e);
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    
+    // Give admin enough tokens to reach exactly i128::MAX
+    // Setup already gave them i128::MAX / 2
+    stellar_client.mint(&admin, &(i128::MAX - (i128::MAX / 2)));
+    
     client.receive_fee(&admin, &i128::MAX, &FundSource::ProtocolFee);
-    client.receive_fee(&admin, &1, &FundSource::ProtocolFee);
+    
+    // For the second deposit, we need 1 more token, but we can't have more than i128::MAX balance in one account easily.
+    // Actually, we can just mint 1 more to the admin's balance if it's not already MAX.
+    // Wait, i128::MAX is the absolute limit for a single account balance in most token implementations.
+    // But we can just use a different account for the second deposit!
+    let admin2 = Address::generate(&e);
+    client.add_depositor(&admin2);
+    stellar_client.mint(&admin2, &1);
+    
+    client.receive_fee(&admin2, &1, &FundSource::ProtocolFee);
 }
 
 // Tests for emergency rescue functionality
 #[test]
 fn test_rescue_native_success() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     let recipient = Address::generate(&e);
 
     // Add some treasury balance first
@@ -103,7 +130,7 @@ fn test_rescue_native_success() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn test_rescue_native_unauthorized() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let recipient = Address::generate(&e);
     let unauthorized = Address::generate(&e);
 
@@ -116,7 +143,7 @@ fn test_rescue_native_unauthorized() {
 // #[should_panic(expected = "Error(Contract, #607)")]
 // fn test_rescue_native_zero_address() {
 //     let e = Env::default();
-//     let (client, admin) = setup(&e);
+//     let (client, admin, _token) = setup(&e);
 //     let zero_address = Address::generate(&e);
 //
 //     // Try rescue with zero address
@@ -127,7 +154,7 @@ fn test_rescue_native_unauthorized() {
 #[should_panic(expected = "Error(Contract, #600)")]
 fn test_rescue_native_zero_amount() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     let recipient = Address::generate(&e);
 
     // Try rescue with zero amount
@@ -138,7 +165,7 @@ fn test_rescue_native_zero_amount() {
 #[should_panic(expected = "rescue amount exceeds available balance")]
 fn test_rescue_native_exceeds_available() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     let recipient = Address::generate(&e);
 
     // Add some treasury balance
@@ -151,8 +178,13 @@ fn test_rescue_native_exceeds_available() {
 #[test]
 fn test_receive_fee_as_depositor() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, token_id) = setup(&e);
     let depositor = Address::generate(&e);
+    
+    // Give depositor tokens
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&depositor, &2000);
+    
     client.add_depositor(&depositor);
     client.receive_fee(&depositor, &2000, &FundSource::ProtocolFee);
     assert_eq!(client.get_balance(), 2000);
@@ -165,7 +197,7 @@ fn test_receive_fee_as_depositor() {
 #[should_panic(expected = "Error(Contract, #105)")]
 fn test_receive_fee_unauthorized() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let other = Address::generate(&e);
     client.receive_fee(&other, &100, &FundSource::ProtocolFee);
 }
@@ -174,7 +206,7 @@ fn test_receive_fee_unauthorized() {
 #[should_panic(expected = "Error(Contract, #600)")]
 fn test_receive_fee_zero_amount() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &0, &FundSource::ProtocolFee);
 }
 
@@ -182,14 +214,14 @@ fn test_receive_fee_zero_amount() {
 #[should_panic(expected = "Error(Contract, #600)")]
 fn test_receive_fee_negative_amount() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &-100, &FundSource::ProtocolFee);
 }
 
 #[test]
 fn test_add_remove_signer_and_threshold() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let s1 = Address::generate(&e);
     let s2 = Address::generate(&e);
     client.add_signer(&s1);
@@ -207,7 +239,7 @@ fn test_add_remove_signer_and_threshold() {
 #[should_panic(expected = "Error(Contract, #601)")]
 fn test_set_threshold_exceeds_signers() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let s1 = Address::generate(&e);
     client.add_signer(&s1);
     client.set_threshold(&3);
@@ -216,7 +248,7 @@ fn test_set_threshold_exceeds_signers() {
 #[test]
 fn test_propose_approve_execute_withdrawal() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &10_000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let s2 = Address::generate(&e);
@@ -244,7 +276,7 @@ fn test_propose_approve_execute_withdrawal() {
 #[test]
 fn test_withdrawal_reduces_available_source_balances_proportionally() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &100, &FundSource::ProtocolFee);
     client.receive_fee(&admin, &200, &FundSource::SlashedFunds);
 
@@ -268,7 +300,7 @@ fn test_withdrawal_reduces_available_source_balances_proportionally() {
 #[should_panic(expected = "Error(Contract, #104)")]
 fn test_propose_withdrawal_non_signer() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let other = Address::generate(&e);
     let recipient = Address::generate(&e);
@@ -279,7 +311,7 @@ fn test_propose_withdrawal_non_signer() {
 #[should_panic(expected = "Error(Contract, #600)")]
 fn test_propose_withdrawal_zero_amount() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let recipient = Address::generate(&e);
@@ -292,7 +324,7 @@ fn test_propose_withdrawal_zero_amount() {
 #[should_panic(expected = "Error(Contract, #602)")]
 fn test_propose_withdrawal_exceeds_balance() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &100, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let recipient = Address::generate(&e);
@@ -305,7 +337,7 @@ fn test_propose_withdrawal_exceeds_balance() {
 #[should_panic(expected = "Error(Contract, #104)")]
 fn test_approve_withdrawal_non_signer() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let other = Address::generate(&e);
@@ -319,7 +351,7 @@ fn test_approve_withdrawal_non_signer() {
 #[test]
 fn test_double_approve_is_noop() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let recipient = Address::generate(&e);
@@ -336,7 +368,7 @@ fn test_double_approve_is_noop() {
 #[should_panic(expected = "Error(Contract, #605)")]
 fn test_execute_without_threshold() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let s2 = Address::generate(&e);
@@ -353,7 +385,7 @@ fn test_execute_without_threshold() {
 #[should_panic(expected = "Error(Contract, #604)")]
 fn test_execute_twice_fails() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let recipient = Address::generate(&e);
@@ -369,7 +401,7 @@ fn test_execute_twice_fails() {
 #[should_panic(expected = "Error(Contract, #603)")]
 fn test_get_proposal_invalid_id() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let _ = client.get_proposal(&999);
 }
 
@@ -377,7 +409,7 @@ fn test_get_proposal_invalid_id() {
 #[should_panic(expected = "Error(Contract, #604)")]
 fn test_approve_after_execute_fails() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let s2 = Address::generate(&e);
@@ -394,7 +426,7 @@ fn test_approve_after_execute_fails() {
 #[test]
 fn test_fund_source_tracking() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &100, &FundSource::ProtocolFee);
     client.receive_fee(&admin, &200, &FundSource::SlashedFunds);
     client.receive_fee(&admin, &50, &FundSource::ProtocolFee);
@@ -414,7 +446,7 @@ fn test_fund_source_tracking() {
 #[test]
 fn test_multiple_proposals() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     client.receive_fee(&admin, &5000, &FundSource::ProtocolFee);
     let s1 = Address::generate(&e);
     let s2 = Address::generate(&e);
@@ -439,7 +471,7 @@ fn test_multiple_proposals() {
 #[test]
 fn test_remove_signer_caps_threshold() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let s1 = Address::generate(&e);
     let s2 = Address::generate(&e);
     client.add_signer(&s1);
@@ -452,7 +484,7 @@ fn test_remove_signer_caps_threshold() {
 #[test]
 fn test_add_signer_idempotent() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     let s1 = Address::generate(&e);
     client.add_signer(&s1);
     client.add_signer(&s1);
@@ -471,7 +503,7 @@ fn test_get_admin_uninitialized() {
 #[test]
 fn test_get_approval_count_nonexistent_proposal() {
     let e = Env::default();
-    let (client, _admin) = setup(&e);
+    let (client, _admin, _token) = setup(&e);
     assert_eq!(client.get_approval_count(&99), 0);
 }
 
@@ -483,9 +515,18 @@ fn setup_ready_proposal(amount: i128) -> (Env, CredenceTreasuryClient<'static>, 
     let contract_id = e.register(CredenceTreasury, ());
     let client = CredenceTreasuryClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
+
+    let token_admin = Address::generate(&e);
+    let token_id = e.register_stellar_asset_contract(token_admin.clone());
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+
     e.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin, &token_id);
+    
+    // Give admin tokens and deposit
+    stellar_client.mint(&admin, &amount);
     client.receive_fee(&admin, &amount, &FundSource::ProtocolFee);
+
     let signer = Address::generate(&e);
     let recipient = Address::generate(&e);
     client.add_signer(&signer);
@@ -539,7 +580,11 @@ fn test_execute_withdrawal_slippage_reverts_adversarial_large_min() {
 #[test]
 fn test_cumulative_protocol_fee_rollover_survives_large_claim_cycle() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
+
+    // Give admin enough tokens to reach exactly i128::MAX
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &_token);
+    stellar_client.mint(&admin, &(i128::MAX - (i128::MAX / 2)));
 
     client.receive_fee(&admin, &i128::MAX, &FundSource::ProtocolFee);
     assert_eq!(client.get_balance(), i128::MAX);
@@ -555,10 +600,12 @@ fn test_cumulative_protocol_fee_rollover_survives_large_claim_cycle() {
         }
     );
 
-    let _ = withdraw_all(&e, &client, i128::MAX);
+    let _ = withdraw_all(&e, &client, &_token, i128::MAX);
     assert_eq!(client.get_balance(), 0);
     assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 0);
 
+    // Mint tokens for the next deposit
+    stellar_client.mint(&admin, &10);
     client.receive_fee(&admin, &10, &FundSource::ProtocolFee);
 
     assert_eq!(client.get_balance(), 10);
@@ -582,14 +629,18 @@ fn test_cumulative_protocol_fee_rollover_survives_large_claim_cycle() {
 #[test]
 fn test_cumulative_fees_reconcile_after_repeated_high_rate_claims() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, _token) = setup(&e);
     let burst = i128::MAX / 2;
     let mut expected_cumulative = 0_u128;
 
     for _ in 0..3 {
+        // Mint tokens for this burst
+        let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &_token);
+        stellar_client.mint(&admin, &burst);
+
         client.receive_fee(&admin, &burst, &FundSource::ProtocolFee);
         expected_cumulative += u128::try_from(burst).expect("burst should fit");
-        let _ = withdraw_all(&e, &client, burst);
+        let _ = withdraw_all(&e, &client, &_token, burst);
         assert_eq!(client.get_balance(), 0);
         assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 0);
     }

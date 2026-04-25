@@ -67,3 +67,7 @@ Run full package tests:
 ```bash
 cargo test -p credence_bond -- --nocapture
 ```
+
+## Known Simplifications
+
+Token transfer is stubbed in the test environment. See [known-simplifications.md](known-simplifications.md#1-token-transfer-is-stubbed-in-credence_bond) for details and the production path.

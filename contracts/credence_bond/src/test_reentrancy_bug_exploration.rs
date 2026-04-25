@@ -176,7 +176,7 @@ fn test_withdraw_bond_reentrancy_attack() {
     attacker_client.setup(&contract_id);
 
     // Register attacker as callback (simulates malicious token contract)
-    client.set_callback(&attacker_id);
+    client.set_callback(&admin, &attacker_id);
 
     // Attempt withdrawal - attacker will try to re-enter during callback
     // On UNFIXED code: Both withdrawals succeed, draining 2000 tokens (1000 + 1000)
@@ -230,7 +230,7 @@ fn test_withdraw_early_reentrancy_attack() {
     attacker_client.setup(&contract_id);
 
     // Register attacker as callback (simulates malicious token contract)
-    client.set_callback(&attacker_id);
+    client.set_callback(&admin, &attacker_id);
 
     // Attempt early withdrawal - attacker will try to re-enter during callback
     // On UNFIXED code: Both withdrawals succeed, draining more than available balance
@@ -286,7 +286,7 @@ fn test_execute_cooldown_withdrawal_reentrancy_attack() {
     attacker_client.setup(&contract_id, &identity);
 
     // Register attacker as callback (simulates malicious token contract)
-    client.set_callback(&attacker_id);
+    client.set_callback(&admin, &attacker_id);
 
     // Attempt cooldown withdrawal - attacker will try to re-enter during any callback
     // On UNFIXED code: Behavior depends on state update order, but lacks protection
@@ -335,7 +335,7 @@ fn test_nested_reentrancy_blocked() {
     attacker_client.setup(&contract_id);
 
     // Register attacker as callback
-    client.set_callback(&attacker_id);
+    client.set_callback(&admin, &attacker_id);
 
     // Attempt withdrawal - attacker will try nested reentrancy
     // On UNFIXED code: All calls succeed, draining 3000 tokens (1000 + 1000 + 1000)

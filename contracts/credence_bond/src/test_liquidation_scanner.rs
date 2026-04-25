@@ -2,7 +2,7 @@
 
 use crate::liquidation_scanner::*;
 use crate::{CredenceBond, CredenceBondClient};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Events as _};
 use soroban_sdk::{Address, Env};
 
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {

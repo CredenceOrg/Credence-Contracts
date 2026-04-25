@@ -73,7 +73,7 @@ fn test_set_emergency_mode_requires_elevated_approval_and_updates_state() {
     let cfg = client.get_emergency_config();
     assert!(!cfg.enabled);
 
-    client.set_emergency_mode(&admin, &governance, &true);
+    client.set_emergency_mode(&admin, &governance, &true, &Symbol::new(&e, "test"));
     let cfg = client.get_emergency_config();
     assert!(cfg.enabled);
 }
@@ -97,7 +97,7 @@ fn test_set_emergency_mode_rejects_wrong_governance() {
     let wrong_governance = Address::generate(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &250, &false);
-    client.set_emergency_mode(&admin, &wrong_governance, &true);
+    client.set_emergency_mode(&admin, &wrong_governance, &true, &Symbol::new(&e, "test"));
 }
 
 #[test]
@@ -162,4 +162,64 @@ fn test_set_emergency_config_rejects_invalid_fee_bps() {
     let (client, admin, governance, treasury, _identity) = setup(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &10_001_u32, &true);
+}
+
+#[test]
+fn test_set_emergency_mode_records_transition() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 20_000);
+    let (client, admin, governance, treasury, _identity) = setup(&e);
+
+    client.set_emergency_config(&admin, &governance, &treasury, &250, &false);
+    
+    // Switch to enabled
+    let reason_on = Symbol::new(&e, "EmergencyEnabled");
+    client.set_emergency_mode(&admin, &governance, &true, &reason_on);
+    
+    let latest_id = client.latest_emergency_transition();
+    assert_eq!(latest_id, 1);
+    
+    let transition = client.get_emergency_transition(&latest_id);
+    assert_eq!(transition.id, 1);
+    assert_eq!(transition.enabled, true);
+    assert_eq!(transition.approved_admin, admin);
+    assert_eq!(transition.approved_governance, governance);
+    assert_eq!(transition.reason, reason_on);
+    assert_eq!(transition.timestamp, 20_000);
+    
+    // Switch to disabled
+    e.ledger().with_mut(|li| li.timestamp = 20_001);
+    let reason_off = Symbol::new(&e, "EmergencyDisabled");
+    client.set_emergency_mode(&admin, &governance, &false, &reason_off);
+    
+    let latest_id = client.latest_emergency_transition();
+    assert_eq!(latest_id, 2);
+    
+    let transition = client.get_emergency_transition(&latest_id);
+    assert_eq!(transition.id, 2);
+    assert_eq!(transition.enabled, false);
+    assert_eq!(transition.reason, reason_off);
+    assert_eq!(transition.timestamp, 20_001);
+}
+
+#[test]
+fn test_set_emergency_config_records_transition() {
+    let e = Env::default();
+    let (client, admin, governance, treasury, _identity) = setup(&e);
+
+    // Initial setup with enabled=true should record a transition
+    client.set_emergency_config(&admin, &governance, &treasury, &250, &true);
+    
+    let latest_id = client.latest_emergency_transition();
+    assert_eq!(latest_id, 1);
+    let transition = client.get_emergency_transition(&1);
+    assert_eq!(transition.enabled, true);
+    assert_eq!(transition.reason, Symbol::new(&e, "InitialSetup"));
+
+    // Update config with enabled=false should record another transition
+    client.set_emergency_config(&admin, &governance, &treasury, &250, &false);
+    assert_eq!(client.latest_emergency_transition(), 2);
+    let transition = client.get_emergency_transition(&2);
+    assert_eq!(transition.enabled, false);
+    assert_eq!(transition.reason, Symbol::new(&e, "ConfigUpdate"));
 }

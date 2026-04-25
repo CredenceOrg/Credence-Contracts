@@ -23,7 +23,7 @@ use super::*;
 use crate::test_helpers;
 use soroban_sdk::testutils::{Address as _, Events, Ledger};
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{vec, Address, Env, IntoVal, Symbol, Val, Vec};
+use soroban_sdk::{Address, Env, Symbol, TryFromVal};
 
 // ===========================================================================
 // Helper: Deterministic RNG for property-based testing
@@ -96,7 +96,7 @@ fn property_withdraw_bond_normal_behavior_preserved() {
         client.create_bond_with_rolling(
             &identity,
             &initial_amount,
-            &duration as u64,
+            &(duration as u64),
             &is_rolling,
             &0_u64,
         );
@@ -146,9 +146,11 @@ fn property_withdraw_bond_normal_behavior_preserved() {
         // Verify event emission
         let events = e.events().all();
         let has_bond_withdrawn = events.iter().any(|(contract_id, topics, _data)| {
-            contract_id == &bond_contract_id
+            contract_id == bond_contract_id
                 && topics.len() > 0
-                && topics.get(0).unwrap() == Symbol::new(&e, "bond_withdrawn").to_val()
+                && Symbol::try_from_val(&e, &topics.get(0).unwrap())
+                    .map(|topic| topic == Symbol::new(&e, "bond_withdrawn"))
+                    .unwrap_or(false)
         });
 
         assert!(
@@ -195,7 +197,7 @@ fn property_withdraw_early_penalty_calculations_preserved() {
         let duration = rng.gen_range(86400, 86400 * 30); // 1-30 days
 
         // Create bond
-        client.create_bond(&identity, &initial_amount, &duration as u64);
+        client.create_bond(&identity, &initial_amount, &(duration as u64));
 
         // Advance time to middle of lock-up period
         let elapsed = rng.gen_range(1, duration - 1);
@@ -390,7 +392,7 @@ fn property_sequential_withdrawals_preserved() {
         let duration = rng.gen_range(86400, 86400 * 30);
 
         // Create bond
-        client.create_bond(&identity, &initial_amount, &duration as u64);
+        client.create_bond(&identity, &initial_amount, &(duration as u64));
 
         // Advance time past lock-up period
         e.ledger().with_mut(|l| {
@@ -399,7 +401,7 @@ fn property_sequential_withdrawals_preserved() {
 
         // Generate two withdrawal amounts
         let first_amount = rng.gen_range(100, initial_amount / 2);
-        let second_amount = rng.gen_range(100, (initial_amount - first_amount));
+        let second_amount = rng.gen_range(100, initial_amount - first_amount);
 
         // Record initial state
         let initial_identity_balance = token_client.balance(&identity);

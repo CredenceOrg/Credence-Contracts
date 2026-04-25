@@ -5,6 +5,7 @@
 
 use crate::test_helpers::setup_with_token;
 use crate::parameters::{MAX_PROTOCOL_FEE_BPS, MAX_GOLD_THRESHOLD, MAX_PLATINUM_THRESHOLD};
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::Env;
 
 // ── helpers ──────────────────────────────────────────────────────────────────

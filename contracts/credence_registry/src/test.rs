@@ -527,3 +527,151 @@ fn test_register_eoa_address_should_succeed() {
     assert_eq!(entry.bond_contract, eoa_address);
     assert!(entry.active);
 }
+
+#[test]
+fn test_register_inactive_identity_initially() {
+    let (env, contract_id, _admin) = setup_registry();
+    let client = CredenceRegistryClient::new(&env, &contract_id);
+
+    let identity = Address::generate(&env);
+    let bond_contract = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Register with active=false
+    let entry = client.register(&identity, &bond_contract, &false);
+
+    assert_eq!(entry.identity, identity);
+    assert_eq!(entry.bond_contract, bond_contract);
+    assert!(!entry.active);
+    assert!(!client.is_registered(&identity));
+
+    // Can still retrieve the entry
+    let retrieved = client.get_bond_contract(&identity);
+    assert!(!retrieved.active);
+}
+
+#[test]
+fn test_multiple_deactivate_reactivate_cycles() {
+    let (env, contract_id, _admin) = setup_registry();
+    let client = CredenceRegistryClient::new(&env, &contract_id);
+
+    let identity = Address::generate(&env);
+    let bond_contract = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    client.register(&identity, &bond_contract, &true);
+
+    // Cycle 1: deactivate -> reactivate
+    client.deactivate(&identity);
+    assert!(!client.is_registered(&identity));
+    client.reactivate(&identity);
+    assert!(client.is_registered(&identity));
+
+    // Cycle 2: deactivate -> reactivate
+    client.deactivate(&identity);
+    assert!(!client.is_registered(&identity));
+    client.reactivate(&identity);
+    assert!(client.is_registered(&identity));
+
+    // Cycle 3: deactivate -> reactivate
+    client.deactivate(&identity);
+    assert!(!client.is_registered(&identity));
+    client.reactivate(&identity);
+    assert!(client.is_registered(&identity));
+
+    // Verify mappings are still intact
+    let entry = client.get_bond_contract(&identity);
+    assert_eq!(entry.bond_contract, bond_contract);
+    assert!(entry.active);
+}
+
+#[test]
+fn test_get_all_identities_includes_inactive() {
+    let (env, contract_id, _admin) = setup_registry();
+    let client = CredenceRegistryClient::new(&env, &contract_id);
+
+    env.mock_all_auths();
+
+    let identity1 = Address::generate(&env);
+    let bond_contract1 = Address::generate(&env);
+    client.register(&identity1, &bond_contract1, &true);
+
+    let identity2 = Address::generate(&env);
+    let bond_contract2 = Address::generate(&env);
+    client.register(&identity2, &bond_contract2, &true);
+
+    let identity3 = Address::generate(&env);
+    let bond_contract3 = Address::generate(&env);
+    client.register(&identity3, &bond_contract3, &true);
+
+    // Deactivate one identity
+    client.deactivate(&identity2);
+
+    // get_all_identities should include all identities (active and inactive)
+    let all_identities = client.get_all_identities();
+    assert_eq!(all_identities.len(), 3);
+
+    assert!(all_identities.iter().any(|addr| addr == identity1));
+    assert!(all_identities.iter().any(|addr| addr == identity2));
+    assert!(all_identities.iter().any(|addr| addr == identity3));
+}
+
+#[test]
+fn test_admin_transfer_chain() {
+    let (env, contract_id, admin1) = setup_registry();
+    let client = CredenceRegistryClient::new(&env, &contract_id);
+
+    let admin2 = Address::generate(&env);
+    let admin3 = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    // Verify initial admin
+    assert_eq!(client.get_admin(), admin1);
+
+    // Transfer to admin2
+    client.transfer_admin(&admin2);
+    assert_eq!(client.get_admin(), admin2);
+
+    // Transfer to admin3
+    client.transfer_admin(&admin3);
+    assert_eq!(client.get_admin(), admin3);
+
+    // Admin3 should be able to perform admin operations
+    let identity = Address::generate(&env);
+    let bond_contract = Address::generate(&env);
+    client.register(&identity, &bond_contract, &true);
+
+    assert!(client.is_registered(&identity));
+}
+
+#[test]
+fn test_reverse_lookup_after_deactivation() {
+    let (env, contract_id, _admin) = setup_registry();
+    let client = CredenceRegistryClient::new(&env, &contract_id);
+
+    let identity = Address::generate(&env);
+    let bond_contract = Address::generate(&env);
+
+    env.mock_all_auths();
+
+    client.register(&identity, &bond_contract, &true);
+
+    // Verify reverse lookup works when active
+    let found_identity = client.get_identity(&bond_contract);
+    assert_eq!(found_identity, identity);
+
+    // Deactivate
+    client.deactivate(&identity);
+
+    // Reverse lookup should still work after deactivation
+    let found_identity_after = client.get_identity(&bond_contract);
+    assert_eq!(found_identity_after, identity);
+
+    // Forward lookup should also still work
+    let entry = client.get_bond_contract(&identity);
+    assert_eq!(entry.bond_contract, bond_contract);
+    assert!(!entry.active);
+}

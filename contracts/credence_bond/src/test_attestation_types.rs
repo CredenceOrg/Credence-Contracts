@@ -29,8 +29,8 @@ fn attestation_validate_accepts_valid() {
     let e = Env::default();
     let att = Attestation {
         id: 0,
-        verifier: soroban_sdk::Address::generate(&e),
-        identity: soroban_sdk::Address::generate(&e),
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
         timestamp: 0,
         weight: DEFAULT_ATTESTATION_WEIGHT,
         attestation_data: String::from_str(&e, "x"),
@@ -45,8 +45,8 @@ fn attestation_validate_rejects_zero_weight() {
     let e = Env::default();
     let att = Attestation {
         id: 0,
-        verifier: soroban_sdk::Address::generate(&e),
-        identity: soroban_sdk::Address::generate(&e),
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
         timestamp: 0,
         weight: 0,
         attestation_data: String::from_str(&e, "x"),
@@ -61,8 +61,8 @@ fn attestation_validate_rejects_over_max_weight() {
     let e = Env::default();
     let att = Attestation {
         id: 0,
-        verifier: soroban_sdk::Address::generate(&e),
-        identity: soroban_sdk::Address::generate(&e),
+        attester: soroban_sdk::Address::generate(&e),
+        subject: soroban_sdk::Address::generate(&e),
         timestamp: 0,
         weight: MAX_ATTESTATION_WEIGHT + 1,
         attestation_data: String::from_str(&e, "x"),
@@ -74,13 +74,13 @@ fn attestation_validate_rejects_over_max_weight() {
 #[test]
 fn attestation_is_active() {
     let e = Env::default();
-    let verifier = soroban_sdk::Address::generate(&e);
-    let identity = soroban_sdk::Address::generate(&e);
+    let attester = soroban_sdk::Address::generate(&e);
+    let subject = soroban_sdk::Address::generate(&e);
     let data = String::from_str(&e, "data");
     let att = Attestation {
         id: 0,
-        verifier: verifier.clone(),
-        identity: identity.clone(),
+        attester: attester.clone(),
+        subject: subject.clone(),
         timestamp: 0,
         weight: DEFAULT_ATTESTATION_WEIGHT,
         attestation_data: data,
@@ -95,17 +95,17 @@ fn attestation_is_active() {
 #[test]
 fn attestation_dedup_key_equality() {
     let e = Env::default();
-    let v = soroban_sdk::Address::generate(&e);
-    let i = soroban_sdk::Address::generate(&e);
+    let attester = soroban_sdk::Address::generate(&e);
+    let subject = soroban_sdk::Address::generate(&e);
     let d = String::from_str(&e, "x");
     let k1 = AttestationDedupKey {
-        verifier: v.clone(),
-        identity: i.clone(),
+        attester: attester.clone(),
+        subject: subject.clone(),
         attestation_data: d.clone(),
     };
     let k2 = AttestationDedupKey {
-        verifier: v,
-        identity: i,
+        attester,
+        subject,
         attestation_data: d,
     };
     assert_eq!(k1, k2);

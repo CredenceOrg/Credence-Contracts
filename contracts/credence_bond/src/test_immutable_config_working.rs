@@ -1,4 +1,5 @@
 use crate::*;
+use std::panic::AssertUnwindSafe;
 use soroban_sdk::{Address, Env, String};
 
 #[cfg(test)]
@@ -39,9 +40,9 @@ mod immutable_config_tests {
         env.as_contract(&contract_address, || {
             CredenceBond::initialize(env.clone(), admin.clone());
 
-            let result = std::panic::catch_unwind(|| {
+            let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 CredenceBond::initialize(env.clone(), admin.clone());
-            });
+            }));
 
             assert!(result.is_err());
         });

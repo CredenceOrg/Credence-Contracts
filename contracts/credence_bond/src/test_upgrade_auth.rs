@@ -1,9 +1,11 @@
+extern crate std;
 use crate::{
     upgrade_auth::{
         self, UpgradeAuthorization, UpgradeProposal, UpgradeRecord, UpgradeRole, UpgradeStatus,
     },
-    CredenceBondClient,
+    CredenceBond, CredenceBondClient,
 };
+use std::panic::AssertUnwindSafe;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, Env, Vec};
 
@@ -74,9 +76,9 @@ fn test_grant_and_revoke_upgrade_authorization() {
     upgrade_auth::revoke_upgrade_auth(&env, &admin, &user2);
 
     // Should panic when trying to get revoked authorization
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::get_upgrade_role(&env, &user2);
-    })
+    }))
     .expect_err("Should panic when getting revoked authorization");
 }
 
@@ -204,17 +206,17 @@ fn test_unauthorized_upgrade_attempts() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to upgrade without authorization - should fail
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
-    })
+    }))
     .expect_err("Unauthorized upgrade should fail");
 
     // Grant proposer role (still can't upgrade)
     upgrade_auth::grant_upgrade_auth(&env, &admin, &unauthorized, UpgradeRole::Proposer, 0);
 
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
-    })
+    }))
     .expect_err("Proposer should not be able to upgrade");
 }
 
@@ -227,9 +229,9 @@ fn test_cannot_revoke_last_upgrade_admin() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to revoke the only upgrade admin - should fail
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::revoke_upgrade_auth(&env, &admin, &admin);
-    })
+    }))
     .expect_err("Cannot revoke last upgrade admin");
 }
 

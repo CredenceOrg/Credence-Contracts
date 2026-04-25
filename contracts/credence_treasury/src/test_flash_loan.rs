@@ -113,13 +113,13 @@ fn setup_test(
     let admin = Address::generate(e);
     let treasury_id = e.register(CredenceTreasury, ());
     let treasury = CredenceTreasuryClient::new(e, &treasury_id);
-    treasury.initialize(&admin);
 
     let token_admin = Address::generate(e);
     let token_id = e.register_stellar_asset_contract(token_admin.clone());
     let token_admin_client = token::StellarAssetClient::new(e, &token_id);
 
-    treasury.set_token(&token_id);
+    e.mock_all_auths();
+    treasury.initialize(&admin, &token_id);
 
     // Seed treasury with funds
     token_admin_client.mint(&treasury_id, &1_000_000_i128);

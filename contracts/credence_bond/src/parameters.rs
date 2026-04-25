@@ -17,14 +17,15 @@
 //! are rejected with descriptive errors.
 //!
 //! ## Event Emission
-//! All successful parameter updates emit a `ParameterChanged` event containing:
-//! - parameter name
+//! All successful parameter updates emit a `param_updated` event containing:
+//! - key (indexed)
+//! - category (indexed)
+//! - admin (indexed)
 //! - old value
 //! - new value
-//! - caller address
-//! - timestamp
 
-use soroban_sdk::{contracttype, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
+use crate::events::emit_parameter_updated;
 
 // ============================================================================
 // Parameter Bounds Constants
@@ -217,6 +218,15 @@ pub fn get_platinum_threshold(e: &Env) -> i128 {
         .unwrap_or(DEFAULT_PLATINUM_THRESHOLD)
 }
 
+/// Get the current max-leverage multiplier.
+#[must_use]
+pub fn get_max_leverage(e: &Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&ParameterKey::MaxLeverage)
+        .unwrap_or(DEFAULT_MAX_LEVERAGE)
+}
+
 // ============================================================================
 // Parameter Setters (Governance-Only)
 // ============================================================================
@@ -245,16 +255,15 @@ pub fn set_protocol_fee_bps(e: &Env, admin: &Address, value: u32) {
     }
 
     let old_value = get_protocol_fee_bps(e);
-    e.storage()
-        .instance()
-        .set(&ParameterKey::ProtocolFeeBps, &value);
+    e.storage().instance().set(&ParameterKey::ProtocolFeeBps, &value);
 
-    emit_parameter_changed(
+    emit_parameter_updated(
         e,
-        "protocol_fee_bps",
+        symbol_short!("fee_prot"),
+        symbol_short!("fee"),
+        admin,
         old_value as i128,
         value as i128,
-        admin,
     );
 }
 
@@ -286,12 +295,13 @@ pub fn set_attestation_fee_bps(e: &Env, admin: &Address, value: u32) {
         .instance()
         .set(&ParameterKey::AttestationFeeBps, &value);
 
-    emit_parameter_changed(
+    emit_parameter_updated(
         e,
-        "attestation_fee_bps",
+        symbol_short!("fee_att"),
+        symbol_short!("fee"),
+        admin,
         old_value as i128,
         value as i128,
-        admin,
     );
 }
 
@@ -323,12 +333,13 @@ pub fn set_withdrawal_cooldown_secs(e: &Env, admin: &Address, value: u64) {
         .instance()
         .set(&ParameterKey::WithdrawalCooldownSecs, &value);
 
-    emit_parameter_changed(
+    emit_parameter_updated(
         e,
-        "withdrawal_cooldown_secs",
+        symbol_short!("cd_with"),
+        symbol_short!("cooldown"),
+        admin,
         old_value as i128,
         value as i128,
-        admin,
     );
 }
 
@@ -360,12 +371,13 @@ pub fn set_slash_cooldown_secs(e: &Env, admin: &Address, value: u64) {
         .instance()
         .set(&ParameterKey::SlashCooldownSecs, &value);
 
-    emit_parameter_changed(
+    emit_parameter_updated(
         e,
-        "slash_cooldown_secs",
+        symbol_short!("cd_slash"),
+        symbol_short!("cooldown"),
+        admin,
         old_value as i128,
         value as i128,
-        admin,
     );
 }
 
@@ -397,7 +409,14 @@ pub fn set_bronze_threshold(e: &Env, admin: &Address, value: i128) {
         .instance()
         .set(&ParameterKey::BronzeThreshold, &value);
 
-    emit_parameter_changed(e, "bronze_threshold", old_value, value, admin);
+    emit_parameter_updated(
+        e,
+        symbol_short!("th_brnz"),
+        symbol_short!("tier"),
+        admin,
+        old_value,
+        value,
+    );
 }
 
 /// Set the silver tier threshold. Governance-only.
@@ -428,7 +447,14 @@ pub fn set_silver_threshold(e: &Env, admin: &Address, value: i128) {
         .instance()
         .set(&ParameterKey::SilverThreshold, &value);
 
-    emit_parameter_changed(e, "silver_threshold", old_value, value, admin);
+    emit_parameter_updated(
+        e,
+        symbol_short!("th_slvr"),
+        symbol_short!("tier"),
+        admin,
+        old_value,
+        value,
+    );
 }
 
 /// Set the gold tier threshold. Governance-only.
@@ -459,7 +485,14 @@ pub fn set_gold_threshold(e: &Env, admin: &Address, value: i128) {
         .instance()
         .set(&ParameterKey::GoldThreshold, &value);
 
-    emit_parameter_changed(e, "gold_threshold", old_value, value, admin);
+    emit_parameter_updated(
+        e,
+        symbol_short!("th_gold"),
+        symbol_short!("tier"),
+        admin,
+        old_value,
+        value,
+    );
 }
 
 /// Set the platinum tier threshold. Governance-only.
@@ -490,19 +523,14 @@ pub fn set_platinum_threshold(e: &Env, admin: &Address, value: i128) {
         .instance()
         .set(&ParameterKey::PlatinumThreshold, &value);
 
-    emit_parameter_changed(e, "platinum_threshold", old_value, value, admin);
-}
-
-/// Get the current max-leverage multiplier.
-///
-/// # Returns
-/// Max leverage (u32) as an integer multiplier. Returns `DEFAULT_MAX_LEVERAGE` if not set.
-#[must_use]
-pub fn get_max_leverage(e: &Env) -> u32 {
-    e.storage()
-        .instance()
-        .get(&ParameterKey::MaxLeverage)
-        .unwrap_or(DEFAULT_MAX_LEVERAGE)
+    emit_parameter_updated(
+        e,
+        symbol_short!("th_plat"),
+        symbol_short!("tier"),
+        admin,
+        old_value,
+        value,
+    );
 }
 
 /// Set the max-leverage multiplier. Governance-only.
@@ -536,7 +564,54 @@ pub fn set_max_leverage(e: &Env, admin: &Address, value: u32) {
         .instance()
         .set(&ParameterKey::MaxLeverage, &value);
 
-    emit_parameter_changed(e, "max_leverage", old_value as i128, value as i128, admin);
+    emit_parameter_updated(
+        e,
+        symbol_short!("max_lev"),
+        symbol_short!("risk"),
+        admin,
+        old_value as i128,
+        value as i128,
+    );
+}
+
+// ============================================================================
+// Borrow Freeze (Governance-Controlled)
+// ============================================================================
+
+/// Returns `true` when new borrows/increases are frozen.
+#[must_use]
+pub fn is_borrow_frozen(e: &Env) -> bool {
+    e.storage()
+        .instance()
+        .get(&crate::DataKey::BorrowFrozen)
+        .unwrap_or(false)
+}
+
+/// Panics with `BorrowFrozen` if borrows are currently frozen.
+pub fn require_not_borrow_frozen(e: &Env) {
+    if is_borrow_frozen(e) {
+        panic!("borrow frozen");
+    }
+}
+
+/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
+///
+/// Repayments and withdrawals are unaffected.
+///
+/// # Events
+/// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
+pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    validate_admin(e, admin);
+    admin.require_auth();
+    let old = is_borrow_frozen(e);
+    e.storage()
+        .instance()
+        .set(&crate::DataKey::BorrowFrozen, &frozen);
+    let timestamp = e.ledger().timestamp();
+    e.events().publish(
+        (Symbol::new(e, "borrow_freeze_set"),),
+        (old, frozen, admin.clone(), timestamp),
+    );
 }
 
 // ============================================================================
@@ -571,22 +646,3 @@ fn validate_admin(e: &Env, caller: &Address) {
 /// * `old_value` - Previous value (normalized to i128)
 /// * `new_value` - New value (normalized to i128)
 /// * `updated_by` - Address that performed the update
-fn emit_parameter_changed(
-    e: &Env,
-    parameter: &str,
-    old_value: i128,
-    new_value: i128,
-    updated_by: &Address,
-) {
-    let timestamp = e.ledger().timestamp();
-    e.events().publish(
-        (Symbol::new(e, "parameter_changed"),),
-        (
-            String::from_str(e, parameter),
-            old_value,
-            new_value,
-            updated_by.clone(),
-            timestamp,
-        ),
-    );
-}

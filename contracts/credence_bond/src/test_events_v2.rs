@@ -1,5 +1,7 @@
 #![cfg(test)]
 
+use std::vec::Vec;
+
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{
@@ -227,7 +229,9 @@ fn test_event_indexing_query_efficiency() {
         client.create_bond_with_rolling(identity, &amount, &86400_u64, &false, &0_u64);
         
         // Advance time for uniqueness
-        e.ledger().set_timestamp(e.ledger().timestamp() + 1000);
+        let mut ledger_info = e.ledger().get();
+        ledger_info.timestamp += 1000;
+        e.ledger().set(ledger_info);
     }
 
     let events = e.events().all();

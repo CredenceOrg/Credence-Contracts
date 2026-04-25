@@ -85,6 +85,8 @@ pub enum DataKey {
     ApprovalCount(u64),
     /// Minimum liquidity that must remain in the treasury after a withdrawal.
     MinLiquidity,
+    /// The token address managed by the treasury.
+    Token,
 }
 
 #[contract]
@@ -150,9 +152,10 @@ impl CredenceTreasury {
     /// Initialize the treasury. Sets the admin; only admin can configure signers and depositors.
     /// @param e The contract environment
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
-    pub fn initialize(e: Env, admin: Address) {
+    pub fn initialize(e: Env, admin: Address, token: Address) {
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+        e.storage().instance().set(&DataKey::Token, &token);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
             .instance()
@@ -261,6 +264,13 @@ impl CredenceTreasury {
             &DataKey::CumulativeReceivedBySource(source),
             &new_cumulative_source,
         );
+
+        // Perform actual token transfer into the treasury.
+        let token_addr = Self::get_token(e.clone());
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+        token_client.transfer(&from, &contract_addr, &amount);
+
         e.events().publish(
             (Symbol::new(&e, "treasury_deposit"), from),
             (amount, source),
@@ -561,11 +571,24 @@ impl CredenceTreasury {
             panic!("liquidity guard: withdrawal would breach minimum liquidity floor");
         }
 
+        // Perform actual token transfer.
+        let token_addr = Self::get_token(e.clone());
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+
+        let recipient_balance_before = token_client.balance(&proposal.recipient);
+        token_client.transfer(&contract_addr, &proposal.recipient, &proposal.amount);
+        let recipient_balance_after = token_client.balance(&proposal.recipient);
+
+        let actual_amount = recipient_balance_after
+            .checked_sub(recipient_balance_before)
+            .expect("balance underflow");
+
         // Slippage guard: revert if the settled amount falls below the caller's threshold.
-        if proposal.amount < min_amount_out {
+        if actual_amount < min_amount_out {
             panic!("slippage: received amount below minimum");
         }
-        let actual_amount = proposal.amount;
+
         let new_total = total
             .checked_sub(actual_amount)
             .expect("withdrawal underflow");
@@ -609,6 +632,27 @@ impl CredenceTreasury {
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
             (proposal.recipient.clone(), min_amount_out, actual_amount),
         );
+    }
+
+    /// Returns the configured token address.
+    pub fn get_token(e: Env) -> Address {
+        e.storage()
+            .instance()
+            .get(&DataKey::Token)
+            .unwrap_or_else(|| panic!("token not configured"))
+    }
+
+    /// Update the token address. Only admin can call.
+    pub fn set_token(e: Env, admin: Address, token: Address) {
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::Token, &token);
+        e.events()
+            .publish((Symbol::new(&e, "token_updated"),), token);
     }
 
     /// Set the minimum liquidity floor. Only admin can call.

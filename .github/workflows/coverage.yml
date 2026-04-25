@@ -1,0 +1,63 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main, master, develop, 'feature/**']
+  pull_request:
+    branches: [main, master, develop]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Minimum line-coverage threshold (%) enforced per crate.
+  COVERAGE_THRESHOLD: 95
+
+jobs:
+  coverage:
+    name: Per-crate coverage (llvm-cov)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + llvm-tools)
+        run: |
+          rustup toolchain install stable --profile minimal \
+            --component llvm-tools-preview
+          rustup default stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-coverage-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-coverage-
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked
+
+      - name: Coverage — credence_bond
+        run: |
+          cargo llvm-cov --package credence_bond \
+            --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
+            --lcov --output-path lcov-credence_bond.info
+
+      - name: Coverage — credence_delegation
+        run: |
+          cargo llvm-cov --package credence_delegation \
+            --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
+            --lcov --output-path lcov-credence_delegation.info
+
+      - name: Coverage — timelock
+        run: |
+          cargo llvm-cov --package timelock \
+            --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
+            --lcov --output-path lcov-timelock.info
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov-reports
+          path: lcov-*.info

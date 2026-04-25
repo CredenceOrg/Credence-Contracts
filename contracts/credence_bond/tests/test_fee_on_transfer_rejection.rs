@@ -58,21 +58,22 @@ fn standard_token_withdrawal_works() {
     let (client, _admin, user, _token_id, _contract_id) = setup_with_standard_token(&env);
 
     let amount = 10_000_i128;
-    let duration = 100_u64; // Short duration so we can withdraw immediately
+    let duration = 90_000_u64; // Longer than 1 day
 
-    // Create bond
-    let bond = client.create_bond(&user, &amount, &duration);
+    // Create rolling bond
+    let bond = client.create_bond_with_rolling(&user, &amount, &duration, &true, &3600);
     assert_eq!(bond.bonded_amount, amount);
+    assert!(bond.is_rolling);
 
     // Fast-forward past bond maturity
-    env.ledger().set_timestamp(env.ledger().timestamp() + 200);
+    env.ledger().set_timestamp(env.ledger().timestamp() + 100_000);
 
     // Request withdrawal (for rolling bond)
     env.mock_all_auths();
     client.request_withdrawal();
 
     // Withdraw after cooldown for rolling bonds
-    env.ledger().set_timestamp(env.ledger().timestamp() + 1_000);
+    env.ledger().set_timestamp(env.ledger().timestamp() + 10_000);
     env.mock_all_auths();
     let withdrawn_bond = client.withdraw_bond(&amount);
     assert!(!withdrawn_bond.active);

@@ -10,7 +10,7 @@ fn test_slash_same_ledger_after_increase_bond_rejected() {
     let e = Env::default();
     let (client, admin, identity, _token, _id) = test_helpers::setup_with_token(&e);
     client.create_bond_with_rolling(&identity, &10_000_i128, &86_400_u64, &false, &0_u64);
-    client.increase_bond(&identity, &1_000_i128);
+    client.top_up(&1_000_i128);
     client.slash(&admin, &100_i128);
 }
 
@@ -19,7 +19,7 @@ fn test_slash_next_ledger_after_increase_bond_allowed() {
     let e = Env::default();
     let (client, admin, identity, _token, _id) = test_helpers::setup_with_token(&e);
     client.create_bond_with_rolling(&identity, &10_000_i128, &86_400_u64, &false, &0_u64);
-    client.increase_bond(&identity, &1_000_i128);
+    client.top_up(&1_000_i128);
     test_helpers::advance_ledger_sequence(&e);
     let bond = client.slash(&admin, &100_i128);
     assert_eq!(bond.slashed_amount, 100);

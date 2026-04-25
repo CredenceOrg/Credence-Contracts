@@ -198,18 +198,19 @@ fn test_slash_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "slashing caused overflow")]
 fn test_slash_overflow_prevention() {
+    // With available-balance capping, slash is bounded by (bonded - slashed).
+    // After fully slashing, further slashes are no-ops (actual_slash = 0).
     let e = Env::default();
     let (client, admin, _identity) =
         setup_with_bond_max_mint(&e, crate::validation::MAX_BOND_AMOUNT, 86400_u64);
 
-    // Large repeated slashes should cap cleanly at the bonded amount.
     let bond = client.slash(&admin, &crate::validation::MAX_BOND_AMOUNT);
     assert_eq!(bond.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
 
-    let bond = client.slash(&admin, &i128::MAX);
-    assert_eq!(bond.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
+    // Further slash is capped at available (0) — no overflow, no panic
+    let bond2 = client.slash(&admin, &i128::MAX);
+    assert_eq!(bond2.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
 }
 
 #[test]
@@ -550,4 +551,154 @@ fn test_error_message_no_bond() {
 
     // No bond created, try to slash
     client.slash(&admin, &100_i128);
+}
+
+// ============================================================================
+// Category 11: Available-Balance Bound (slash ≤ bonded − slashed)
+// ============================================================================
+
+#[test]
+fn test_slash_capped_at_available_not_bonded() {
+    // After a partial slash, the cap is on remaining available, not total bonded.
+    let e = Env::default();
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    // First slash: 600 → available becomes 400
+    client.slash(&admin, &600_i128);
+    assert_eq!(client.get_identity_state().slashed_amount, 600);
+
+    // Second slash: request 500, but only 400 available → capped at 400
+    let bond = client.slash(&admin, &500_i128);
+    assert_eq!(bond.slashed_amount, 1000);
+}
+
+#[test]
+fn test_slash_zero_available_is_noop() {
+    let e = Env::default();
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &1000_i128);
+    assert_eq!(client.get_identity_state().slashed_amount, 1000);
+
+    // Available = 0 → any further slash is a no-op
+    let bond = client.slash(&admin, &1_i128);
+    assert_eq!(bond.slashed_amount, 1000);
+}
+
+#[test]
+fn test_slash_available_decreases_after_each_slash() {
+    let e = Env::default();
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &200_i128); // available: 800
+    client.slash(&admin, &300_i128); // available: 500
+    client.slash(&admin, &400_i128); // available: 100
+    // Request 200, only 100 available
+    let bond = client.slash(&admin, &200_i128);
+    assert_eq!(bond.slashed_amount, 1000);
+}
+
+#[test]
+fn test_slash_after_withdraw_respects_new_available() {
+    // Withdraw reduces bonded_amount; subsequent slash is bounded by new available.
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 0);
+    let (client, admin, identity) = setup(&e);
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    e.ledger().with_mut(|li| li.timestamp = 86401);
+    client.withdraw(&400_i128); // bonded = 600, slashed = 0, available = 600
+    test_helpers::advance_ledger_sequence(&e);
+    // Slash 700 → capped at 600
+    let bond = client.slash(&admin, &700_i128);
+    assert_eq!(bond.bonded_amount, 600);
+    assert_eq!(bond.slashed_amount, 600);
+}
+
+// ============================================================================
+// Category 12: Slash History Records
+// ============================================================================
+
+#[test]
+fn test_slash_history_count_increments() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &100_i128);
+    client.slash(&admin, &200_i128);
+
+    let count = crate::slash_history::get_slash_count(&e, &identity);
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn test_slash_history_record_fields() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 5000);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &300_i128);
+
+    let record = crate::slash_history::get_slash_record(&e, &identity, 0);
+    assert_eq!(record.identity, identity);
+    assert_eq!(record.slash_amount, 300);
+    assert_eq!(record.total_slashed_after, 300);
+    assert_eq!(record.timestamp, 5000);
+}
+
+#[test]
+fn test_slash_history_total_slashed_after_accumulates() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &100_i128);
+    client.slash(&admin, &200_i128);
+
+    let r0 = crate::slash_history::get_slash_record(&e, &identity, 0);
+    let r1 = crate::slash_history::get_slash_record(&e, &identity, 1);
+    assert_eq!(r0.total_slashed_after, 100);
+    assert_eq!(r1.total_slashed_after, 300);
+}
+
+#[test]
+fn test_slash_history_capped_slash_records_actual_amount() {
+    // When a slash is capped at available, the record stores the actual (capped) amount.
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &800_i128); // available: 200
+    client.slash(&admin, &500_i128); // capped at 200
+
+    let r1 = crate::slash_history::get_slash_record(&e, &identity, 1);
+    assert_eq!(r1.slash_amount, 200);
+    assert_eq!(r1.total_slashed_after, 1000);
+}
+
+#[test]
+fn test_slash_history_zero_slash_no_record() {
+    // A zero slash produces a record with slash_amount = 0 (no-op but still recorded).
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+
+    client.slash(&admin, &0_i128);
+
+    // Zero slash: actual_slash_amount = 0, record is still appended
+    let count = crate::slash_history::get_slash_count(&e, &identity);
+    assert_eq!(count, 1);
+    let r = crate::slash_history::get_slash_record(&e, &identity, 0);
+    assert_eq!(r.slash_amount, 0);
+}
+
+#[test]
+fn test_slash_history_get_all_records() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, 86400_u64);
+
+    for i in 1_i128..=5 {
+        client.slash(&admin, &(i * 100));
+    }
+
+    let history = crate::slash_history::get_slash_history(&e, &identity);
+    assert_eq!(history.len(), 5);
+    assert_eq!(history.get(0).unwrap().slash_amount, 100);
+    assert_eq!(history.get(4).unwrap().slash_amount, 500);
 }

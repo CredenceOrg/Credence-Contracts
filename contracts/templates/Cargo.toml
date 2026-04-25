@@ -1,0 +1,11 @@
+[package]
+name = "templates"
+version = "0.1.0"
+edition = "2021"
+description = "Credence Soroban contract template — canonical starting point for new contracts"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }

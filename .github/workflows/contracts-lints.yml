@@ -1,0 +1,67 @@
+name: Contracts Lints
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - ci/**
+    paths:
+      - Cargo.toml
+      - rust-toolchain.toml
+      - contracts/**
+      - .github/workflows/contracts-lints.yml
+      - README.md
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+    paths:
+      - Cargo.toml
+      - rust-toolchain.toml
+      - contracts/**
+      - .github/workflows/contracts-lints.yml
+      - README.md
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rustfmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings

@@ -9,14 +9,15 @@ The slashing mechanism is a governance-controlled penalty system that reduces a 
 **Slashing** = Reducing `bonded_amount` availability by incrementing `slashed_amount`
 
 - **Bonded Amount**: Total stake locked in the bond (i128)
-- **Slashed Amount**: Cumulative penalty (i128)  
-- **Withdrawable Balance**: `bonded_amount - slashed_amount`
+- **Slashed Amount**: Cumulative penalty (i128)
+- **Available Balance**: `bonded_amount - slashed_amount` — the only amount that can be slashed or withdrawn
+- **Withdrawable Balance**: same as Available Balance
 
 ### Design Philosophy
 
 1. **Monotonic**: Slashing only increases, never decreases (unless unslashing by admin)
-2. **Fair**: Prevents over-slashing (capped at bonded_amount)
-3. **Transparent**: Events emit for all slashing operations
+2. **Fair**: Prevents over-slashing — slash is capped at *available balance* (`bonded - slashed`), not just `bonded`
+3. **Transparent**: Events emit for all slashing operations; every slash is recorded in persistent history
 4. **Accountable**: Only authorized governance can execute
 
 ## Authorization and Access Control
@@ -45,11 +46,12 @@ Core slashing function.
 
 **Behavior:**
 1. Validates caller is the contract admin (panics if not)
-2. Calculates new slashed amount = `existing_slashed + amount`
-3. Caps at bonded amount: `min(new_slashed, bonded_amount)`
+2. Computes available balance = `bonded_amount - slashed_amount`
+3. Caps slash at available balance: `actual = min(amount, available)`
 4. Updates bond state with new `slashed_amount`
-5. Emits `bond_slashed` event
-6. Returns updated `IdentityBond` struct
+5. Appends a normalized `SlashRecord` to persistent slash history
+6. Emits `bond_slashed` event
+7. Returns updated `IdentityBond` struct
 
 **Arguments:**
 - `admin: Address` - Caller claiming admin authority
@@ -61,15 +63,16 @@ Core slashing function.
 **Panics:**
 - `"not admin"` if caller is not the contract admin
 - `"no bond"` if no bond exists
-- `"slashing caused overflow"` if arithmetic overflows (catch_add protection)
+- `"slashing caused overflow"` if arithmetic overflows (unreachable in practice due to available-balance cap)
 
 **Example:**
 
 ```rust
-// Admin slashes 300 from a 1000-unit bond
+// Admin slashes 300 from a 1000-unit bond (0 previously slashed)
 let bond = contract.slash(admin_address, 300);
 // bond.slashed_amount == 300
 // bond.bonded_amount == 1000 (unchanged)
+// available_balance == 700
 ```
 
 ### Partial vs. Full Slashing
@@ -94,16 +97,53 @@ Available: 1000 - 1000 = 0
 
 ### Over-Slash Prevention
 
-If cumulative slashing exceeds bonded amount, the slashed amount is capped:
+Slash is capped at the **available balance** (`bonded - slashed`), not just `bonded_amount`. This means a second slash cannot exceed what is actually withdrawable:
 
 ```
 Bonded: 1000
 Previous Slash: 700
+Available: 1000 - 700 = 300
 New Slash Request: 500
-Calculation: 700 + 500 = 1200
-Capped Result: min(1200, 1000) = 1000
+Actual Slash: min(500, 300) = 300
 Final Slashed: 1000
 ```
+
+This is stricter than capping at `bonded_amount` alone and prevents any scenario where `slashed_amount` could exceed `bonded_amount`.
+
+## Slash History
+
+Every successful call to `slash_bond()` appends a normalized `SlashRecord` to persistent storage, keyed by identity address and index.
+
+### SlashRecord Schema
+
+```rust
+pub struct SlashRecord {
+    pub identity: Address,        // Slashed identity
+    pub slash_amount: i128,       // Actual amount slashed (after capping)
+    pub reason: Symbol,           // "admin_slash"
+    pub timestamp: u64,           // Ledger timestamp at slash time
+    pub total_slashed_after: i128,// Cumulative slashed_amount after this slash
+}
+```
+
+### Query Functions
+
+```rust
+// Number of slash records for an identity
+get_slash_count(e, identity) -> u32
+
+// All records for an identity (ordered by index)
+get_slash_history(e, identity) -> Vec<SlashRecord>
+
+// Single record by index
+get_slash_record(e, identity, index) -> SlashRecord
+```
+
+### Notes
+
+- `slash_amount` in the record is the **actual** (capped) amount, not the requested amount.
+- Records are stored in `persistent` storage and survive ledger TTL extensions.
+- A zero-amount slash still appends a record (useful for audit completeness).
 
 ## State Management
 
@@ -203,13 +243,10 @@ let new_slashed = bond.slashed_amount
     .expect("slashing caused overflow");
 ```
 
-✅ **Over-Slash Prevention:**
+✅ **Over-Slash Prevention (available-balance bound):**
 ```rust
-bond.slashed_amount = if new_slashed > bond.bonded_amount {
-    bond.bonded_amount  // Cap at bonded amount
-} else {
-    new_slashed
-};
+let available = bond.bonded_amount - bond.slashed_amount;
+let actual_slash_amount = if amount > available { available } else { amount };
 ```
 
 ### 3. State Mutation Safety
@@ -236,7 +273,7 @@ available = bonded_amount - slashed_amount
 
 ## Test Coverage
 
-### Test Categories (47 tests, 95%+ coverage)
+### Test Categories (57 tests, 95%+ coverage)
 
 1. **Basic Operations (4 tests)**
    - Successful slash execution
@@ -291,6 +328,20 @@ available = bonded_amount - slashed_amount
 10. **Error Messages (2 tests)**
     - "not admin" error
     - "no bond" error
+
+11. **Available-Balance Bound (4 tests)**
+    - Slash capped at available (not bonded) after partial slash
+    - Zero-available is a no-op
+    - Available decreases after each slash
+    - Slash after withdrawal respects new available
+
+12. **Slash History Records (6 tests)**
+    - Count increments per slash
+    - Record fields (identity, amount, timestamp, total_slashed_after)
+    - Cumulative total_slashed_after
+    - Capped slash records actual amount
+    - Zero slash appends record
+    - Full history retrieval
 
 ## Usage Examples
 
@@ -377,3 +428,7 @@ contract.withdraw(300);
 - [Contract Tests](../contracts/credence_bond/src/test_slashing.rs)
 - [Slashing Module](../contracts/credence_bond/src/slashing.rs)
 
+
+## Known Simplifications
+
+Slashed funds are not transferred to the treasury in this reference implementation. See [known-simplifications.md](known-simplifications.md#5-slashed-funds-are-not-transferred-to-treasury) for details and the production path.

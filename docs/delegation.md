@@ -71,3 +71,7 @@ cargo build -p credence_delegation
 # Test
 cargo test -p credence_delegation
 ```
+
+## Known Simplifications
+
+Expired delegations are not automatically cleaned up from storage. See [known-simplifications.md](known-simplifications.md#8-delegation-expiry-is-not-enforced-on-chain-at-write-time) for details and the production path.

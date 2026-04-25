@@ -8,13 +8,14 @@ use soroban_sdk::{Address, Env};
 
 /// Target decimals for all internal accounting.
 pub const NORMALIZED_DECIMALS: u32 = 18;
-pub const MAX_SUPPORTED_DECIMALS: u32 = 36;
+/// Maximum supported token decimals. Hardened to 18 to prevent overflow in 128-bit accounting.
+pub const MAX_SUPPORTED_DECIMALS: u32 = 18;
 
 /// Returns the scale factor and whether it's a multiplier (true) or divisor (false).
 pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
     let decimals = TokenClient::new(e, token).decimals();
     if decimals > MAX_SUPPORTED_DECIMALS {
-        panic!("token decimals exceeds supported maximum of 36");
+        panic!("token decimals exceeds supported maximum of 18");
     }
 
     if decimals <= NORMALIZED_DECIMALS {
@@ -32,8 +33,7 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if is_multiplier {
         amount.checked_mul(scale).expect("normalization overflow")
     } else {
-        amount.checked_div(scale)
-            .unwrap_or_else(|| panic!("normalization error: div by zero"))
+        amount.checked_div(scale).expect("normalization truncation error")
     }
 }
 
@@ -41,8 +41,7 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
 pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
     let (scale, is_multiplier) = get_scale_info(e, token);
     if is_multiplier {
-        amount.checked_div(scale)
-            .unwrap_or_else(|| panic!("denormalization error: div by zero"))
+        amount.checked_div(scale).expect("denormalization error")
     } else {
         amount.checked_mul(scale).expect("denormalization overflow")
     }
@@ -56,7 +55,7 @@ mod tests {
     #[test]
     fn test_normalization_6_decimals() {
         let e = Env::default();
-        let token = Address::generate(&e);
+        let _token = Address::generate(&e);
         // We can't easily mock the token decimals here without registering a contract,
         // but the logic 10^(18-6) = 10^12 is what we want to verify implicitly
         // if we were to mock it.

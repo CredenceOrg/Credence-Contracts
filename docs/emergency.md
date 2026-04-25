@@ -195,6 +195,65 @@ Planned improvements to the pause mechanism:
 - Emergency override keys
 - Cross-contract coordinated pausing
 - Integration with external monitoring systems
+
+---
+
+# Governance-Controlled Borrow Freeze
+
+## Overview
+
+The borrow freeze is a targeted governance control that blocks new bond creation and top-ups while leaving all safe-exit paths (withdrawals, repayments, emergency withdrawals) fully available. It is lighter-weight than a full contract pause and is intended for risk-management scenarios such as market stress, oracle issues, or pending governance votes.
+
+## API
+
+### `is_borrow_frozen() -> bool`
+Returns the current borrow-freeze state. Safe to call at any time.
+
+### `set_borrow_frozen(admin: Address, frozen: bool)`
+Freeze (`true`) or unfreeze (`false`) new borrows/increases. Only the contract admin (governance) may call this. Blocked when the contract is fully paused.
+
+## Affected Operations
+
+| Operation | Frozen? |
+|---|---|
+| `create_bond` | ✅ blocked |
+| `create_bond_with_rolling` | ✅ blocked |
+| `top_up` | ✅ blocked |
+| `withdraw_bond_full` | ❌ allowed |
+| `emergency_withdraw` | ❌ allowed |
+| `slash_bond` | ❌ allowed |
+| All read functions | ❌ allowed |
+
+## Events
+
+`set_borrow_frozen` emits:
+
+```
+topic:  ("borrow_freeze_set",)
+data:   (old_frozen: bool, new_frozen: bool, admin: Address, timestamp: u64)
+```
+
+## Security Notes
+
+- Only the stored admin address can toggle the freeze; non-admin callers are rejected with `"not admin"`.
+- `set_borrow_frozen` itself is blocked when the contract is fully paused (`ContractPaused`).
+- The freeze state defaults to `false` (unfrozen) and does not require explicit initialization.
+- Freeze state is stored under `DataKey::BorrowFrozen` in instance storage.
+
+## Test Coverage
+
+`test_borrow_freeze.rs` covers:
+
+- Default state is unfrozen.
+- Admin can freeze and unfreeze.
+- Non-admin is rejected.
+- `create_bond` blocked when frozen.
+- `create_bond_with_rolling` blocked when frozen.
+- `top_up` blocked when frozen.
+- `withdraw_bond_full` succeeds when frozen.
+- `create_bond` succeeds after unfreeze.
+- Event emitted on state change.
+- `set_borrow_frozen` blocked when contract is paused.
 # Emergency Withdrawal System
 
 Emergency withdrawal is a crisis-only escape hatch that lets governance execute withdrawals with elevated approval while preserving a complete on-chain audit trail.

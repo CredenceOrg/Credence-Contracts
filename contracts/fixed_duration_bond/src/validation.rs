@@ -45,6 +45,7 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env};
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn test_validate_recipient_valid() {

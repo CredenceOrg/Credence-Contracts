@@ -2,6 +2,7 @@ use crate::{
     claims::{self, ClaimResult, ClaimType, PendingClaim},
     CredenceBondClient,
 };
+use std::panic::AssertUnwindSafe;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, Vec};
 
@@ -85,9 +86,9 @@ fn test_claim_by_id_prevents_duplicates() {
     assert_eq!(result.total_amount, 1000);
 
     // Try to process the same claim again - should fail
-    std::panic::catch_unwind(|| {
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
         claims::process_claim_by_id(&env, &user, claim_id);
-    })
+    }))
     .expect_err("Should panic when processing already processed claim");
 
     // Verify claim is marked as processed

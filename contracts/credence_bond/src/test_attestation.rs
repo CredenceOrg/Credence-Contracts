@@ -141,8 +141,8 @@ fn test_add_attestation_basic() {
         "verified identity",
     );
     assert_eq!(att.id, 0);
-    assert_eq!(att.verifier, attester);
-    assert_eq!(att.identity, subject);
+    assert_eq!(att.attester, attester);
+    assert_eq!(att.subject, subject);
     assert_eq!(att.attestation_data, data);
     assert!(!att.revoked);
 }
@@ -175,8 +175,8 @@ fn test_add_attestation_different_attesters() {
     let subject = Address::generate(&e);
     let attestation1 = add(&client, &e, &contract_id, &att1, &subject, "verified");
     let attestation2 = add(&client, &e, &contract_id, &att2, &subject, "verified");
-    assert_eq!(attestation1.verifier, att1);
-    assert_eq!(attestation2.verifier, att2);
+    assert_eq!(attestation1.attester, att1);
+    assert_eq!(attestation2.attester, att2);
     assert_ne!(attestation1.id, attestation2.id);
 }
 
@@ -188,8 +188,8 @@ fn test_add_attestation_different_subjects() {
     let sub2 = Address::generate(&e);
     let att1 = add(&client, &e, &contract_id, &attester, &sub1, "verified");
     let att2 = add(&client, &e, &contract_id, &attester, &sub2, "verified");
-    assert_eq!(att1.identity, sub1);
-    assert_eq!(att2.identity, sub2);
+    assert_eq!(att1.subject, sub1);
+    assert_eq!(att2.subject, sub2);
 }
 
 #[test]
@@ -430,7 +430,7 @@ fn test_self_attestation() {
     let e = Env::default();
     let (client, address, contract_id) = setup_with_contract(&e);
     let att = add(&client, &e, &contract_id, &address, &address, "self");
-    assert_eq!(att.verifier, att.identity);
+    assert_eq!(att.attester, att.subject);
 }
 
 #[test]

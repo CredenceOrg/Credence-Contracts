@@ -18,3 +18,6 @@ mod test_pausable;
 
 #[cfg(test)]
 mod test_withdrawal_guardrails;
+
+#[cfg(test)]
+mod test_slippage_adversarial;

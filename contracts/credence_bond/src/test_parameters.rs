@@ -12,8 +12,8 @@
 
 use crate::parameters::*;
 use crate::{CredenceBond, CredenceBondClient};
-use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::testutils::{Address as _, Events as _};
+use soroban_sdk::{Address, Env, Symbol, TryFromVal};
 
 // ============================================================================
 // Test Setup Utilities
@@ -623,6 +623,27 @@ fn test_parameter_change_event_emitted_on_update() {
 }
 
 #[test]
+fn test_parameter_update_v2_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_protocol_fee_bps(&admin, &200);
+
+    let events = e.events().all();
+    let last = events.iter().rev().next().unwrap();
+    
+    // Verify Topics: [Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin)]
+    let topics = last.1;
+    assert_eq!(topics.get(0).unwrap(), Symbol::new(&e, "param_updated").into());
+    assert_eq!(topics.get(1).unwrap(), symbol_short!("fee_prot").into());
+    
+    // Verify Data: (old_value, new_value)
+    let (old_val, new_val): (i128, i128) = last.2.into_val(&e);
+    assert_eq!(old_val, 50); // Default value
+    assert_eq!(new_val, 200);
+}
+
+#[test]
 fn test_event_contains_old_and_new_values() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -737,17 +758,15 @@ fn test_protocol_fee_event_args() {
     let events = e.events().all();
     // Find the last parameter_changed event
     let last = events.iter().rev().find(|(_, topics, _)| {
-        if let soroban_sdk::Val::Symbol(s) = topics.get(0).unwrap() {
-            s == soroban_sdk::Symbol::new(&e, "parameter_changed")
-        } else {
-            false
-        }
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "parameter_changed"))
+            .unwrap_or(false)
     });
     assert!(last.is_some(), "parameter_changed event not emitted");
     let (_, _, data) = last.unwrap();
     // data = (parameter_name, old_value, new_value, caller, timestamp)
-    let (_, old_val, new_val, _, _): (soroban_sdk::String, i128, i128, Address, u64) =
-        data.into_val(&e);
+    let (_, old_val, new_val, _, _) =
+        <(soroban_sdk::String, i128, i128, Address, u64)>::try_from_val(&e, &data).unwrap();
     assert_eq!(old_val, 100i128, "old_value mismatch");
     assert_eq!(new_val, 200i128, "new_value mismatch");
 }
@@ -762,16 +781,14 @@ fn test_attestation_fee_event_args() {
 
     let events = e.events().all();
     let last = events.iter().rev().find(|(_, topics, _)| {
-        if let soroban_sdk::Val::Symbol(s) = topics.get(0).unwrap() {
-            s == soroban_sdk::Symbol::new(&e, "parameter_changed")
-        } else {
-            false
-        }
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "parameter_changed"))
+            .unwrap_or(false)
     });
     assert!(last.is_some(), "parameter_changed event not emitted");
     let (_, _, data) = last.unwrap();
-    let (_, old_val, new_val, _, _): (soroban_sdk::String, i128, i128, Address, u64) =
-        data.into_val(&e);
+    let (_, old_val, new_val, _, _) =
+        <(soroban_sdk::String, i128, i128, Address, u64)>::try_from_val(&e, &data).unwrap();
     assert_eq!(old_val, 25i128);
     assert_eq!(new_val, 50i128);
 }
@@ -786,16 +803,14 @@ fn test_withdrawal_cooldown_event_args() {
 
     let events = e.events().all();
     let last = events.iter().rev().find(|(_, topics, _)| {
-        if let soroban_sdk::Val::Symbol(s) = topics.get(0).unwrap() {
-            s == soroban_sdk::Symbol::new(&e, "parameter_changed")
-        } else {
-            false
-        }
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "parameter_changed"))
+            .unwrap_or(false)
     });
     assert!(last.is_some());
     let (_, _, data) = last.unwrap();
-    let (_, old_val, new_val, _, _): (soroban_sdk::String, i128, i128, Address, u64) =
-        data.into_val(&e);
+    let (_, old_val, new_val, _, _) =
+        <(soroban_sdk::String, i128, i128, Address, u64)>::try_from_val(&e, &data).unwrap();
     assert_eq!(old_val, 3600i128);
     assert_eq!(new_val, 7200i128);
 }
@@ -811,15 +826,13 @@ fn test_pause_signer_event_includes_old_and_new() {
 
     let events = e.events().all();
     let ev = events.iter().rev().find(|(_, topics, _)| {
-        if let soroban_sdk::Val::Symbol(s) = topics.get(0).unwrap() {
-            s == soroban_sdk::Symbol::new(&e, "pause_signer_set")
-        } else {
-            false
-        }
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "pause_signer_set"))
+            .unwrap_or(false)
     });
     assert!(ev.is_some(), "pause_signer_set event not emitted");
     let (_, _, data) = ev.unwrap();
-    let (old_val, new_val): (bool, bool) = data.into_val(&e);
+    let (old_val, new_val) = <(bool, bool)>::try_from_val(&e, &data).unwrap();
     assert!(!old_val, "old_enabled should be false");
     assert!(new_val, "new_enabled should be true");
 }
@@ -836,15 +849,13 @@ fn test_pause_threshold_event_includes_old_and_new() {
 
     let events = e.events().all();
     let ev = events.iter().rev().find(|(_, topics, _)| {
-        if let soroban_sdk::Val::Symbol(s) = topics.get(0).unwrap() {
-            s == soroban_sdk::Symbol::new(&e, "pause_threshold_set")
-        } else {
-            false
-        }
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "pause_threshold_set"))
+            .unwrap_or(false)
     });
     assert!(ev.is_some(), "pause_threshold_set event not emitted");
     let (_, _, data) = ev.unwrap();
-    let (old_val, new_val): (u32, u32) = data.into_val(&e);
+    let (old_val, new_val) = <(u32, u32)>::try_from_val(&e, &data).unwrap();
     assert_eq!(old_val, 0u32, "old threshold should be 0");
     assert_eq!(new_val, 1u32, "new threshold should be 1");
 }

@@ -6,8 +6,17 @@ fn setup(e: &Env) -> (CredenceTreasuryClient<'_>, Address) {
     let contract_id = e.register(CredenceTreasury, ());
     let client = CredenceTreasuryClient::new(e, &contract_id);
     let admin = Address::generate(e);
+
+    let token_admin = Address::generate(e);
+    let token_id = e.register_stellar_asset_contract(token_admin.clone());
+
     e.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin, &token_id);
+
+    // Give admin some tokens so they can deposit
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(e, &token_id);
+    stellar_client.mint(&admin, &(i128::MAX / 2));
+
     (client, admin)
 }
 

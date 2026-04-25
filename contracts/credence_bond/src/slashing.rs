@@ -67,12 +67,13 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 ///
 /// Executes the slash with full validation:
 /// 1. Validates caller is admin (panics if not)
-/// 2. Calculates new slashed total
-/// 3. Caps at bonded amount (prevents over-slash)
+/// 2. Computes available balance (bonded − already_slashed)
+/// 3. Caps slash at available balance (prevents over-slash)
 /// 4. Updates bond state
-/// 5. Adds slashing reward claim for the slasher
-/// 6. Emits slashing event
-/// 7. Returns updated bond state
+/// 5. Appends a normalized SlashRecord to persistent history
+/// 6. Adds slashing reward claim for the slasher
+/// 7. Emits slashing event
+/// 8. Returns updated bond state
 ///
 /// # Arguments
 /// * `e` - Soroban environment
@@ -89,7 +90,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// - If arithmetic overflows (checked_add protection)
 ///
 /// # Security Notes
-/// - Over-slash is prevented by capping at bonded_amount
+/// - Slash is bounded by available balance (bonded − slashed), not just bonded
 /// - Slashing is monotonic (always increases or stays same, never decreases)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 /// - Slasher receives 10% of slashed amount as reward (pull-payment)
@@ -110,32 +111,36 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         .get::<_, crate::IdentityBond>(&key)
         .unwrap_or_else(|| panic!("no bond"));
 
-    // 3. Calculate new slashed amount with overflow protection
+    // 3. Available balance = bonded − already_slashed
+    let available = bond
+        .bonded_amount
+        .checked_sub(bond.slashed_amount)
+        .expect("slashed exceeds bonded");
+
+    // 4. Cap slash at available balance (not just bonded_amount)
+    let actual_slash_amount = if amount > available { available } else { amount };
+
     let new_slashed = bond
         .slashed_amount
-        .checked_add(amount)
+        .checked_add(actual_slash_amount)
         .expect("slashing caused overflow");
 
-    // 4. Cap slashing at bonded amount (over-slash prevention)
-    let actual_slash_amount = if new_slashed > bond.bonded_amount {
-        bond.bonded_amount - bond.slashed_amount
-    } else {
-        amount
-    };
+    bond.slashed_amount = new_slashed;
 
-    bond.slashed_amount = if new_slashed > bond.bonded_amount {
-        bond.bonded_amount
-    } else {
-        new_slashed
-    };
+    // 5. Append normalized slash history record
+    crate::slash_history::append_slash_history(
+        e,
+        &bond.identity,
+        actual_slash_amount,
+        Symbol::new(e, "admin_slash"),
+        bond.slashed_amount,
+    );
 
-    // 5. Add slashing reward claim for the admin (10% of slashed amount)
+    // 6. Add slashing reward claim for the admin (10% of slashed amount)
     if actual_slash_amount > 0 {
         let reward_amount = actual_slash_amount / 10; // 10% reward
         if reward_amount > 0 {
-            // Get next source ID for tracking
             let source_id = get_next_slash_id(e);
-
             crate::claims::add_pending_claim(
                 e,
                 admin,
@@ -147,10 +152,10 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         }
     }
 
-    // 6. Persist updated bond state
+    // 7. Persist updated bond state
     e.storage().instance().set(&key, &bond);
 
-    // 7. Emit slashing event for off-chain tracking
+    // 8. Emit slashing event for off-chain tracking
     emit_slashing_event(e, &bond.identity, actual_slash_amount, bond.slashed_amount);
 
     // Emit v2 event with enhanced indexing for backward compatibility during migration
@@ -165,7 +170,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         bond.slashed_amount >= bond.bonded_amount,
     );
 
-    // 8. Return updated bond state
+    // 9. Return updated bond state
     bond
 }
 

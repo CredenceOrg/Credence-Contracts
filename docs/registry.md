@@ -303,3 +303,10 @@ Potential improvements for future versions:
 ## License
 
 Part of the Credence protocol contracts.
+
+## Known Simplifications
+
+- `get_all_identities()` is unbounded and has no pagination.
+- There is no cross-contract binding between bond and registry at initialization.
+
+See [known-simplifications.md](known-simplifications.md#7-get_all_identities-has-no-pagination) for details and production paths.

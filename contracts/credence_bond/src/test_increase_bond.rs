@@ -41,7 +41,7 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
-    // Approve enough for both create_bond (1000) and increase_bond (500)
+    // Approve enough for both create_bond (1000) and top_up (500)
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
@@ -49,7 +49,7 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
     let before_user = token_client.balance(&identity);
     let before_contract = token_client.balance(&contract_id);
 
-    let updated = client.increase_bond(&identity, &500_i128);
+    let updated = client.top_up(&500_i128);
 
     assert_eq!(updated.bonded_amount, 1500);
     assert_eq!(token_client.balance(&identity), before_user - 500);
@@ -57,7 +57,7 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
 }
 
 #[test]
-#[should_panic(expected = "token not set")]
+#[should_panic(expected = "no bond")]
 fn test_increase_bond_fails_without_token_configuration() {
     let e = Env::default();
     e.mock_all_auths();
@@ -66,28 +66,26 @@ fn test_increase_bond_fails_without_token_configuration() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    let identity = Address::generate(&e);
     client.initialize(&admin);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
-
-    client.increase_bond(&identity, &10_i128);
+    client.top_up(&10_i128);
 }
 
 #[test]
-#[should_panic(expected = "not bond owner")]
+#[should_panic(expected = "HostError")]
 fn test_increase_bond_fails_for_non_owner() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
     let stranger = Address::generate(&e);
 
-    // Approve for create_bond (1000) and increase_bond (500)
-    token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
+    // Approve only enough for create_bond from the real bond owner.
+    // Stranger allowance must not be used for the bond owner's top-up.
+    token_client.approve(&identity, &contract_id, &1000_i128, &1000_u32);
     token_client.approve(&stranger, &contract_id, &500_i128, &1000_u32);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
-    client.increase_bond(&stranger, &500_i128);
+    client.top_up(&500_i128);
 }
 
 #[test]
@@ -100,7 +98,7 @@ fn test_increase_bond_rejects_zero_amount() {
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
-    client.increase_bond(&identity, &0_i128);
+    client.top_up(&0_i128);
 }
 
 #[test]
@@ -116,7 +114,7 @@ fn test_increase_bond_overflow_protection() {
     // Now try to increase by i128::MAX - this should cause overflow
     token_client.approve(&identity, &contract_id, &i128::MAX, &1000_u32);
 
-    client.increase_bond(&identity, &i128::MAX);
+    client.top_up(&i128::MAX);
 }
 
 #[test]
@@ -130,8 +128,8 @@ fn test_increase_bond_fails_without_allowance() {
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
-    // No approval for increase_bond - should fail
-    client.increase_bond(&identity, &500_i128);
+    // No approval for top_up - should fail
+    client.top_up(&500_i128);
 }
 
 #[test]
@@ -139,12 +137,12 @@ fn test_increase_bond_emits_event() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
-    // Approve for create_bond (1000) and increase_bond (250)
+    // Approve for create_bond (1000) and top_up (250)
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
-    let _ = client.increase_bond(&identity, &250_i128);
+    let _ = client.top_up(&250_i128);
 
     let events = e.events().all();
     assert!(!events.is_empty());
@@ -175,13 +173,13 @@ fn test_increase_bond_preserves_other_fields() {
     let e = Env::default();
     let (client, contract_id, identity, token_client) = setup(&e);
 
-    // Approve for create_bond (1000) and increase_bond (150)
+    // Approve for create_bond (1000) and top_up (150)
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     let original =
         client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &true, &7200_u64);
 
-    let updated = client.increase_bond(&identity, &150_i128);
+    let updated = client.top_up(&150_i128);
 
     assert_eq!(updated.identity, original.identity);
     assert_eq!(updated.bond_start, original.bond_start);

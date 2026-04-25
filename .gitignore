@@ -1,4 +1,6 @@
 /target
+node_modules/
+**/node_modules/
 **/test_snapshots
 **/test_snapshots/
 *.snap
