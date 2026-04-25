@@ -11,6 +11,9 @@ use crate::math;
 /// Max fee in basis points (100% = `BPS_DENOMINATOR`).
 const MAX_FEE_BPS: u32 = math::BPS_DENOMINATOR as u32;
 
+/// Min fee in basis points (0.01% = 1 bps).
+const MIN_FEE_BPS: u32 = 1;
+
 /// Get treasury and fee rate (basis points). Returns (treasury, fee_bps).
 /// If not set, fee is zero (no treasury = no fee).
 pub fn get_config(e: &Env) -> (Option<Address>, u32) {
@@ -28,12 +31,20 @@ pub fn set_config(e: &Env, treasury: Address, fee_bps: u32) {
     if fee_bps > MAX_FEE_BPS {
         panic!("fee_bps must be <= 10000");
     }
+    if fee_bps != 0 && fee_bps < MIN_FEE_BPS {
+        panic!("fee_bps must be >= 1 or 0");
+    }
+
+    let (old_treasury, old_fee_bps) = get_config(e);
+
     e.storage()
         .instance()
         .set(&crate::DataKey::FeeTreasury, &treasury);
     e.storage()
         .instance()
         .set(&crate::DataKey::FeeBps, &fee_bps);
+
+    emit_fee_config_updated(e, &treasury, old_treasury, old_fee_bps, fee_bps);
 }
 
 /// Calculate fee for a bond amount. Returns (fee_amount, net_amount).
@@ -85,5 +96,24 @@ pub fn emit_fee_event(
     e.events().publish(
         (Symbol::new(e, "bond_creation_fee"),),
         (identity.clone(), bond_amount, fee_amount, treasury.clone()),
+    );
+}
+
+/// Emit fee config updated event with old and new values for governance transparency.
+pub fn emit_fee_config_updated(
+    e: &Env,
+    treasury: &Address,
+    old_treasury: Option<Address>,
+    old_fee_bps: u32,
+    new_fee_bps: u32,
+) {
+    e.events().publish(
+        (Symbol::new(e, "fee_config_updated"),),
+        (
+            old_treasury.clone(),
+            old_fee_bps,
+            treasury.clone(),
+            new_fee_bps,
+        ),
     );
 }

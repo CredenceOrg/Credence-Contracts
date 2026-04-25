@@ -84,6 +84,17 @@ fn test_fee_over_max_rejected() {
 }
 
 #[test]
+fn test_fee_config_zero_allowed_when_disabling() {
+    let e = Env::default();
+    let (client, admin, _identity) = setup(&e);
+    let treasury = Address::generate(&e);
+    client.set_fee_config(&admin, &treasury, &100_u32);
+    client.set_fee_config(&admin, &treasury, &0_u32);
+    let (_, bps) = client.get_fee_config();
+    assert_eq!(bps, 0);
+}
+
+#[test]
 #[should_panic(expected = "not admin")]
 fn test_set_fee_config_unauthorized() {
     let e = Env::default();
