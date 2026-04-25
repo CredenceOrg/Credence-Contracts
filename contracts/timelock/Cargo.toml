@@ -8,5 +8,5 @@ description = "Credence timelock — enforces delay before protocol parameter ch
 crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = { version = "22.0", features = ["testutils"] }
+soroban-sdk = { version = "23.0", features = ["testutils"] }
 credence_errors = { path = "../credence_errors" }

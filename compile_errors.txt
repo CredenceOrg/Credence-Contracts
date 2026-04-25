@@ -1,0 +1,1924 @@
+warning: constant `MAX_PAGINATION_LIMIT` is never used
+  --> contracts/credence_bond/src/claims.rs:20:7
+   |
+20 | const MAX_PAGINATION_LIMIT: u32 = 100;
+   |       ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `get_pending_claims_paginated` is never used
+   --> contracts/credence_bond/src/claims.rs:219:8
+    |
+219 | pub fn get_pending_claims_paginated(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_pending_claims_count` is never used
+   --> contracts/credence_bond/src/claims.rs:269:8
+    |
+269 | pub fn get_pending_claims_count(e: &Env, user: &Address) -> u32 {
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_claim_by_id` is never used
+   --> contracts/credence_bond/src/claims.rs:293:8
+    |
+293 | pub fn get_claim_by_id(e: &Env, claim_id: u64) -> PendingClaim {
+    |        ^^^^^^^^^^^^^^^
+
+warning: function `process_claim_by_id` is never used
+   --> contracts/credence_bond/src/claims.rs:315:8
+    |
+315 | pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResult {
+    |        ^^^^^^^^^^^^^^^^^^^
+
+warning: function `process_claims_paginated` is never used
+   --> contracts/credence_bond/src/claims.rs:394:8
+    |
+394 | pub fn process_claims_paginated(
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `append_slash_history` is never used
+  --> contracts/credence_bond/src/slash_history.rs:21:8
+   |
+21 | pub fn append_slash_history(
+   |        ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `get_slash_count` is never used
+  --> contracts/credence_bond/src/slash_history.rs:48:8
+   |
+48 | pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
+   |        ^^^^^^^^^^^^^^^
+
+warning: function `get_slash_history` is never used
+  --> contracts/credence_bond/src/slash_history.rs:54:8
+   |
+54 | pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
+   |        ^^^^^^^^^^^^^^^^^
+
+warning: function `get_slash_record` is never used
+  --> contracts/credence_bond/src/slash_history.rs:69:8
+   |
+69 | pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
+   |        ^^^^^^^^^^^^^^^^
+
+warning: function `get_total_slashed_from_history` is never used
+  --> contracts/credence_bond/src/slash_history.rs:78:8
+   |
+78 | pub fn get_total_slashed_from_history(e: &Env, identity: &Address) -> i128 {
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+   Compiling credence_bond v0.1.0 (/home/robi/Desktop/Credence-Contracts/contracts/credence_bond)
+warning: `credence_bond` (lib) generated 11 warnings
+warning: unused import: `testutils::Ledger as TestLedger`
+   --> contracts/credence_bond/src/safe_token.rs:213:44
+    |
+213 |         testutils::Address as TestAddress, testutils::Ledger as TestLedger, Address, Env,
+    |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `String`
+ --> contracts/credence_bond/src/test_immutable_config.rs:2:33
+  |
+2 | use soroban_sdk::{Address, Env, String};
+  |                                 ^^^^^^
+
+warning: unused import: `String`
+ --> contracts/credence_bond/src/test_immutable_config_working.rs:2:33
+  |
+2 | use soroban_sdk::{Address, Env, String};
+  |                                 ^^^^^^
+
+warning: unused import: `Ledger as _`
+ --> contracts/credence_bond/src/test_increase_bond.rs:4:57
+  |
+4 | use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+  |                                                         ^^^^^^^^^^^
+
+warning: unused import: `crate::test_helpers`
+  --> contracts/credence_bond/src/test_reentrancy_bug_exploration.rs:22:5
+   |
+22 | use crate::test_helpers;
+   |     ^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::*`
+  --> contracts/credence_bond/src/test_reentrancy_preservation.rs:22:5
+   |
+22 | use super::*;
+   |     ^^^^^^^^
+
+warning: unused imports: `IntoVal`, `TryFromVal`, `Val`, `Vec`, and `vec`
+  --> contracts/credence_bond/src/test_reentrancy_preservation.rs:26:19
+   |
+26 | use soroban_sdk::{vec, Address, Env, IntoVal, Symbol, TryFromVal, TryIntoVal, Val, Vec};
+   |                   ^^^                ^^^^^^^          ^^^^^^^^^^              ^^^  ^^^
+
+warning: unnecessary parentheses around method argument
+   --> contracts/credence_bond/src/test_reentrancy_preservation.rs:404:48
+    |
+404 |         let second_amount = rng.gen_range(100, (initial_amount - first_amount));
+    |                                                ^                             ^
+    |
+    = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+    |
+404 -         let second_amount = rng.gen_range(100, (initial_amount - first_amount));
+404 +         let second_amount = rng.gen_range(100, initial_amount - first_amount);
+    |
+
+warning: unused imports: `UpgradeAuthorization`, `UpgradeProposal`, and `UpgradeRecord`
+ --> contracts/credence_bond/src/test_upgrade_auth.rs:3:15
+  |
+3 |         self, UpgradeAuthorization, UpgradeProposal, UpgradeRecord, UpgradeRole, UpgradeStatus,
+  |               ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `Vec`
+ --> contracts/credence_bond/src/test_upgrade_auth.rs:8:40
+  |
+8 | use soroban_sdk::{Address, Bytes, Env, Vec};
+  |                                        ^^^
+
+warning: unused import: `crate::*`
+ --> contracts/credence_bond/src/test_verifier.rs:9:5
+  |
+9 | use crate::*;
+  |     ^^^^^^^^
+
+warning: unused variable: `token`
+  --> contracts/credence_bond/src/normalization.rs:59:13
+   |
+59 |         let token = Address::generate(&e);
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_token`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `env`
+   --> contracts/credence_bond/src/safe_token.rs:218:13
+    |
+218 |         let env = Env::default();
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_env`
+
+warning: unused variable: `bond`
+   --> contracts/credence_bond/src/test_create_bond.rs:181:9
+    |
+181 |     let bond = client.create_bond(&identity, &8000_i128, &86400_u64);
+    |         ^^^^ help: if this is intentional, prefix it with an underscore: `_bond`
+
+warning: unused variable: `increase_data`
+   --> contracts/credence_bond/src/test_events_v2.rs:184:9
+    |
+184 |     let increase_data = <(bool, crate::BondTier)>::from_val(&e, &new_increase_event.2);
+    |         ^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_increase_data`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config.rs:16:13
+   |
+16 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config.rs:37:13
+   |
+37 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config.rs:54:13
+   |
+54 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config.rs:74:13
+   |
+74 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config.rs:97:13
+   |
+97 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config_working.rs:16:13
+   |
+16 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_immutable_config_working.rs:33:13
+   |
+33 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `old_impl`
+   --> contracts/credence_bond/src/test_upgrade_auth.rs:160:9
+    |
+160 |     let old_impl = create_test_address(&env);
+    |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_old_impl`
+
+warning: unused variable: `impl1`
+   --> contracts/credence_bond/src/test_upgrade_auth.rs:241:9
+    |
+241 |     let impl1 = create_test_address(&env);
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_impl1`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_zero_address.rs:14:13
+   |
+14 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: unused variable: `admin`
+   --> contracts/credence_bond/src/test_zero_address.rs:101:32
+    |
+101 |         let (contract_address, admin) = setup_contract(&env);
+    |                                ^^^^^ help: if this is intentional, prefix it with an underscore: `_admin`
+
+warning: unused variable: `admin`
+   --> contracts/credence_bond/src/test_zero_address.rs:124:32
+    |
+124 |         let (contract_address, admin) = setup_contract(&env);
+    |                                ^^^^^ help: if this is intentional, prefix it with an underscore: `_admin`
+
+warning: unused variable: `contract`
+  --> contracts/credence_bond/src/test_zero_address_working.rs:14:13
+   |
+14 |         let contract = create_contract();
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_contract`
+
+warning: function `setup_with_contract` is never used
+  --> contracts/credence_bond/src/test_upgrade_auth.rs:11:4
+   |
+11 | fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
+   |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `setup` is never used
+  --> contracts/credence_bond/src/test_validation.rs:16:4
+   |
+16 | fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
+   |    ^^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> contracts/credence_bond/src/test_evidence.rs:11:13
+   |
+11 | fn setup(e: &Env) -> (CredenceBondClient, Address) {
+   |             ^^^^      ^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |             |
+   |             the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+   = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+   |
+11 | fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
+   |                                         ++++
+
+warning: comparison is useless due to type limits
+   --> contracts/credence_bond/src/test_evidence.rs:231:13
+    |
+231 |     assert!(evidence.submitted_at >= 0);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: `credence_bond` (lib test) generated 43 warnings (11 duplicates) (run `cargo fix --lib -p credence_bond --tests` to apply 29 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.50s
+     Running unittests src/lib.rs (target/debug/deps/credence_bond-3a3928a860191fcc)
+
+running 587 tests
+test batch::tests::test_get_batch_total_amount ... ok
+test integration::test_bond_lifecycle::test_lifecycle_create_topup_slash_withdraw ... FAILED
+test integration::test_bond_lifecycle::test_lifecycle_extend_duration ... ok
+test integration::test_bond_lifecycle::test_lifecycle_create_then_withdraw ... ok
+test integration::test_bond_lifecycle::test_lifecycle_slash_then_withdraw_remaining ... ok
+test integration::test_bond_lifecycle::test_lifecycle_state_consistency ... ok
+test normalization::tests::test_normalization_6_decimals ... ok
+test safe_token::tests::test_validate_amount ... ok
+test safe_token::tests::test_zero_address_validation ... ok
+test slashing::tests::test_available_balance_calculation ... ok
+test slashing::tests::test_available_balance_with_slashing ... ok
+test slashing::tests::test_fully_slashed_detection ... ok
+test slashing::tests::test_partial_slash_detection ... ok
+test integration::test_bond_lifecycle::test_lifecycle_create_topup_withdraw ... ok
+test test_access_control::test_access_denied_event_for_admin_or_verifier ... ok
+test test_access_control::test_access_denied_event_for_not_admin ... ok
+test test_access_control::test_access_denied_event_for_not_identity_owner ... ok
+test integration::test_governance::test_governance_multisig_approval_and_execution ... ok
+test test_access_control::test_access_denied_event_for_not_verifier ... ok
+test test_access_control::test_add_and_remove_verifier_success ... ok
+test integration::test_governance::test_governance_multi_actor_delegation_flow ... ok
+test test_access_control::test_add_verifier_unauthorized - should panic ... ok
+test integration::test_governance::test_governance_contested_flow_rejects_execution - should panic ... ok
+test test_access_control::test_require_admin_not_initialized - should panic ... ok
+test test_access_control::test_require_admin_or_verifier_success_for_admin ... ok
+test test_access_control::test_multiple_verifiers ... ok
+test test_access_control::test_admin_read_helpers ... ok
+test test::test_create_bond ... ok
+test test_access_control::test_require_admin_success ... ok
+test test_access_control::test_require_identity_owner_success ... ok
+test test_access_control::test_require_admin_or_verifier_success_for_verifier ... ok
+test test_access_control::test_require_admin_or_verifier_unauthorized - should panic ... ok
+test test_access_control::test_require_admin_unauthorized - should panic ... ok
+test test_access_control::test_require_identity_owner_unauthorized - should panic ... ok
+test test_access_control::test_require_verifier_success ... ok
+test integration::test_governance::test_governance_slash_request_submission ... ok
+test test_access_control::test_require_verifier_unauthorized - should panic ... ok
+test integration::test_governance::test_governance_reproposal_after_contested_request ... ok
+test test_attestation::test_add_attestation_basic ... ok
+test test_attestation::test_events_published ... ok
+test test_attestation::test_add_attestation_empty_data ... ok
+test test_attestation::test_duplicate_attestation_rejected - should panic ... ok
+test test_attestation::test_add_attestation_different_subjects ... ok
+test test_attestation::test_get_nonexistent_attestation - should panic ... ok
+test test_attestation::test_get_subject_attestations_empty ... ok
+test test_attestation::test_add_attestation_different_attesters ... ok
+test test_attestation::test_is_attester_false_for_unregistered ... ok
+test test_attestation::test_add_multiple_attestations ... ok
+test test_attestation::test_register_attester ... ok
+test test_attestation::test_get_attestation ... ok
+test test_attestation::test_get_subject_attestations ... ok
+test test_attestation::test_register_multiple_attesters ... ok
+test test_attestation::test_revoke_nonexistent - should panic ... ok
+test test_attestation::test_revoke_wrong_attester - should panic ... ok
+test test_attestation::test_get_subject_attestations_different_subjects ... ok
+test test_attestation::test_revoke_preserves_data ... ok
+test test_attestation::test_complex_scenario ... ok
+test test_attestation::test_revoke_attestation ... ok
+test test_attestation::test_unauthorized_attester_rejected - should panic ... ok
+test test_attestation::test_unregister_attester ... ok
+test test_attestation_types::attestation_boundary_weight_max ... ok
+test test_attestation_types::attestation_boundary_weight_min ... ok
+test test_attestation::test_self_attestation ... ok
+test test_attestation_types::attestation_is_active ... ok
+test test_attestation_types::attestation_dedup_key_equality ... ok
+test test_attestation_types::attestation_validate_accepts_valid ... ok
+test test_attestation_types::attestation_validate_rejects_over_max_weight - should panic ... ok
+test test_attestation_types::attestation_validate_rejects_zero_weight - should panic ... ok
+test test_attestation_types::attestation_weight_validation_accepts_valid ... ok
+test test_attestation_types::attestation_weight_validation_rejects_zero - should panic ... ok
+test test_attestation_types::attestation_weight_validation_rejects_over_max - should panic ... ok
+test test_attestation::test_revoke_twice - should panic ... ok
+test test_attestation::test_same_attester_different_data_gets_unique_id ... ok
+test test_attestation::test_timestamp_set ... ok
+test test_batch::test_atomic_failure_on_second_bond ... FAILED
+test test_attestation::test_unregistered_attester_cannot_attest - should panic ... ok
+test test_batch::test_atomic_failure_with_duration_overflow_in_middle - should panic ... ok
+test test_batch::test_all_bonds_validated_before_any_created ... FAILED
+test test_batch::test_atomic_failure_with_invalid_rolling_bond_in_batch - should panic ... ok
+test test_batch::test_atomic_failure_with_mixed_valid_invalid_amounts - should panic ... ok
+test test_attestation::test_same_attester_multiple_for_subject ... ok
+test test_batch::test_batch_bonds_event_emission ... ok
+test test_batch::test_batch_total_amount_single_bond ... ok
+test test_batch::test_batch_size_boundary_at_one ... ok
+test test_batch::test_batch_total_amount_with_max_size ... ok
+test test_batch::test_batch_bonds_with_different_durations ... ok
+test test_batch::test_batch_size_boundary_at_max_plus_one - should panic ... ok
+test test_batch::test_batch_size_boundary_way_above_max - should panic ... ok
+test test_batch::test_batch_result_structure ... ok
+test test_batch::test_batch_total_overflow - should panic ... ok
+test test_batch::test_batch_with_large_amounts ... ok
+test test_batch::test_batch_with_rolling_bonds ... ok
+test test_batch::test_batch_with_minimum_valid_duration ... ok
+test test_batch::test_create_multiple_bonds_in_batch ... ok
+test test_batch::test_batch_with_minimum_valid_amount ... ok
+test test_batch::test_batch_with_maximum_valid_duration ... ok
+test test_batch::test_empty_batch_fails - should panic ... ok
+test test_batch::test_duration_overflow_fails - should panic ... ok
+test test_batch::test_create_single_bond_in_batch ... ok
+test test_batch::test_get_batch_total_amount_above_max_batch_size_fails - should panic ... ok
+test test_batch::test_get_batch_total_amount_empty_batch_returns_zero ... ok
+test test_batch::test_create_batch_bonds_above_max_batch_size_fails - should panic ... ok
+test test_batch::test_empty_batch_fails_before_size_check ... ok
+test test_batch::test_get_batch_total_amount ... ok
+test test_batch::test_negative_amount_fails - should panic ... ok
+test test_batch::test_rolling_bond_without_notice_period_fails - should panic ... ok
+test test_batch::test_batch_size_boundary_at_max_minus_one ... ok
+test test_batch::test_validate_batch_enforces_max_size ... ok
+test test_batch::test_validate_batch_bonds_fails_on_invalid - should panic ... ok
+test test_batch::test_validate_batch_bonds_success ... ok
+test test_cooldown::test_can_withdraw_after_cooldown ... ok
+test test_cooldown::test_can_withdraw_at_boundary ... ok
+test test_cooldown::test_can_withdraw_during_cooldown ... ok
+test test_cooldown::test_can_withdraw_no_request ... ok
+test test_cooldown::test_can_withdraw_zero_period ... ok
+test test_batch::test_validate_batch_rejects_oversized - should panic ... ok
+test test_batch::test_validation_order_size_before_content ... ok
+test test_batch::test_duplicate_bond_in_batch_fails - should panic ... ok
+test test_batch::test_zero_amount_fails - should panic ... ok
+test test_batch::test_create_batch_bonds_at_max_batch_size ... ok
+test test_cooldown::test_cancel_cooldown_no_request - should panic ... ok
+test test_batch::test_max_batch_size_gas_profile ... ok
+test test_cooldown::test_cancel_and_rerequest_lifecycle ... ok
+test test_cooldown::test_execute_cooldown_balance_slashed_during_cooldown - should panic ... ok
+test test_cooldown::test_execute_cooldown_too_early - should panic ... ok
+test test_cooldown::test_execute_cooldown_no_request - should panic ... ok
+test test_cooldown::test_execute_cooldown_withdrawal_after_period ... ok
+test test_cooldown::test_execute_after_cancel - should panic ... ok
+test test_cooldown::test_cancel_cooldown ... ok
+test test_cooldown::test_is_cooldown_active_after_window ... ok
+test test_cooldown::test_is_cooldown_active_at_boundary ... ok
+test test_cooldown::test_is_cooldown_active_during_window ... ok
+test test_cooldown::test_is_cooldown_active_no_request ... ok
+test test_cooldown::test_get_cooldown_request_none - should panic ... ok
+test test_cooldown::test_execute_cooldown_with_zero_period ... ok
+test test_cooldown::test_execute_cooldown_removes_request ... ok
+test test_cooldown::test_full_cooldown_lifecycle ... ok
+test test_cooldown::test_request_cooldown_no_bond - should panic ... ok
+test test_cooldown::test_execute_cooldown_withdrawal_exact_boundary ... ok
+test test_cooldown::test_get_cooldown_request ... ok
+test test_cooldown::test_request_cooldown_exceeds_available_after_slash - should panic ... ok
+test test_cooldown::test_request_cooldown_exceeds_balance - should panic ... ok
+test test_cooldown::test_saturating_add_no_overflow ... ok
+test test_cooldown::test_request_cooldown_negative_amount - should panic ... ok
+test test_cooldown::test_set_and_get_cooldown_period ... ok
+test test_cooldown::test_set_cooldown_period_to_zero ... ok
+test test_cooldown::test_request_cooldown_wrong_identity - should panic ... ok
+test test_cooldown::test_set_cooldown_period_unauthorized - should panic ... ok
+test test_create_bond::test_create_bond_duplicate ... FAILED
+test test_cooldown::test_request_cooldown_duplicate - should panic ... ok
+test test_create_bond::test_create_bond_duration_overflow - should panic ... FAILED
+test test_cooldown::test_update_cooldown_period ... ok
+test test_create_bond::test_create_bond_different_identities ... FAILED
+test test_cooldown::test_request_cooldown_zero_amount - should panic ... ok
+test test_create_bond::test_create_bond_max_amount ... FAILED
+test test_cooldown::test_request_cooldown_withdrawal_full_amount ... ok
+test test_create_bond::test_create_bond_min_positive_amount ... FAILED
+test test_create_bond::test_create_bond_max_duration ... FAILED
+test test_cooldown::test_request_cooldown_withdrawal ... ok
+test test_create_bond::test_create_bond_sequential ... FAILED
+test test_create_bond::test_create_bond_storage_persistence ... FAILED
+test test_create_bond::test_create_bond_negative_amount ... FAILED
+test test_create_bond::test_create_bond_timestamp ... FAILED
+test test_create_bond::test_create_bond_usdc_amount ... FAILED
+test test_create_bond::test_create_bond_field_initialization ... FAILED
+test test_create_bond::test_create_bond_success ... FAILED
+test test_create_bond::test_create_bond_zero_amount ... FAILED
+test test_create_bond::test_supply_cap_enforcement_above_cap - should panic ... FAILED
+test test_create_bond::test_set_supply_cap_success ... FAILED
+test test_create_bond::test_create_bond_zero_duration ... FAILED
+test test_create_bond::test_supply_cap_enforcement_below_cap ... FAILED
+test test_create_bond::test_supply_cap_no_cap ... FAILED
+test test_create_bond::test_set_supply_cap_negative - should panic ... FAILED
+test test_create_bond::test_supply_cap_with_multiple_bonds ... FAILED
+test test_decimals::test_validation_bounds_18_decimals - should panic ... FAILED
+test test_decimals::test_tier_silver_with_8_decimals ... FAILED
+test test_create_bond::test_supply_cap_withdrawal_reduces_supply ... FAILED
+test test_decimals::test_tier_silver_with_6_decimals ... FAILED
+test test_decimals::test_tier_silver_with_18_decimals ... FAILED
+test test_decimals::test_withdraw_correct_amount_6_decimals ... FAILED
+test test_decimals::test_24_decimals_panics - should panic ... FAILED
+test test_duration_validation::test_create_bond_below_min_duration_rejected - should panic ... ok
+test test_duration_validation::test_create_rolling_bond_invalid_duration_rejected - should panic ... ok
+test test_duration_validation::test_create_bond_zero_duration_rejected - should panic ... ok
+test test_duration_validation::test_duration_constants ... ok
+test test_duration_validation::test_create_bond_above_max_duration_rejected - should panic ... ok
+test test_duration_validation::test_validate_duration_at_minimum ... ok
+test test_duration_validation::test_validate_duration_above_minimum ... ok
+test test_duration_validation::test_validate_duration_at_maximum ... ok
+test test_duration_validation::test_validate_duration_below_maximum ... ok
+test test_duration_validation::test_validate_duration_just_above_maximum - should panic ... ok
+test test_duration_validation::test_validate_duration_just_below_minimum - should panic ... ok
+test test_duration_validation::test_validate_duration_one_second - should panic ... ok
+test test_duration_validation::test_validate_duration_u64_max - should panic ... ok
+test test_duration_validation::test_validate_duration_mid_range ... ok
+test test_early_exit_penalty::test_calculate_penalty_unit ... ok
+test test_duration_validation::test_validate_duration_zero - should panic ... ok
+test test_duration_validation::test_create_bond_min_duration ... ok
+test test_duration_validation::test_create_bond_max_duration ... ok
+test test_duration_validation::test_create_bond_typical_duration ... ok
+test test_duration_validation::test_create_rolling_bond_valid_duration ... ok
+test test_early_exit_penalty::test_early_exit_fails_without_config - should panic ... ok
+test test_early_exit_penalty::test_early_exit_penalty_calculation_max_penalty ... ok
+test test_early_exit_penalty::test_set_early_exit_config_unauthorized - should panic ... ok
+test test_early_exit_penalty::test_set_early_exit_config_invalid_bps - should panic ... ok
+test test_early_exit_penalty::test_early_exit_penalty_half_remaining ... ok
+test test_early_exit_penalty::test_early_exit_rejected_after_lock_up - should panic ... ok
+test test_early_exit_penalty::test_early_exit_emits_penalty_event ... ok
+test test_early_exit_penalty::test_early_exit_penalty_calculation_zero_penalty_rate ... ok
+test test_emergency::test_emergency_withdraw_multiple_records_increment_ids ... ok
+test test_emergency::test_emergency_withdraw_rejected_when_disabled - should panic ... ok
+test test_emergency::test_emergency_withdraw_respects_slashed_available_balance - should panic ... ok
+test test_emergency::test_set_emergency_config_rejects_invalid_fee_bps - should panic ... ok
+test test_emergency::test_set_emergency_mode_rejects_wrong_governance - should panic ... ok
+test test_emergency::test_emergency_withdraw_success_records_audit_trail ... ok
+test test_emergency::test_emergency_withdraw_requires_governance_approver - should panic ... ok
+test test_emergency::test_emergency_withdraw_rejects_non_positive_amount - should panic ... ok
+test test_emergency::test_set_emergency_config_rejects_non_admin - should panic ... ok
+test test_events::test_lifecycle_event_emissions ... FAILED
+test test_emergency::test_set_emergency_mode_requires_elevated_approval_and_updates_state ... ok
+test test_evidence::test_evidence_for_different_proposals ... ok
+test test_events_v2::test_event_schema_compatibility ... ok
+test test_evidence::test_evidence_count ... ok
+test test_evidence::test_get_nonexistent_evidence - should panic ... ok
+test test_events_v2::test_v2_event_indexing_improvements ... FAILED
+test test_evidence::test_get_proposal_evidence_empty ... ok
+test test_evidence::test_get_evidence_details ... ok
+test test_evidence::test_get_proposal_evidence_details ... ok
+test test_evidence::test_evidence_types ... ok
+test test_evidence::test_evidence_workflow ... ok
+test test_evidence::test_hash_exists ... ok
+test test_events_v2::test_event_indexing_query_efficiency ... FAILED
+test test_evidence::test_hash_uniqueness_across_proposals ... ok
+test test_evidence::test_submit_evidence_empty_hash - should panic ... ok
+test test_evidence::test_submit_duplicate_hash - should panic ... ok
+test test_evidence::test_multiple_submitters_same_proposal ... ok
+test test_evidence::test_submit_evidence_long_description - should panic ... ok
+test test_evidence::test_multiple_evidence_per_proposal ... ok
+test test_evidence::test_submit_evidence_ipfs ... ok
+test test_evidence::test_submit_evidence_sha256 ... ok
+test test_fees::test_fee_over_max_rejected - should panic ... ok
+test test_fees::test_fee_one_percent ... ok
+test test_fees::test_fee_calculated_on_create_bond ... ok
+test test_fees::test_fee_accumulates_in_pool ... ok
+test test_fees::test_fee_zero_bps ... ok
+test test_fees::test_fee_max_bps_capped ... ok
+test test_fees::test_set_fee_config ... ok
+test test_fees::test_fee_large_amount ... ok
+test test_fees::test_set_fee_config_unauthorized - should panic ... ok
+test test_governance_approval::test_initialize_governance ... ok
+test test_fees::test_fee_zero_when_not_configured ... ok
+test test_governance_approval::test_double_vote_rejected - should panic ... ok
+test test_governance_approval::test_get_governance_vote ... ok
+test test_governance_approval::test_initialize_governance_unauthorized - should panic ... ok
+test test_governance_approval::test_only_proposer_executes - should panic ... ok
+test test_governance_approval::test_delegate_vote ... ok
+test test_governance_approval::test_non_governor_cannot_vote - should panic ... ok
+test test_grace_period::grace_window_accepts_within_grace ... ok
+test test_grace_period::grace_window_accepts_at_exact_grace_end ... ok
+test test_governance_approval::test_propose_slash ... ok
+test test_governance_approval::test_vote_reject_then_execute_fails - should panic ... ok
+test test_grace_period::grace_window_rejects_one_second_past_grace_end - should panic ... ok
+test test_grace_period::grace_window_applies_to_revoke ... ok
+test test_grace_period::non_admin_cannot_set_grace_window - should panic ... ok
+test test_governance_approval::test_quorum_two_of_three ... ok
+test test_immutable_config::immutable_config_tests::test_admin_cannot_be_reinitialized ... FAILED
+test test_governance_approval::test_vote_approve_and_execute ... ok
+test test_immutable_config::immutable_config_tests::test_admin_initialized_correctly ... ok
+test test_immutable_config::immutable_config_tests::test_token_requires_initialization ... ok
+test test_immutable_config::immutable_config_tests::test_admin_requires_initialization ... ok
+test test_immutable_config::immutable_config_tests::test_token_can_only_be_set_once ... FAILED
+test test_immutable_config_working::immutable_config_tests::test_admin_cannot_be_reinitialized ... FAILED
+test test_grace_period::setting_grace_to_zero_restores_strict_enforcement - should panic ... ok
+test test_immutable_config_working::immutable_config_tests::test_admin_initialized_correctly ... ok
+test test_grace_period::strict_mode_rejects_one_second_past_deadline - should panic ... ok
+test test_grace_period::strict_mode_accepts_at_exact_deadline ... ok
+test test_grace_period::nonce_reuse_rejected_within_grace_window - should panic ... ok
+test test_increase_bond::test_increase_bond_fails_without_token_configuration - should panic ... FAILED
+test test_increase_bond::test_increase_bond_emits_event ... ok
+test test_increase_bond::test_increase_bond_fails_without_allowance - should panic ... ok
+test test_increase_bond::test_increase_bond_fails_for_non_owner - should panic ... FAILED
+test test_liquidation_scanner::test_advance_keeper_cursor_reset_to_zero_allowed ... ok
+test test_increase_bond::test_increase_bond_overflow_protection - should panic ... ok
+test test_liquidation_scanner::test_deregister_nonexistent_is_noop ... ok
+test test_liquidation_scanner::test_deregister_bond_holder_decreases_size ... ok
+test test_liquidation_scanner::test_get_keeper_cursor_default_zero ... ok
+test test_liquidation_scanner::test_advance_keeper_cursor_backwards_rejected - should panic ... ok
+test test_increase_bond::test_increase_bond_preserves_other_fields ... ok
+test test_increase_bond::test_increase_bond_success_transfers_and_updates_storage ... ok
+test test_liquidation_scanner::test_no_candidates_when_no_bonds_active ... ok
+test test_increase_bond::test_increase_bond_rejects_zero_amount - should panic ... ok
+test test_liquidation_scanner::test_pagination_next_cursor_resets_to_zero_on_completion ... ok
+test test_liquidation_scanner::test_max_iter_hard_cap_enforced ... ok
+test test_liquidation_scanner::test_register_bond_holder_increases_size ... ok
+test test_liquidation_scanner::test_pagination_done_flag_set_on_last_page ... ok
+test test_liquidation_scanner::test_register_bond_holder_idempotent ... ok
+test test_liquidation_scanner::test_register_emits_event ... ok
+test test_liquidation_scanner::test_scan_emits_page_event ... FAILED
+test test_liquidation_scanner::test_scan_with_cursor_beyond_registry_panics - should panic ... ok
+test test_liquidation_scanner::test_pagination_covers_all_holders_no_overlap ... ok
+test test_liquidation_scanner::test_scan_empty_registry_returns_done ... ok
+test test_liquidation_scanner::test_register_multiple_holders ... ok
+test test_liquidation_scanner::test_zero_max_iter_uses_default ... ok
+test test_market_activation::test_activation_fails_with_duration_below_minimum - should panic ... ok
+test test_market_activation::test_activation_fails_with_negative_amount - should panic ... ok
+test test_market_activation::test_activation_fails_without_token_config - should panic ... ok
+test test_market_activation::test_activation_fails_with_duration_above_maximum - should panic ... ok
+test test_market_activation::test_activation_fails_with_zero_gold_threshold - should panic ... ok
+test test_market_activation::test_activation_fails_with_platinum_equal_to_gold - should panic ... ok
+test test_math::test_bps_basic ... ok
+test test_math::test_bps_overflow_panics - should panic ... ok
+test test_math::test_mul_overflow_panics - should panic ... ok
+test test_math::test_mul_u64_overflow_panics - should panic ... ok
+test test_math::test_sub_underflow_panics - should panic ... ok
+test test_market_activation::test_set_gold_threshold_above_max_panics - should panic ... ok
+test test_market_activation::test_activation_fails_with_zero_amount - should panic ... ok
+test test_market_activation::test_set_protocol_fee_bps_zero_is_valid ... ok
+test test_market_activation::test_set_platinum_threshold_above_max_panics - should panic ... ok
+test test_market_activation::test_set_protocol_fee_bps_above_max_panics - should panic ... ok
+test test_max_leverage::test_create_bond_above_cap_reverts - should panic ... ok
+test test_max_leverage::test_default_max_leverage ... ok
+test test_max_leverage::test_create_bond_at_cap_succeeds ... ok
+test test_market_activation::test_valid_bond_activation_succeeds ... FAILED
+test test_max_leverage::test_set_max_leverage_above_hard_ceiling_rejected - should panic ... ok
+test test_max_leverage::test_leverage_18_decimal_scale_above_cap_reverts - should panic ... ok
+test test_max_leverage::test_create_bond_below_cap_succeeds ... ok
+test test_max_leverage::test_set_max_leverage_by_admin ... ok
+test test_max_leverage::test_leverage_6_decimal_above_cap_reverts - should panic ... ok
+test test_max_leverage::test_set_max_leverage_non_admin_rejected - should panic ... ok
+test test_max_leverage::test_set_max_leverage_max_bound ... ok
+test test_max_leverage::test_set_max_leverage_zero_rejected - should panic ... ok
+test test_max_leverage::test_leverage_18_decimal_scale_at_cap_succeeds ... ok
+test test_max_leverage::test_set_max_leverage_min_bound ... ok
+test test_parameters::test_default_attestation_fee_bps ... ok
+test test_max_leverage::test_reduced_cap_blocks_previously_valid_amount - should panic ... ok
+test test_max_leverage::test_leverage_6_decimal_at_cap_succeeds ... ok
+test test_parameters::test_attestation_fee_event_args ... ok
+test test_parameters::test_default_platinum_threshold ... ok
+test test_parameters::test_default_bronze_threshold ... ok
+test test_parameters::test_default_gold_threshold ... ok
+test test_parameters::test_default_silver_threshold ... ok
+test test_parameters::test_default_protocol_fee_bps ... ok
+test test_parameters::test_default_slash_cooldown_secs ... ok
+test test_parameters::test_default_withdrawal_cooldown_secs ... ok
+test test_parameters::test_multiple_protocol_fee_updates ... ok
+test test_parameters::test_event_contains_old_and_new_values ... ok
+test test_parameters::test_all_parameters_independent ... ok
+test test_parameters::test_no_duplicate_events_on_parameter_update ... ok
+test test_parameters::test_multiple_parameter_changes_emit_multiple_events ... ok
+test test_parameters::test_multiple_tier_threshold_updates ... ok
+test test_parameters::test_parameter_change_event_emitted_on_update ... ok
+test test_parameters::test_protocol_fee_event_args ... ok
+test test_parameters::test_pause_signer_event_includes_old_and_new ... ok
+test test_parameters::test_max_values_for_all_parameters ... ok
+test test_parameters::test_set_attestation_fee_bps_at_max_boundary ... ok
+test test_parameters::test_pause_threshold_event_includes_old_and_new ... ok
+test test_parameters::test_set_attestation_fee_bps_above_max - should panic ... ok
+test test_parameters::test_set_attestation_fee_bps_at_min_boundary ... ok
+test test_parameters::test_set_bronze_threshold_above_max - should panic ... ok
+test test_parameters::test_set_attestation_fee_bps_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_bronze_threshold_at_max_boundary ... ok
+test test_parameters::test_set_bronze_threshold_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_bronze_threshold_at_min_boundary ... ok
+test test_parameters::test_set_gold_threshold_below_min - should panic ... ok
+test test_parameters::test_set_gold_threshold_at_max_boundary ... ok
+test test_parameters::test_set_bronze_threshold_negative - should panic ... ok
+test test_parameters::test_set_gold_threshold_at_min_boundary ... ok
+test test_parameters::test_set_gold_threshold_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_gold_threshold_above_max - should panic ... ok
+test test_parameters::test_set_platinum_threshold_above_max - should panic ... ok
+test test_parameters::test_set_platinum_threshold_at_max_boundary ... ok
+test test_parameters::test_set_platinum_threshold_below_min - should panic ... ok
+test test_parameters::test_set_platinum_threshold_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_parameter_to_same_value ... ok
+test test_parameters::test_set_platinum_threshold_at_min_boundary ... ok
+test test_parameters::test_set_protocol_fee_bps_at_max_boundary ... ok
+test test_parameters::test_set_protocol_fee_bps_below_min - should panic ... ok
+test test_parameters::test_set_protocol_fee_bps_above_max - should panic ... ok
+test test_parameters::test_set_silver_threshold_above_max - should panic ... ok
+test test_parameters::test_set_silver_threshold_at_max_boundary ... ok
+test test_parameters::test_set_protocol_fee_bps_at_min_boundary ... ok
+test test_parameters::test_set_protocol_fee_bps_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_silver_threshold_at_min_boundary ... ok
+test test_parameters::test_set_silver_threshold_below_min - should panic ... ok
+test test_parameters::test_set_slash_cooldown_at_max_boundary ... ok
+test test_parameters::test_set_silver_threshold_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_slash_cooldown_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_slash_cooldown_above_max - should panic ... ok
+test test_parameters::test_set_withdrawal_cooldown_at_min_boundary ... ok
+test test_parameters::test_set_withdrawal_cooldown_non_governance_rejected - should panic ... ok
+test test_parameters::test_set_withdrawal_cooldown_above_max - should panic ... ok
+test test_parameters::test_set_withdrawal_cooldown_at_max_boundary ... ok
+test test_parameters::test_set_slash_cooldown_at_min_boundary ... ok
+test test_parameters::test_update_bronze_threshold_success ... ok
+test test_parameters::test_update_slash_cooldown_success ... ok
+test test_parameters::test_update_gold_threshold_success ... ok
+test test_parameters::test_update_attestation_fee_bps_success ... ok
+test test_parameters::test_update_withdrawal_cooldown_success ... ok
+test test_parameters::test_update_protocol_fee_bps_success ... ok
+test test_parameters::test_update_platinum_threshold_success ... ok
+test test_parameters::test_update_silver_threshold_success ... ok
+test test_parameters::test_withdrawal_cooldown_event_args ... ok
+test test_parameters::test_zero_fee_rates_allowed ... ok
+test test_parameters::test_zero_cooldown_periods_allowed ... ok
+test test_pausable::test_execute_requires_threshold ... ok
+test test_pausable::test_pause_blocks_state_changes_but_allows_reads ... ok
+test test_pausable::test_pause_multisig_flow ... ok
+test test_reentrancy::test_lock_not_held_initially ... ok
+test test_reentrancy::test_lock_released_after_slash ... FAILED
+test test_reentrancy::test_double_withdraw_rejected - should panic ... ok
+test test_reentrancy::test_lock_released_after_fee_collection ... ok
+test test_reentrancy::test_cross_function_reentrancy_blocked - should panic ... ok
+test test_reentrancy::test_lock_released_after_withdraw ... ok
+test test_reentrancy::test_fee_collection_reentrancy_blocked - should panic ... ok
+test test_reentrancy::test_normal_withdraw_succeeds ... ok
+test test_reentrancy::test_normal_slash_succeeds ... FAILED
+test test_reentrancy::test_withdraw_non_owner_rejected - should panic ... ok
+test test_reentrancy_bug_exploration::test_execute_cooldown_withdrawal_reentrancy_attack - should panic ... FAILED
+test test_reentrancy_bug_exploration::test_nested_reentrancy_blocked - should panic ... FAILED
+test test_reentrancy_bug_exploration::test_withdraw_bond_reentrancy_attack - should panic ... FAILED
+test test_reentrancy::test_normal_fee_collection_succeeds ... ok
+test test_reentrancy::test_sequential_operations_succeed ... FAILED
+test test_reentrancy_bug_exploration::test_withdraw_early_reentrancy_attack - should panic ... FAILED
+test test_reentrancy::test_withdraw_reentrancy_blocked - should panic ... ok
+test test_reentrancy::test_slash_reentrancy_blocked - should panic ... ok
+test test_reentrancy::test_slash_exceeds_bond_rejected - should panic ... FAILED
+test test_reentrancy_preservation::property_withdraw_bond_negative_amount_error_preserved - should panic ... ok
+test test_reentrancy_preservation::property_withdraw_bond_insufficient_balance_error_preserved - should panic ... ok
+test test_reentrancy_preservation::property_withdraw_bond_normal_behavior_preserved ... FAILED
+test test_reentrancy_preservation::property_withdraw_bond_before_lockup_error_preserved - should panic ... ok
+test test_reentrancy_preservation::property_withdraw_bond_full_unchanged ... FAILED
+test test_replay_prevention::expired_deadline_rejected_on_add_attestation - should panic ... ok
+test test_reentrancy_preservation::property_withdraw_early_after_lockup_error_preserved - should panic ... ok
+test test_reentrancy_preservation::property_zero_amount_withdrawal_preserved ... ok
+test test_replay_prevention::expired_deadline_rejected_on_revoke - should panic ... ok
+test test_replay_prevention::deadline_at_exact_timestamp_accepted ... ok
+test test_replay_prevention::nonce_starts_at_zero ... ok
+test test_replay_prevention::nonce_increments_after_revoke ... ok
+test test_replay_prevention::nonce_increments_after_add_attestation ... ok
+test test_replay_prevention::wrong_contract_address_rejected_on_add_attestation - should panic ... ok
+test test_replay_prevention::wrong_nonce_rejected - should panic ... ok
+test test_replay_prevention::replay_add_attestation_rejected - should panic ... ok
+test test_replay_prevention::wrong_contract_address_rejected_on_revoke - should panic ... ok
+test test_replay_prevention::replay_revoke_rejected - should panic ... ok
+test test_rolling_bond::test_renew_if_rolling_advances_period ... ok
+test test_rolling_bond::test_renew_if_rolling_no_op_for_non_rolling ... ok
+test test_rolling_bond::test_request_withdrawal ... ok
+test test_rolling_bond::test_renew_if_rolling_no_op_before_period_end ... ok
+test test_rolling_bond::test_request_withdrawal_non_rolling - should panic ... ok
+test test_rolling_bond::test_rolling_bond_creation ... ok
+test test_rolling_bond::test_withdraw_after_notice_period ... ok
+test test_rolling_bond::test_request_withdrawal_twice - should panic ... ok
+test test_same_ledger_liquidation_guard::test_slash_next_ledger_after_increase_bond_allowed ... ok
+test test_same_ledger_liquidation_guard::test_slash_next_ledger_after_create_bond_allowed ... ok
+test test_same_ledger_liquidation_guard::test_slash_same_ledger_after_top_up_rejected - should panic ... ok
+test test_same_ledger_liquidation_guard::test_slash_same_ledger_after_increase_bond_rejected - should panic ... ok
+test test_slashing::test_error_message_no_bond - should panic ... ok
+test test_same_ledger_liquidation_guard::test_withdraw_unaffected_after_create_same_ledger ... ok
+test test_slashing::test_cumulative_slash_with_capping ... ok
+test test_slashing::test_full_slash_prevents_further_slashing ... ok
+test test_slashing::test_error_message_not_admin - should panic ... ok
+test test_slashing::test_slash_does_not_affect_other_fields ... ok
+test test_slashing::test_slash_after_partial_withdrawal ... ok
+test test_slashing::test_slash_basic_success ... ok
+test test_slashing::test_cumulative_slash_incremental ... ok
+test test_slashing::test_slash_event_contains_correct_event_data ... ok
+test test_slashing::test_slash_event_emitted_basic ... ok
+test test_slashing::test_slash_entire_amount ... ok
+test test_slashing::test_slash_exact_half ... ok
+test test_slashing::test_slash_history_cumulative ... ok
+test test_slashing::test_slash_identity_cannot_slash_own_bond - should panic ... ok
+test test_slashing::test_slash_history_single_slash ... ok
+test test_slashing::test_slash_large_amounts ... ok
+test test_slashing::test_slash_max_i128_capped ... ok
+test test_slashing::test_slash_multiple_accumulate ... ok
+test test_slashing::test_slash_on_very_large_bond ... ok
+test test_slashing::test_slash_multiple_events ... ok
+test test_slashing::test_slash_over_amount_capped ... ok
+test test_slashing::test_slash_overflow_prevention - should panic ... ok
+test test_slashing::test_slash_result_matches_get_state ... ok
+test test_slashing::test_slash_small_amount ... ok
+test test_slashing::test_slash_state_persists ... ok
+test test_slashing::test_slash_unauthorized_different_address - should panic ... ok
+test test_slashing::test_slash_zero_amount ... ok
+test test_slashing::test_slash_unauthorized_rejection - should panic ... ok
+test test_slashing::test_slash_then_withdraw_then_slash_again ... ok
+test test_slashing::test_slash_way_over_amount_capped ... ok
+test test_slashing::test_withdraw_exact_available_balance ... ok
+test test_slashing::test_withdraw_after_slash_respects_available ... ok
+test test_slashing::test_withdraw_when_fully_slashed - should panic ... ok
+test test_tiered_bond::test_tier_thresholds ... ok
+test test_slashing::test_withdraw_more_than_available_after_slash - should panic ... ok
+test test_tiered_bond::test_get_tier_after_create_bond ... ok
+test test_upgrade_auth::test_cannot_revoke_last_upgrade_admin ... FAILED
+test test_upgrade_auth::test_grant_and_revoke_upgrade_authorization ... FAILED
+test test_upgrade_auth::test_proposal_expiry_handling ... FAILED
+test test_upgrade_auth::test_unauthorized_upgrade_attempts ... FAILED
+test test_upgrade_auth::test_upgrade_authorization_expiry ... FAILED
+test test_upgrade_auth::test_upgrade_authorization_initialization ... FAILED
+test test_upgrade_auth::test_upgrade_execution_with_proposal ... FAILED
+test test_upgrade_auth::test_upgrade_history_tracking ... FAILED
+test test_upgrade_auth::test_upgrade_proposal_and_approval ... FAILED
+test test_validation::test_boundary_values ... ok
+test test_tiered_bond::test_tier_downgrade_on_withdraw ... ok
+test test_tiered_bond::test_tier_upgrade_on_top_up ... ok
+test test_tiered_bond::test_tier_unchanged_within_threshold ... ok
+test test_validation::test_create_bond_with_amount_above_maximum - should panic ... ok
+test test_validation::test_create_bond_with_amount_below_minimum - should panic ... ok
+test test_validation::test_create_bond_with_min_amount_then_invalid_top_up - should panic ... FAILED
+test test_validation::test_create_bond_with_negative_amount - should panic ... ok
+test test_validation::test_error_message_includes_amount_and_maximum - should panic ... ok
+test test_validation::test_error_message_includes_amount_and_minimum - should panic ... ok
+test test_validation::test_create_bond_then_top_up_valid_scenario ... ok
+test test_validation::test_create_bond_with_zero_amount - should panic ... ok
+test test_validation::test_create_bond_with_valid_amount ... ok
+test test_validation::test_top_up_with_negative_amount - should panic ... FAILED
+test test_validation::test_validate_bond_amount_below_minimum - should panic ... ok
+test test_validation::test_validate_bond_amount_large_negative - should panic ... ok
+test test_validation::test_validate_bond_amount_max_i128 - should panic ... ok
+test test_validation::test_validate_bond_amount_negative - should panic ... ok
+test test_validation::test_validate_bond_amount_valid ... ok
+test test_validation::test_validate_bond_amount_zero - should panic ... ok
+test test_validation::test_validate_bond_amount_above_maximum - should panic ... ok
+test test_verifier::admin_can_deactivate_verifier ... ok
+test test_validation::test_top_up_with_valid_amount ... ok
+test test_validation::test_top_up_with_zero_amount - should panic ... FAILED
+test test_verifier::deactivate_verifier_prevents_attestation_and_allows_withdrawal ... ok
+test test_verifier::register_verifier_enforces_min_stake - should panic ... ok
+test test_verifier::reactivation_fails_if_withdrawn_below_min_stake - should panic ... ok
+test test_verifier::register_verifier_top_up_increases_stake ... ok
+test test_verifier::set_and_get_verifier_stake_requirement_emits_event ... ok
+test test_verifier::register_verifier_transfers_stake_sets_active ... ok
+test test_weighted_attestation::compute_weight_zero_stake_returns_default ... ok
+test test_weighted_attestation::default_weight_is_one ... ok
+test test_verifier::withdraw_verifier_stake_while_active_panics - should panic ... ok
+test test_verifier::register_verifier_while_active_with_zero_deposit_panics - should panic ... ok
+test test_weighted_attestation::set_attester_stake_negative_panics - should panic ... ok
+test test_weighted_attestation::get_attester_stake_default_zero ... ok
+test test_weighted_attestation::get_weight_config_returns_set_values ... ok
+test test_weighted_attestation::set_weight_config_caps_max_at_protocol_limit ... ok
+test test_weighted_attestation::weight_capped_by_config ... ok
+test test_verifier::verifier_reputation_updates_on_attestation_and_revocation ... ok
+test test_weighted_attestation::weight_capped_by_max_attestation_weight ... ok
+test test_weighted_attestation::weight_increases_with_stake ... ok
+test test_weighted_attestation::weight_updates_when_stake_changes ... ok
+test test_withdraw_bond::test_withdraw_bond_after_lockup_non_rolling ... ok
+test test_withdraw_bond::test_withdraw_bond_full_withdrawal ... ok
+test test_withdraw_bond::test_withdraw_bond_after_slash ... ok
+test test_withdraw_bond::test_withdraw_bond_before_lockup_panics - should panic ... ok
+test test_withdraw_bond::test_withdraw_alias_calls_withdraw_bond ... ok
+test test_withdraw_bond::test_withdraw_bond_partial_withdrawal ... ok
+test test_withdraw_bond::test_withdraw_bond_rolling_after_cooldown ... ok
+test test_withdraw_bond::test_withdraw_bond_insufficient_balance - should panic ... ok
+test test_zero_address::zero_address_tests::test_register_attester_rejects_zero_address ... FAILED
+test test_withdraw_bond::test_withdraw_bond_rolling_before_notice_panics - should panic ... ok
+test test_zero_address::zero_address_tests::test_register_verifier_rejects_zero_address ... FAILED
+test test_zero_address::zero_address_tests::test_set_emergency_config_rejects_zero_addresses ... FAILED
+test test_zero_address::zero_address_tests::test_set_early_exit_config_rejects_zero_address ... FAILED
+test test_zero_address::zero_address_tests::test_set_token_rejects_zero_address ... FAILED
+test test_withdraw_bond::test_withdraw_bond_rolling_before_cooldown_panics - should panic ... ok
+test test_zero_address::zero_address_tests::test_set_usdc_token_rejects_zero_address ... FAILED
+test test_zero_address::zero_address_tests::test_valid_addresses_succeed ... FAILED
+test test_zero_address_working::zero_address_tests::test_valid_addresses_succeed ... FAILED
+test test_withdraw_bond::test_withdraw_bond_zero_amount ... ok
+test token_integration_test::test_get_usdc_network_none_when_unset ... ok
+test token_integration_test::test_get_usdc_token_without_configuration_panics - should panic ... FAILED
+test token_integration_test::test_set_token_rejects_non_admin - should panic ... ok
+test token_integration_test::test_set_usdc_token_and_network ... ok
+test token_integration_test::test_create_bond_without_approval_panics - should panic ... ok
+test token_integration_test::test_set_usdc_token_rejects_unknown_network - should panic ... ok
+test token_integration_test::test_create_bond_rejects_contract_self_approval_pattern - should panic ... FAILED
+test token_integration_test::test_create_bond_moves_tokens_into_contract ... ok
+test token_integration_test::test_top_up_requires_remaining_allowance - should panic ... ok
+test validation::tests::test_validate_bond_amount_above_maximum - should panic ... ok
+test validation::tests::test_validate_bond_amount_below_minimum - should panic ... ok
+test validation::tests::test_validate_bond_amount_negative - should panic ... ok
+test validation::tests::test_validate_bond_amount_valid ... ok
+test validation::tests::test_validate_bond_amount_zero - should panic ... ok
+test validation::tests::test_validate_recipient_self_transfer - should panic ... ok
+test validation::tests::test_validate_recipient_valid ... ok
+test token_integration_test::test_top_up_negative_amount_panics - should panic ... FAILED
+test token_integration_test::test_withdraw_transfers_tokens_back_to_identity ... ok
+test token_integration_test::test_withdraw_negative_amount_panics - should panic ... ok
+test test_reentrancy_preservation::property_execute_cooldown_withdrawal_preserved ... ok
+test test_reentrancy_preservation::property_sequential_withdrawals_preserved ... ok
+test test_reentrancy_preservation::property_withdraw_early_penalty_calculations_preserved ... ok
+test fuzz::test_bond_fuzz::fuzz_bond_operations ... ok
+
+failures:
+
+---- integration::test_bond_lifecycle::test_lifecycle_create_topup_slash_withdraw stdout ----
+
+thread 'integration::test_bond_lifecycle::test_lifecycle_create_topup_slash_withdraw' (226690) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", slash, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 300]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'slash blocked: collateral increased in this ledger' from contract function 'Symbol(slash)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 300]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, slash], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 300]
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "integration::test_bond_lifecycle::test_lifecycle_create_topup_slash_withdraw" to "test_snapshots/integration/test_bond_lifecycle/test_lifecycle_create_topup_slash_withdraw.1.json".
+
+---- test_batch::test_atomic_failure_on_second_bond stdout ----
+
+thread 'test_batch::test_atomic_failure_on_second_bond' (226806) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_batch_bonds, [[{amount: 1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, is_rolling: false, notice_period_duration: 0}, {amount: -1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, is_rolling: false, notice_period_duration: 0}]]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'invalid amount in batch' from contract function 'Symbol(obj#63)'", [{amount: 1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, is_rolling: false, notice_period_duration: 0}, {amount: -1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, is_rolling: false, notice_period_duration: 0}]]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_batch_bonds], data:[{amount: 1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, is_rolling: false, notice_period_duration: 0}, {amount: -1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, is_rolling: false, notice_period_duration: 0}]
+
+
+thread 'test_batch::test_atomic_failure_on_second_bond' (226806) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+Writing test snapshot file for test "test_batch::test_atomic_failure_on_second_bond" to "test_snapshots/test_batch/test_atomic_failure_on_second_bond.1.json".
+
+---- test_batch::test_all_bonds_validated_before_any_created stdout ----
+
+thread 'test_batch::test_all_bonds_validated_before_any_created' (226805) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_batch_bonds, [[{amount: 1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, is_rolling: false, notice_period_duration: 0}, {amount: 1001, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, is_rolling: false, notice_period_duration: 0}, {amount: 1002, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM, is_rolling: false, notice_period_duration: 0}, {amount: 1003, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4, is_rolling: false, notice_period_duration: 0}, {amount: 1004, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM, is_rolling: false, notice_period_duration: 0}, {amount: -100, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARQG5, is_rolling: false, notice_period_duration: 0}]]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'invalid amount in batch' from contract function 'Symbol(obj#103)'", [{amount: 1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, is_rolling: false, notice_period_duration: 0}, {amount: 1001, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, is_rolling: false, notice_period_duration: 0}, {amount: 1002, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM, is_rolling: false, notice_period_duration: 0}, {amount: 1003, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4, is_rolling: false, notice_period_duration: 0}, {amount: 1004, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM, is_rolling: false, notice_period_duration: 0}, {amount: -100, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARQG5, is_rolling: false, notice_period_duration: 0}]]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_batch_bonds], data:[{amount: 1000, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, is_rolling: false, notice_period_duration: 0}, {amount: 1001, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, is_rolling: false, notice_period_duration: 0}, {amount: 1002, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM, is_rolling: false, notice_period_duration: 0}, {amount: 1003, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4, is_rolling: false, notice_period_duration: 0}, {amount: 1004, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAOLZM, is_rolling: false, notice_period_duration: 0}, {amount: -100, duration: 86400, identity: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARQG5, is_rolling: false, notice_period_duration: 0}]
+
+
+thread 'test_batch::test_all_bonds_validated_before_any_created' (226805) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+Writing test snapshot file for test "test_batch::test_all_bonds_validated_before_any_created" to "test_snapshots/test_batch/test_all_bonds_validated_before_any_created.1.json".
+
+---- test_create_bond::test_create_bond_duplicate stdout ----
+
+thread 'test_create_bond::test_create_bond_duplicate' (226913) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_duplicate" to "test_snapshots/test_create_bond/test_create_bond_duplicate.1.json".
+
+---- test_create_bond::test_create_bond_duration_overflow stdout ----
+
+thread 'test_create_bond::test_create_bond_duration_overflow' (226914) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 2000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond duration too short: minimum is 86400 seconds (1 day)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 2000]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 2000]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_duration_overflow" to "test_snapshots/test_create_bond/test_create_bond_duration_overflow.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 2000]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'bond duration too short: minimum is 86400 seconds (1 day)' from contract function 'Symbol(obj#43)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 2000]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 2000]\n"
+ expected substring: "bond end timestamp would overflow"
+---- test_create_bond::test_create_bond_different_identities stdout ----
+
+thread 'test_create_bond::test_create_bond_different_identities' (226912) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_different_identities" to "test_snapshots/test_create_bond/test_create_bond_different_identities.1.json".
+
+---- test_create_bond::test_create_bond_max_amount stdout ----
+
+thread 'test_create_bond::test_create_bond_max_amount' (226916) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 170141183460469231731687303715884105727, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond amount exceeds maximum allowed: 170141183460469231731687303715884105727 (maximum: 100000000000000)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 170141183460469231731687303715884105727, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 170141183460469231731687303715884105727, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_max_amount" to "test_snapshots/test_create_bond/test_create_bond_max_amount.1.json".
+
+---- test_create_bond::test_create_bond_min_positive_amount stdout ----
+
+thread 'test_create_bond::test_create_bond_min_positive_amount' (226918) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond amount below minimum required: 1 (minimum: 1000)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_min_positive_amount" to "test_snapshots/test_create_bond/test_create_bond_min_positive_amount.1.json".
+
+---- test_create_bond::test_create_bond_max_duration stdout ----
+
+thread 'test_create_bond::test_create_bond_max_duration' (226917) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 9223372036854775807]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond duration too long: maximum is 31536000 seconds (365 days)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 9223372036854775807]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 9223372036854775807]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_max_duration" to "test_snapshots/test_create_bond/test_create_bond_max_duration.1.json".
+
+---- test_create_bond::test_create_bond_sequential stdout ----
+
+thread 'test_create_bond::test_create_bond_sequential' (226920) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_sequential" to "test_snapshots/test_create_bond/test_create_bond_sequential.1.json".
+
+---- test_create_bond::test_create_bond_storage_persistence stdout ----
+
+thread 'test_create_bond::test_create_bond_storage_persistence' (226921) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 259200]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 259200]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_storage_persistence" to "test_snapshots/test_create_bond/test_create_bond_storage_persistence.1.json".
+
+---- test_create_bond::test_create_bond_negative_amount stdout ----
+
+thread 'test_create_bond::test_create_bond_negative_amount' (226919) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, -100, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond amount cannot be negative' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, -100, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, -100, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_negative_amount" to "test_snapshots/test_create_bond/test_create_bond_negative_amount.1.json".
+
+---- test_create_bond::test_create_bond_timestamp stdout ----
+
+thread 'test_create_bond::test_create_bond_timestamp' (226923) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_timestamp" to "test_snapshots/test_create_bond/test_create_bond_timestamp.1.json".
+
+---- test_create_bond::test_create_bond_usdc_amount stdout ----
+
+thread 'test_create_bond::test_create_bond_usdc_amount' (226924) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'leverage exceeds maximum: 1000000 (max: 100000)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_usdc_amount" to "test_snapshots/test_create_bond/test_create_bond_usdc_amount.1.json".
+
+---- test_create_bond::test_create_bond_field_initialization stdout ----
+
+thread 'test_create_bond::test_create_bond_field_initialization' (226915) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 5000, 604800]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 5000, 604800]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_field_initialization" to "test_snapshots/test_create_bond/test_create_bond_field_initialization.1.json".
+
+---- test_create_bond::test_create_bond_success stdout ----
+
+thread 'test_create_bond::test_create_bond_success' (226922) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_success" to "test_snapshots/test_create_bond/test_create_bond_success.1.json".
+
+---- test_create_bond::test_create_bond_zero_amount stdout ----
+
+thread 'test_create_bond::test_create_bond_zero_amount' (226925) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 0, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond amount below minimum required: 0 (minimum: 1000)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 0, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 0, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_zero_amount" to "test_snapshots/test_create_bond/test_create_bond_zero_amount.1.json".
+
+---- test_create_bond::test_supply_cap_enforcement_above_cap stdout ----
+
+thread 'test_create_bond::test_supply_cap_enforcement_above_cap' (226929) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]
+
+Writing test snapshot file for test "test_create_bond::test_supply_cap_enforcement_above_cap" to "test_snapshots/test_create_bond/test_supply_cap_enforcement_above_cap.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(Auth, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:[\"contract call failed\", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:\"escalating error to panic\"\n   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:[\"Unauthorized function call for address\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]\n   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]\n"
+ expected substring: "supply cap exceeded"
+---- test_create_bond::test_set_supply_cap_success stdout ----
+
+thread 'test_create_bond::test_set_supply_cap_success' (226928) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]
+
+Writing test snapshot file for test "test_create_bond::test_set_supply_cap_success" to "test_snapshots/test_create_bond/test_set_supply_cap_success.1.json".
+
+---- test_create_bond::test_create_bond_zero_duration stdout ----
+
+thread 'test_create_bond::test_create_bond_zero_duration' (226926) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond duration too short: minimum is 86400 seconds (1 day)' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 0]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 0]
+
+Writing test snapshot file for test "test_create_bond::test_create_bond_zero_duration" to "test_snapshots/test_create_bond/test_create_bond_zero_duration.1.json".
+
+---- test_create_bond::test_supply_cap_enforcement_below_cap stdout ----
+
+thread 'test_create_bond::test_supply_cap_enforcement_below_cap' (226930) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]
+
+Writing test snapshot file for test "test_create_bond::test_supply_cap_enforcement_below_cap" to "test_snapshots/test_create_bond/test_supply_cap_enforcement_below_cap.1.json".
+
+---- test_create_bond::test_supply_cap_no_cap stdout ----
+
+thread 'test_create_bond::test_supply_cap_no_cap' (226931) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 50000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 50000, 86400]
+
+Writing test snapshot file for test "test_create_bond::test_supply_cap_no_cap" to "test_snapshots/test_create_bond/test_supply_cap_no_cap.1.json".
+
+---- test_create_bond::test_set_supply_cap_negative stdout ----
+
+thread 'test_create_bond::test_set_supply_cap_negative' (226927) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, -1000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, -1000]
+
+Writing test snapshot file for test "test_create_bond::test_set_supply_cap_negative" to "test_snapshots/test_create_bond/test_set_supply_cap_negative.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(Auth, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:[\"contract call failed\", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, -1000]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:\"escalating error to panic\"\n   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:[\"Unauthorized function call for address\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]\n   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, -1000]\n"
+ expected substring: "supply cap must be non-negative"
+---- test_create_bond::test_supply_cap_with_multiple_bonds stdout ----
+
+thread 'test_create_bond::test_supply_cap_with_multiple_bonds' (226932) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]
+
+Writing test snapshot file for test "test_create_bond::test_supply_cap_with_multiple_bonds" to "test_snapshots/test_create_bond/test_supply_cap_with_multiple_bonds.1.json".
+
+---- test_decimals::test_validation_bounds_18_decimals stdout ----
+
+thread 'test_decimals::test_validation_bounds_18_decimals' (226938) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 999999999999999999, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond amount exceeds maximum allowed: 999999999999999999 (maximum: 100000000000000)' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 999999999999999999, 86400, false, 0]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 999999999999999999, 86400, false, 0]
+
+Writing test snapshot file for test "test_decimals::test_validation_bounds_18_decimals" to "test_snapshots/test_decimals/test_validation_bounds_18_decimals.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 999999999999999999, 86400, false, 0]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'bond amount exceeds maximum allowed: 999999999999999999 (maximum: 100000000000000)' from contract function 'Symbol(obj#91)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 999999999999999999, 86400, false, 0]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 999999999999999999, 86400, false, 0]\n"
+ expected substring: "bond amount below minimum required"
+---- test_decimals::test_tier_silver_with_8_decimals stdout ----
+
+thread 'test_decimals::test_tier_silver_with_8_decimals' (226937) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 100000000000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 100000000000, 86400, false, 0]
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   6: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, transfer_from], data:Void
+   7: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 100000000000]
+   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   9: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, allowance], data:170141183460469231731687303715884105727
+   11: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]
+   12: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 100000000000, 86400, false, 0]
+
+Writing test snapshot file for test "test_decimals::test_tier_silver_with_8_decimals" to "test_snapshots/test_decimals/test_tier_silver_with_8_decimals.1.json".
+
+---- test_create_bond::test_supply_cap_withdrawal_reduces_supply stdout ----
+
+thread 'test_create_bond::test_supply_cap_withdrawal_reduces_supply' (226933) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Auth, InvalidAction)], data:["contract call failed", set_supply_cap, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:"escalating error to panic"
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(Auth, InvalidAction)], data:["Unauthorized function call for address", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4]
+   5: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, set_supply_cap], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 10000]
+
+Writing test snapshot file for test "test_create_bond::test_supply_cap_withdrawal_reduces_supply" to "test_snapshots/test_create_bond/test_supply_cap_withdrawal_reduces_supply.1.json".
+
+---- test_decimals::test_tier_silver_with_6_decimals stdout ----
+
+thread 'test_decimals::test_tier_silver_with_6_decimals' (226936) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   6: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, transfer_from], data:Void
+   7: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000000000]
+   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   9: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, allowance], data:170141183460469231731687303715884105727
+   11: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]
+   12: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]
+
+Writing test snapshot file for test "test_decimals::test_tier_silver_with_6_decimals" to "test_snapshots/test_decimals/test_tier_silver_with_6_decimals.1.json".
+
+---- test_decimals::test_tier_silver_with_18_decimals stdout ----
+
+thread 'test_decimals::test_tier_silver_with_18_decimals' (226935) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000000000000000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'bond amount exceeds maximum allowed: 1000000000000000000000 (maximum: 100000000000000)' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000000000000000, 86400, false, 0]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000000000000000, 86400, false, 0]
+
+Writing test snapshot file for test "test_decimals::test_tier_silver_with_18_decimals" to "test_snapshots/test_decimals/test_tier_silver_with_18_decimals.1.json".
+
+---- test_decimals::test_withdraw_correct_amount_6_decimals stdout ----
+
+thread 'test_decimals::test_withdraw_correct_amount_6_decimals' (226939) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   6: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, transfer_from], data:Void
+   7: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000000000]
+   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   9: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, allowance], data:170141183460469231731687303715884105727
+   11: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]
+   12: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]
+
+Writing test snapshot file for test "test_decimals::test_withdraw_correct_amount_6_decimals" to "test_snapshots/test_decimals/test_withdraw_correct_amount_6_decimals.1.json".
+
+---- test_decimals::test_24_decimals_panics stdout ----
+
+thread 'test_decimals::test_24_decimals_panics' (226934) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]
+   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   6: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, transfer_from], data:Void
+   7: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000000000]
+   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000
+   9: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, allowance], data:170141183460469231731687303715884105727
+   11: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]
+   12: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]
+
+Writing test snapshot file for test "test_decimals::test_24_decimals_panics" to "test_snapshots/test_decimals/test_24_decimals_panics.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#91)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]\n   4: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000\n   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM\n   6: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, transfer_from], data:Void\n   7: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000000000]\n   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, balance], data:1000000000000000000000000\n   9: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM\n   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[fn_return, allowance], data:170141183460469231731687303715884105727\n   11: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]\n   12: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 86400, false, 0]\n"
+ expected substring: "token decimals exceeds supported maximum of 18"
+---- test_events::test_lifecycle_event_emissions stdout ----
+
+thread 'test_events::test_lifecycle_event_emissions' (226999) panicked at contracts/credence_bond/src/test_events.rs:64:5:
+assertion `left == right` failed
+  left: Symbol(bond_created_v2)
+ right: Symbol(bond_created)
+Writing test snapshot file for test "test_events::test_lifecycle_event_emissions" to "test_snapshots/test_events/test_lifecycle_event_emissions.1.json".
+
+---- test_events_v2::test_v2_event_indexing_improvements stdout ----
+
+thread 'test_events_v2::test_v2_event_indexing_improvements' (227002) panicked at contracts/credence_bond/src/test_events_v2.rs:175:5:
+assertion `left == right` failed: Should emit new bond_increased_v2 event
+  left: 0
+ right: 1
+Writing test snapshot file for test "test_events_v2::test_v2_event_indexing_improvements" to "test_snapshots/test_events_v2/test_v2_event_indexing_improvements.1.json".
+
+---- test_events_v2::test_event_indexing_query_efficiency stdout ----
+
+thread 'test_events_v2::test_event_indexing_query_efficiency' (227000) panicked at contracts/credence_bond/src/test_events_v2.rs:246:5:
+assertion `left == right` failed: Should find 2 bonds with amount >= 10,000
+  left: 1
+ right: 2
+Writing test snapshot file for test "test_events_v2::test_event_indexing_query_efficiency" to "test_snapshots/test_events_v2/test_event_indexing_query_efficiency.1.json".
+
+---- test_immutable_config::immutable_config_tests::test_admin_cannot_be_reinitialized stdout ----
+
+thread 'test_immutable_config::immutable_config_tests::test_admin_cannot_be_reinitialized' (227058) panicked at contracts/credence_bond/src/test_immutable_config.rs:87:13:
+assertion failed: result.is_err()
+Writing test snapshot file for test "test_immutable_config::immutable_config_tests::test_admin_cannot_be_reinitialized" to "test_snapshots/test_immutable_config/immutable_config_tests/test_admin_cannot_be_reinitialized.1.json".
+
+---- test_immutable_config::immutable_config_tests::test_token_can_only_be_set_once stdout ----
+
+thread 'test_immutable_config::immutable_config_tests::test_token_can_only_be_set_once' (227061) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, ExistingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[error, Error(Auth, ExistingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAITA4, topics:[error, Error(Auth, ExistingValue)], data:"frame is already authorized"
+
+Writing test snapshot file for test "test_immutable_config::immutable_config_tests::test_token_can_only_be_set_once" to "test_snapshots/test_immutable_config/immutable_config_tests/test_token_can_only_be_set_once.1.json".
+
+---- test_immutable_config_working::immutable_config_tests::test_admin_cannot_be_reinitialized stdout ----
+
+thread 'test_immutable_config_working::immutable_config_tests::test_admin_cannot_be_reinitialized' (227063) panicked at contracts/credence_bond/src/test_immutable_config_working.rs:46:13:
+assertion failed: result.is_err()
+Writing test snapshot file for test "test_immutable_config_working::immutable_config_tests::test_admin_cannot_be_reinitialized" to "test_snapshots/test_immutable_config_working/immutable_config_tests/test_admin_cannot_be_reinitialized.1.json".
+
+---- test_increase_bond::test_increase_bond_fails_without_token_configuration stdout ----
+
+thread 'test_increase_bond::test_increase_bond_fails_without_token_configuration' (227068) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400, false, 0]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400, false, 0]
+
+Writing test snapshot file for test "test_increase_bond::test_increase_bond_fails_without_token_configuration" to "test_snapshots/test_increase_bond/test_increase_bond_fails_without_token_configuration.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400, false, 0]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#43)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400, false, 0]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000, 86400, false, 0]\n"
+ expected substring: "token not set"
+---- test_increase_bond::test_increase_bond_fails_for_non_owner stdout ----
+Writing test snapshot file for test "test_increase_bond::test_increase_bond_fails_for_non_owner" to "test_snapshots/test_increase_bond/test_increase_bond_fails_for_non_owner.1.json".
+note: test did not panic as expected at contracts/credence_bond/src/test_increase_bond.rs:78:4
+---- test_liquidation_scanner::test_scan_emits_page_event stdout ----
+
+thread 'test_liquidation_scanner::test_scan_emits_page_event' (227087) panicked at contracts/credence_bond/src/test_liquidation_scanner.rs:248:5:
+assertion failed: events_after > events_before
+Writing test snapshot file for test "test_liquidation_scanner::test_scan_emits_page_event" to "test_snapshots/test_liquidation_scanner/test_scan_emits_page_event.1.json".
+
+---- test_market_activation::test_valid_bond_activation_succeeds stdout ----
+
+thread 'test_market_activation::test_valid_bond_activation_succeeds' (227102) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 2592000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'leverage exceeds maximum: 1000000 (max: 100000)' from contract function 'Symbol(obj#743)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 2592000]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 1000000000, 2592000]
+
+Writing test snapshot file for test "test_market_activation::test_valid_bond_activation_succeeds" to "test_snapshots/test_market_activation/test_valid_bond_activation_succeeds.1.json".
+
+---- test_reentrancy::test_lock_released_after_slash stdout ----
+
+thread 'test_reentrancy::test_lock_released_after_slash' (227208) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", slash_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 100]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'slash blocked: collateral increased in this ledger' from contract function 'Symbol(obj#681)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 100]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, slash_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 100]
+
+Writing test snapshot file for test "test_reentrancy::test_lock_released_after_slash" to "test_snapshots/test_reentrancy/test_lock_released_after_slash.1.json".
+
+---- test_reentrancy::test_normal_slash_succeeds stdout ----
+
+thread 'test_reentrancy::test_normal_slash_succeeds' (227211) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", slash_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 3000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'slash blocked: collateral increased in this ledger' from contract function 'Symbol(obj#611)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 3000]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, slash_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 3000]
+
+Writing test snapshot file for test "test_reentrancy::test_normal_slash_succeeds" to "test_snapshots/test_reentrancy/test_normal_slash_succeeds.1.json".
+
+---- test_reentrancy_bug_exploration::test_execute_cooldown_withdrawal_reentrancy_attack stdout ----
+
+thread 'test_reentrancy_bug_exploration::test_execute_cooldown_withdrawal_reentrancy_attack' (227218) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#91)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]
+
+Writing test snapshot file for test "test_reentrancy_bug_exploration::test_execute_cooldown_withdrawal_reentrancy_attack" to "test_snapshots/test_reentrancy_bug_exploration/test_execute_cooldown_withdrawal_reentrancy_attack.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#91)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]\n"
+ expected substring: "reentrancy detected"
+---- test_reentrancy_bug_exploration::test_nested_reentrancy_blocked stdout ----
+
+thread 'test_reentrancy_bug_exploration::test_nested_reentrancy_blocked' (227219) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 86400]
+
+Writing test snapshot file for test "test_reentrancy_bug_exploration::test_nested_reentrancy_blocked" to "test_snapshots/test_reentrancy_bug_exploration/test_nested_reentrancy_blocked.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 86400]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#43)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 86400]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 3000, 86400]\n"
+ expected substring: "reentrancy detected"
+---- test_reentrancy_bug_exploration::test_withdraw_bond_reentrancy_attack stdout ----
+
+thread 'test_reentrancy_bug_exploration::test_withdraw_bond_reentrancy_attack' (227220) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#43)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]
+
+Writing test snapshot file for test "test_reentrancy_bug_exploration::test_withdraw_bond_reentrancy_attack" to "test_snapshots/test_reentrancy_bug_exploration/test_withdraw_bond_reentrancy_attack.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#43)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]\n"
+ expected substring: "reentrancy detected"
+---- test_reentrancy::test_sequential_operations_succeed stdout ----
+
+thread 'test_reentrancy::test_sequential_operations_succeed' (227213) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", slash_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'slash blocked: collateral increased in this ledger' from contract function 'Symbol(obj#611)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1000]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, slash_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 1000]
+
+Writing test snapshot file for test "test_reentrancy::test_sequential_operations_succeed" to "test_snapshots/test_reentrancy/test_sequential_operations_succeed.1.json".
+
+---- test_reentrancy_bug_exploration::test_withdraw_early_reentrancy_attack stdout ----
+
+thread 'test_reentrancy_bug_exploration::test_withdraw_early_reentrancy_attack' (227221) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#83)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]
+
+Writing test snapshot file for test "test_reentrancy_bug_exploration::test_withdraw_early_reentrancy_attack" to "test_snapshots/test_reentrancy_bug_exploration/test_withdraw_early_reentrancy_attack.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#83)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M, 2000, 86400]\n"
+ expected substring: "reentrancy detected"
+---- test_reentrancy::test_slash_exceeds_bond_rejected stdout ----
+
+thread 'test_reentrancy::test_slash_exceeds_bond_rejected' (227214) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", slash_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 20000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'slash blocked: collateral increased in this ledger' from contract function 'Symbol(obj#611)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 20000]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, slash_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 20000]
+
+Writing test snapshot file for test "test_reentrancy::test_slash_exceeds_bond_rejected" to "test_snapshots/test_reentrancy/test_slash_exceeds_bond_rejected.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", slash_bond, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 20000]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'slash blocked: collateral increased in this ledger' from contract function 'Symbol(obj#611)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 20000]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, slash_bond], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, 20000]\n"
+ expected substring: "slash exceeds bond"
+---- test_reentrancy_preservation::property_withdraw_bond_normal_behavior_preserved stdout ----
+
+thread 'test_reentrancy_preservation::property_withdraw_bond_normal_behavior_preserved' (227228) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", withdraw_bond, [821]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'cooldown window not elapsed; request_withdrawal first' from contract function 'Symbol(obj#709)'", 821]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, withdraw_bond], data:821
+
+Writing test snapshot file for test "test_reentrancy_preservation::property_withdraw_bond_normal_behavior_preserved" to "test_snapshots/test_reentrancy_preservation/property_withdraw_bond_normal_behavior_preserved.1.json".
+
+---- test_reentrancy_preservation::property_withdraw_bond_full_unchanged stdout ----
+
+thread 'test_reentrancy_preservation::property_withdraw_bond_full_unchanged' (227225) panicked at contracts/credence_bond/src/test_reentrancy_preservation.rs:486:5:
+assertion `left == right` failed: identity balance not updated correctly
+  left: 99999999999995000
+ right: 100000000000000000
+Writing test snapshot file for test "test_reentrancy_preservation::property_withdraw_bond_full_unchanged" to "test_snapshots/test_reentrancy_preservation/property_withdraw_bond_full_unchanged.1.json".
+
+---- test_upgrade_auth::test_cannot_revoke_last_upgrade_admin stdout ----
+
+thread 'test_upgrade_auth::test_cannot_revoke_last_upgrade_admin' (227320) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_grant_and_revoke_upgrade_authorization stdout ----
+
+thread 'test_upgrade_auth::test_grant_and_revoke_upgrade_authorization' (227321) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_proposal_expiry_handling stdout ----
+
+thread 'test_upgrade_auth::test_proposal_expiry_handling' (227322) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_unauthorized_upgrade_attempts stdout ----
+
+thread 'test_upgrade_auth::test_unauthorized_upgrade_attempts' (227323) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_upgrade_authorization_expiry stdout ----
+
+thread 'test_upgrade_auth::test_upgrade_authorization_expiry' (227324) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_upgrade_authorization_initialization stdout ----
+
+thread 'test_upgrade_auth::test_upgrade_authorization_initialization' (227325) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_upgrade_execution_with_proposal stdout ----
+
+thread 'test_upgrade_auth::test_upgrade_execution_with_proposal' (227326) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_upgrade_history_tracking stdout ----
+
+thread 'test_upgrade_auth::test_upgrade_history_tracking' (227327) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_upgrade_auth::test_upgrade_proposal_and_approval stdout ----
+
+thread 'test_upgrade_auth::test_upgrade_proposal_and_approval' (227328) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-sdk-22.0.10/src/storage.rs:141:9:
+this function is not accessible outside of a contract, wrap the call with `env.as_contract()` to access it from a particular contract
+
+---- test_validation::test_create_bond_with_min_amount_then_invalid_top_up stdout ----
+
+thread 'test_validation::test_create_bond_with_min_amount_then_invalid_top_up' (227333) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", top_up, [0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'amount must be positive' from contract function 'Symbol(top_up)'", 0]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:0
+
+Writing test snapshot file for test "test_validation::test_create_bond_with_min_amount_then_invalid_top_up" to "test_snapshots/test_validation/test_create_bond_with_min_amount_then_invalid_top_up.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", top_up, [0]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'amount must be positive' from contract function 'Symbol(top_up)'\", 0]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:0\n"
+ expected substring: "top-up amount below minimum required"
+---- test_validation::test_top_up_with_negative_amount stdout ----
+
+thread 'test_validation::test_top_up_with_negative_amount' (227346) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", top_up, [-1000]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'amount must be positive' from contract function 'Symbol(top_up)'", -1000]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:-1000
+
+Writing test snapshot file for test "test_validation::test_top_up_with_negative_amount" to "test_snapshots/test_validation/test_top_up_with_negative_amount.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", top_up, [-1000]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'amount must be positive' from contract function 'Symbol(top_up)'\", -1000]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:-1000\n"
+ expected substring: "top-up amount below minimum required"
+---- test_validation::test_top_up_with_zero_amount stdout ----
+
+thread 'test_validation::test_top_up_with_zero_amount' (227358) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", top_up, [0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'amount must be positive' from contract function 'Symbol(top_up)'", 0]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:0
+
+Writing test snapshot file for test "test_validation::test_top_up_with_zero_amount" to "test_snapshots/test_validation/test_top_up_with_zero_amount.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", top_up, [0]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'amount must be positive' from contract function 'Symbol(top_up)'\", 0]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:0\n"
+ expected substring: "top-up amount below minimum required"
+---- test_zero_address::zero_address_tests::test_register_attester_rejects_zero_address stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_register_attester_rejects_zero_address' (227407) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Value, InvalidInput)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:["unexpected strkey length", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_register_attester_rejects_zero_address" to "test_snapshots/test_zero_address/zero_address_tests/test_register_attester_rejects_zero_address.1.json".
+
+---- test_zero_address::zero_address_tests::test_register_verifier_rejects_zero_address stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_register_verifier_rejects_zero_address' (227408) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Value, InvalidInput)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:["unexpected strkey length", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_register_verifier_rejects_zero_address" to "test_snapshots/test_zero_address/zero_address_tests/test_register_verifier_rejects_zero_address.1.json".
+
+---- test_zero_address::zero_address_tests::test_set_emergency_config_rejects_zero_addresses stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_set_emergency_config_rejects_zero_addresses' (227410) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Value, InvalidInput)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:["unexpected strkey length", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_set_emergency_config_rejects_zero_addresses" to "test_snapshots/test_zero_address/zero_address_tests/test_set_emergency_config_rejects_zero_addresses.1.json".
+
+---- test_zero_address::zero_address_tests::test_set_early_exit_config_rejects_zero_address stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_set_early_exit_config_rejects_zero_address' (227409) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Value, InvalidInput)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:["unexpected strkey length", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_set_early_exit_config_rejects_zero_address" to "test_snapshots/test_zero_address/zero_address_tests/test_set_early_exit_config_rejects_zero_address.1.json".
+
+---- test_zero_address::zero_address_tests::test_set_token_rejects_zero_address stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_set_token_rejects_zero_address' (227411) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Value, InvalidInput)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:["unexpected strkey length", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_set_token_rejects_zero_address" to "test_snapshots/test_zero_address/zero_address_tests/test_set_token_rejects_zero_address.1.json".
+
+---- test_zero_address::zero_address_tests::test_set_usdc_token_rejects_zero_address stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_set_usdc_token_rejects_zero_address' (227412) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Value, InvalidInput)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(Value, InvalidInput)], data:["unexpected strkey length", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_set_usdc_token_rejects_zero_address" to "test_snapshots/test_zero_address/zero_address_tests/test_set_usdc_token_rejects_zero_address.1.json".
+
+---- test_zero_address::zero_address_tests::test_valid_addresses_succeed stdout ----
+
+thread 'test_zero_address::zero_address_tests::test_valid_addresses_succeed' (227413) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, ExistingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, topics:[error, Error(Auth, ExistingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, topics:[error, Error(Auth, ExistingValue)], data:"frame is already authorized"
+
+Writing test snapshot file for test "test_zero_address::zero_address_tests::test_valid_addresses_succeed" to "test_snapshots/test_zero_address/zero_address_tests/test_valid_addresses_succeed.1.json".
+
+---- test_zero_address_working::zero_address_tests::test_valid_addresses_succeed stdout ----
+
+thread 'test_zero_address_working::zero_address_tests::test_valid_addresses_succeed' (227414) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(Auth, ExistingValue)
+
+Event log (newest first):
+   0: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, topics:[error, Error(Auth, ExistingValue)], data:"escalating error to panic"
+   1: [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4, topics:[error, Error(Auth, ExistingValue)], data:"frame is already authorized"
+
+Writing test snapshot file for test "test_zero_address_working::zero_address_tests::test_valid_addresses_succeed" to "test_snapshots/test_zero_address_working/zero_address_tests/test_valid_addresses_succeed.1.json".
+
+---- token_integration_test::test_get_usdc_token_without_configuration_panics stdout ----
+
+thread 'token_integration_test::test_get_usdc_token_without_configuration_panics' (227419) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", get_usdc_token, []]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#41)'"
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, get_usdc_token], data:Void
+
+Writing test snapshot file for test "token_integration_test::test_get_usdc_token_without_configuration_panics" to "test_snapshots/token_integration_test/test_get_usdc_token_without_configuration_panics.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", get_usdc_token, []]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:\"caught panic 'token not configured - contract not properly initialized' from contract function 'Symbol(obj#41)'\"\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, get_usdc_token], data:Void\n"
+ expected substring: "token not set"
+---- token_integration_test::test_create_bond_rejects_contract_self_approval_pattern stdout ----
+
+thread 'token_integration_test::test_create_bond_rejects_contract_self_approval_pattern' (227416) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000, 86400, false, 0]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#323)'", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000, 86400, false, 0]
+   4: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, balance], data:10000
+   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   6: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, transfer_from], data:Void
+   7: [Failed Contract Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[transfer, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, "aaa:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGO6V"], data:1000
+   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000]
+   9: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, balance], data:10000
+   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM
+   11: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, allowance], data:10000
+   12: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]
+   13: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000, 86400, false, 0]
+
+Writing test snapshot file for test "token_integration_test::test_create_bond_rejects_contract_self_approval_pattern" to "test_snapshots/token_integration_test/test_create_bond_rejects_contract_self_approval_pattern.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", create_bond_with_rolling, [CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000, 86400, false, 0]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'unsupported token: transfer amount mismatch (code 213)' from contract function 'Symbol(obj#323)'\", CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000, 86400, false, 0]\n   4: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, balance], data:10000\n   5: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM\n   6: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, transfer_from], data:Void\n   7: [Failed Contract Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[transfer, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, \"aaa:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGO6V\"], data:1000\n   8: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, transfer_from], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000]\n   9: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, balance], data:10000\n   10: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, balance], data:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM\n   11: [Failed Diagnostic Event (not emitted)] contract:CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, topics:[fn_return, allowance], data:10000\n   12: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[fn_call, CBUSYNQKASUYFWYC3M2GUEDMX4AIVWPALDBYJPNK6554BREHTGZ2IUNF, allowance], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM]\n   13: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, create_bond_with_rolling], data:[CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, 1000, 86400, false, 0]\n"
+ expected substring: "self-approval is not allowed"
+---- token_integration_test::test_top_up_negative_amount_panics stdout ----
+
+thread 'token_integration_test::test_top_up_negative_amount_panics' (227431) panicked at /home/robi/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/soroban-env-host-22.1.3/src/host.rs:847:9:
+HostError: Error(WasmVm, InvalidAction)
+
+Event log (newest first):
+   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:"escalating error to panic"
+   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:["contract call failed", top_up, [-1]]
+   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:"caught error from function"
+   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:["caught panic 'amount must be positive' from contract function 'Symbol(top_up)'", -1]
+   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:-1
+
+Writing test snapshot file for test "token_integration_test::test_top_up_negative_amount_panics" to "test_snapshots/token_integration_test/test_top_up_negative_amount_panics.1.json".
+note: panic did not contain expected string
+      panic message: "HostError: Error(WasmVm, InvalidAction)\n\nEvent log (newest first):\n   0: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:\"escalating error to panic\"\n   1: [Diagnostic Event] topics:[error, Error(WasmVm, InvalidAction)], data:[\"contract call failed\", top_up, [-1]]\n   2: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[error, Error(WasmVm, InvalidAction)], data:\"caught error from function\"\n   3: [Failed Diagnostic Event (not emitted)] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, topics:[log], data:[\"caught panic 'amount must be positive' from contract function 'Symbol(top_up)'\", -1]\n   4: [Diagnostic Event] topics:[fn_call, CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM, top_up], data:-1\n"
+ expected substring: "top-up amount below minimum required"
+
+failures:
+    integration::test_bond_lifecycle::test_lifecycle_create_topup_slash_withdraw
+    test_batch::test_all_bonds_validated_before_any_created
+    test_batch::test_atomic_failure_on_second_bond
+    test_create_bond::test_create_bond_different_identities
+    test_create_bond::test_create_bond_duplicate
+    test_create_bond::test_create_bond_duration_overflow
+    test_create_bond::test_create_bond_field_initialization
+    test_create_bond::test_create_bond_max_amount
+    test_create_bond::test_create_bond_max_duration
+    test_create_bond::test_create_bond_min_positive_amount
+    test_create_bond::test_create_bond_negative_amount
+    test_create_bond::test_create_bond_sequential
+    test_create_bond::test_create_bond_storage_persistence
+    test_create_bond::test_create_bond_success
+    test_create_bond::test_create_bond_timestamp
+    test_create_bond::test_create_bond_usdc_amount
+    test_create_bond::test_create_bond_zero_amount
+    test_create_bond::test_create_bond_zero_duration
+    test_create_bond::test_set_supply_cap_negative
+    test_create_bond::test_set_supply_cap_success
+    test_create_bond::test_supply_cap_enforcement_above_cap
+    test_create_bond::test_supply_cap_enforcement_below_cap
+    test_create_bond::test_supply_cap_no_cap
+    test_create_bond::test_supply_cap_with_multiple_bonds
+    test_create_bond::test_supply_cap_withdrawal_reduces_supply
+    test_decimals::test_24_decimals_panics
+    test_decimals::test_tier_silver_with_18_decimals
+    test_decimals::test_tier_silver_with_6_decimals
+    test_decimals::test_tier_silver_with_8_decimals
+    test_decimals::test_validation_bounds_18_decimals
+    test_decimals::test_withdraw_correct_amount_6_decimals
+    test_events::test_lifecycle_event_emissions
+    test_events_v2::test_event_indexing_query_efficiency
+    test_events_v2::test_v2_event_indexing_improvements
+    test_immutable_config::immutable_config_tests::test_admin_cannot_be_reinitialized
+    test_immutable_config::immutable_config_tests::test_token_can_only_be_set_once
+    test_immutable_config_working::immutable_config_tests::test_admin_cannot_be_reinitialized
+    test_increase_bond::test_increase_bond_fails_for_non_owner
+    test_increase_bond::test_increase_bond_fails_without_token_configuration
+    test_liquidation_scanner::test_scan_emits_page_event
+    test_market_activation::test_valid_bond_activation_succeeds
+    test_reentrancy::test_lock_released_after_slash
+    test_reentrancy::test_normal_slash_succeeds
+    test_reentrancy::test_sequential_operations_succeed
+    test_reentrancy::test_slash_exceeds_bond_rejected
+    test_reentrancy_bug_exploration::test_execute_cooldown_withdrawal_reentrancy_attack
+    test_reentrancy_bug_exploration::test_nested_reentrancy_blocked
+    test_reentrancy_bug_exploration::test_withdraw_bond_reentrancy_attack
+    test_reentrancy_bug_exploration::test_withdraw_early_reentrancy_attack
+    test_reentrancy_preservation::property_withdraw_bond_full_unchanged
+    test_reentrancy_preservation::property_withdraw_bond_normal_behavior_preserved
+    test_upgrade_auth::test_cannot_revoke_last_upgrade_admin
+    test_upgrade_auth::test_grant_and_revoke_upgrade_authorization
+    test_upgrade_auth::test_proposal_expiry_handling
+    test_upgrade_auth::test_unauthorized_upgrade_attempts
+    test_upgrade_auth::test_upgrade_authorization_expiry
+    test_upgrade_auth::test_upgrade_authorization_initialization
+    test_upgrade_auth::test_upgrade_execution_with_proposal
+    test_upgrade_auth::test_upgrade_history_tracking
+    test_upgrade_auth::test_upgrade_proposal_and_approval
+    test_validation::test_create_bond_with_min_amount_then_invalid_top_up
+    test_validation::test_top_up_with_negative_amount
+    test_validation::test_top_up_with_zero_amount
+    test_zero_address::zero_address_tests::test_register_attester_rejects_zero_address
+    test_zero_address::zero_address_tests::test_register_verifier_rejects_zero_address
+    test_zero_address::zero_address_tests::test_set_early_exit_config_rejects_zero_address
+    test_zero_address::zero_address_tests::test_set_emergency_config_rejects_zero_addresses
+    test_zero_address::zero_address_tests::test_set_token_rejects_zero_address
+    test_zero_address::zero_address_tests::test_set_usdc_token_rejects_zero_address
+    test_zero_address::zero_address_tests::test_valid_addresses_succeed
+    test_zero_address_working::zero_address_tests::test_valid_addresses_succeed
+    token_integration_test::test_create_bond_rejects_contract_self_approval_pattern
+    token_integration_test::test_get_usdc_token_without_configuration_panics
+    token_integration_test::test_top_up_negative_amount_panics
+
+test result: FAILED. 513 passed; 74 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.57s
+
+error: test failed, to rerun pass `--lib`

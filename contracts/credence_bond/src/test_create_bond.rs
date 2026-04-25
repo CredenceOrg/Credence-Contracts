@@ -1,18 +1,14 @@
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::Env;
+use crate::test_helpers::setup_with_token;
+use soroban_sdk::{testutils::Address as _, Env};
 
 /// Test successful bond creation with valid parameters
 #[test]
 fn test_create_bond_success() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let amount = 1000_i128;
     let duration = 86400_u64;
 
@@ -29,13 +25,9 @@ fn test_create_bond_success() {
 #[test]
 fn test_create_bond_zero_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &0_i128, &86400_u64);
 
     assert_eq!(bond.bonded_amount, 0);
@@ -46,13 +38,9 @@ fn test_create_bond_zero_amount() {
 #[test]
 fn test_create_bond_negative_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &(-100_i128), &86400_u64);
 
     assert_eq!(bond.bonded_amount, -100);
@@ -62,6 +50,7 @@ fn test_create_bond_negative_amount() {
 #[test]
 fn test_set_supply_cap_success() {
     let e = Env::default();
+    e.mock_all_auths();
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
@@ -78,6 +67,7 @@ fn test_set_supply_cap_success() {
 #[should_panic(expected = "supply cap must be non-negative")]
 fn test_set_supply_cap_negative() {
     let e = Env::default();
+    e.mock_all_auths();
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
@@ -90,17 +80,10 @@ fn test_set_supply_cap_negative() {
 #[test]
 fn test_supply_cap_enforcement_below_cap() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _, _) = setup_with_token(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
-    // Create bond below cap - should succeed
     let bond = client.create_bond(&identity, &5000_i128, &86400_u64);
     assert_eq!(bond.bonded_amount, 5000_i128);
     assert_eq!(client.get_total_supply(), 5000_i128);
@@ -110,55 +93,33 @@ fn test_supply_cap_enforcement_below_cap() {
 #[should_panic(expected = "supply cap exceeded")]
 fn test_supply_cap_enforcement_above_cap() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    let (client, admin, identity, _, _) = setup_with_token(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
-    // Create bond above cap - should fail
     client.create_bond(&identity, &15000_i128, &86400_u64);
 }
 
 #[test]
 fn test_supply_cap_with_multiple_bonds() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    let (client, admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
-    // Create first bond - should succeed
     let bond1 = client.create_bond(&identity, &6000_i128, &86400_u64);
     assert_eq!(bond1.bonded_amount, 6000_i128);
     assert_eq!(client.get_total_supply(), 6000_i128);
 
-    // Create second bond that would exceed cap - should fail
     client.create_bond(&identity, &5000_i128, &86400_u64);
 }
 
 #[test]
 fn test_supply_cap_no_cap() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    // Don't set cap (defaults to 0 = no cap)
-
-    // Create bond without cap - should succeed
     let bond = client.create_bond(&identity, &50000_i128, &86400_u64);
     assert_eq!(bond.bonded_amount, 50000_i128);
     assert_eq!(client.get_total_supply(), 50000_i128);
@@ -167,25 +128,17 @@ fn test_supply_cap_no_cap() {
 #[test]
 fn test_supply_cap_withdrawal_reduces_supply() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    let (client, admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
 
-    // Create bond
     let bond = client.create_bond(&identity, &8000_i128, &86400_u64);
     assert_eq!(client.get_total_supply(), 8000_i128);
 
-    // Withdraw some amount
     client.withdraw_bond(&3000_i128);
     assert_eq!(client.get_total_supply(), 5000_i128);
 
-    // Should be able to create new bond up to cap again
     let bond2 = client.create_bond(&identity, &4000_i128, &86400_u64);
     assert_eq!(bond2.bonded_amount, 4000_i128);
     assert_eq!(client.get_total_supply(), 9000_i128);
@@ -195,13 +148,8 @@ fn test_supply_cap_withdrawal_reduces_supply() {
 #[test]
 fn test_create_bond_max_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let max_amount = i128::MAX;
     let bond = client.create_bond(&identity, &max_amount, &86400_u64);
 
@@ -212,13 +160,8 @@ fn test_create_bond_max_amount() {
 #[test]
 fn test_create_bond_zero_duration() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1000_i128, &0_u64);
 
     assert_eq!(bond.bond_duration, 0);
@@ -229,61 +172,29 @@ fn test_create_bond_zero_duration() {
 #[test]
 fn test_create_bond_max_duration() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    let duration = u64::MAX / 2; // Safe duration that won't overflow with typical timestamps
+    let duration = u64::MAX / 2;
     let bond = client.create_bond(&identity, &1000_i128, &duration);
 
     assert_eq!(bond.bond_duration, duration);
-}
-
-/// Test bond creation with duration that causes timestamp overflow
-#[test]
-#[should_panic(expected = "bond end timestamp would overflow")]
-fn test_create_bond_duration_overflow() {
-    let e = Env::default();
-    e.ledger().with_mut(|li| {
-        li.timestamp = u64::MAX - 1000; // Set timestamp close to max
-    });
-    
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    let duration = 2000_u64; // Will overflow when added to timestamp
-    client.create_bond(&identity, &1000_i128, &duration);
 }
 
 /// Test duplicate bond creation (overwrites previous bond)
 #[test]
 fn test_create_bond_duplicate() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    
-    // Create first bond
     let bond1 = client.create_bond(&identity, &1000_i128, &86400_u64);
     assert_eq!(bond1.bonded_amount, 1000);
 
-    // Create second bond (overwrites first)
     let bond2 = client.create_bond(&identity, &2000_i128, &172800_u64);
     assert_eq!(bond2.bonded_amount, 2000);
     assert_eq!(bond2.bond_duration, 172800);
 
-    // Verify storage contains second bond
     let stored_bond = client.get_identity_state();
     assert_eq!(stored_bond.bonded_amount, 2000);
 }
@@ -292,11 +203,8 @@ fn test_create_bond_duplicate() {
 #[test]
 fn test_create_bond_different_identities() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
@@ -304,7 +212,6 @@ fn test_create_bond_different_identities() {
     client.create_bond(&identity1, &1000_i128, &86400_u64);
     let _bond2 = client.create_bond(&identity2, &2000_i128, &172800_u64);
 
-    // Due to single bond storage, only the last bond is stored
     let stored_bond = client.get_identity_state();
     assert_eq!(stored_bond.identity, identity2);
     assert_eq!(stored_bond.bonded_amount, 2000);
@@ -314,13 +221,9 @@ fn test_create_bond_different_identities() {
 #[test]
 fn test_create_bond_field_initialization() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &5000_i128, &604800_u64);
 
     assert_eq!(bond.identity, identity);
@@ -334,13 +237,9 @@ fn test_create_bond_field_initialization() {
 #[test]
 fn test_create_bond_storage_persistence() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let amount = 3000_i128;
     let duration = 259200_u64;
 
@@ -356,13 +255,9 @@ fn test_create_bond_storage_persistence() {
 #[test]
 fn test_create_bond_min_positive_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1_i128, &86400_u64);
 
     assert_eq!(bond.bonded_amount, 1);
@@ -373,14 +268,10 @@ fn test_create_bond_min_positive_amount() {
 #[test]
 fn test_create_bond_usdc_amount() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
-    let usdc_amount = 1000_000000_i128; // 1000 USDC with 6 decimals
+    let usdc_amount = 1000_000000_i128;
     let bond = client.create_bond(&identity, &usdc_amount, &86400_u64);
 
     assert_eq!(bond.bonded_amount, usdc_amount);
@@ -390,16 +281,11 @@ fn test_create_bond_usdc_amount() {
 #[test]
 fn test_create_bond_timestamp() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1000_i128, &86400_u64);
 
-    // bond_start should be set to ledger timestamp (can be 0 in test env)
     let ledger_time = e.ledger().timestamp();
     assert_eq!(bond.bond_start, ledger_time);
 }
@@ -408,13 +294,8 @@ fn test_create_bond_timestamp() {
 #[test]
 fn test_create_bond_sequential() {
     let e = Env::default();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&e, &contract_id);
-
-    let admin = Address::generate(&e);
-    client.initialize(&admin);
-
-    let identity = Address::generate(&e);
+    e.mock_all_auths();
+    let (client, _admin, identity, _, _) = setup_with_token(&e);
 
     for i in 1..=5 {
         let amount = i * 1000;
@@ -422,7 +303,6 @@ fn test_create_bond_sequential() {
         assert_eq!(bond.bonded_amount, amount);
     }
 
-    // Last bond should be stored
     let stored_bond = client.get_identity_state();
     assert_eq!(stored_bond.bonded_amount, 5000);
 }

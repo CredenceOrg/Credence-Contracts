@@ -5,7 +5,7 @@ use soroban_sdk::{Env, String};
 fn advance(e: &Env, secs: u64) {
     e.ledger().set(soroban_sdk::testutils::LedgerInfo {
         timestamp: e.ledger().timestamp() + secs,
-        protocol_version: 22,
+        protocol_version: 23,
         sequence_number: 1,
         network_id: [0; 32],
         base_reserve: 10,

@@ -385,7 +385,7 @@ fn test_set_emergency_mode_unauthorized_admin() {
     client.set_emergency_config(&admin, &governance, &Address::generate(&e), &50_u32, &true);
     
     // Try to set emergency mode with unauthorized admin
-    client.set_emergency_mode(&unauthorized, &governance, &true);
+    client.set_emergency_mode(&unauthorized, &governance, &true, &Symbol::new(&e, "unauth"));
 }
 
 // Test unauthorized access to set_emergency_mode (wrong governance)
@@ -401,7 +401,7 @@ fn test_set_emergency_mode_unauthorized_governance() {
     client.set_emergency_config(&admin, &governance, &Address::generate(&e), &50_u32, &true);
     
     // Try to set emergency mode with wrong governance
-    client.set_emergency_mode(&admin, &wrong_governance, &true);
+    client.set_emergency_mode(&admin, &wrong_governance, &true, &Symbol::new(&e, "wronggov"));
 }
 
 // Test unauthorized access to emergency_withdraw

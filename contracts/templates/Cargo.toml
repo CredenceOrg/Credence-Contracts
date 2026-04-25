@@ -8,4 +8,4 @@ description = "Credence Soroban contract template — canonical starting point f
 crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = { version = "22.0", features = ["testutils"] }
+soroban-sdk = { version = "23.0", features = ["testutils"] }

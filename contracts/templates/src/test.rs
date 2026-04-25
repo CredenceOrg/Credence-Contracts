@@ -102,7 +102,7 @@ fn test_set_record_requires_admin_auth() {
 
     let auths = e.auths();
     // At least one auth entry must be for the admin address.
-    assert!(auths.iter().any(|(addr, _)| addr == admin));
+    assert!(auths.iter().any(|(addr, _)| *addr == admin));
 }
 
 // ---------------------------------------------------------------------------

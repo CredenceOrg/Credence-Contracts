@@ -583,7 +583,7 @@ pub fn set_max_leverage(e: &Env, admin: &Address, value: u32) {
 pub fn is_borrow_frozen(e: &Env) -> bool {
     e.storage()
         .instance()
-        .get(&crate::DataKey::BorrowFrozen)
+    .get(&Symbol::new(e, "borrow_frozen"))
         .unwrap_or(false)
 }
 
@@ -606,7 +606,7 @@ pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
     let old = is_borrow_frozen(e);
     e.storage()
         .instance()
-        .set(&crate::DataKey::BorrowFrozen, &frozen);
+        .set(&Symbol::new(e, "borrow_frozen"), &frozen);
     let timestamp = e.ledger().timestamp();
     e.events().publish(
         (Symbol::new(e, "borrow_freeze_set"),),
@@ -646,3 +646,23 @@ fn validate_admin(e: &Env, caller: &Address) {
 /// * `old_value` - Previous value (normalized to i128)
 /// * `new_value` - New value (normalized to i128)
 /// * `updated_by` - Address that performed the update
+fn emit_parameter_change_event(
+    e: &Env,
+    parameter: Symbol,
+    old_value: i128,
+    new_value: i128,
+    updated_by: &Address,
+) {
+    emit_parameter_updated(
+        e,
+        parameter.clone(),
+        symbol_short!("params"),
+        updated_by,
+        old_value,
+        new_value,
+    );
+    e.events().publish(
+        (symbol_short!("param_chg"), parameter),
+        (old_value, new_value, updated_by.clone()),
+    );
+}

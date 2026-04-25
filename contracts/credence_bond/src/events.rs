@@ -342,6 +342,62 @@ pub fn emit_parameter_updated(
     old_value: i128,
     new_value: i128,
 ) {
-    let topics = (Symbol::new(e, "param_updated"), key, category, admin.clone());
+    // Backward-compatibility event used by older tests/indexers.
+    let legacy_topics = (Symbol::new(e, "parameter_changed"),);
+    let legacy_data = (
+        String::from_str(e, "parameter"),
+        old_value,
+        new_value,
+        admin.clone(),
+        e.ledger().timestamp(),
+    );
+    e.events().publish(legacy_topics, legacy_data);
+
+    let topics = (
+        Symbol::new(e, "param_updated"),
+        key,
+        category,
+        admin.clone(),
+    );
     e.events().publish(topics, (old_value, new_value));
+}
+
+/// Emitted when an admin transfer is proposed.
+pub fn emit_admin_transfer_started(e: &Env, current_admin: &Address, pending_admin: &Address) {
+    let topics = (Symbol::new(e, "admin_transfer_started"), current_admin.clone());
+    e.events().publish(topics, pending_admin.clone());
+}
+
+/// Emitted when an admin transfer is completed.
+pub fn emit_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
+    let topics = (Symbol::new(e, "admin_transfer_completed"), old_admin.clone());
+    e.events().publish(topics, new_admin.clone());
+}
+
+/// Emitted when an upgrade admin transfer is proposed.
+pub fn emit_upgrade_admin_transfer_started(e: &Env, current_admin: &Address, pending_admin: &Address) {
+    let topics = (Symbol::new(e, "upgr_admin_transfer_started"), current_admin.clone());
+    e.events().publish(topics, pending_admin.clone());
+}
+
+/// Emitted when an upgrade admin transfer is completed.
+pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &Address) {
+    let topics = (Symbol::new(e, "upgr_admin_transfer_completed"), old_admin.clone());
+    e.events().publish(topics, new_admin.clone());
+}
+
+/// Emitted when emergency mode is toggled.
+pub fn emit_emergency_mode_event(
+    e: &Env,
+    enabled: bool,
+    admin: &Address,
+    governance: &Address,
+    reason: &Symbol,
+) {
+    let topics = (
+        Symbol::new(e, "emergency_mode_event"),
+        admin.clone(),
+        governance.clone(),
+    );
+    e.events().publish(topics, (enabled, reason.clone()));
 }

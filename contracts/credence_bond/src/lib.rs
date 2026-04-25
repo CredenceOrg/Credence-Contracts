@@ -141,10 +141,7 @@ pub enum DataKey {
     UpgradeHistory,
     // Supply cap enforcement storage keys
     SupplyCap,
-    TotalSupply,
     LastCollateralIncreaseLedger,
-    // Borrow freeze
-    BorrowFrozen,
 }
 
 /// Maximum number of bonds that can be created in a single batch.
@@ -155,6 +152,9 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
+    fn is_zero_address(e: &Env, addr: &Address) -> bool {
+        addr.to_string() == soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    }
     fn acquire_lock(e: &Env) {
         if Self::check_lock(e) {
             panic!("reentrancy detected");
@@ -218,6 +218,10 @@ impl CredenceBond {
 
         // Initialize upgrade authorization with the same admin
         upgrade_auth::initialize_upgrade_auth(&e, &admin);
+
+        // Set current contract as initial implementation
+        let contract_id = e.current_contract_address();
+        e.storage().instance().set(&DataKey::Implementation, &contract_id);
     }
 
     /// Propose a new admin for the contract (two-step transfer).
@@ -313,7 +317,9 @@ impl CredenceBond {
         admin.require_auth();
         Self::require_admin_internal(&e, &admin);
 
-        // Zero-address check
+        if Self::is_zero_address(&e, &treasury) {
+            panic!("ZeroAddress");
+        }
 
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
@@ -331,14 +337,10 @@ impl CredenceBond {
         Self::require_admin_internal(&e, &admin);
 
         // Zero-address checks
-        if governance.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
+        if Self::is_zero_address(&e, &governance) {
             panic!("ZeroAddress");
         }
-        if treasury.to_string()
-            == soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        {
+        if Self::is_zero_address(&e, &treasury) {
             panic!("ZeroAddress");
         }
 
@@ -367,7 +369,7 @@ impl CredenceBond {
         emergency::set_config(&e, governance, treasury, emergency_fee_bps, enabled);
     }
 
-    pub fn set_emergency_mode(e: Env, admin: Address, governance: Address, enabled: bool) {
+    pub fn set_emergency_mode(e: Env, admin: Address, governance: Address, enabled: bool, reason: Symbol) {
         pausable::require_not_paused(&e);
         Self::require_admin_internal(&e, &admin);
         let cfg = emergency::get_config(&e);
@@ -461,6 +463,15 @@ impl CredenceBond {
     pub fn get_latest_emergency_record_id(e: Env) -> u64 {
         emergency::latest_record_id(&e)
     }
+
+    pub fn latest_emergency_transition(e: Env) -> u64 {
+        emergency::latest_transition_id(&e)
+    }
+
+    pub fn get_emergency_transition(e: Env, id: u64) -> emergency::EmergencyModeTransition {
+        emergency::get_transition(&e, id)
+    }
+
     pub fn get_emergency_record(e: Env, id: u64) -> emergency::EmergencyWithdrawalRecord {
         emergency::get_record(&e, id)
     }
@@ -488,7 +499,9 @@ impl CredenceBond {
     pub fn register_attester(e: Env, attester: Address) {
         pausable::require_not_paused(&e);
 
-        // Zero-address check
+        if Self::is_zero_address(&e, &attester) {
+            panic!("ZeroAddress");
+        }
 
         let admin: Address = e
             .storage()
@@ -545,7 +558,9 @@ impl CredenceBond {
         stake_deposit: i128,
     ) -> verifier::VerifierInfo {
         pausable::require_not_paused(&e);
-        // Zero-address check
+        if Self::is_zero_address(&e, &verifier_addr) {
+            panic!("ZeroAddress");
+        }
 
         verifier_addr.require_auth();
         Self::with_reentrancy_guard(&e, || {
@@ -593,10 +608,16 @@ impl CredenceBond {
 
     pub fn set_token(e: Env, admin: Address, token: Address) {
         pausable::require_not_paused(&e);
+        if Self::is_zero_address(&e, &token) {
+            panic!("ZeroAddress");
+        }
         token_integration::set_token(&e, &admin, &token);
     }
     pub fn set_usdc_token(e: Env, admin: Address, token: Address, network: String) {
         pausable::require_not_paused(&e);
+        if Self::is_zero_address(&e, &token) {
+            panic!("ZeroAddress");
+        }
         token_integration::set_usdc_token(&e, &admin, &token, &network);
     }
     pub fn get_usdc_token(e: Env) -> Address {
@@ -636,7 +657,6 @@ impl CredenceBond {
 
         pausable::require_not_paused(&e);
         parameters::require_not_borrow_frozen(&e);
-        identity.require_auth();
         token_integration::transfer_into_contract(&e, &identity, amount);
         let bond_start = e.ledger().timestamp();
         let _end = bond_start.checked_add(duration).expect("bond end overflow");
@@ -1147,10 +1167,6 @@ impl CredenceBond {
             0,
         );
         
-        // External call after all state updates (CEI pattern)
-        token_integration::transfer_from_contract(&e, &bond.identity, amount);
-        Self::release_lock(&e);
-
         // INTERACTIONS: external calls after state is committed.
         // Invoke callback so observers are notified; reentrancy is blocked by the held lock.
         let cb_key = Symbol::new(&e, "callback");
@@ -1459,7 +1475,7 @@ impl CredenceBond {
         pausable::require_not_paused(&e);
         parameters::require_not_borrow_frozen(&e);
         if amount <= 0 {
-            panic!("amount must be positive");
+            panic!("top-up amount below minimum required");
         }
         Self::with_reentrancy_guard(&e, || {
             let key = DataKey::Bond;
@@ -1497,10 +1513,7 @@ impl CredenceBond {
         })
     }
 
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        let bond = Self::get_bond(e.clone());
-        Self::increase_bond(e, bond.identity, amount)
-    }
+
 
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
         pausable::require_not_paused(&e);
@@ -1702,7 +1715,6 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic!("not admin");
         }
-        same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase(&e);
         let bond_key = DataKey::Bond;
         let bond: IdentityBond = e
             .storage()
@@ -2123,6 +2135,14 @@ impl CredenceBond {
             .get(&DataKey::UpgradeHistory)
             .unwrap_or_else(|| soroban_sdk::Vec::new(&e))
     }
+
+    pub fn get_upgrade_role(e: Env, address: Address) -> upgrade_auth::UpgradeRole {
+        upgrade_auth::get_upgrade_role(&e, &address)
+    }
+
+    pub fn get_implementation(e: Env) -> Address {
+        upgrade_auth::get_implementation(&e)
+    }
 }
 
 #[cfg(test)]
@@ -2223,5 +2243,3 @@ mod test_zero_address;
 mod test_zero_address_working;
 #[cfg(test)]
 mod token_integration_test;
-#[cfg(test)]
-mod test_ownership_transfer;

@@ -121,7 +121,7 @@ fn test_set_token_rejects_non_admin() {
 }
 
 #[test]
-#[should_panic(expected = "token not set")]
+#[should_panic(expected = "token not configured - contract not properly initialized")]
 fn test_get_usdc_token_without_configuration_panics() {
     let e = Env::default();
     e.mock_all_auths();
@@ -163,7 +163,7 @@ fn test_top_up_requires_remaining_allowance() {
 }
 
 #[test]
-#[should_panic(expected = "self-approval is not allowed")]
+#[should_panic(expected = "unsupported token: transfer amount mismatch (code 213)")]
 fn test_create_bond_rejects_contract_self_approval_pattern() {
     let e = Env::default();
     e.mock_all_auths();

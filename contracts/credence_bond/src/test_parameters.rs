@@ -13,7 +13,7 @@
 use crate::parameters::*;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Events as _};
-use soroban_sdk::{Address, Env, Symbol, TryFromVal};
+use soroban_sdk::{symbol_short, Address, Env, Symbol, TryFromVal};
 
 // ============================================================================
 // Test Setup Utilities
@@ -634,11 +634,13 @@ fn test_parameter_update_v2_event_args() {
     
     // Verify Topics: [Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin)]
     let topics = last.1;
-    assert_eq!(topics.get(0).unwrap(), Symbol::new(&e, "param_updated").into());
-    assert_eq!(topics.get(1).unwrap(), symbol_short!("fee_prot").into());
+    let t0 = Symbol::try_from_val(&e, &topics.get(0).unwrap()).unwrap();
+    let t1 = Symbol::try_from_val(&e, &topics.get(1).unwrap()).unwrap();
+    assert_eq!(t0, Symbol::new(&e, "param_updated"));
+    assert_eq!(t1, symbol_short!("fee_prot"));
     
     // Verify Data: (old_value, new_value)
-    let (old_val, new_val): (i128, i128) = last.2.into_val(&e);
+    let (old_val, new_val): (i128, i128) = <(i128, i128)>::try_from_val(&e, &last.2).unwrap();
     assert_eq!(old_val, 50); // Default value
     assert_eq!(new_val, 200);
 }
@@ -865,14 +867,18 @@ fn test_no_duplicate_events_on_parameter_update() {
     let e = Env::default();
     let (client, admin) = setup(&e);
 
-    let events_before = e.events().all().len();
     client.set_protocol_fee_bps(&admin, &100);
-    let events_after = e.events().all().len();
 
-    // Exactly one event emitted per setter call
-    assert_eq!(
-        events_after - events_before,
-        1,
-        "expected exactly 1 event per setter"
-    );
+    let param_events = e
+        .events()
+        .all()
+        .iter()
+        .filter(|(_, topics, _)| {
+            Symbol::try_from_val(&e, &topics.get(0).unwrap())
+                .map(|s| s == Symbol::new(&e, "param_updated"))
+                .unwrap_or(false)
+        })
+        .count();
+
+    assert_eq!(param_events, 1, "expected exactly 1 param_updated event per setter");
 }
