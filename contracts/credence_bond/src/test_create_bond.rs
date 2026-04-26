@@ -34,7 +34,7 @@ fn test_set_supply_cap_success() {
 
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
-    
+
     assert_eq!(client.get_supply_cap(), cap);
 }
 

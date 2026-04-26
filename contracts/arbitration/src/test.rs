@@ -124,6 +124,9 @@ fn test_unauthorized_voter() {
     let description = String::from_str(&e, "Unauthorized Vote");
     let dispute_id = client.create_dispute(&creator, &description, &3600);
 
-    let err = client.try_vote(&non_arb, &dispute_id, &1).unwrap_err().unwrap();
+    let err = client
+        .try_vote(&non_arb, &dispute_id, &1)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, status::ArbitrationError::NotArbitrator);
 }

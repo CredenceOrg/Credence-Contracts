@@ -631,14 +631,14 @@ fn test_parameter_update_v2_event_args() {
 
     let events = e.events().all();
     let last = events.iter().rev().next().unwrap();
-    
+
     // Verify Topics: [Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin)]
     let topics = last.1;
     let t0 = Symbol::try_from_val(&e, &topics.get(0).unwrap()).unwrap();
     let t1 = Symbol::try_from_val(&e, &topics.get(1).unwrap()).unwrap();
     assert_eq!(t0, Symbol::new(&e, "param_updated"));
     assert_eq!(t1, symbol_short!("fee_prot"));
-    
+
     // Verify Data: (old_value, new_value)
     let (old_val, new_val): (i128, i128) = <(i128, i128)>::try_from_val(&e, &last.2).unwrap();
     assert_eq!(old_val, 50); // Default value
@@ -880,5 +880,8 @@ fn test_no_duplicate_events_on_parameter_update() {
         })
         .count();
 
-    assert_eq!(param_events, 1, "expected exactly 1 param_updated event per setter");
+    assert_eq!(
+        param_events, 1,
+        "expected exactly 1 param_updated event per setter"
+    );
 }

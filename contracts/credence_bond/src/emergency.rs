@@ -233,7 +233,11 @@ pub fn emit_emergency_withdrawal_event(
     reason: &Symbol,
 ) {
     e.events().publish(
-        (Symbol::new(e, "emergency_withdrawal"), record_id, identity.clone()),
+        (
+            Symbol::new(e, "emergency_withdrawal"),
+            record_id,
+            identity.clone(),
+        ),
         (gross_amount, fee_amount, net_amount, reason.clone()),
     );
 }

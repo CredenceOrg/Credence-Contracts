@@ -62,8 +62,7 @@ impl TemplateContract {
             panic!("already initialized");
         }
         e.storage().instance().set(&DataKey::Admin, &admin);
-        e.events()
-            .publish((Symbol::new(&e, "initialized"),), admin);
+        e.events().publish((Symbol::new(&e, "initialized"),), admin);
     }
 
     // -----------------------------------------------------------------------

@@ -12,16 +12,26 @@ pub struct TaxedToken;
 #[contractimpl]
 impl TaxedToken {
     pub fn initialize(e: Env, admin: Address) {
-        e.storage().instance().set(&Symbol::new(&e, "admin"), &admin);
-        e.storage().instance().set(&Symbol::new(&e, "tax"), &100_i128); // 1% tax (basis points: 100/10000)
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "admin"), &admin);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "tax"), &100_i128); // 1% tax (basis points: 100/10000)
     }
 
     pub fn mint(e: Env, to: Address, amount: i128) {
-        let admin: Address = e.storage().instance().get(&Symbol::new(&e, "admin")).unwrap();
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, "admin"))
+            .unwrap();
         admin.require_auth();
         let balance_key = (Symbol::new(&e, "balance"), to.clone());
         let balance: i128 = e.storage().persistent().get(&balance_key).unwrap_or(0);
-        e.storage().persistent().set(&balance_key, &(balance + amount));
+        e.storage()
+            .persistent()
+            .set(&balance_key, &(balance + amount));
     }
 
     pub fn balance(e: Env, id: Address) -> i128 {
@@ -45,9 +55,13 @@ impl TaxedToken {
             panic!("insufficient balance");
         }
 
-        e.storage().persistent().set(&from_key, &(from_balance - amount));
-        e.storage().persistent().set(&to_key, &(to_balance + actual_amount));
-        
+        e.storage()
+            .persistent()
+            .set(&from_key, &(from_balance - amount));
+        e.storage()
+            .persistent()
+            .set(&to_key, &(to_balance + actual_amount));
+
         // The tax is "lost" or burned in this simple mock to simulate slippage
     }
 }
@@ -68,7 +82,7 @@ fn setup_adversarial(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address) 
 
     // Give admin tokens so they can deposit
     token_client.mint(&admin, &(i128::MAX / 2));
-    
+
     (client, admin, token_id)
 }
 
@@ -166,5 +180,5 @@ fn test_slippage_succeeds_well_below_threshold_with_taxed_token() {
     // Minimum 5,000 -> Success.
     client.execute_withdrawal(&id, &5_000);
 
-    assert_eq!(client.get_balance(), 100); 
+    assert_eq!(client.get_balance(), 100);
 }

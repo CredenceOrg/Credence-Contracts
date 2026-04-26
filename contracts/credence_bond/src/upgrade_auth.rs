@@ -748,7 +748,7 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
         .instance()
         .get(&DataKey::AuthorizedUpgraders)
         .unwrap_or(Vec::new(e));
-    
+
     let mut already_in = false;
     for i in 0..upgraders.len() {
         if upgraders.get(i).unwrap() == *caller {

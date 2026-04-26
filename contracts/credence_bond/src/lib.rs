@@ -4,8 +4,7 @@
 extern crate std;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val,
-    Vec,
+    contract, contractimpl, contracttype, Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec,
 };
 
 pub mod access_control;
@@ -153,7 +152,8 @@ pub struct CredenceBond;
 #[contractimpl]
 impl CredenceBond {
     fn is_zero_address(e: &Env, addr: &Address) -> bool {
-        addr.to_string() == soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        addr.to_string()
+            == soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
     }
     fn acquire_lock(e: &Env) {
         if Self::check_lock(e) {
@@ -221,7 +221,9 @@ impl CredenceBond {
 
         // Set current contract as initial implementation
         let contract_id = e.current_contract_address();
-        e.storage().instance().set(&DataKey::Implementation, &contract_id);
+        e.storage()
+            .instance()
+            .set(&DataKey::Implementation, &contract_id);
     }
 
     /// Propose a new admin for the contract (two-step transfer).
@@ -234,7 +236,8 @@ impl CredenceBond {
         }
 
         // Zero-address check
-        let zero_str = soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        let zero_str =
+            soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         if new_admin.to_string() == zero_str {
             panic!("ZeroAddress");
         }
@@ -265,8 +268,10 @@ impl CredenceBond {
         // Update admin
         e.storage().instance().set(&DataKey::Admin, &caller);
         // Also update the symbol-based admin key for consistency if used
-        e.storage().instance().set(&Symbol::new(&e, "admin"), &caller);
-        
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "admin"), &caller);
+
         // Clear pending admin
         e.storage().instance().remove(&DataKey::PndgAdmin);
 
@@ -344,13 +349,26 @@ impl CredenceBond {
             panic!("ZeroAddress");
         }
 
-        let old_cfg = e.storage().instance().get::<_, emergency::EmergencyConfig>(&Symbol::new(&e, "emergency_config"));
-        
+        let old_cfg = e
+            .storage()
+            .instance()
+            .get::<_, emergency::EmergencyConfig>(&Symbol::new(&e, "emergency_config"));
+
         // Always set config with requested params, but if it's the first time and enabled=true,
         // we'll set it to false first then enable it via set_enabled to trigger audit trail.
-        let effective_enabled = if old_cfg.is_none() { false } else { old_cfg.as_ref().unwrap().enabled };
-        
-        emergency::set_config(&e, governance.clone(), treasury.clone(), emergency_fee_bps, effective_enabled);
+        let effective_enabled = if old_cfg.is_none() {
+            false
+        } else {
+            old_cfg.as_ref().unwrap().enabled
+        };
+
+        emergency::set_config(
+            &e,
+            governance.clone(),
+            treasury.clone(),
+            emergency_fee_bps,
+            effective_enabled,
+        );
 
         if let Some(old) = old_cfg {
             if old.enabled != enabled {
@@ -369,7 +387,13 @@ impl CredenceBond {
         emergency::set_config(&e, governance, treasury, emergency_fee_bps, enabled);
     }
 
-    pub fn set_emergency_mode(e: Env, admin: Address, governance: Address, enabled: bool, reason: Symbol) {
+    pub fn set_emergency_mode(
+        e: Env,
+        admin: Address,
+        governance: Address,
+        enabled: bool,
+        reason: Symbol,
+    ) {
         pausable::require_not_paused(&e);
         Self::require_admin_internal(&e, &admin);
         let cfg = emergency::get_config(&e);
@@ -1166,7 +1190,7 @@ impl CredenceBond {
             false,
             0,
         );
-        
+
         // INTERACTIONS: external calls after state is committed.
         // Invoke callback so observers are notified; reentrancy is blocked by the held lock.
         let cb_key = Symbol::new(&e, "callback");
@@ -1512,8 +1536,6 @@ impl CredenceBond {
             bond
         })
     }
-
-
 
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
         pausable::require_not_paused(&e);
@@ -2165,13 +2187,13 @@ mod test_batch;
 // #[cfg(test)]
 // mod test_claim_pagination;
 #[cfg(test)]
+mod test_borrow_freeze;
+#[cfg(test)]
 mod test_cooldown;
 #[cfg(test)]
 mod test_create_bond;
 #[cfg(test)]
 mod test_decimals;
-#[cfg(test)]
-mod test_ownership_transfer;
 #[cfg(test)]
 mod test_duration_validation;
 #[cfg(test)]
@@ -2207,6 +2229,8 @@ mod test_math;
 #[cfg(test)]
 mod test_max_leverage;
 #[cfg(test)]
+mod test_ownership_transfer;
+#[cfg(test)]
 mod test_parameters;
 #[cfg(test)]
 mod test_pausable;
@@ -2236,8 +2260,6 @@ mod test_validation;
 mod test_verifier;
 #[cfg(test)]
 mod test_weighted_attestation;
-#[cfg(test)]
-mod test_borrow_freeze;
 #[cfg(test)]
 mod test_withdraw_bond;
 #[cfg(test)]

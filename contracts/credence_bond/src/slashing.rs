@@ -118,7 +118,11 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         .expect("slashed exceeds bonded");
 
     // 4. Cap slash at available balance (not just bonded_amount)
-    let actual_slash_amount = if amount > available { available } else { amount };
+    let actual_slash_amount = if amount > available {
+        available
+    } else {
+        amount
+    };
 
     let new_slashed = bond
         .slashed_amount

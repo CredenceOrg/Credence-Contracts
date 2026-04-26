@@ -24,8 +24,8 @@
 //! - old value
 //! - new value
 
-use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 use crate::events::emit_parameter_updated;
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 // ============================================================================
 // Parameter Bounds Constants
@@ -255,7 +255,9 @@ pub fn set_protocol_fee_bps(e: &Env, admin: &Address, value: u32) {
     }
 
     let old_value = get_protocol_fee_bps(e);
-    e.storage().instance().set(&ParameterKey::ProtocolFeeBps, &value);
+    e.storage()
+        .instance()
+        .set(&ParameterKey::ProtocolFeeBps, &value);
 
     emit_parameter_updated(
         e,
@@ -583,7 +585,7 @@ pub fn set_max_leverage(e: &Env, admin: &Address, value: u32) {
 pub fn is_borrow_frozen(e: &Env) -> bool {
     e.storage()
         .instance()
-    .get(&Symbol::new(e, "borrow_frozen"))
+        .get(&Symbol::new(e, "borrow_frozen"))
         .unwrap_or(false)
 }
 

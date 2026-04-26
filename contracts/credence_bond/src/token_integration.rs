@@ -123,7 +123,6 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     let contract = e.current_contract_address();
     let token = crate::safe_token::token_client(e);
 
-
     // Check contract balance before transfer
     let balance_before = token.balance(&contract);
 

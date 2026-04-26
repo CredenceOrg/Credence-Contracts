@@ -6,11 +6,11 @@ use crate::{
     batch::MAX_BATCH_BOND_SIZE, test_helpers::setup_with_token, BatchBondParams, CredenceBond,
     CredenceBondClient,
 };
-use std::panic::AssertUnwindSafe;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env, Vec,
 };
+use std::panic::AssertUnwindSafe;
 
 fn build_valid_batch(env: &Env, count: u32) -> Vec<BatchBondParams> {
     let mut params_list = Vec::new(env);

@@ -5,9 +5,9 @@ use crate::{
     },
     CredenceBond, CredenceBondClient,
 };
-use std::panic::AssertUnwindSafe;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Bytes, Env, Vec};
+use std::panic::AssertUnwindSafe;
 
 // Helper: register contract + admin, return (client, admin, contract_id).
 fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
@@ -36,10 +36,7 @@ fn test_upgrade_authorization_initialization() {
 
     // Verify admin is authorized
     assert!(client.is_authorized_upgrader(&admin));
-    assert_eq!(
-        client.get_upgrade_role(&admin),
-        UpgradeRole::Upgrader
-    );
+    assert_eq!(client.get_upgrade_role(&admin), UpgradeRole::Upgrader);
 
     // Verify upgrade admin is set
     let auth_info = client.get_upgrade_auth(&admin).unwrap();
@@ -61,10 +58,7 @@ fn test_grant_and_revoke_upgrade_authorization() {
 
     client.grant_upgrade_auth(&admin, &user2, &UpgradeRole::Proposer, &0);
     assert!(!client.is_authorized_upgrader(&user2));
-    assert_eq!(
-        client.get_upgrade_role(&user2),
-        UpgradeRole::Proposer
-    );
+    assert_eq!(client.get_upgrade_role(&user2), UpgradeRole::Proposer);
 
     client.revoke_upgrade_auth(&admin, &user2);
 
@@ -103,8 +97,7 @@ fn test_upgrade_proposal_and_approval() {
     client.grant_upgrade_auth(&admin, &approver1, &UpgradeRole::Upgrader, &0);
     client.grant_upgrade_auth(&admin, &approver2, &UpgradeRole::Upgrader, &0);
 
-    let proposal_id =
-        client.propose_upgrade(&proposer, &new_impl, &Bytes::new(&env), &2);
+    let proposal_id = client.propose_upgrade(&proposer, &new_impl, &Bytes::new(&env), &2);
 
     let proposal = client.get_upgrade_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, UpgradeStatus::Pending);
@@ -140,8 +133,7 @@ fn test_upgrade_execution_with_proposal() {
     client.grant_upgrade_auth(&admin, &approver, &UpgradeRole::Upgrader, &0);
     client.grant_upgrade_auth(&admin, &executor, &UpgradeRole::Upgrader, &0);
 
-    let proposal_id =
-        client.propose_upgrade(&proposer, &new_impl, &Bytes::new(&env), &1);
+    let proposal_id = client.propose_upgrade(&proposer, &new_impl, &Bytes::new(&env), &1);
     client.approve_upgrade_proposal(&approver, &proposal_id);
 
     client.execute_upgrade(&executor, &new_impl, &Some(proposal_id));
@@ -226,8 +218,7 @@ fn test_proposal_expiry_handling() {
 
     client.grant_upgrade_auth(&admin, &proposer, &UpgradeRole::Proposer, &0);
 
-    let proposal_id =
-        client.propose_upgrade(&proposer, &new_impl, &Bytes::new(&env), &1);
+    let proposal_id = client.propose_upgrade(&proposer, &new_impl, &Bytes::new(&env), &1);
 
     let proposal = client.get_upgrade_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, UpgradeStatus::Pending);

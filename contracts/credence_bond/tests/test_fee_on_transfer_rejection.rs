@@ -66,14 +66,16 @@ fn standard_token_withdrawal_works() {
     assert!(bond.is_rolling);
 
     // Fast-forward past bond maturity
-    env.ledger().set_timestamp(env.ledger().timestamp() + 100_000);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 100_000);
 
     // Request withdrawal (for rolling bond)
     env.mock_all_auths();
     client.request_withdrawal();
 
     // Withdraw after cooldown for rolling bonds
-    env.ledger().set_timestamp(env.ledger().timestamp() + 10_000);
+    env.ledger()
+        .set_timestamp(env.ledger().timestamp() + 10_000);
     env.mock_all_auths();
     let withdrawn_bond = client.withdraw_bond(&amount);
     assert!(!withdrawn_bond.active);
@@ -135,7 +137,7 @@ fn bond_rejects_fee_on_transfer_token_on_create() {
     // 4. Verify the expected rejection
     //
     // For now, this test serves as a spec for the expected behavior.
-// A complete implementation would include such a mock contract.
+    // A complete implementation would include such a mock contract.
 }
 
 /// Test documentation for alternative token support

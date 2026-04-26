@@ -463,7 +463,7 @@ pub fn process_claims_paginated(
                 }
                 matches
             };
-            
+
             if type_matches {
                 total_amount += claim.amount;
                 processed_types.push_back(claim.claim_type);

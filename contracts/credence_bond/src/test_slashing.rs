@@ -593,7 +593,7 @@ fn test_slash_available_decreases_after_each_slash() {
     client.slash(&admin, &200_i128); // available: 800
     client.slash(&admin, &300_i128); // available: 500
     client.slash(&admin, &400_i128); // available: 100
-    // Request 200, only 100 available
+                                     // Request 200, only 100 available
     let bond = client.slash(&admin, &200_i128);
     assert_eq!(bond.slashed_amount, 1000);
 }

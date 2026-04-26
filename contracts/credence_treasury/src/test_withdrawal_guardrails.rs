@@ -30,7 +30,13 @@ fn setup_withdrawal_scenario(
     e: &Env,
     initial_balance: i128,
     min_liquidity: i128,
-) -> (CredenceTreasuryClient<'_>, Address, Address, Address, Address) {
+) -> (
+    CredenceTreasuryClient<'_>,
+    Address,
+    Address,
+    Address,
+    Address,
+) {
     let (client, admin, token_id) = setup(e);
 
     // Give admin enough tokens for the initial deposit (already done in setup, but ensures it's enough)

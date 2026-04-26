@@ -43,7 +43,13 @@ fn setup() -> Setup<'static> {
     let client = CredenceArbitrationClient::new(&env, &contract_id);
     client.initialize(&admin);
     client.register_arbitrator(&arb, &10);
-    Setup { env, admin, arb, creator, client }
+    Setup {
+        env,
+        admin,
+        arb,
+        creator,
+        client,
+    }
 }
 
 fn open_dispute(s: &Setup) -> u64 {
@@ -139,7 +145,11 @@ fn test_invalid_cancel_already_resolved() {
     advance(&s.env, 3601);
     s.client.resolve_dispute(&id);
     // Resolved → Cancelled is not valid
-    let err = s.client.try_cancel_dispute(&s.creator, &id).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
 }
 
@@ -149,7 +159,11 @@ fn test_invalid_cancel_already_cancelled() {
     let id = open_dispute(&s);
     s.client.cancel_dispute(&s.creator, &id);
     // Cancelled → Cancelled is not valid
-    let err = s.client.try_cancel_dispute(&s.creator, &id).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
 }
 
@@ -186,7 +200,11 @@ fn test_invalid_cancel_by_non_creator_non_admin() {
     let s = setup();
     let id = open_dispute(&s);
     let stranger = Address::generate(&s.env);
-    let err = s.client.try_cancel_dispute(&stranger, &id).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_cancel_dispute(&stranger, &id)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::NotAuthorized);
 }
 
@@ -209,7 +227,11 @@ fn test_invalid_double_initialize() {
 fn test_invalid_register_zero_weight() {
     let s = setup();
     let arb2 = Address::generate(&s.env);
-    let err = s.client.try_register_arbitrator(&arb2, &0).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_register_arbitrator(&arb2, &0)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::WeightNotPositive);
 }
 
@@ -217,7 +239,11 @@ fn test_invalid_register_zero_weight() {
 fn test_invalid_register_negative_weight() {
     let s = setup();
     let arb2 = Address::generate(&s.env);
-    let err = s.client.try_register_arbitrator(&arb2, &-1).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_register_arbitrator(&arb2, &-1)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::WeightNotPositive);
 }
 
@@ -226,10 +252,10 @@ fn test_invalid_register_negative_weight() {
 #[test]
 fn test_status_machine_all_valid_transitions() {
     use status::require_transition;
-    assert!(require_transition(DisputeStatus::Open,      DisputeStatus::Voting).is_ok());
-    assert!(require_transition(DisputeStatus::Open,      DisputeStatus::Cancelled).is_ok());
-    assert!(require_transition(DisputeStatus::Voting,    DisputeStatus::Resolving).is_ok());
-    assert!(require_transition(DisputeStatus::Voting,    DisputeStatus::Cancelled).is_ok());
+    assert!(require_transition(DisputeStatus::Open, DisputeStatus::Voting).is_ok());
+    assert!(require_transition(DisputeStatus::Open, DisputeStatus::Cancelled).is_ok());
+    assert!(require_transition(DisputeStatus::Voting, DisputeStatus::Resolving).is_ok());
+    assert!(require_transition(DisputeStatus::Voting, DisputeStatus::Cancelled).is_ok());
     assert!(require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved).is_ok());
 }
 
@@ -237,17 +263,17 @@ fn test_status_machine_all_valid_transitions() {
 fn test_status_machine_all_invalid_transitions() {
     use status::require_transition;
     let invalid = [
-        (DisputeStatus::Open,      DisputeStatus::Resolving),
-        (DisputeStatus::Open,      DisputeStatus::Resolved),
-        (DisputeStatus::Voting,    DisputeStatus::Open),
-        (DisputeStatus::Voting,    DisputeStatus::Resolved),
+        (DisputeStatus::Open, DisputeStatus::Resolving),
+        (DisputeStatus::Open, DisputeStatus::Resolved),
+        (DisputeStatus::Voting, DisputeStatus::Open),
+        (DisputeStatus::Voting, DisputeStatus::Resolved),
         (DisputeStatus::Resolving, DisputeStatus::Open),
         (DisputeStatus::Resolving, DisputeStatus::Voting),
         (DisputeStatus::Resolving, DisputeStatus::Cancelled),
-        (DisputeStatus::Resolved,  DisputeStatus::Open),
-        (DisputeStatus::Resolved,  DisputeStatus::Voting),
-        (DisputeStatus::Resolved,  DisputeStatus::Resolving),
-        (DisputeStatus::Resolved,  DisputeStatus::Cancelled),
+        (DisputeStatus::Resolved, DisputeStatus::Open),
+        (DisputeStatus::Resolved, DisputeStatus::Voting),
+        (DisputeStatus::Resolved, DisputeStatus::Resolving),
+        (DisputeStatus::Resolved, DisputeStatus::Cancelled),
         (DisputeStatus::Cancelled, DisputeStatus::Open),
         (DisputeStatus::Cancelled, DisputeStatus::Voting),
         (DisputeStatus::Cancelled, DisputeStatus::Resolving),
@@ -258,7 +284,8 @@ fn test_status_machine_all_invalid_transitions() {
             require_transition(from, to),
             Err(ArbitrationError::InvalidTransition),
             "expected InvalidTransition for {:?} → {:?}",
-            from, to
+            from,
+            to
         );
     }
 }
