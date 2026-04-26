@@ -94,9 +94,7 @@ fn standard_token_withdrawal_works() {
 /// NOTE: This test is incomplete because it requires a mock fee-on-transfer
 /// token contract that doesn't fully exist in SDK 23. The implementation uses
 /// balance-delta verification to detect fee-on-transfer tokens.
-// Temporarily disabled - requires mock token implementation
 #[ignore]
-#[test]
 #[test]
 #[should_panic(expected = "unsupported token: transfer amount mismatch")]
 fn bond_rejects_fee_on_transfer_token_on_create() {
