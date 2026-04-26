@@ -14,6 +14,7 @@
 //! Copy this crate, rename the package and struct, then extend.
 
 #![no_std]
+#![allow(deprecated)]
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 

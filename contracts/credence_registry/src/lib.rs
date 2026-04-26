@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 #![no_std]
 
 //! # Credence Registry Contract

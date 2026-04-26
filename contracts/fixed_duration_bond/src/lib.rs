@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 //! Fixed-Duration Bond Contract
 //!
 //! Allows any address to lock USDC for an exact, predetermined time period.

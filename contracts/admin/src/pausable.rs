@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use soroban_sdk::{Address, Env, Symbol};
 
 use crate::DataKey;
