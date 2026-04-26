@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 

@@ -45,12 +45,14 @@ pub fn append_slash_history(
 }
 
 #[must_use]
+#[allow(dead_code)]
 pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
     let key = SlashStorageKey::SlashCount(identity.clone());
     e.storage().persistent().get(&key).unwrap_or(0)
 }
 
 #[must_use]
+#[allow(dead_code)]
 pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
     let count = get_slash_count(e, identity);
     let mut history = Vec::new(e);
@@ -66,6 +68,7 @@ pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
 }
 
 #[must_use]
+#[allow(dead_code)]
 pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
     let key = SlashStorageKey::SlashRecord(identity.clone(), index);
     e.storage()
@@ -75,6 +78,7 @@ pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord 
 }
 
 #[must_use]
+#[allow(dead_code)]
 pub fn get_total_slashed_from_history(e: &Env, identity: &Address) -> i128 {
     let history = get_slash_history(e, identity);
     let mut total: i128 = 0;

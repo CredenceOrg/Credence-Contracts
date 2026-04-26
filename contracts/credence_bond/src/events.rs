@@ -403,6 +403,7 @@ pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_a
 }
 
 /// Emitted when emergency mode is toggled.
+#[allow(dead_code)]
 pub fn emit_emergency_mode_event(
     e: &Env,
     enabled: bool,

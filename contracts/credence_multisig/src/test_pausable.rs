@@ -1,7 +1,6 @@
 #![cfg(test)]
 
 use crate::{CredenceMultiSig, CredenceMultiSigClient};
-use credence_errors::ContractError;
 use soroban_sdk::{testutils::Address as _, Address, Env, Vec};
 
 #[test]

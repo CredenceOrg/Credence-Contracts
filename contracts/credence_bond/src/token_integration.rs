@@ -141,6 +141,7 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 }
 
+#[allow(dead_code)]
 pub fn token_client(e: &Env) -> TokenClient<'_> {
     TokenClient::new(e, &get_token(e))
 }

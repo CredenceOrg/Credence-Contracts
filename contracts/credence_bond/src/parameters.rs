@@ -648,6 +648,7 @@ fn validate_admin(e: &Env, caller: &Address) {
 /// * `old_value` - Previous value (normalized to i128)
 /// * `new_value` - New value (normalized to i128)
 /// * `updated_by` - Address that performed the update
+#[allow(dead_code)]
 fn emit_parameter_change_event(
     e: &Env,
     parameter: Symbol,

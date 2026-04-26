@@ -414,6 +414,7 @@ pub fn process_claims(
 ///
 /// # Returns
 /// A result containing the number of claims processed and the total amount claimed.
+#[allow(deprecated)]
 pub fn process_claims_paginated(
     e: &Env,
     user: &Address,

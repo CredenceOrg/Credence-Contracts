@@ -171,6 +171,7 @@ pub fn get_transition(e: &Env, id: u64) -> EmergencyModeTransition {
 
 /// @notice Persist immutable emergency withdrawal record.
 /// @dev Uses persistent storage for forensic traceability and to prevent storage bloat in instance storage.
+#[allow(clippy::too_many_arguments)]
 pub fn store_record(
     e: &Env,
     identity: Address,
