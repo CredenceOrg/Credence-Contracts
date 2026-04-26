@@ -200,7 +200,7 @@ pub fn is_approved(e: &Env, proposal_id: u64) -> bool {
         .instance()
         .get(&key_governors())
         .unwrap_or(Vec::new(e));
-    let total = governors.len() as u32;
+    let total = governors.len();
     if total == 0 {
         return false;
     }

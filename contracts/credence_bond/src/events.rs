@@ -170,6 +170,7 @@ pub fn emit_bond_withdrawn(e: &Env, identity: &Address, amount_withdrawn: i128, 
 /// # Data
 /// * `String` - Reason for the slash
 /// * `bool` - Whether this was a full slash (bond completely liquidated)
+#[allow(clippy::too_many_arguments)]
 pub fn emit_bond_slashed_v2(
     e: &Env,
     identity: &Address,

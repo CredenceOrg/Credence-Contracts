@@ -53,11 +53,7 @@ pub fn get_bond_status_snapshot(e: &Env) -> BondStatusSnapshot {
             0
         } else {
             let end = req_at.saturating_add(cooldown_period);
-            if now >= end {
-                0
-            } else {
-                end - now
-            }
+            end.saturating_sub(now)
         }
     };
 

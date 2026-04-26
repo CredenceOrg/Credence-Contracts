@@ -117,7 +117,7 @@ pub fn submit_evidence(
     description: &Option<String>,
 ) -> u64 {
     // Validation
-    if hash.len() == 0 {
+    if hash.is_empty() {
         panic!("hash cannot be empty");
     }
 

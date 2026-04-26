@@ -229,7 +229,7 @@ pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
 /// * `cursor`   - Start index in the registry (0-based)
 /// * `max_iter` - Maximum number of accounts to inspect (capped at `MAX_ITER_HARD_CAP`)
 /// * `min_slash_ratio_bps` - Minimum slashed/bonded ratio (basis points) to qualify
-///                           as a liquidation candidate. E.g. 5000 = 50%.
+///   as a liquidation candidate. E.g. 5000 = 50%.
 ///
 /// # Returns
 /// `ScanResult` with candidates found, next cursor, and done flag.

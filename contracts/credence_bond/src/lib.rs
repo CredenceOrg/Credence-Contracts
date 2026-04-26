@@ -356,10 +356,10 @@ impl CredenceBond {
 
         // Always set config with requested params, but if it's the first time and enabled=true,
         // we'll set it to false first then enable it via set_enabled to trigger audit trail.
-        let effective_enabled = if old_cfg.is_none() {
-            false
+        let effective_enabled = if let Some(ref cfg) = old_cfg {
+            cfg.enabled
         } else {
-            old_cfg.as_ref().unwrap().enabled
+            false
         };
 
         emergency::set_config(
