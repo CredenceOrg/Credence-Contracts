@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(deprecated)]
 
 pub mod pausable;
 pub mod receiver;

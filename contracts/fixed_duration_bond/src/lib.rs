@@ -92,6 +92,7 @@ fn apply_bps(amount: i128, bps: u32) -> (i128, i128) {
 ///
 /// # Panics
 /// If balance increased by less than expected amount after transfer_from.
+#[allow(dead_code)]
 fn verify_transfer_in(token_client: &TokenClient, contract: &Address, expected_amount: i128) {
     let balance_before = token_client.balance(contract);
     let balance_after = token_client.balance(contract);
@@ -109,6 +110,7 @@ fn verify_transfer_in(token_client: &TokenClient, contract: &Address, expected_a
 ///
 /// # Panics
 /// If balance decreased by less than expected amount after transfer.
+#[allow(dead_code)]
 fn verify_transfer_out(
     token_client: &TokenClient,
     contract: &Address,
