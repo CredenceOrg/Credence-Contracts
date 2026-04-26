@@ -17,6 +17,7 @@ use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 const MAX_BATCH_CLAIMS: u32 = 50;
 
 /// Maximum limit for pagination
+#[allow(dead_code)]
 const MAX_PAGINATION_LIMIT: u32 = 100;
 
 /// Default claim expiry period (30 days in seconds)
@@ -228,6 +229,7 @@ pub fn get_claimable_amount(e: &Env, user: &Address) -> i128 {
 ///
 /// # Returns
 /// A vector of pending claims, ordered by claim_id.
+#[allow(dead_code)]
 pub fn get_pending_claims_paginated(
     e: &Env,
     user: &Address,
@@ -414,7 +416,7 @@ pub fn process_claims(
 ///
 /// # Returns
 /// A result containing the number of claims processed and the total amount claimed.
-#[allow(deprecated)]
+#[allow(deprecated, dead_code)]
 pub fn process_claims_paginated(
     e: &Env,
     user: &Address,
@@ -424,7 +426,7 @@ pub fn process_claims_paginated(
 ) -> ClaimResult {
     let limit = limit.min(MAX_BATCH_CLAIMS);
 
-    let mut claims: Vec<PendingClaim> = e
+    let claims: Vec<PendingClaim> = e
         .storage()
         .persistent()
         .get(&DataKey::PendingClaims(user.clone()))

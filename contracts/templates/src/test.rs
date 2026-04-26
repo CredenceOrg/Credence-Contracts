@@ -6,7 +6,7 @@ use soroban_sdk::Env;
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn setup(e: &Env) -> (Address, Address, TemplateContractClient) {
+fn setup(e: &Env) -> (Address, Address, TemplateContractClient<'_>) {
     let admin = Address::generate(e);
     let contract_id = e.register(TemplateContract, ());
     let client = TemplateContractClient::new(e, &contract_id);
