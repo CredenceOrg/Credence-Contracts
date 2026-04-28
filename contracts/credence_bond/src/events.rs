@@ -418,3 +418,33 @@ pub fn emit_emergency_mode_event(
     );
     e.events().publish(topics, (enabled, reason.clone()));
 }
+
+/// Emitted when the protocol fee configuration is updated.
+///
+/// # Topics (Indexed)
+/// * `Symbol`       – `"fee_config_updated"`
+/// * `u32`          – `old_fee_bps` — previous fee rate in basis points
+/// * `u32`          – `new_fee_bps` — new fee rate in basis points
+/// * `Address`      – `new_treasury` — the treasury address now in effect
+///
+/// # Data
+/// * `Option<Address>` – `old_treasury` — the previous treasury address (None if unset)
+///
+/// The old/new fee_bps values are placed in the *topics* tuple so indexers can
+/// efficiently filter on specific rate transitions (e.g. "any change from 0 to
+/// non-zero") without decoding the data payload.
+pub fn emit_fee_config_updated(
+    e: &Env,
+    new_treasury: &Address,
+    old_treasury: Option<Address>,
+    old_fee_bps: u32,
+    new_fee_bps: u32,
+) {
+    let topics = (
+        Symbol::new(e, "fee_config_updated"),
+        old_fee_bps,
+        new_fee_bps,
+        new_treasury.clone(),
+    );
+    e.events().publish(topics, old_treasury);
+}

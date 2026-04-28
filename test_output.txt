@@ -1,0 +1,135 @@
+warning: unused imports: `Address` and `testutils::Address as _`
+ --> contracts/credence_bond/src/test_normalization.rs:1:43
+  |
+1 | ...act, contractimpl, testutils::Address as _, Address, Env};
+  |                       ^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `test_helpers`
+ --> contracts/credence_bond/src/test_ownership_transfer.rs:3:13
+  |
+3 | use crate::{test_helpers, CredenceBond, CredenceBondClient, DataKey};
+  |             ^^^^^^^^^^^^
+
+warning: unused imports: `UpgradeAuthorization`, `UpgradeProposal`, `UpgradeRecord`, and `self`
+ --> contracts/credence_bond/src/test_upgrade_auth.rs:4:9
+  |
+4 | ...   self, UpgradeAuthorization, UpgradeProposal, UpgradeRecord, Upgrade...
+  |       ^^^^  ^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^
+
+warning: unused import: `Vec`
+ --> contracts/credence_bond/src/test_upgrade_auth.rs:9:40
+  |
+9 | use soroban_sdk::{Address, Bytes, Env, Vec};
+  |                                        ^^^
+
+warning: unused import: `crate::*`
+ --> contracts/credence_bond/src/test_verifier.rs:9:5
+  |
+9 | use crate::*;
+  |     ^^^^^^^^
+
+warning: unused variable: `env`
+   --> contracts/credence_bond/src/safe_token.rs:217:13
+    |
+217 |         let env = Env::default();
+    |             ^^^ help: if this is intentional, prefix it with an underscore: `_env`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `verifier`
+  --> contracts/credence_bond/src/test_zero_address.rs:77:13
+   |
+77 |         let verifier = Address::generate(&env);
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_verifier`
+
+warning: unused variable: `verifier`
+  --> contracts/credence_bond/src/test_zero_address_working.rs:25:13
+   |
+25 |         let verifier = Address::generate(&env);
+   |             ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_verifier`
+
+warning: function `test_supply_cap_with_multiple_bonds` is never used
+  --> contracts/credence_bond/src/test_create_bond.rs:79:4
+   |
+79 | fn test_supply_cap_with_multiple_bonds() {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `test_create_bond_max_amount` is never used
+   --> contracts/credence_bond/src/test_create_bond.rs:106:4
+    |
+106 | fn test_create_bond_max_amount() {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_create_bond_usdc_amount` is never used
+   --> contracts/credence_bond/src/test_create_bond.rs:200:4
+    |
+200 | fn test_create_bond_usdc_amount() {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `setup` is never used
+  --> contracts/credence_bond/src/test_validation.rs:16:4
+   |
+16 | fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
+   |    ^^^^^
+
+warning: hiding a lifetime that's elided elsewhere is confusing
+  --> contracts/credence_bond/src/test_evidence.rs:11:13
+   |
+11 | fn setup(e: &Env) -> (CredenceBondClient, Address) {
+   |             ^^^^      ^^^^^^^^^^^^^^^^^^ the same lifetime is hidden here
+   |             |
+   |             the lifetime is elided here
+   |
+   = help: the same lifetime is referred to in inconsistent ways, making the signature confusing
+   = note: `#[warn(mismatched_lifetime_syntaxes)]` on by default
+help: use `'_` for type paths
+   |
+11 | fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
+   |                                         ++++
+
+warning: comparison is useless due to type limits
+   --> contracts/credence_bond/src/test_evidence.rs:231:13
+    |
+231 |     assert!(evidence.submitted_at >= 0);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: `credence_bond` (lib test) generated 14 warnings (run `cargo fix --lib -p credence_bond --tests` to apply 9 suggestions)
+warning: comparison is useless due to type limits
+   --> contracts/credence_bond/tests/test_claims.rs:197:13
+    |
+197 |     assert!(cleaned >= 0);
+    |             ^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_comparisons)]` on by default
+
+warning: `credence_bond` (test "test_claims") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.18s
+     Running unittests src/lib.rs (target/debug/deps/credence_bond-50950a212a523bc2)
+
+running 1 test
+set_config: treasury=Contract(CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM), bps=100
+Events after first call: 1
+set_config: treasury=Contract(CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMDR4), bps=300
+Total events found: 1
+Event 0: id=Contract(CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM), sym=Ok(Symbol(fee_config_updated)), topics_len=4, data=Address(obj#693)
+
+thread 'test_fees::test_fee_config_updated_event_carries_old_values' (89045) panicked at contracts/credence_bond/src/test_fees.rs:237:5:
+Expected at least 2 events, found 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+Writing test snapshot file for test "test_fees::test_fee_config_updated_event_carries_old_values" to "test_snapshots/test_fees/test_fee_config_updated_event_carries_old_values.1.json".
+test test_fees::test_fee_config_updated_event_carries_old_values ... FAILED
+
+failures:
+
+failures:
+    test_fees::test_fee_config_updated_event_carries_old_values
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 580 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p credence_bond --lib`

@@ -12,6 +12,8 @@ pub mod access_control;
 mod batch;
 mod claims;
 mod cooldown;
+#[cfg(test)]
+mod test_claims_module;
 pub mod early_exit_penalty;
 mod emergency;
 mod events;
@@ -46,6 +48,7 @@ use crate::access_control::{
 };
 
 pub use batch::{BatchBondParams, BatchBondResult};
+pub use claims::{ClaimResult, ClaimType, PendingClaim};
 pub use evidence::{Evidence, EvidenceType};
 pub use types::Attestation;
 
@@ -2229,6 +2232,10 @@ mod test_market_activation;
 mod test_math;
 #[cfg(test)]
 mod test_max_leverage;
+#[cfg(test)]
+mod test_nonce;
+#[cfg(test)]
+mod test_normalization;
 #[cfg(test)]
 mod test_ownership_transfer;
 #[cfg(test)]
