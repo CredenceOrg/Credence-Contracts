@@ -114,17 +114,7 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-## 10. Timelock Has No Execution Guard Against Replays
 
-**Where:** `contracts/timelock/src/`
-
-**What:** The timelock contract queues and executes delayed operations, but executed operations are not permanently marked as consumed in a way that prevents re-queuing the same operation with the same parameters immediately after execution.
-
-**Impact:** An admin could re-queue and re-execute the same operation multiple times if not careful. There is no nonce or execution receipt stored per operation hash.
-
-**Production path:** Store a set of executed operation hashes and reject re-queuing any hash that has already been executed. See [timelock.md](timelock.md).
-
----
 
 ## 11. Multisig Proposals Have No Expiry
 
@@ -163,6 +153,5 @@ Each entry describes what is simplified, why, and what a production implementati
 | 7 | `get_all_identities()` unbounded | credence_registry | Add pagination; use event-based indexing |
 | 8 | Expired delegations not cleaned up | credence_delegation | TTL storage or explicit cleanup function |
 | 9 | Arbitrator weights not stake-backed | credence_arbitration | Derive weight from bond balance |
-| 10 | Timelock allows operation replay | timelock | Store executed operation hashes |
 | 11 | Multisig proposals have no expiry | credence_multisig | Add `expires_at` to proposals |
 | 12 | No cross-contract bond↔registry binding | credence_bond + registry | Auto-register on bond init or verify code hash |
