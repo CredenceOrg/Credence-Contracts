@@ -53,13 +53,18 @@ impl TimelockContract {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
         e.storage().instance().set(&DataKey::Admin, &admin);
-        e.storage().instance().set(&DataKey::OperationCounter, &0_u64);
+        e.storage()
+            .instance()
+            .set(&DataKey::OperationCounter, &0_u64);
     }
 
     /// Queue a new administrative operation to be executed after the delay.
     pub fn queue_operation(e: Env, proposer: Address, op_hash: BytesN<32>, delay: u64) -> u64 {
         proposer.require_auth();
-        let admin: Address = e.storage().instance().get(&DataKey::Admin)
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
 
         if proposer != admin {
@@ -71,19 +76,32 @@ impl TimelockContract {
         }
 
         // Replay guard: cannot queue an operation that was already executed
-        if e.storage().instance().get(&DataKey::ExecutedOp(op_hash.clone())).unwrap_or(false) {
+        if e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op_hash.clone()))
+            .unwrap_or(false)
+        {
             panic!("operation already executed");
         }
 
-        let op_id: u64 = e.storage().instance().get(&DataKey::OperationCounter).unwrap_or(0);
-        let next_op_id = op_id.checked_add(1)
+        let op_id: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::OperationCounter)
+            .unwrap_or(0);
+        let next_op_id = op_id
+            .checked_add(1)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        e.storage().instance().set(&DataKey::OperationCounter, &next_op_id);
+        e.storage()
+            .instance()
+            .set(&DataKey::OperationCounter, &next_op_id);
 
         let now = e.ledger().timestamp();
-        let eta = now.checked_add(delay)
+        let eta = now
+            .checked_add(delay)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        let expires_at = eta.checked_add(GRACE_PERIOD)
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
 
         let op = QueuedOperation {
@@ -106,7 +124,10 @@ impl TimelockContract {
 
     /// Execute a queued operation after its ETA has passed and before its grace period expires.
     pub fn execute_operation(e: Env, op_id: u64) {
-        let mut op: QueuedOperation = e.storage().instance().get(&DataKey::Operation(op_id))
+        let mut op: QueuedOperation = e
+            .storage()
+            .instance()
+            .get(&DataKey::Operation(op_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
         if op.status != OperationStatus::Pending {
@@ -123,33 +144,43 @@ impl TimelockContract {
         }
 
         // Replay guard check
-        if e.storage().instance().get(&DataKey::ExecutedOp(op.op_hash.clone())).unwrap_or(false) {
+        if e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op.op_hash.clone()))
+            .unwrap_or(false)
+        {
             panic!("operation already executed");
         }
 
         // Mark executed
-        e.storage().instance().set(&DataKey::ExecutedOp(op.op_hash.clone()), &true);
+        e.storage()
+            .instance()
+            .set(&DataKey::ExecutedOp(op.op_hash.clone()), &true);
 
         op.status = OperationStatus::Executed;
         e.storage().instance().set(&DataKey::Operation(op_id), &op);
 
-        e.events().publish(
-            (Symbol::new(&e, "operation_executed"), op_id),
-            op.op_hash,
-        );
+        e.events()
+            .publish((Symbol::new(&e, "operation_executed"), op_id), op.op_hash);
     }
 
     /// Cancel a pending operation in the queue. Only callable by admin.
     pub fn cancel_operation(e: Env, admin: Address, op_id: u64) {
         admin.require_auth();
-        let stored_admin: Address = e.storage().instance().get(&DataKey::Admin)
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
 
         if admin != stored_admin {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
-        let mut op: QueuedOperation = e.storage().instance().get(&DataKey::Operation(op_id))
+        let mut op: QueuedOperation = e
+            .storage()
+            .instance()
+            .get(&DataKey::Operation(op_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
         if op.status != OperationStatus::Pending {
@@ -159,10 +190,8 @@ impl TimelockContract {
         op.status = OperationStatus::Cancelled;
         e.storage().instance().set(&DataKey::Operation(op_id), &op);
 
-        e.events().publish(
-            (Symbol::new(&e, "operation_cancelled"), op_id),
-            op.op_hash,
-        );
+        e.events()
+            .publish((Symbol::new(&e, "operation_cancelled"), op_id), op.op_hash);
     }
 
     /// Get details of a queued operation.
@@ -172,12 +201,17 @@ impl TimelockContract {
 
     /// Check if an operation hash has already been executed.
     pub fn is_operation_executed(e: Env, op_hash: BytesN<32>) -> bool {
-        e.storage().instance().get(&DataKey::ExecutedOp(op_hash)).unwrap_or(false)
+        e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op_hash))
+            .unwrap_or(false)
     }
 
     /// Get the current admin address.
     pub fn get_admin(e: Env) -> Address {
-        e.storage().instance().get(&DataKey::Admin)
+        e.storage()
+            .instance()
+            .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 }
@@ -185,7 +219,10 @@ impl TimelockContract {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::{Address as _, Ledger}, Address, BytesN, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        Address, BytesN, Env,
+    };
 
     fn setup_env() -> (Env, TimelockContractClient, Address) {
         let env = Env::default();

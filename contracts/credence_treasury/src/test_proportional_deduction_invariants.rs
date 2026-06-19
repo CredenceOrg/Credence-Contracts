@@ -7,12 +7,10 @@
 
 #![cfg(test)]
 
-use crate::{CredenceTreasury, CredenceTreasuryClient, FundSource, CumulativeAmount};
-use soroban_sdk::{
-    contract, contractimpl, Address, Env, Symbol, TryFromVal,
-};
-use soroban_sdk::testutils::{Address as _, Events};
+use crate::{CredenceTreasury, CredenceTreasuryClient, CumulativeAmount, FundSource};
 use proptest::prelude::*;
+use soroban_sdk::testutils::{Address as _, Events};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, TryFromVal};
 
 // --- Mock Taxed Token for Slippage Testing ---
 // This token simulates a tax/fee (slippage) on transfer.
@@ -22,8 +20,12 @@ pub struct TaxedToken;
 #[contractimpl]
 impl TaxedToken {
     pub fn initialize(e: Env, admin: Address, tax_rate_bps: i128) {
-        e.storage().instance().set(&Symbol::new(&e, "admin"), &admin);
-        e.storage().instance().set(&Symbol::new(&e, "tax"), &tax_rate_bps);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "admin"), &admin);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "tax"), &tax_rate_bps);
     }
 
     pub fn mint(e: Env, to: Address, amount: i128) {
@@ -113,11 +115,16 @@ fn setup_taxed_env(e: &Env, tax_bps: i128) -> (CredenceTreasuryClient<'_>, Addre
 /// `treasury_withdrawal_executed` — no other treasury or token event has this layout.
 fn find_withdrawal_executed_event_in(
     e: &Env,
-    events: &soroban_sdk::Vec<(Address, soroban_sdk::Vec<soroban_sdk::Val>, soroban_sdk::Val)>,
+    events: &soroban_sdk::Vec<(
+        Address,
+        soroban_sdk::Vec<soroban_sdk::Val>,
+        soroban_sdk::Val,
+    )>,
 ) -> Option<(Address, i128, i128)> {
-    events.iter().rev().find_map(|(_, _topics, data)| {
-        <(Address, i128, i128)>::try_from_val(e, &data).ok()
-    })
+    events
+        .iter()
+        .rev()
+        .find_map(|(_, _topics, data)| <(Address, i128, i128)>::try_from_val(e, &data).ok())
 }
 
 // --- Adversarial Unit Tests ---
@@ -139,8 +146,14 @@ fn test_withdrawal_identity_under_mixed_deposits() {
     client.receive_fee(&admin, &15_000, &FundSource::SlashedFunds);
 
     assert_eq!(client.get_balance(), 50_000);
-    assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 15_000);
-    assert_eq!(client.get_balance_by_source(&FundSource::SlashedFunds), 35_000);
+    assert_eq!(
+        client.get_balance_by_source(&FundSource::ProtocolFee),
+        15_000
+    );
+    assert_eq!(
+        client.get_balance_by_source(&FundSource::SlashedFunds),
+        35_000
+    );
 
     let signer = Address::generate(&e);
     let recipient = Address::generate(&e);
@@ -245,7 +258,10 @@ fn test_full_drain_shortcut_and_single_source() {
 
     // Test case 1: Single source (ProtocolFee only, SlashedFunds is zero)
     client.receive_fee(&admin, &10_000, &FundSource::ProtocolFee);
-    assert_eq!(client.get_balance_by_source(&FundSource::ProtocolFee), 10_000);
+    assert_eq!(
+        client.get_balance_by_source(&FundSource::ProtocolFee),
+        10_000
+    );
     assert_eq!(client.get_balance_by_source(&FundSource::SlashedFunds), 0);
 
     let id = client.propose_withdrawal(&signer, &recipient, &4_000);
@@ -333,8 +349,8 @@ fn test_cumulative_received_unaffected_by_withdrawal() {
     client.execute_withdrawal(&id, &0);
 
     let cum_after = client.get_cumulative_received();
-    let total_after = (u128::from(cum_after.rollovers) * ((i128::MAX as u128) + 1))
-        + cum_after.remainder as u128;
+    let total_after =
+        (u128::from(cum_after.rollovers) * ((i128::MAX as u128) + 1)) + cum_after.remainder as u128;
 
     // Withdrawal must not increment CumulativeReceived
     assert_eq!(total_after, total_before);
@@ -371,9 +387,9 @@ fn test_withdrawal_event_encodes_nonzero_min_amount_out() {
     let actual_amount = token_client.balance(&recipient) - bal_before;
 
     assert_eq!(event_recipient, recipient);
-    assert_eq!(event_min_out, min_out);       // non-zero min_amount_out is correctly emitted
+    assert_eq!(event_min_out, min_out); // non-zero min_amount_out is correctly emitted
     assert_eq!(event_actual, actual_amount);
-    assert!(event_actual >= min_out);          // sanity: withdrawal succeeded, so guard was satisfied
+    assert!(event_actual >= min_out); // sanity: withdrawal succeeded, so guard was satisfied
 }
 
 // --- Property Fuzz Testing via Proptest ---
