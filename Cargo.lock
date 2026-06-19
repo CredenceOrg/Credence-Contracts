@@ -551,6 +551,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -2868,6 +2869,10 @@ dependencies = [
 [[package]]
 name = "timelock"
 version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "tinystr"

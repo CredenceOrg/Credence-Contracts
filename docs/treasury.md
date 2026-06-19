@@ -71,6 +71,36 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **treasury_withdrawal_approved** — (proposal_id, approver)
 - **treasury_withdrawal_executed** — (proposal_id, recipient, amount)
 
+## Per-source accounting identity
+
+Every `execute_withdrawal` call splits the deducted amount proportionally across
+`ProtocolFee` and `SlashedFunds` using integer division (`source * withdrawal / total`),
+with the remainder assigned to `SlashedFunds`:
+
+```
+protocol_deduction = ProtocolFee_balance * actual_amount / TotalBalance   (floor division)
+slashed_deduction  = actual_amount - protocol_deduction
+```
+
+The following invariant **must hold after every withdrawal**:
+
+```
+BalanceBySource(ProtocolFee) + BalanceBySource(SlashedFunds) == TotalBalance
+```
+
+Both per-source balances are always non-negative.
+
+**Rounding behaviour**: floor division means `protocol_deduction` may be slightly
+less than the ideal proportional share. `slashed_deduction = actual_amount - protocol_deduction`
+absorbs the rounding so the total deduction is always **exactly** `actual_amount` — never
+more, never less. Because of this, the identity `protocol + slashed == total` holds without
+drift after every withdrawal. When `actual_amount == TotalBalance` (full drain), the shortcut
+`protocol_deduction = ProtocolFee_balance` is used, guaranteeing both balances reach zero
+simultaneously.
+
+These invariants are verified by property tests in `test_proportional_deduction_invariants.rs`
+across random deposit/withdrawal sequences (50 proptest cases with up to 20 actions each).
+
 ## Security
 
 - Only admin or authorized depositors can credit the treasury.

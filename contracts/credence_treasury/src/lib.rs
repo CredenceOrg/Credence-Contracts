@@ -35,3 +35,6 @@ mod test_withdrawal_guardrails;
 
 #[cfg(test)]
 mod test_slippage_adversarial;
+
+#[cfg(test)]
+mod test_proportional_deduction_invariants;
