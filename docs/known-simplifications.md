@@ -2,6 +2,8 @@
 
 This document consolidates all known simplifications, stubs, and intentional limitations in the Credence Contracts reference implementation. It is the single source of truth for anything that is deliberately incomplete or deferred.
 
+See also: [fund-flow.md](fund-flow.md) for a complete token custody trace and discrepancy notes regarding treasury state.
+
 Each entry describes what is simplified, why, and what a production implementation would do instead.
 
 ---
