@@ -105,3 +105,9 @@ cargo test -p credence_delegation
 ## Known Simplifications
 
 Expired delegations are invalid and bounded at creation time, but they are not automatically cleaned up from storage. See [known-simplifications.md](known-simplifications.md#8-expired-delegations-are-not-auto-cleaned) for details and the production path.
+
+## Cross-namespace nonce replay guarantee
+
+Delegation nonces are scoped to the delegation contract namespace and are additionally bound by each delegated payload's `contract_id` and `DomainTag`. A payload whose nonce value is correct in another Credence namespace, such as the bond contract's signed-action namespace, is rejected by the delegated execution entry points before the delegation nonce is consumed.
+
+The regression suite covers replay attempts from a bond-bound payload into `execute_delegated_delegate`, `execute_delegated_revoke`, and `execute_delegated_revoke_attest`. It also verifies that `invalidate_nonce_range` burns only the delegation window: stale delegation payloads below the new nonce are rejected, the counter remains monotonic, and contract-domain mismatches do not advance or leak into another namespace.

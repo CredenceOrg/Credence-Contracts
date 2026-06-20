@@ -726,9 +726,11 @@ mod test_pausable;
 mod test_proposal_id_derivation;
 
 // #[cfg(test)]
-// mod test_domain_separation;
 #[cfg(test)]
 mod test_delegation_ttl;
+
+#[cfg(test)]
+mod test_domain_separation;
 
 #[cfg(test)]
 mod test_pause_proposal_view;

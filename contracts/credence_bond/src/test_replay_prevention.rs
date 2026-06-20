@@ -330,3 +330,73 @@ fn replay_revoke_rejected() {
     // Replay with the same (now stale) nonce — must be rejected.
     client.revoke_attestation(&attester, &att.id, &contract_id, &deadline, &revoke_nonce);
 }
+
+// ── Cross-namespace replay tests: delegation ↔ bond ─────────────────────────
+
+/// Replay attempt: a payload bound to the delegation contract namespace cannot
+/// be submitted through the bond signed add-attestation path, and the rejected
+/// attempt must not consume the bond nonce.
+#[test]
+fn delegation_namespace_replay_rejected_on_add_attestation_without_consuming_bond_nonce() {
+    let e = Env::default();
+    let (client, attester, contract_id) = setup(&e);
+    let subject = soroban_sdk::Address::generate(&e);
+    let delegation_contract_id = soroban_sdk::Address::generate(&e);
+    let deadline = e.ledger().timestamp() + 1000;
+
+    let result = client.try_add_attestation(
+        &attester,
+        &subject,
+        &String::from_str(&e, "delegation-replay"),
+        &delegation_contract_id,
+        &deadline,
+        &0_u64,
+    );
+    assert!(result.is_err(), "delegation namespace must not execute in bond");
+    assert_eq!(client.get_nonce(&attester), 0);
+
+    client.add_attestation(
+        &attester,
+        &subject,
+        &String::from_str(&e, "bond-valid"),
+        &contract_id,
+        &deadline,
+        &0_u64,
+    );
+    assert_eq!(client.get_nonce(&attester), 1);
+}
+
+/// Replay attempt: a payload bound to the delegation contract namespace cannot
+/// be submitted through the bond signed revoke path, and the rejected attempt
+/// leaves the current revoke nonce available for the valid bond namespace.
+#[test]
+fn delegation_namespace_replay_rejected_on_revoke_without_consuming_bond_nonce() {
+    let e = Env::default();
+    let (client, attester, contract_id) = setup(&e);
+    let subject = soroban_sdk::Address::generate(&e);
+    let delegation_contract_id = soroban_sdk::Address::generate(&e);
+    let deadline = e.ledger().timestamp() + 1000;
+
+    let attestation = client.add_attestation(
+        &attester,
+        &subject,
+        &String::from_str(&e, "bond-valid"),
+        &contract_id,
+        &deadline,
+        &0_u64,
+    );
+    assert_eq!(client.get_nonce(&attester), 1);
+
+    let result = client.try_revoke_attestation(
+        &attester,
+        &attestation.id,
+        &delegation_contract_id,
+        &deadline,
+        &1_u64,
+    );
+    assert!(result.is_err(), "delegation namespace must not revoke in bond");
+    assert_eq!(client.get_nonce(&attester), 1);
+
+    client.revoke_attestation(&attester, &attestation.id, &contract_id, &deadline, &1_u64);
+    assert_eq!(client.get_nonce(&attester), 2);
+}
