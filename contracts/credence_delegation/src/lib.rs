@@ -286,6 +286,17 @@ impl CredenceDelegation {
         // Domain-separated payload verification
         domain::verify_payload(&e, &payload, DomainTag::Delegate, &owner, &delegate);
 
+        // Signature scheme dispatch: Ed25519 is covered by owner.require_auth() above;
+        // Secp256r1/MLDSA44 dispatch to their registered verifier contracts.
+        let scheme = domain::decode_scheme_safe(&payload);
+        verifier::verify_delegated_signature(
+            &e,
+            &owner,
+            &soroban_sdk::Bytes::new(&e),
+            &soroban_sdk::Bytes::new(&e),
+            scheme.to_u32(),
+        );
+
         Self::validate_delegation_expiry(&e, expires_at);
 
         // Nonce consumption (replay prevention)
@@ -318,6 +329,17 @@ impl CredenceDelegation {
         owner.require_auth();
 
         domain::verify_payload(&e, &payload, DomainTag::RevokeDelegation, &owner, &delegate);
+
+        // Signature scheme dispatch for non-Ed25519 schemes.
+        let scheme = domain::decode_scheme_safe(&payload);
+        verifier::verify_delegated_signature(
+            &e,
+            &owner,
+            &soroban_sdk::Bytes::new(&e),
+            &soroban_sdk::Bytes::new(&e),
+            scheme.to_u32(),
+        );
+
         nonce::consume_nonce(&e, &owner, payload.nonce);
 
         Self::mark_delegation_revoked(&e, owner, delegate, delegation_type, "delegation");
@@ -351,6 +373,17 @@ impl CredenceDelegation {
             &attester,
             &subject,
         );
+
+        // Signature scheme dispatch for non-Ed25519 schemes.
+        let scheme = domain::decode_scheme_safe(&payload);
+        verifier::verify_delegated_signature(
+            &e,
+            &attester,
+            &soroban_sdk::Bytes::new(&e),
+            &soroban_sdk::Bytes::new(&e),
+            scheme.to_u32(),
+        );
+
         nonce::consume_nonce(&e, &attester, payload.nonce);
 
         Self::mark_delegation_revoked(
@@ -737,3 +770,6 @@ mod test_pause_proposal_view;
 
 #[cfg(test)]
 mod test_expiry_boundary;
+
+#[cfg(test)]
+mod test_verifier_dispatch;

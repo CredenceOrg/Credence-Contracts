@@ -2,6 +2,74 @@
 
 Verifiers are authorized attestation providers. This contract supports **stake-based verifier registration**, **reputation tracking**, and **deactivation**.
 
+## Delegation Signature-Scheme Dispatch
+
+`credence_delegation` ships a multi-scheme signature-verifier registry that allows
+Secp256r1 (NIST P-256) and MLDSA44 (post-quantum ML-DSA) delegated signatures to
+be validated by operator-registered verifier contracts.
+
+### Scheme Tags (wire-stable)
+
+| Tag | Value | Description |
+|-----|-------|-------------|
+| Ed25519  | 0 | Default; verified by Soroban's built-in auth engine |
+| Secp256r1 | 1 | ECDSA over NIST P-256 |
+| MLDSA44  | 2 | ML-DSA post-quantum scheme |
+
+Values are **wire-stable** and must never be renumbered after deployment.
+
+### Registration → Storage → Dispatch → Error mapping
+
+```
+Admin calls register_verifier(scheme, verifier_address)
+  └─► validates scheme is known (0–2)
+  └─► stores DataKey::Verifier(scheme) → verifier_address  (instance storage)
+  └─► emits verifier_registered event
+
+execute_delegated_delegate / execute_delegated_revoke / execute_delegated_revoke_attest
+  └─► owner.require_auth()  ← Soroban auth validates Ed25519 payload
+  └─► domain::verify_payload(...)  ← domain-separation check
+  └─► scheme = decode_scheme_safe(&payload)  ← defaults to Ed25519 for legacy payloads
+  └─► verifier::verify_delegated_signature(e, owner, message, sig, scheme)
+        Ed25519 (0) ─► no-op (Soroban auth already covered it)
+        Secp256r1/MLDSA44:
+          1. look up DataKey::Verifier(scheme) in instance storage
+             ✗ missing ─► panic VerifierNotRegistered (506)
+          2. invoke_contract(verifier_addr, "verify", [owner, message, signature])
+             returns false ─► panic VerificationFailed (507)
+             returns true  ─► continue
+  └─► nonce::consume_nonce(...)  ← replay prevention
+```
+
+### Error codes
+
+| Error | Code | Cause |
+|-------|------|-------|
+| `UnknownScheme` | 504 | scheme field > 2 |
+| `VerifierNotRegistered` | 506 | scheme known but no entry in `DataKey::Verifier(scheme)` |
+| `VerificationFailed` | 507 | verifier contract returned `false` |
+
+### Verifier contract interface
+
+A registered verifier must expose a single entry point:
+
+```rust
+fn verify(owner: Address, message: Bytes, signature: Bytes) -> bool
+```
+
+Return `true` for a valid signature, `false` for an invalid one.
+Panicking inside the verifier is also treated as `VerificationFailed`.
+
+### Re-registration
+
+Calling `register_verifier` for a scheme that already has a registered verifier
+**overwrites** the mapping. This enables key rotation and scheme upgrades without
+a contract upgrade. The old verifier is not notified.
+
+---
+
+## Bond-contract verifier registry (stake-based)
+
 ## Overview
 
 - A verifier becomes active by staking the configured token (typically USDC).
