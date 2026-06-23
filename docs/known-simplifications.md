@@ -130,16 +130,6 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-## 12. No Cross-Contract Calls Between Bond and Registry
-
-**Where:** `contracts/credence_bond/src/`, `contracts/credence_registry/src/`
-
-**What:** The bond contract and registry contract are independent. The bond contract does not call the registry to register itself on creation, and the registry does not validate that a registered bond contract address is a genuine deployed bond contract.
-
-**Impact:** Registration is a manual admin step. There is no automatic or trustless binding between a deployed bond contract and its registry entry. A malicious admin could register an arbitrary address as a bond contract.
-
-**Production path:** The bond contract should call `registry.register(identity, self)` during `initialize()`, or the registry should verify the bond contract's code hash before accepting registration. See [registry.md](registry.md).
-
 ---
 
 ## Summary Table
@@ -156,4 +146,3 @@ Each entry describes what is simplified, why, and what a production implementati
 | 8 | Expired delegations not cleaned up | credence_delegation | TTL storage or explicit cleanup function |
 | 9 | Arbitrator weights not stake-backed | credence_arbitration | Derive weight from bond balance |
 | 11 | Multisig proposals have no expiry | credence_multisig | Add `expires_at` to proposals |
-| 12 | No cross-contract bond↔registry binding | credence_bond + registry | Auto-register on bond init or verify code hash |
