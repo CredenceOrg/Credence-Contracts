@@ -45,7 +45,11 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets
 
-      - name: Run bond property fuzz harness
+      # Fast fuzz smoke run — default 1000 iterations, shared with unit suite.
+      # A dedicated job with an elevated budget (BOND_FUZZ_ITERS=5000,
+      # PROPTEST_CASES=1024) lives in .github/workflows/fuzz.yml and runs
+      # nightly + on every PR touching contracts/.
+      - name: Bond fuzz smoke run (fuzz::)
         run: cargo test -p credence_bond fuzz::test_bond_fuzz -- --nocapture
 
   build-release:

@@ -1,0 +1,262 @@
+# Dedicated property-fuzz job for credence_bond and credence_delegation.
+#
+# DESIGN CHOICE — two-tier strategy:
+#   • ci.yml retains a fast smoke run (default BOND_FUZZ_ITERS=1000 / PROPTEST_CASES
+#     default) so every push gets instant feedback without waiting for this job.
+#   • This workflow runs the same suites with an elevated budget (BOND_FUZZ_ITERS=5000,
+#     PROPTEST_CASES=1024) on a schedule and on PRs that touch contract code.
+#
+# If any property is violated the job fails, proptest-regressions/ is always
+# uploaded as an artifact (even on failure) so counterexamples are never lost.
+
+name: Property Fuzz
+
+on:
+  # Nightly deep run — keeps the regression corpus fresh.
+  schedule:
+    - cron: "0 2 * * *" # 02:00 UTC every day
+
+  # Run on PRs and pushes that touch contract sources, workspace config,
+  # this workflow file, or the toolchain pin.
+  push:
+    branches:
+      - main
+      - master
+      - develop
+      - "ci/**"
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/fuzz.yml"
+      - "rust-toolchain.toml"
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/fuzz.yml"
+      - "rust-toolchain.toml"
+
+  # Allow ad-hoc runs from the GitHub Actions UI.
+  workflow_dispatch:
+    inputs:
+      bond_fuzz_iters:
+        description: "BOND_FUZZ_ITERS override (leave blank for default 5000)"
+        required: false
+        default: ""
+      proptest_cases:
+        description: "PROPTEST_CASES override (leave blank for default 1024)"
+        required: false
+        default: ""
+
+env:
+  CARGO_TERM_COLOR: always
+  # Elevated budgets for this dedicated job.
+  # workflow_dispatch inputs take precedence when non-empty.
+  BOND_FUZZ_ITERS: ${{ github.event.inputs.bond_fuzz_iters || '5000' }}
+  PROPTEST_CASES: ${{ github.event.inputs.proptest_cases || '1024' }}
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 1: credence_bond fuzz suites
+  # Runs all modules under contracts/credence_bond/src/fuzz/:
+  #   • test_bond_fuzz         – seeded random-input core bond operations
+  #   • test_reward_accrual_fuzz – reward arithmetic boundary sweep
+  #   • test_slashing_tier_invariants – property + regression vectors
+  # ────────────────────────────────────────────────────────────────────────────
+  bond-fuzz:
+    name: Bond fuzz suites (BOND_FUZZ_ITERS=${{ github.event.inputs.bond_fuzz_iters || '5000' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      # Shared registry + git cache. The fuzz job uses the same lock-file key
+      # scheme as the other workflows so layers are maximally reused.
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-fuzz-bond-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-bond-
+            ${{ runner.os }}-cargo-
+
+      # ── Restore any previously discovered counterexamples ──────────────────
+      # proptest writes failing cases to proptest-regressions/ so they are
+      # replayed automatically on every subsequent run.
+      - name: Restore proptest regressions (bond)
+        uses: actions/cache/restore@v4
+        with:
+          path: contracts/credence_bond/proptest-regressions
+          key: proptest-regressions-bond-${{ github.ref }}
+          restore-keys: |
+            proptest-regressions-bond-
+
+      # ── Build first to surface compile errors early ────────────────────────
+      - name: Build credence_bond (test profile)
+        run: cargo build --package credence_bond --all-targets
+
+      # ── Main fuzz run — all modules under fuzz:: ───────────────────────────
+      # BOND_FUZZ_ITERS and PROPTEST_CASES are already set in the job env.
+      - name: Run bond fuzz — core operations (test_bond_fuzz)
+        run: >
+          cargo test
+          --package credence_bond
+          fuzz::test_bond_fuzz
+          -- --nocapture
+
+      - name: Run bond fuzz — reward accrual arithmetic (test_reward_accrual_fuzz)
+        run: >
+          cargo test
+          --package credence_bond
+          fuzz::test_reward_accrual_fuzz
+          -- --nocapture
+
+      - name: Run bond fuzz — slashing & tier invariants (test_slashing_tier_invariants)
+        run: >
+          cargo test
+          --package credence_bond
+          fuzz::test_slashing_tier_invariants
+          -- --nocapture
+
+      # ── Persist regressions after run (save on failure too) ───────────────
+      - name: Save proptest regressions (bond)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: contracts/credence_bond/proptest-regressions
+          key: proptest-regressions-bond-${{ github.ref }}-${{ github.run_id }}
+
+      # ── Upload regressions as an artifact so they appear in the UI ─────────
+      - name: Upload proptest-regressions artifact (bond)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proptest-regressions-bond-${{ github.run_id }}
+          path: contracts/credence_bond/proptest-regressions
+          # Keep for 90 days — long enough to bisect regressions across releases.
+          retention-days: 90
+          # Don't fail the upload step if the directory doesn't exist
+          # (no regressions were found).
+          if-no-files-found: ignore
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 2: credence_delegation proptest suites
+  # Runs:
+  #   • tests/nonce_replay.rs  – 10 000-case proptest for invalidate_nonce_range
+  #   • tests/auth_tree_fuzz.rs – cross-contract auth tree deterministic tests
+  # PROPTEST_CASES overrides the hard-coded with_cases(10_000) only when the
+  # env var is read by the test; nonce_replay uses with_cases directly so the
+  # budget there is already elevated. PROPTEST_CASES is still exported so any
+  # future suite that reads it picks it up automatically.
+  # ────────────────────────────────────────────────────────────────────────────
+  delegation-fuzz:
+    name: Delegation proptest suites (PROPTEST_CASES=${{ github.event.inputs.proptest_cases || '1024' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-fuzz-delegation-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-fuzz-delegation-
+            ${{ runner.os }}-cargo-
+
+      - name: Restore proptest regressions (delegation)
+        uses: actions/cache/restore@v4
+        with:
+          path: contracts/credence_delegation/proptest-regressions
+          key: proptest-regressions-delegation-${{ github.ref }}
+          restore-keys: |
+            proptest-regressions-delegation-
+
+      - name: Build credence_delegation (test profile)
+        run: cargo build --package credence_delegation --all-targets
+
+      - name: Run delegation fuzz — nonce replay proptest
+        run: >
+          cargo test
+          --package credence_delegation
+          --test nonce_replay
+          -- --nocapture
+
+      - name: Run delegation fuzz — auth tree cross-contract tests
+        run: >
+          cargo test
+          --package credence_delegation
+          --test auth_tree_fuzz
+          -- --nocapture
+
+      - name: Save proptest regressions (delegation)
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: contracts/credence_delegation/proptest-regressions
+          key: proptest-regressions-delegation-${{ github.ref }}-${{ github.run_id }}
+
+      - name: Upload proptest-regressions artifact (delegation)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proptest-regressions-delegation-${{ github.run_id }}
+          path: contracts/credence_delegation/proptest-regressions
+          retention-days: 90
+          if-no-files-found: ignore
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Job 3: Fuzz gate — summary job that fails if either fuzz job failed.
+  # Required-status-checks should point to this job, not the individual ones,
+  # so adding more fuzz jobs in the future doesn't require updating branch
+  # protection rules.
+  # ────────────────────────────────────────────────────────────────────────────
+  fuzz-gate:
+    name: Fuzz gate (all suites passed)
+    runs-on: ubuntu-latest
+    needs: [bond-fuzz, delegation-fuzz]
+    # Run even if upstream jobs failed so the gate always produces a result.
+    if: always()
+    steps:
+      - name: Check fuzz results
+        run: |
+          BOND="${{ needs.bond-fuzz.result }}"
+          DELEGATION="${{ needs.delegation-fuzz.result }}"
+
+          echo "bond-fuzz:       $BOND"
+          echo "delegation-fuzz: $DELEGATION"
+
+          if [ "$BOND" != "success" ] || [ "$DELEGATION" != "success" ]; then
+            echo ""
+            echo "❌ One or more fuzz jobs failed — property violation or build error."
+            echo "   Check the job logs and the proptest-regressions artifact for"
+            echo "   counterexamples that were captured."
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ All property-fuzz suites passed."

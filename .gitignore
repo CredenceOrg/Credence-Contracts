@@ -10,3 +10,8 @@ node_modules/
 .env
 .env.*
 .cargo_home/
+
+# proptest regression files are captured as CI artifacts (see .github/workflows/fuzz.yml).
+# They are intentionally excluded from version control to avoid noisy diffs, but the
+# artifact cache in CI ensures discovered counterexamples are never lost.
+**/proptest-regressions/
