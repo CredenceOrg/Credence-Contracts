@@ -28,8 +28,6 @@
 //!   - `get_liquidation_treasury` returns `None` when unset
 //!   - treasury round-trip: `get` returns the most recently set address
 
-#![cfg(test)]
-
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
@@ -206,12 +204,10 @@ fn liquidate_without_treasury_still_marks_bond_inactive() {
 // -----------------------------------------------------------------
 // Negative paths (eligibility)
 // -----------------------------------------------------------------
-// Note: we use bare #[should_panic] (no `expected`) for unauthorized-set
-// to avoid being tied to the SCErrorCode format that soroban_sdk emits
-// for `panic_with_error!`. Eligibility rejections come from a literal
-// `panic!("bond is not eligible for liquidation")` and are verified via
-// `std::panic::catch_unwind` to keep the assertions robust across SDK
-// versions.
+// Note: bare `#[should_panic]` is used for unauthorized/no-bond paths to
+// keep tests independent of the SDK's SCErrorCode format. Eligibility
+// rejections come from a literal `panic!("bond is not eligible for ...")`
+// and are matched by the expected substring below.
 
 #[test]
 #[should_panic(expected = "bond is not eligible for liquidation")]
