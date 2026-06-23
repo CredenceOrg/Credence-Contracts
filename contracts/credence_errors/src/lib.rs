@@ -392,6 +392,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RevocationGraceExpired = 508,
 
+    /// Cleanup attempted on a delegation that is not expired yet.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    DelegationNotExpired = 509,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
@@ -551,7 +556,8 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierAlreadyRegistered
             | ContractError::VerifierNotRegistered
             | ContractError::VerificationFailed
-            | ContractError::RevocationGraceExpired => ErrorCategory::Delegation,
+            | ContractError::RevocationGraceExpired
+            | ContractError::DelegationNotExpired => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -658,6 +664,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::RevocationGraceExpired => {
                 "Post-expiry revocation attempted outside the configured grace window"
+            }
+            ContractError::DelegationNotExpired => {
+                "Cleanup attempted on a delegation that is not expired yet"
             }
             ContractError::AmountMustBePositive => "Amount must be strictly positive (> 0)",
             ContractError::ThresholdExceedsSigners => {

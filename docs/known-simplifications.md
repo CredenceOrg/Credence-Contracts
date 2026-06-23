@@ -90,19 +90,7 @@ Each entry describes what is simplified, why, and what a production implementati
 
 **Production path:** Add a `get_identities_page(offset: u32, limit: u32)` function and deprecate the unbounded variant. Off-chain indexers should use event-based discovery (`identity_registered` events) rather than polling `get_all_identities()`. See [registry.md](registry.md).
 
----
 
-## 8. Expired Delegations Are Not Auto-Cleaned
-
-**Where:** `contracts/credence_delegation/src/lib.rs`
-
-**What:** When `delegate()` or `execute_delegated_delegate()` is called, `expires_at` must be a future timestamp and no later than `now + MAX_DELEGATION_DURATION`. However, expired delegations are not automatically cleaned up — they remain in storage until TTL archival or an explicit future cleanup path. `is_valid_delegate()` correctly returns `false` for expired delegations, but the storage entry can persist.
-
-**Impact:** Expired delegations cannot grant authority, but storage can still grow as expired records accumulate. There is no explicit on-chain garbage collection.
-
-**Production path:** Add a `cleanup_expired(owner, delegate, delegation_type)` function that anyone can call to remove expired entries and reclaim storage rent. Alternatively, use Soroban's TTL-based storage expiry for delegation entries. See [delegation.md](delegation.md).
-
----
 
 ## 9. Arbitration Voting Weights Are Not Stake-Backed
 
@@ -153,7 +141,6 @@ Each entry describes what is simplified, why, and what a production implementati
 | 5 | Slashed funds not transferred to treasury | credence_bond | Call `transfer(treasury, slash_amount)` post-slash |
 | 6 | Early-exit penalty dropped if no treasury | credence_bond | Require treasury before `withdraw_early` |
 | 7 | `get_all_identities()` unbounded | credence_registry | Add pagination; use event-based indexing |
-| 8 | Expired delegations not cleaned up | credence_delegation | TTL storage or explicit cleanup function |
 | 9 | Arbitrator weights not stake-backed | credence_arbitration | Derive weight from bond balance |
 | 11 | Multisig proposals have no expiry | credence_multisig | Add `expires_at` to proposals |
 | 12 | No cross-contract bond↔registry binding | credence_bond + registry | Auto-register on bond init or verify code hash |

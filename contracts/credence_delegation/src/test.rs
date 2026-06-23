@@ -568,3 +568,116 @@ fn test_get_delegation_summary() {
     assert!(!summary4.is_valid);
     assert_eq!(summary4.time_to_expiry, 0);
 }
+
+// ---------------------------------------------------------------------------
+// cleanup_expired — tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_cleanup_expired_happy_path() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
+
+    // Verify it exists and is valid
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
+
+    // Try cleanup before expiry (should fail)
+    let res = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res.is_err());
+    
+    // Advance ledger past expiry
+    e.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    // Cleanup should succeed now
+    let res_ok = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_ok.is_ok());
+
+    // Verify entry is removed: is_valid_delegate returns false, get_delegation panics
+    assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
+    
+    let res_get = client.try_get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_get.is_err());
+
+    // Verify delegation_cleaned event is emitted
+    let events = e.events().all();
+    let cleaned_events: std::vec::Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == client.address
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "delegation_cleaned")
+        })
+        .collect();
+
+    assert_eq!(cleaned_events.len(), 1);
+    let event = &cleaned_events[0];
+    let topic_name = Symbol::from_val(&e, &event.1.get(0).unwrap());
+    let topic_owner = Address::from_val(&e, &event.1.get(1).unwrap());
+    let topic_delegate = Address::from_val(&e, &event.1.get(2).unwrap());
+    let data_type = DelegationType::from_val(&e, &event.2);
+
+    assert_eq!(topic_name, Symbol::new(&e, "delegation_cleaned"));
+    assert_eq!(topic_owner, owner);
+    assert_eq!(topic_delegate, delegate);
+    assert_eq!(data_type, DelegationType::Attestation);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #501)")]
+fn test_cleanup_expired_nonexistent() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+
+    client.cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #509)")]
+fn test_cleanup_expired_non_expired() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
+
+    client.cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+}
+
+#[test]
+fn test_cleanup_expired_revoked_but_not_expired() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+
+    // Verify it is revoked
+    let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    assert!(d.revoked);
+
+    // Try to cleanup (should fail with DelegationNotExpired because now < expires_at)
+    let res = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res.is_err());
+    
+    // Advance time past expiry
+    e.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    // Cleanup should now succeed
+    let res_ok = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_ok.is_ok());
+
+    let res_get = client.try_get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_get.is_err());
+}
+

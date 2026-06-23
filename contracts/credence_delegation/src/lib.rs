@@ -483,6 +483,44 @@ impl CredenceDelegation {
         }
     }
 
+    /// Removes an expired delegation record from storage.
+    ///
+    /// # Gating & Permissions Choice
+    /// This function is permissionless: anyone can call it to clean up expired entries
+    /// and reclaim storage rent. Gating it behind `owner.require_auth()` is not preferred
+    /// here because delegations are time-bounded by design. Once a delegation is expired,
+    /// it has no authority and cannot be revived. Allowing anyone to clean up expired entries
+    /// lets the contract remain lean without placing the operational/gas burden solely
+    /// on the owner.
+    ///
+    /// # Errors
+    /// - `ContractError::DelegationNotFound` if the delegation entry does not exist.
+    /// - `ContractError::DelegationNotExpired` if the delegation has not yet expired (now < expires_at).
+    pub fn cleanup_expired(
+        e: Env,
+        owner: Address,
+        delegate: Address,
+        delegation_type: DelegationType,
+    ) {
+        pausable::require_not_paused(&e);
+
+        let key = DataKey::Delegation(owner.clone(), delegate.clone(), delegation_type.clone());
+        let d: Delegation = Self::load_delegation(&e, &key)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::DelegationNotFound));
+
+        let now = e.ledger().timestamp();
+        if now < d.expires_at {
+            panic_with_error!(&e, ContractError::DelegationNotExpired);
+        }
+
+        e.storage().persistent().remove(&key);
+
+        e.events().publish(
+            (Symbol::new(&e, "delegation_cleaned"), owner, delegate),
+            delegation_type,
+        );
+    }
+
     /// Retrieve a stored delegation.
     pub fn get_delegation(
         e: Env,
