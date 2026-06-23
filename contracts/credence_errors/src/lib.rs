@@ -138,7 +138,7 @@ pub enum ContractError {
     /// action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
-    AdminSuspended = 109,
+    AdminSuspended = 113,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.

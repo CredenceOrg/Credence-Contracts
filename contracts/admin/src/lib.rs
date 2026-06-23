@@ -842,8 +842,7 @@ impl AdminContract {
             .get::<_, AdminInfo>(&DataKey::AdminInfo(address))
         {
             Some(admin_info) => {
-                admin_info.active
-                    && e.ledger().timestamp() >= admin_info.suspended_until
+                admin_info.active && e.ledger().timestamp() >= admin_info.suspended_until
             }
             None => false,
         }

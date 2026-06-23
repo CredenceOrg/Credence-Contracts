@@ -125,7 +125,7 @@ mod suspension_tests {
     // ── 4. until_ts in the past → AdminSuspended (109) ───────────────────────
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #109)")]
+    #[should_panic(expected = "Error(Contract, #113)")]
     fn test_suspend_past_timestamp_rejected() {
         let env = Env::default();
         let (contract, super_admin) = setup(&env);
@@ -148,7 +148,7 @@ mod suspension_tests {
     // ── 5. until_ts == now → AdminSuspended (109) ────────────────────────────
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #109)")]
+    #[should_panic(expected = "Error(Contract, #113)")]
     fn test_suspend_current_timestamp_rejected() {
         let env = Env::default();
         let (contract, super_admin) = setup(&env);
@@ -245,12 +245,7 @@ mod suspension_tests {
 
         let now = env.ledger().timestamp();
         env.as_contract(&contract, || {
-            AdminContract::suspend_admin(
-                env.clone(),
-                operator.clone(),
-                admin.clone(),
-                now + 100,
-            );
+            AdminContract::suspend_admin(env.clone(), operator.clone(), admin.clone(), now + 100);
         });
     }
 
