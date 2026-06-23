@@ -16,12 +16,13 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol,
+    contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
 };
 
 pub mod pausable;
 pub mod status;
 
+use status::ArbitrationError as Error;
 use status::{require_transition, ArbitrationError, DisputeStatus};
 
 #[contracttype]
@@ -54,6 +55,7 @@ pub enum DataKey {
     DisputeCounter,
     DisputeVotes(u64),
     VoterCasted(u64, Address),
+    ArbitratorRegistry,
 }
 
 #[contract]
@@ -100,6 +102,27 @@ impl CredenceArbitration {
             .instance()
             .set(&DataKey::Arbitrator(arbitrator.clone()), &weight);
 
+        // Update the arbitrator registry list
+        let mut registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let mut exists = false;
+        for addr in registry.iter() {
+            if addr == arbitrator {
+                exists = true;
+                break;
+            }
+        }
+        if !exists {
+            registry.push_back(arbitrator.clone());
+            e.storage()
+                .instance()
+                .set(&DataKey::ArbitratorRegistry, &registry);
+        }
+
         e.events().publish(
             (Symbol::new(&e, "arbitrator_registered"), arbitrator),
             weight,
@@ -120,6 +143,23 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .remove(&DataKey::Arbitrator(arbitrator.clone()));
+
+        // Update the arbitrator registry list with removal compaction
+        let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let mut new_registry = Vec::new(&e);
+        for addr in registry.iter() {
+            if addr != arbitrator {
+                new_registry.push_back(addr);
+            }
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::ArbitratorRegistry, &new_registry);
 
         e.events()
             .publish((Symbol::new(&e, "arbitrator_unregistered"), arbitrator), ());
@@ -378,6 +418,84 @@ impl CredenceArbitration {
             .get(&votes_key)
             .unwrap_or(Map::new(&e));
         votes.get(outcome).unwrap_or(0)
+    }
+
+    /// Get the voting weight of a registered arbitrator.
+    ///
+    /// # Arguments
+    /// * `e` - The Soroban environment.
+    /// * `arbitrator` - The address of the arbitrator.
+    ///
+    /// # Returns
+    /// The arbitrator's weight as `u32` if registered, or `Error::NotArbitrator` if not.
+    pub fn get_arbitrator_weight(e: Env, arbitrator: Address) -> Result<u32, Error> {
+        let weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::Arbitrator(arbitrator))
+            .ok_or(Error::NotArbitrator)?;
+        Ok(weight as u32)
+    }
+
+    /// Check if a voter has already casted a vote for a specific dispute.
+    ///
+    /// # Arguments
+    /// * `e` - The Soroban environment.
+    /// * `dispute_id` - The ID of the dispute.
+    /// * `voter` - The address of the voter.
+    ///
+    /// # Returns
+    /// `true` if the voter has already voted, `false` otherwise.
+    pub fn has_voted(e: Env, dispute_id: u64, voter: Address) -> bool {
+        e.storage()
+            .instance()
+            .has(&DataKey::VoterCasted(dispute_id, voter))
+    }
+
+    /// Get a paginated list of registered arbitrator addresses.
+    ///
+    /// # Arguments
+    /// * `e` - The Soroban environment.
+    /// * `cursor` - The index to start pagination from (0-based).
+    /// * `limit` - The maximum number of arbitrators to return.
+    ///
+    /// # Returns
+    /// A tuple containing:
+    /// 1. A page of arbitrator addresses.
+    /// 2. `Some(next_cursor)` if more results remain, or `None` if pagination is complete.
+    pub fn get_arbitrators_page(e: Env, cursor: u32, limit: u32) -> (Vec<Address>, Option<u32>) {
+        let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let registry_len = registry.len();
+
+        if cursor >= registry_len {
+            return (Vec::new(&e), None);
+        }
+
+        const MAX_ITER_HARD_CAP: u32 = 200;
+        const DEFAULT_MAX_ITER: u32 = 50;
+
+        let effective_limit = if limit == 0 {
+            DEFAULT_MAX_ITER
+        } else {
+            limit.min(MAX_ITER_HARD_CAP)
+        };
+
+        let end = (cursor + effective_limit).min(registry_len);
+        let mut page = Vec::new(&e);
+        for i in cursor..end {
+            if let Some(addr) = registry.get(i) {
+                page.push_back(addr);
+            }
+        }
+
+        let next_cursor = if end >= registry_len { None } else { Some(end) };
+
+        (page, next_cursor)
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
