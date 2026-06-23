@@ -14,6 +14,7 @@ fn setup(env: &Env) -> (Address, Address) {
 #[cfg(test)]
 mod suspension_tests {
     use super::*;
+    use soroban_sdk::testutils::Ledger;
 
     // ── 1. suspend_admin succeeds ─────────────────────────────────────────────
 
