@@ -205,6 +205,9 @@ mod suspension_tests {
                 target.clone(),
                 AdminRole::Admin,
             );
+        });
+
+        env.as_contract(&contract, || {
             AdminContract::deactivate_admin(env.clone(), super_admin.clone(), target.clone());
         });
 
@@ -295,6 +298,10 @@ mod suspension_tests {
                 target.clone(),
                 now + 50,
             );
+        });
+
+        // Extend the suspension in a separate call
+        env.as_contract(&contract, || {
             AdminContract::suspend_admin(
                 env.clone(),
                 super_admin.clone(),
