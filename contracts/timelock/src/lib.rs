@@ -228,7 +228,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
-        let contract_id = env.register_contract(None, TimelockContract);
+        let contract_id = env.register(TimelockContract, ());
         let client = TimelockContractClient::new(&env, &contract_id);
         client.initialize(&admin);
         (env, client, admin)
