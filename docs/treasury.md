@@ -110,3 +110,16 @@ across random deposit/withdrawal sequences (50 proptest cases with up to 20 acti
 - Proposal execution is idempotent (executed flag prevents double spend).
 - **Liquidity Floor Guardrail**: `min_liquidity` setting ensures treasury maintains minimum solvency after withdrawals.
 - **Slippage Protection**: `min_amount_out` parameter protects withdrawal executors from unfavorable settlement conditions.
+
+## Emergency rescue
+
+- **rescue_native(admin, to, amount)**  
+  Admin-only. Transfers *excess* tokens — those held by the contract beyond the internally accounted `TotalBalance` — to `to`.  
+  This allows recovery of accidentally sent or airdropped tokens without touching user/protocol funds.
+
+  **Excess-only bound**:
+  ```
+  excess = token_client.balance(contract) - TotalBalance
+  ```
+  `amount` must satisfy `0 < amount ≤ excess`. Any attempt to rescue accounted funds reverts with `InsufficientTreasuryBalance (#602)`.  
+  Emits `native_rescued` with `(to, amount, admin)` only after a successful transfer.

@@ -798,14 +798,22 @@ impl CredenceTreasury {
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
-    /// Rescue stuck native token balance from the contract.
-    /// Only callable by admin with strict access control.
-    /// This function protects user-accounted balances from accidental extraction.
+    /// Rescue excess native tokens from the contract.
+    ///
+    /// Only callable by admin. Transfers only the *excess* balance — the difference
+    /// between the contract's actual token balance and the internally accounted
+    /// `TotalBalance` — so user/protocol funds cannot be drained.
+    ///
+    /// # Excess-only bound
+    /// ```text
+    /// excess = token_client.balance(contract) - TotalBalance
+    /// ```
+    /// `amount` must satisfy `0 < amount <= excess`. Any attempt to rescue more than
+    /// the excess reverts with `InsufficientTreasuryBalance`.
     pub fn rescue_native(e: Env, admin: Address, to: Address, amount: i128) {
         pausable::require_not_paused(&e);
         admin.require_auth();
 
-        // Verify admin authorization
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -819,29 +827,28 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::AmountMustBePositive);
         }
 
-        // Ensure we're not rescuing funds tied to active accounting
-        let treasury_balance: i128 = e
+        let token_addr = Self::get_token(e.clone());
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+
+        let actual_balance = token_client.balance(&contract_addr);
+        let total_accounted: i128 = e
             .storage()
             .instance()
             .get(&DataKey::TotalBalance)
             .unwrap_or(0);
 
-        // Only allow rescue of excess native tokens beyond accounted treasury balance
-        // For now, we'll skip the actual balance check to avoid re-entry issues in tests
-        // In production, this would need to be handled differently
-        let available_for_rescue = treasury_balance; // Simplified for testing
+        // Excess = tokens held by the contract beyond what is accounted for.
+        let excess = actual_balance
+            .checked_sub(total_accounted)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
 
-        if amount > available_for_rescue {
+        if amount > excess {
             panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
         }
 
-        // For testing purposes, we'll just emit the event without actual transfer
-        // In production, this would need proper native token transfer implementation
-        // let contract_address = e.current_contract_address();
-        // let token_client = soroban_sdk::token::TokenClient::new(&e, &contract_address);
-        // token_client.transfer(&contract_address, &to, &amount);
+        token_client.transfer(&contract_addr, &to, &amount);
 
-        // Emit rescue event for transparency
         e.events()
             .publish((Symbol::new(&e, "native_rescued"),), (to, amount, admin));
     }
