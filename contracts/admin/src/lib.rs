@@ -49,6 +49,11 @@ pub struct AdminInfo {
     pub assigned_by: Address,
     /// Whether this admin is currently active
     pub active: bool,
+    /// Unix timestamp until which this admin is suspended (0 = not suspended).
+    /// While `e.ledger().timestamp() < suspended_until` the admin is treated
+    /// as inactive; the suspension expires automatically — no second transaction
+    /// is required.
+    pub suspended_until: u64,
 }
 
 /// Storage keys for the admin contract
@@ -137,6 +142,7 @@ impl AdminContract {
             assigned_at: e.ledger().timestamp(),
             assigned_by: super_admin.clone(), // Self-assigned for initialization
             active: true,
+            suspended_until: 0,
         };
 
         // Store admin info
@@ -231,6 +237,7 @@ impl AdminContract {
             assigned_at: e.ledger().timestamp(),
             assigned_by: caller.clone(),
             active: true,
+            suspended_until: 0,
         };
 
         // Store admin info
@@ -555,10 +562,101 @@ impl AdminContract {
         );
     }
 
-    /// Propose a new owner for the contract (two-step ownership transfer).
+    /// Suspend an admin until a future ledger timestamp.
+    ///
+    /// While `e.ledger().timestamp() < until_ts` the admin is treated as
+    /// inactive by `is_admin` and `has_role_at_least`.  Once the timestamp
+    /// passes the admin is **automatically** effective again — no second
+    /// transaction is needed.
+    ///
+    /// Suspension is distinct from `deactivate_admin`: deactivation is
+    /// indefinite and requires an explicit `reactivate_admin` call, whereas
+    /// suspension is self-expiring.
     ///
     /// # Arguments
-    /// * `caller` - Address of the current owner proposing the transfer
+    /// * `caller`    - Address authorising the suspension (must have higher or
+    ///                 equal role to the target, same rules as `deactivate_admin`)
+    /// * `admin`     - Address of the admin to suspend
+    /// * `until_ts`  - Unix timestamp (seconds) after which the suspension
+    ///                 expires; must be strictly greater than the current ledger
+    ///                 timestamp
+    ///
+    /// # Panics
+    /// * `NotAdmin`          — caller or target is not a known admin
+    /// * `NotAdmin`          — caller role is strictly lower than target role
+    /// * `AdminSuspended`    — `until_ts` is not in the future
+    /// * `InvalidPauseAction` — suspending would drop active admins below `MinAdmins`
+    /// * `AlreadyDeactivated` — target admin is permanently deactivated
+    ///
+    /// # Events
+    /// Emits `admin_suspended` with `(admin_address, until_ts)`
+    pub fn suspend_admin(e: Env, caller: Address, admin: Address, until_ts: u64) {
+        pausable::require_not_paused(&e);
+        caller.require_auth();
+
+        // until_ts must be in the future
+        if until_ts <= e.ledger().timestamp() {
+            panic_with_error!(&e, ContractError::AdminSuspended);
+        }
+
+        let mut admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(admin.clone()))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
+
+        // Cannot suspend a permanently deactivated admin
+        if !admin_info.active {
+            panic_with_error!(&e, ContractError::AlreadyDeactivated);
+        }
+
+        // Caller must have a role >= target's role (same rule as deactivate_admin)
+        let caller_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(caller.clone()))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
+        if caller_info.role < admin_info.role {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+
+        // MinAdmins guard: count currently-effective active admins
+        let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
+        let now = e.ledger().timestamp();
+        let all_admins: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminList)
+            .unwrap_or(Vec::new(&e));
+        let mut effective_active: u32 = 0;
+        for addr in all_admins.iter() {
+            if addr == admin {
+                continue; // exclude the target — they'll be suspended
+            }
+            if let Some(info) = e
+                .storage()
+                .instance()
+                .get::<_, AdminInfo>(&DataKey::AdminInfo(addr))
+            {
+                if info.active && now >= info.suspended_until {
+                    effective_active += 1;
+                }
+            }
+        }
+        if effective_active < min_admins {
+            panic_with_error!(&e, ContractError::InvalidPauseAction);
+        }
+
+        admin_info.suspended_until = until_ts;
+        e.storage()
+            .instance()
+            .set(&DataKey::AdminInfo(admin.clone()), &admin_info);
+
+        e.events()
+            .publish((Symbol::new(&e, "admin_suspended"),), (admin, until_ts));
+    }
+
+    /// Propose a new owner for the contract (two-step ownership transfer).
     /// * `new_owner` - Address of the proposed new owner
     ///
     /// # Panics
@@ -733,14 +831,20 @@ impl AdminContract {
     /// * `address` - Address to check
     ///
     /// # Returns
-    /// `true` if the address is an active admin, `false` otherwise
+    /// `true` if the address is an active admin, `false` otherwise.
+    /// An admin under an unexpired suspension is treated as inactive;
+    /// they become active again automatically once the suspension timestamp
+    /// has passed — no second transaction is required.
     pub fn is_admin(e: Env, address: Address) -> bool {
         match e
             .storage()
             .instance()
             .get::<_, AdminInfo>(&DataKey::AdminInfo(address))
         {
-            Some(admin_info) => admin_info.active,
+            Some(admin_info) => {
+                admin_info.active
+                    && e.ledger().timestamp() >= admin_info.suspended_until
+            }
             None => false,
         }
     }
@@ -752,14 +856,19 @@ impl AdminContract {
     /// * `required_role` - Minimum required role
     ///
     /// # Returns
-    /// `true` if the address has at least the required role, `false` otherwise
+    /// `true` if the address has at least the required role, `false` otherwise.
+    /// A suspended admin fails this check until `suspended_until` has passed.
     pub fn has_role_at_least(e: Env, address: Address, required_role: AdminRole) -> bool {
         match e
             .storage()
             .instance()
             .get::<_, AdminInfo>(&DataKey::AdminInfo(address))
         {
-            Some(admin_info) => admin_info.active && admin_info.role >= required_role,
+            Some(admin_info) => {
+                admin_info.active
+                    && e.ledger().timestamp() >= admin_info.suspended_until
+                    && admin_info.role >= required_role
+            }
             None => false,
         }
     }
@@ -863,8 +972,15 @@ impl AdminContract {
         caller: &Address,
         required_role: AdminRole,
     ) -> Result<(), ()> {
-        let caller_role = Self::get_role(e.clone(), caller.clone());
-        if caller_role >= required_role {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(caller.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+        if admin_info.active
+            && e.ledger().timestamp() >= admin_info.suspended_until
+            && admin_info.role >= required_role
+        {
             Ok(())
         } else {
             Err(())
@@ -921,3 +1037,6 @@ mod test_immutable_config_simple;
 
 #[cfg(test)]
 mod test_authorization;
+
+#[cfg(test)]
+mod test_suspension;

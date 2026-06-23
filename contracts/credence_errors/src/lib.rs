@@ -132,6 +132,14 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientSignatures = 108,
 
+    /// The target admin is currently suspended (suspended_until > now).
+    /// Used by suspend_admin when `until_ts` is not strictly in the future,
+    /// and by callers that detect a suspended admin attempting a privileged
+    /// action.
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    AdminSuspended = 109,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -484,7 +492,8 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedDepositor
             | ContractError::ContractPaused
             | ContractError::InvalidPauseAction
-            | ContractError::InsufficientSignatures => ErrorCategory::Authorization,
+            | ContractError::InsufficientSignatures
+            | ContractError::AdminSuspended => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -567,6 +576,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
+            ContractError::AdminSuspended => "Admin is currently suspended",
             ContractError::BondNotFound => "No bond found for the given key",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",

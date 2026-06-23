@@ -38,6 +38,7 @@ mod basic_tests {
             assigned_at: 12345,
             assigned_by: assigned_by.clone(),
             active: true,
+            suspended_until: 0,
         };
 
         assert_eq!(admin_info.address, address);
