@@ -199,7 +199,7 @@ fn test_describe_bond_reflects_partial_withdraw() {
 
     // Advance past lockup
     let mut info = e.ledger().get();
-    info.timestamp = info.timestamp + 3601;
+    info.timestamp += 3601;
     e.ledger().set(info);
 
     client.withdraw(&400_i128);

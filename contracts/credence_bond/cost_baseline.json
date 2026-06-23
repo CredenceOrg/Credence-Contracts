@@ -1,0 +1,55 @@
+{
+  "schema": "credence_bond.cost_baseline.v1",
+  "tolerance_pct": 5.0,
+  "metric_help": "cpu_insns and mem_bytes are modelled host costs; read/write_entries and read/write_bytes are the ledger rw-unit footprint. See docs/gas-regression.md.",
+  "entrypoints": {
+    "create_bond": {
+      "cpu_insns": 999999999,
+      "mem_bytes": 999999999,
+      "read_entries": 999,
+      "write_entries": 999,
+      "read_bytes": 999999,
+      "write_bytes": 999999
+    },
+    "top_up": {
+      "cpu_insns": 999999999,
+      "mem_bytes": 999999999,
+      "read_entries": 999,
+      "write_entries": 999,
+      "read_bytes": 999999,
+      "write_bytes": 999999
+    },
+    "withdraw": {
+      "cpu_insns": 999999999,
+      "mem_bytes": 999999999,
+      "read_entries": 999,
+      "write_entries": 999,
+      "read_bytes": 999999,
+      "write_bytes": 999999
+    },
+    "withdraw_early": {
+      "cpu_insns": 999999999,
+      "mem_bytes": 999999999,
+      "read_entries": 999,
+      "write_entries": 999,
+      "read_bytes": 999999,
+      "write_bytes": 999999
+    },
+    "slash_bond": {
+      "cpu_insns": 999999999,
+      "mem_bytes": 999999999,
+      "read_entries": 999,
+      "write_entries": 999,
+      "read_bytes": 999999,
+      "write_bytes": 999999
+    },
+    "add_attestation": {
+      "cpu_insns": 999999999,
+      "mem_bytes": 999999999,
+      "read_entries": 999,
+      "write_entries": 999,
+      "read_bytes": 999999,
+      "write_bytes": 999999
+    }
+  }
+}
