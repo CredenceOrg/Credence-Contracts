@@ -245,8 +245,7 @@ pub fn verify_delegated_signature(
                 message.clone().into_val(e),
                 signature.clone().into_val(e),
             ];
-            let ok: bool = e
-                .invoke_contract(&verifier_addr, &Symbol::new(e, "verify"), args);
+            let ok: bool = e.invoke_contract(&verifier_addr, &Symbol::new(e, "verify"), args);
             if !ok {
                 panic_with_error!(e, ContractError::VerificationFailed);
             }

@@ -95,7 +95,13 @@ fn expiry(e: &Env) -> u64 {
 fn test_ed25519_unaffected() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
-    let p = make_payload(&owner, &delegate, &client.address, 0, SchemeTag::Ed25519.to_u32());
+    let p = make_payload(
+        &owner,
+        &delegate,
+        &client.address,
+        0,
+        SchemeTag::Ed25519.to_u32(),
+    );
     client.execute_delegated_delegate(
         &owner,
         &delegate,
@@ -112,7 +118,13 @@ fn test_ed25519_ignores_registered_verifier() {
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let v = e.register(AlwaysInvalidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Ed25519.to_u32(), &v);
-    let p = make_payload(&owner, &delegate, &client.address, 0, SchemeTag::Ed25519.to_u32());
+    let p = make_payload(
+        &owner,
+        &delegate,
+        &client.address,
+        0,
+        SchemeTag::Ed25519.to_u32(),
+    );
     client.execute_delegated_delegate(
         &owner,
         &delegate,
