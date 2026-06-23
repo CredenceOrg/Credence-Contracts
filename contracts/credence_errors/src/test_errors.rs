@@ -17,6 +17,11 @@ mod tests {
             ContractError::ContractPaused,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
+            ContractError::AdminSuspended,
+            ContractError::NoPendingAdmin,
+            ContractError::InvalidAdminAddress,
+            ContractError::AdminUnchanged,
+            ContractError::TimelockNotReady,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -35,6 +40,7 @@ mod tests {
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::InvariantViolation,
             ContractError::StorageCapReached,
             ContractError::DomainMismatch,
             ContractError::OwnerMismatch,
@@ -70,6 +76,7 @@ mod tests {
             ContractError::InsufficientApprovals,
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
+            ContractError::ProposalExpired,
             ContractError::Overflow,
             ContractError::Underflow,
         ]
@@ -401,9 +408,14 @@ mod tests {
 
     #[test]
     fn test_all_variants_count() {
+        // Must match the total number of `ContractError` variants in
+        // `contracts/credence_errors/src/lib.rs`. When a new variant is
+        // added there, append it to `all_variants()` AND bump this count.
+        // Test descriptions uniqueness/non-empty iterate this Vec so they
+        // require every variant be present.
         assert_eq!(
             all_variants().len(),
-            65,
+            73,
             "Update all_variants() and this count when adding new errors"
         );
     }
