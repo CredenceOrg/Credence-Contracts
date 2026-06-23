@@ -330,6 +330,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidContractAddress = 406,
 
+    /// Contract code hash verification failed during trustless registration.
+    /// The calling contract's WASM code hash does not match the expected bond code hash.
+    /// Contracts: registry
+    /// Wire-stable: do not renumber this error code.
+    ContractCodeVerificationFailed = 407,
+
     // --- Delegation (500-599) ---
     /// Delegation expiry timestamp must be in the future.
     /// Replaces: panic!("expiry must be in the future")
