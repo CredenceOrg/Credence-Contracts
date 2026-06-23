@@ -235,12 +235,27 @@ impl CredenceBond {
     /// let contract_id = e.register(CredenceBond, ());
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, None);  // or Some(registry_address) for trustless binding
     /// ```
-    pub fn initialize(e: Env, admin: Address) {
+    pub fn initialize(e: Env, admin: Address, registry_address: Option<Address>) {
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+
+        // If a registry address is provided, attempt trustless self-registration.
+        // This removes the trust assumption that an admin must manually register the bond.
+        if let Some(registry) = registry_address {
+            // The bond calls the registry's register_trustless function with its identity.
+            // The identity is derived from the admin address for this reference implementation.
+            // In production, this could be a separate identity parameter.
+            let _ = e.invoke_contract::<()>(
+                &registry,
+                &Symbol::new(&e, "register_trustless"),
+                soroban_sdk::vec![&e, admin.into_val(&e)],
+            );
+            // Ignore errors during registration to maintain backward compatibility
+            // and allow bonds to be initialized without a registry.
+        }
     }
 
     /// Return a structured snapshot of all contract configuration.
