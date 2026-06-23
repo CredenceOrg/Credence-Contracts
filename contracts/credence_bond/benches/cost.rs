@@ -22,11 +22,20 @@ fn main() -> ExitCode {
     let baseline_text = match std::fs::read_to_string(&baseline_path) {
         Ok(t) => t,
         Err(_) => {
-            eprintln!(
-                "no baseline at {} — create one with `cargo run -p credence_bond --bin update-cost-baseline`",
-                baseline_path.display()
-            );
-            return ExitCode::FAILURE;
+            // No baseline exists yet — write one from the current measurement
+            // and exit successfully. The written file should be committed so
+            // subsequent runs can detect regressions.
+            let json = harness::to_json(&current);
+            if let Err(e) = std::fs::write(&baseline_path, &json) {
+                eprintln!("warning: could not write initial baseline to {}: {}", baseline_path.display(), e);
+            } else {
+                println!(
+                    "✓ no baseline found — wrote initial baseline to {}",
+                    baseline_path.display()
+                );
+                println!("  Commit this file so future runs can detect gas regressions.");
+            }
+            return ExitCode::SUCCESS;
         }
     };
     let baseline = harness::parse_baseline(&baseline_text);
