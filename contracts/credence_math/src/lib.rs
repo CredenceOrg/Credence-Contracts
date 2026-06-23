@@ -14,8 +14,21 @@
     clippy::restriction
 )]
 
+use ethnum::U256;
+
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
+
+/// Rounding behavior for [`mul_div_i128`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Rounding {
+    /// Truncate the fractional remainder toward zero.
+    Down,
+    /// Round away from zero when the division leaves any remainder.
+    Up,
+    /// Round to the nearest integer, with exact half-way cases rounded away from zero.
+    Nearest,
+}
 
 /// Checked `u64` multiplication with a stable panic message.
 #[inline]
@@ -63,12 +76,112 @@ pub fn ceil_div_i128(a: i128, b: i128, msg: &'static str) -> i128 {
         .unwrap_or_else(|| panic!("{msg}"))
 }
 
+/// Compute `a * b / denom` over a 256-bit intermediate.
+///
+/// The intermediate product is widened before division, so large products that
+/// exceed `i128` can still succeed when the final rounded result fits in
+/// `i128`. `Rounding::Down` matches Rust integer division by truncating toward
+/// zero. `Rounding::Up` rounds away from zero on any remainder.
+/// `Rounding::Nearest` rounds to the nearest integer, with half-way cases
+/// rounded away from zero.
+///
+/// # Panics
+///
+/// Panics with `msg` if `denom` is zero or if the final rounded result does not
+/// fit in `i128`.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::{mul_div_i128, Rounding};
+///
+/// assert_eq!(mul_div_i128(i128::MAX, 10_000, 10_000, Rounding::Down, "overflow"), i128::MAX);
+/// assert_eq!(mul_div_i128(10, 3, 4, Rounding::Down, "overflow"), 7);
+/// assert_eq!(mul_div_i128(10, 3, 4, Rounding::Up, "overflow"), 8);
+/// assert_eq!(mul_div_i128(10, 3, 4, Rounding::Nearest, "overflow"), 8);
+/// assert_eq!(mul_div_i128(-10, 3, 4, Rounding::Up, "overflow"), -8);
+/// ```
+#[inline]
+#[must_use]
+pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static str) -> i128 {
+    if denom == 0 {
+        panic!("{msg}");
+    }
+
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let numerator = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let quotient = numerator / divisor;
+    let remainder = numerator % divisor;
+
+    let rounded = match mode {
+        Rounding::Down => quotient,
+        Rounding::Up => {
+            if remainder == U256::ZERO {
+                quotient
+            } else {
+                quotient + U256::ONE
+            }
+        }
+        Rounding::Nearest => {
+            if remainder * U256::new(2) >= divisor {
+                quotient + U256::ONE
+            } else {
+                quotient
+            }
+        }
+    };
+
+    let positive_limit = U256::new(i128::MAX as u128);
+    let negative_limit = U256::new((i128::MAX as u128) + 1);
+    if negative {
+        if rounded > negative_limit {
+            panic!("{msg}");
+        }
+        if rounded == negative_limit {
+            i128::MIN
+        } else {
+            -i128::try_from(rounded.as_u128()).unwrap_or_else(|_| panic!("{msg}"))
+        }
+    } else {
+        if rounded > positive_limit {
+            panic!("{msg}");
+        }
+        i128::try_from(rounded.as_u128()).unwrap_or_else(|_| panic!("{msg}"))
+    }
+}
+
 /// Calculate a basis-point percentage of an `i128` amount: `amount * bps / BPS_DENOMINATOR`.
 #[inline]
 #[must_use]
 pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str) -> i128 {
     let numerator = mul_i128(amount, bps as i128, mul_msg);
     div_i128(numerator, BPS_DENOMINATOR, div_msg)
+}
+
+/// Calculate a basis-point percentage of an `i128` amount, rounded away from zero.
+///
+/// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::bps_round_up;
+///
+/// assert_eq!(bps_round_up(10_001, 1, "overflow"), 2);
+/// assert_eq!(bps_round_up(10_000, 1, "overflow"), 1);
+/// assert_eq!(bps_round_up(-10_001, 1, "overflow"), -2);
+/// ```
+#[inline]
+#[must_use]
+pub fn bps_round_up(amount: i128, bps_value: u32, msg: &'static str) -> i128 {
+    mul_div_i128(
+        amount,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Up,
+        msg,
+    )
 }
 
 /// Calculate a basis-point percentage of a `u64` amount: `amount * bps / BPS_DENOMINATOR`.
@@ -95,7 +208,7 @@ pub fn split_bps(
 
 #[cfg(test)]
 mod tests {
-    use super::{bps, bps_u64, ceil_div_i128, split_bps};
+    use super::{bps, bps_round_up, bps_u64, ceil_div_i128, mul_div_i128, split_bps, Rounding};
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
         amount
@@ -128,6 +241,31 @@ mod tests {
         for (amount, bps_value) in cases {
             assert_eq!(
                 bps(amount, bps_value, "mul", "div"),
+                legacy_bps_i128(amount, bps_value)
+            );
+        }
+    }
+
+    #[test]
+    fn mul_div_down_matches_legacy_bps_formula() {
+        let cases = [
+            (0_i128, 0_u32),
+            (1, 1),
+            (10_000, 100),
+            (999_999, 333),
+            (1_000_000_000, 50),
+            (i128::MAX / 20_000, 10_000),
+        ];
+
+        for (amount, bps_value) in cases {
+            assert_eq!(
+                mul_div_i128(
+                    amount,
+                    bps_value as i128,
+                    10_000,
+                    Rounding::Down,
+                    "overflow"
+                ),
                 legacy_bps_i128(amount, bps_value)
             );
         }
@@ -167,6 +305,65 @@ mod tests {
                 legacy_split_bps(amount, bps_value)
             );
         }
+    }
+
+    #[test]
+    fn mul_div_down_matches_rust_division_for_signed_inputs() {
+        assert_eq!(mul_div_i128(-10, 3, 4, Rounding::Down, "test"), -7);
+        assert_eq!(mul_div_i128(10, -3, 4, Rounding::Down, "test"), -7);
+        assert_eq!(mul_div_i128(10, 3, -4, Rounding::Down, "test"), -7);
+        assert_eq!(mul_div_i128(-10, -3, -4, Rounding::Down, "test"), -7);
+    }
+
+    #[test]
+    fn mul_div_uses_wide_intermediate_when_result_fits() {
+        assert_eq!(
+            mul_div_i128(i128::MAX, 10_000, 10_000, Rounding::Down, "test"),
+            i128::MAX
+        );
+        assert_eq!(
+            mul_div_i128(i128::MAX, 10_000, 10_000, Rounding::Up, "test"),
+            i128::MAX
+        );
+    }
+
+    #[test]
+    fn mul_div_rounds_up_on_non_zero_remainder() {
+        assert_eq!(mul_div_i128(10, 3, 4, Rounding::Down, "test"), 7);
+        assert_eq!(mul_div_i128(10, 3, 4, Rounding::Up, "test"), 8);
+        assert_eq!(mul_div_i128(-10, 3, 4, Rounding::Up, "test"), -8);
+    }
+
+    #[test]
+    fn mul_div_nearest_rounds_half_ties_away_from_zero() {
+        assert_eq!(mul_div_i128(10, 1, 4, Rounding::Nearest, "test"), 3);
+        assert_eq!(mul_div_i128(9, 1, 4, Rounding::Nearest, "test"), 2);
+        assert_eq!(mul_div_i128(-10, 1, 4, Rounding::Nearest, "test"), -3);
+    }
+
+    #[test]
+    fn mul_div_handles_zero_numerator_and_denom_one() {
+        assert_eq!(mul_div_i128(0, i128::MAX, 1, Rounding::Up, "test"), 0);
+        assert_eq!(mul_div_i128(123, 456, 1, Rounding::Down, "test"), 56_088);
+    }
+
+    #[test]
+    #[should_panic(expected = "overflow")]
+    fn mul_div_panics_only_when_final_positive_result_overflows() {
+        let _ = mul_div_i128(i128::MAX, 10_001, 10_000, Rounding::Down, "overflow");
+    }
+
+    #[test]
+    #[should_panic(expected = "denom")]
+    fn mul_div_panics_with_msg_on_zero_denominator() {
+        let _ = mul_div_i128(1, 1, 0, Rounding::Down, "denom");
+    }
+
+    #[test]
+    fn bps_round_up_uses_wide_intermediate() {
+        assert_eq!(bps_round_up(10_001, 1, "test"), 2);
+        assert_eq!(bps_round_up(10_000, 1, "test"), 1);
+        assert_eq!(bps_round_up(i128::MAX, 10_000, "test"), i128::MAX);
     }
 
     #[test]
