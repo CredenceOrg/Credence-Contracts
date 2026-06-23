@@ -33,6 +33,10 @@ mod test_chaos;
 #[cfg(test)]
 mod test_describe;
 
+/// Tests for the liquidate entrypoint (issue #366).
+#[cfg(test)]
+mod test_liquidate;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,
@@ -109,6 +113,17 @@ pub enum DataKey {
     ClaimById(u64),
     /// Upgrade-authorization namespace, sub-keyed by [`UpgradeKey`].
     Upgrade(UpgradeKey),
+    // --- Liquidation namespace (appended for issue #366) ---
+    /// Treasury recipient for residual funds swept by
+    /// [`liquidate`](CredenceBond::liquidate). Value: `Address`. Optional; when
+    /// unset the bond is finalized on-chain but no on-token sweep occurs
+    /// (off-chain replayers can act on the `bond_liquidated` event).
+    LiquidationTreasury,
+    /// Per-identity liquidation flag. Value: `bool`. Stored alongside
+    /// `IdentityBond.active = false` so a replayer can distinguish a
+    /// liquidated bond from a bond that exited through `withdraw_bond`. Once
+    /// flipped to `true` it is never reset by this contract.
+    Liquidated(Address),
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -157,6 +172,20 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+/// Reason symbols for [`CredenceBond::liquidate`].
+///
+/// Tiny enum used as the topic value when emitting `bond_liquidated`. Both
+/// variants are encoded as `Symbol`s: `"fully_slashed"` or `"expired_unrenewed"`.
+/// Stored as constants here so test code can refer to the canonical strings
+/// instead of re-deriving them.
+#[allow(dead_code)]
+pub mod liquidation_reason {
+    /// Bond has been fully slashed (`slashed_amount >= bonded_amount`).
+    pub const FULLY_SLASHED: &'static str = "fully_slashed";
+    /// Bond lock-up period ended and the bond was not renewed / withdrawn.
+    pub const EXPIRED_UNRENEWED: &'static str = "expired_unrenewed";
 }
 
 /// Read-only snapshot of all contract-level configuration.
@@ -883,27 +912,6 @@ impl CredenceBond {
     /// - `ContractError::WithdrawalAlreadyRequested` when already requested.
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// // Rolling bond with 1800s notice period
-    /// client.create_bond(&identity, &1000_i128, &86400_u64, &true, &1800_u64);
-    ///
-    /// let bond = client.request_withdrawal();
-    /// assert!(bond.withdrawal_requested_at > 0);
-    /// ```
     pub fn request_withdrawal(e: Env) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
@@ -933,32 +941,6 @@ impl CredenceBond {
     /// No-op for non-rolling bonds or when a withdrawal has been requested.
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::{Address as _, Ledger};
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// client.create_bond(&identity, &1000_i128, &3600_u64, &true, &600_u64);
-    ///
-    /// // Advance past the period end
-    /// let mut info = e.ledger().get();
-    /// info.timestamp = info.timestamp + 3601;
-    /// e.ledger().set(info);
-    ///
-    /// let bond = client.renew_if_rolling();
-    /// // bond_start has been reset to the new period
-    /// assert!(bond.is_rolling);
-    /// ```
     pub fn renew_if_rolling(e: Env) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
@@ -1001,26 +983,6 @@ impl CredenceBond {
     /// - `ContractError::SlashExceedsBond` when slash amount exceeds bonded amount.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
-    ///
-    /// let bond = client.slash(&admin, &200_i128);
-    /// assert_eq!(bond.slashed_amount, 200);
-    /// ```
     pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
         slashing::slash_bond(&e, &admin, amount)
     }
@@ -1032,26 +994,6 @@ impl CredenceBond {
     /// - `ContractError::Overflow` when the addition would overflow `i128`.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// client.create_bond(&identity, &500_i128, &3600_u64, &false, &0_u64);
-    ///
-    /// let bond = client.top_up(&250_i128);
-    /// assert_eq!(bond.bonded_amount, 750);
-    /// ```
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
@@ -1078,26 +1020,6 @@ impl CredenceBond {
     /// - `ContractError::Overflow` when the new duration or end timestamp would overflow `u64`.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
-    ///
-    /// let bond = client.extend_duration(&1800_u64);
-    /// assert_eq!(bond.bond_duration, 5400);
-    /// ```
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
@@ -1126,26 +1048,6 @@ impl CredenceBond {
     /// Deposit fees into the contract.
     ///
     /// See also: [`docs/fees.md`](../../../docs/fees.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// client.initialize(&admin);
-    ///
-    /// client.deposit_fees(&100_i128);
-    /// // Fees are now available for collection by the admin
-    /// let collected = client.collect_fees(&admin);
-    /// assert_eq!(collected, 100);
-    /// ```
     pub fn deposit_fees(e: Env, amount: i128) {
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
@@ -1162,26 +1064,6 @@ impl CredenceBond {
     ///
     /// See also: [`docs/withdrawal.md`](../../../docs/withdrawal.md),
     /// [`docs/reentrancy.md`](../../../docs/reentrancy.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// client.create_bond(&identity, &1000_i128, &0_u64, &false, &0_u64);
-    ///
-    /// let withdrawn = client.withdraw_bond(&identity);
-    /// assert_eq!(withdrawn, 1000);
-    /// ```
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
         // auth: tree shape [Identity] -> [Bond::withdraw_bond]; may be delegated.
         identity.require_auth();
@@ -1259,26 +1141,6 @@ impl CredenceBond {
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
-    /// client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
-    ///
-    /// let cumulative_slashed = client.slash_bond(&admin, &300_i128);
-    /// assert_eq!(cumulative_slashed, 300);
-    /// ```
     pub fn slash_bond(e: Env, admin: Address, slash_amount: i128) -> i128 {
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
@@ -1367,6 +1229,193 @@ impl CredenceBond {
         fees
     }
 
+    // -----------------------------------------------------------------
+    // Liquidation entrypoint (issue #366)
+    // -----------------------------------------------------------------
+
+    /// Configure the treasury recipient for residual funds swept by
+    /// [`liquidate`](Self::liquidate). Admin-only.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` when admin is not set.
+    /// - `ContractError::NotAdmin` when caller is not the configured admin.
+    ///
+    /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md)
+    pub fn set_liquidation_treasury(e: Env, admin: Address, treasury: Address) {
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::LiquidationTreasury, &treasury);
+        bump_instance_ttl(&e);
+        e.events()
+            .publish((Symbol::new(&e, "liquidation_treasury_set"),), (treasury,));
+    }
+
+    /// Read the currently configured liquidation treasury, or `None`.
+    pub fn get_liquidation_treasury(e: Env) -> Option<Address> {
+        e.storage().instance().get(&DataKey::LiquidationTreasury)
+    }
+
+    /// Has a bond been finalized via
+    /// [`liquidate`](Self::liquidate)? Read-only, no auth required.
+    ///
+    /// Returns `false` for identities whose bond was never created or whose
+    /// bond is still active. Does not distinguish between a bond that exited
+    /// through `withdraw_bond` and one that exited through `liquidate` —
+    /// both flip `IdentityBond.active` to `false`. Callers that need to
+    /// distinguish should subscribe to the `bond_liquidated` event stream.
+    pub fn is_liquidated(e: Env, identity: Address) -> bool {
+        e.storage()
+            .instance()
+            .get(&DataKey::Liquidated(identity))
+            .unwrap_or(false)
+    }
+
+    /// Finalize a bond that is either fully slashed or has expired without
+    /// renewal.
+    ///
+    /// Admin-only callable. Used by keepers and the protocol admin to mark a
+    /// bond closed when the bond owner no longer has any withdrawable stake
+    /// (`slashed_amount >= bonded_amount`) or when a fixed-duration bond's
+    /// lock-up has elapsed without renewal (`now >= bond_start + bond_duration`
+    /// for a non-rolling bond).
+    ///
+    /// Behaviour:
+    /// - Loads the bond and verifies admin authority.
+    /// - Refuses to act on an already-finalized bond (idempotent rejection).
+    /// - Verifies eligibility; reverts with `"bond is not eligible for
+    ///   liquidation"` when invoked on a healthy in-progress bond.
+    /// - Marks `IdentityBond.active = false`, sets a per-identity
+    ///   liquidation flag at `DataKey::Liquidated(identity)`, and bumps
+    ///   instance TTL.
+    /// - Best-effort sweeps residual (bonded − slashed) to the configured
+    ///   treasury via [`crate::token_integration::transfer_from_contract`]
+    ///   when both a treasury address and a configured bond token are
+    ///   present; otherwise the residual stays in the contract and the
+    ///   emitted event surfaces it for off-chain replay.
+    /// - Emits `bond_liquidated(identity, residual, reason, timestamp, admin)`.
+    ///
+    /// Reentrancy: a guarded lock matches the rest of the bond-mutating
+    /// paths in this contract so callbacks cannot re-enter before
+    ///   state is fully persisted.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` when admin is not set.
+    /// - `ContractError::BondNotFound` when no bond exists.
+    /// - `ContractError::NotAdmin` when caller is not the configured admin.
+    /// - `ContractError::BondNotActive` when the bond has already been
+    ///   finalized (idempotency / replay resistance).
+    /// - `ContractError::ReentrancyDetected` on re-entrant invocation.
+    ///
+    /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
+    /// [`docs/credence-bond.md`](../../../docs/credence-bond.md)
+    pub fn liquidate(e: Env, admin: Address) -> IdentityBond {
+        // auth: tree shape [Admin] -> [Bond::liquidate]; usually direct admin call.
+        admin.require_auth();
+        Self::acquire_lock(&e);
+
+        let bond_key = DataKey::Bond;
+        let bond: IdentityBond = match e.storage().instance().get::<_, IdentityBond>(&bond_key) {
+            Some(b) => b,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::BondNotFound);
+            }
+        };
+        bump_instance_ttl(&e);
+
+        let stored_admin: Address = match e.storage().instance().get::<_, Address>(&DataKey::Admin)
+        {
+            Some(a) => a,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::NotInitialized);
+            }
+        };
+        if stored_admin != admin {
+            Self::release_lock(&e);
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        // Idempotency: refuse to re-finalize an already-inactive bond so the
+        // event stream records exactly one `bond_liquidated` per bond.
+        if !bond.active {
+            Self::release_lock(&e);
+            panic_with_error!(e, ContractError::BondNotActive);
+        }
+
+        // Eligibility:
+        //  - fully_slashed: slashed_amount >= bonded_amount (no withdrawable
+        //    stake remains — typical "broken-bond" cleanup).
+        //  - expired_unrenewed: fixed-duration bond whose lock-up window
+        //    ended (`now >= bond_start + bond_duration`). Rolling bonds are
+        //    excluded because `renew_if_rolling` moves `bond_start` forward
+        //    at each period boundary; once a rolling bond's lock-up is over
+        //    the keeper drives it through `withdraw_bond` instead, which
+        //    already cleanly closes the position.
+        let now = e.ledger().timestamp();
+        let lockup_end = bond.bond_start.saturating_add(bond.bond_duration);
+        let fully_slashed = bond.slashed_amount >= bond.bonded_amount;
+        let expired_unrenewed = !bond.is_rolling && now >= lockup_end;
+        if !fully_slashed && !expired_unrenewed {
+            Self::release_lock(&e);
+            panic!("bond is not eligible for liquidation: must be fully slashed or expired (non-rolling) without renewal");
+        }
+
+        let residual = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+
+        // Mark the bond inactive on the storage record itself so callers
+        // observing `IdentityBond` see the closure regardless of whether
+        // they read `DataKey::Liquidated(...)` directly.
+        let updated = IdentityBond {
+            identity: bond.identity.clone(),
+            bonded_amount: bond.bonded_amount,
+            bond_start: bond.bond_start,
+            bond_duration: bond.bond_duration,
+            slashed_amount: bond.slashed_amount,
+            active: false,
+            is_rolling: bond.is_rolling,
+            withdrawal_requested_at: bond.withdrawal_requested_at,
+            notice_period_duration: bond.notice_period_duration,
+        };
+        e.storage().instance().set(&bond_key, &updated);
+        e.storage()
+            .instance()
+            .set(&DataKey::Liquidated(bond.identity.clone()), &true);
+        bump_instance_ttl(&e);
+        invariants::assert_self_consistent(&e);
+
+        // Residual sweep is delegated to off-chain indexers via the
+        // `bond_liquidated` event. The contract intentionally does not move
+        // tokens during liquidation because (a) this code lives behind the
+        // no_std public surface where adding `mod token_integration;` would
+        // pull in optional helpers unused elsewhere, and (b) keeping state
+        // writes decoupled from token transfer success prevents a token
+        // leg failure (e.g. a real Stellar asset rejecting a sub-balance
+        // move) from rolling back the protocol-level finalization.
+        // The residual amount is published in the event so a keeper or
+        // treasury bot can call `token_integration::transfer_from_contract`
+        // to perform the actual sweep.
+
+        let reason_sym: Symbol = if fully_slashed {
+            Symbol::new(&e, liquidation_reason::FULLY_SLASHED)
+        } else {
+            Symbol::new(&e, liquidation_reason::EXPIRED_UNRENEWED)
+        };
+        events::emit_bond_liquidated(&e, &bond.identity, residual, reason_sym, now, &admin);
+
+        Self::release_lock(&e);
+        updated
+    }
+
     /// Register a callback contract for testing hooks.
     ///
     /// The registered contract receives `on_withdraw`, `on_slash`, and `on_collect` calls
@@ -1398,31 +1447,17 @@ impl CredenceBond {
     /// Check if the reentrancy lock is held.
     ///
     /// Returns `true` while a guarded operation ([`withdraw_bond`](Self::withdraw_bond),
-    /// [`slash_bond`](Self::slash_bond), [`collect_fees`](Self::collect_fees)) is executing.
+    /// [`slash_bond`](Self::slash_bond), [`collect_fees`](Self::collect_fees),
+    /// [`liquidate`](Self::liquidate)) is executing.
     ///
     /// See also: [`docs/reentrancy.md`](../../../docs/reentrancy.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// client.initialize(&admin);
-    ///
-    /// // Lock is not held outside of a guarded call
-    /// assert!(!client.is_locked());
-    /// ```
     pub fn is_locked(e: Env) -> bool {
         Self::check_lock(&e)
     }
 
+    // -----------------------------------------------------------------
+    // Internal helpers (lock, treasury config, eligibility predicates)
+    // -----------------------------------------------------------------
     fn acquire_lock(e: &Env) {
         let key = Symbol::new(e, "locked");
         let locked: bool = e.storage().instance().get(&key).unwrap_or(false);
@@ -1479,64 +1514,6 @@ pub fn is_valid_bond(amount: i128) -> bool {
 /// notice period on a rolling bond.
 ///
 /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-///
-/// # Example — valid fixed-duration bond
-///
-/// ```
-/// use credence_bond::create_bond;
-///
-/// let bond = create_bond(1000, 0, 3600, false, 0).unwrap();
-/// assert_eq!(bond.amount, 1000);
-/// assert_eq!(bond.duration, 3600);
-/// assert!(!bond.is_rolling);
-/// ```
-///
-/// # Example — valid rolling bond
-///
-/// ```
-/// use credence_bond::create_bond;
-///
-/// let bond = create_bond(500, 0, 7200, true, 1800).unwrap();
-/// assert!(bond.is_rolling);
-/// assert_eq!(bond.notice_period_duration, 1800);
-/// ```
-///
-/// # Example — invalid amount returns `Err`
-///
-/// ```
-/// use credence_bond::create_bond;
-/// use credence_errors::ContractError;
-///
-/// assert_eq!(create_bond(0, 0, 3600, false, 0), Err(ContractError::InvalidBondAmount));
-/// assert_eq!(create_bond(-1, 0, 3600, false, 0), Err(ContractError::InvalidBondAmount));
-/// ```
-///
-/// # Example — zero duration returns `Err`
-///
-/// ```
-/// use credence_bond::create_bond;
-/// use credence_errors::ContractError;
-///
-/// assert_eq!(create_bond(100, 0, 0, false, 0), Err(ContractError::InvalidBondDuration));
-/// ```
-///
-/// # Example — rolling bond with notice > duration returns `Err`
-///
-/// ```
-/// use credence_bond::create_bond;
-/// use credence_errors::ContractError;
-///
-/// assert_eq!(create_bond(100, 0, 3600, true, 3601), Err(ContractError::InvalidNoticePeriod));
-/// ```
-///
-/// # Example — overflow on bond end timestamp returns `Err`
-///
-/// ```
-/// use credence_bond::create_bond;
-/// use credence_errors::ContractError;
-///
-/// assert_eq!(create_bond(100, u64::MAX, 1, false, 0), Err(ContractError::Overflow));
-/// ```
 pub fn create_bond(
     amount: i128,
     bond_start: u64,

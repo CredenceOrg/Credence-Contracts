@@ -466,3 +466,42 @@ pub fn emit_bond_drift_detected(e: &Env, details: &crate::invariants::BondDriftD
     );
     e.events().publish(topics, data);
 }
+
+/// Emitted when a bond is finalized through `liquidate` (issue #366).
+///
+/// # Topics (Indexed)
+/// * `Symbol` - `"bond_liquidated"`
+/// * `Address` - The identity whose bond was liquidated (so an indexer can
+///   slice the event stream per identity)
+///
+/// # Data
+/// * `i128` - Residual amount swept to the treasury
+///   (`bonded_amount - slashed_amount`, or `0` if fully slashed)
+/// * `Symbol` - Reason for the liquidation
+///   (`"fully_slashed"` or `"expired_unrenewed"`)
+/// * `u64` - Ledger timestamp at which the liquidation was recorded
+/// * `Address` - Admin / keeper that drove the liquidation
+///
+/// # Replay semantics
+/// A replayer finalizes the bond on encountering this event:
+/// `IdentityBond.active = false` and `DataKey::Liquidated(identity) = true`.
+/// `bonded_amount` and `slashed_amount` are preserved verbatim so the
+/// accounting trace can be reconstructed; any residual token sweep is
+/// expressible as a function of the reported residual amount.
+///
+/// Exactly one `bond_liquidated` per bond is emitted — the entrypoint is
+/// idempotent on an already-inactive bond (`BondNotActive`) so replayers
+/// can safely collapse duplicates.
+#[allow(clippy::too_many_arguments)]
+pub fn emit_bond_liquidated(
+    e: &Env,
+    identity: &Address,
+    residual: i128,
+    reason: Symbol,
+    timestamp: u64,
+    admin: &Address,
+) {
+    let topics = (Symbol::new(e, "bond_liquidated"), identity.clone());
+    let data = (residual, reason, timestamp, admin.clone());
+    e.events().publish(topics, data);
+}
