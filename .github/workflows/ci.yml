@@ -50,7 +50,7 @@ jobs:
       # PROPTEST_CASES=1024) lives in .github/workflows/fuzz.yml and runs
       # nightly + on every PR touching contracts/.
       - name: Bond fuzz smoke run (fuzz::)
-        run: cargo test -p credence_bond fuzz::test_bond_fuzz -- --nocapture
+        run: cargo test -p credence_bond fuzz:: -- --nocapture
 
   build-release:
     name: Build release

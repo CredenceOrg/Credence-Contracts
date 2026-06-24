@@ -133,6 +133,13 @@ jobs:
           fuzz::test_slashing_tier_invariants
           -- --nocapture
 
+      - name: Run bond fuzz — weighted attestation rounding (test_weighted_attestation_rounding)
+        run: >
+          cargo test
+          --package credence_bond
+          fuzz::test_weighted_attestation_rounding
+          -- --nocapture
+
       # ── Persist regressions after run (save on failure too) ───────────────
       - name: Save proptest regressions (bond)
         if: always()

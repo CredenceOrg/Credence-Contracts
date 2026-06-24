@@ -16,6 +16,12 @@ mod tiered_bond;
 mod upgrade_auth;
 mod weighted_attestation;
 
+/// Property-based fuzz suites: bond operations, reward accrual, weighted-attestation
+/// rounding, and slashing/tier invariants. Exposed as `fuzz::*` so that CI can
+/// target them with `cargo test -p credence_bond fuzz::`.
+#[cfg(test)]
+mod fuzz;
+
 #[path = "types/mod.rs"]
 pub mod types;
 
