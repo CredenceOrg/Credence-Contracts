@@ -10,7 +10,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 
@@ -95,7 +95,7 @@ fn test_scan_empty_registry_returns_done() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let keeper = Address::generate(&e);
     let result = client.scan_liquidation_candidates(&keeper, &0, &50, &0);
     assert!(result.done);

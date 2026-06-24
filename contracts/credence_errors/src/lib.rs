@@ -264,6 +264,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvariantViolation = 218,
 
+    /// Slash treasury address has not been configured.
+    /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TreasuryNotConfigured = 223,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -567,6 +573,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::StorageCapReached
+            | ContractError::TreasuryNotConfigured
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -581,7 +588,8 @@ impl ErrorExt for ContractError {
             | ContractError::BondContractNotRegistered
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
-            | ContractError::InvalidContractAddress => ErrorCategory::Registry,
+            | ContractError::InvalidContractAddress
+            | ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
 
             ContractError::ExpiryInPast
             | ContractError::DelegationNotFound
@@ -656,6 +664,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
+            ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -680,6 +689,9 @@ impl ErrorExt for ContractError {
             ContractError::AlreadyActive => "Record is already in the active state",
             ContractError::InvalidContractAddress => {
                 "Provided contract address is not a deployed contract"
+            }
+            ContractError::ContractCodeVerificationFailed => {
+                "Contract code hash verification failed during trustless registration"
             }
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
@@ -796,6 +808,7 @@ impl ErrorExt for ContractError {
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
@@ -820,7 +833,8 @@ impl ErrorExt for ContractError {
             | ContractError::BondContractNotRegistered
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
-            | ContractError::InvalidContractAddress => true,
+            | ContractError::InvalidContractAddress
+            | ContractError::ContractCodeVerificationFailed => true,
 
             // --- Delegation (500-599): mostly caller-fixable ---
             ContractError::ExpiryInPast                // supply a future expiry
@@ -834,6 +848,7 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0

@@ -78,7 +78,7 @@ pub fn setup_with_token_mint(
     let admin = Address::generate(e);
     let identity = Address::generate(e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let stellar_asset = e.register(MockStellarAsset, ());
     let stellar_client = StellarAssetClient::new(e, &stellar_asset);

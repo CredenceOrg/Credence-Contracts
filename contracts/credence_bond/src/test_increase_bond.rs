@@ -20,7 +20,7 @@ fn setup<'a>(
     let admin = Address::generate(e);
     let identity = Address::generate(e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let token_id = e.register(test_helpers::MockStellarAsset, ());
     let token_admin_client = soroban_sdk::token::StellarAssetClient::new(e, &token_id);
@@ -63,7 +63,7 @@ fn test_increase_bond_fails_without_token_configuration() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.top_up(&10_i128);
 }
 

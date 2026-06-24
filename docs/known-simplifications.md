@@ -13,6 +13,10 @@
 
 ## Resolved
 
+### 4. Slashed Funds Are Now Transferred to Treasury
+
+Slashed funds are now transferred to the configured slash treasury on every `slash()` call via `token_integration::transfer_from_contract`. Slashing reverts with `ContractError::TreasuryNotConfigured` if no treasury has been set via `set_slash_treasury(admin, treasury)`.
+
 ---
 
 ## 1. Token Transfer is Stubbed in credence_bond
@@ -110,7 +114,6 @@
 | 1 | Token transfer stubbed in tests | credence_bond | Configure live USDC via `set_usdc_token` |
 | 2 | Single-bond-per-contract-instance | credence_bond | Multi-bond map storage |
 | 3 | Treasury is pure accounting, no token custody | credence_treasury | Add real token transfers on withdrawal |
-| 4 | Slashed funds not transferred to treasury | credence_bond | Call `transfer(treasury, slash_amount)` post-slash |
 | 6 | Early-exit penalty dropped if no treasury | credence_bond | Require treasury before `withdraw_early` |
 | 7 | `get_all_identities()` unbounded | credence_registry | Add pagination; use event-based indexing |
 | 9 | Arbitrator weights not stake-backed | credence_arbitration | Derive weight from bond balance |

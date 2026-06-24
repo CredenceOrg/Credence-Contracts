@@ -13,7 +13,7 @@ fn test_admin_transfer_flow() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Initial admin is correct
     let stored_admin: Address = env.as_contract(&contract_id, || {
@@ -58,7 +58,7 @@ fn test_admin_transfer_wrong_acceptor() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.transfer_admin(&admin, &new_admin);
 
     // Wrong address tries to accept
@@ -75,7 +75,7 @@ fn test_upgrade_admin_transfer_flow() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Initial upgrade admin is correct
     let stored: Address = env.as_contract(&contract_id, || {
@@ -122,7 +122,7 @@ fn test_admin_transfer_to_self() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.transfer_admin(&admin, &admin);
 }
 
@@ -138,6 +138,6 @@ fn test_transfer_upgrade_admin_unauthorized() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.transfer_upgrade_admin(&malicious, &new_admin);
 }

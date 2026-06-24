@@ -39,7 +39,7 @@ fn setup_token_with_decimals(e: &Env, decimals: u32) -> (CredenceBondClient<'_>,
     let admin = Address::generate(&e);
     let identity = Address::generate(e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let token_id = e.register(MockDecimalToken, ());
     e.as_contract(&token_id, || {

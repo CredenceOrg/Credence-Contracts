@@ -34,7 +34,7 @@ fn scan_with_bond(
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Write bond state directly into storage (bypasses token transfer).
     e.as_contract(&contract_id, || {

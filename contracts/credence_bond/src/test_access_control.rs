@@ -15,7 +15,7 @@ fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     let user = Address::generate(env);
     let attacker = Address::generate(env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     (client, admin, user, attacker)
 }
@@ -265,7 +265,7 @@ fn test_genuine_require_auth_enforcement() {
         },
     }]);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let treasury = Address::generate(&env);
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

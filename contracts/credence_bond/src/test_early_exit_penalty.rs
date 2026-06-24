@@ -102,7 +102,7 @@ fn test_set_early_exit_config_unauthorized() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let other = Address::generate(&e);
     let treasury = Address::generate(&e);
     client.set_early_exit_config(&other, &treasury, &500);
@@ -116,7 +116,7 @@ fn test_set_early_exit_config_invalid_bps() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let treasury = Address::generate(&e);
     client.set_early_exit_config(&admin, &treasury, &10_001);
 }

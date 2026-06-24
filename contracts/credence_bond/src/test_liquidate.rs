@@ -52,7 +52,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     let identity = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin, identity)
 }
 
@@ -107,7 +107,7 @@ fn set_liquidation_treasury_unauthorized_rejected() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let stranger = Address::generate(&e);
     let treasury = Address::generate(&e);

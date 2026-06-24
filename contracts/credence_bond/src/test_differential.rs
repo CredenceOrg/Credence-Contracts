@@ -75,7 +75,7 @@ fn scenario_full_bond_lifecycle() {
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
 
-    c.initialize(&admin);
+    c.initialize(&admin, &None);
 
     c.create_bond(&identity, &1_000_i128, &10_000_u64, &false, &0_u64);
     assert_pinned(
@@ -183,7 +183,7 @@ fn scenario_rolling_bond_with_renewal() {
 
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    c.initialize(&admin);
+    c.initialize(&admin, &None);
 
     c.create_bond(&identity, &50_000_i128, &5_000_u64, &true, &1_000_u64);
     assert_pinned(
@@ -250,7 +250,7 @@ fn scenario_early_exit_and_penalty() {
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
     let treasury = Address::generate(&env);
-    c.initialize(&admin);
+    c.initialize(&admin, &None);
     // 500 bps = 5% max penalty (time-decayed).
     c.set_early_exit_config(&admin, &treasury, &500_u32);
 
@@ -301,7 +301,7 @@ fn scenario_zero_amount_slash() {
 
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    c.initialize(&admin);
+    c.initialize(&admin, &None);
     c.create_bond(&identity, &5_000_i128, &1_000_u64, &false, &0_u64);
 
     c.slash(&admin, &0_i128);
@@ -329,7 +329,7 @@ fn scenario_extend_duration() {
 
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    c.initialize(&admin);
+    c.initialize(&admin, &None);
     c.create_bond(&identity, &1_000_i128, &3_600_u64, &false, &0_u64);
 
     c.extend_duration(&1_800_u64);
@@ -357,7 +357,7 @@ fn scenario_rolling_renew_at_exact_expiry() {
 
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    c.initialize(&admin);
+    c.initialize(&admin, &None);
     c.create_bond(&identity, &1_000_i128, &3_600_u64, &true, &600_u64);
 
     // Exactly at expiry: is_period_ended(3600, 0, 3600) → 3600 >= 3600 → true.
@@ -398,7 +398,7 @@ fn deliberate_divergence_is_caught() {
     let divergent_id = env.register(crate::fork_divergent::CredenceBond, ());
     let divergent = crate::fork_divergent::CredenceBondClient::new(&env, &divergent_id);
 
-    canonical.initialize(&admin);
+    canonical.initialize(&admin, &None);
     divergent.initialize(&admin);
 
     canonical.create_bond(&identity, &1_000_i128, &1_000_u64, &false, &0_u64);

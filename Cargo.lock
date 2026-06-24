@@ -551,6 +551,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "credence_registry"
+version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "soroban-sdk",
+]
+
+[[package]]
 name = "credence_treasury"
 version = "0.1.0"
 dependencies = [

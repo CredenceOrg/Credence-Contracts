@@ -15,7 +15,8 @@
 //! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
 //! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
 
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{panic_with_error, Address, Env, Symbol};
+use credence_errors::ContractError;
 
 /// Storage key for tracking accumulated slashed funds (for treasury transfer purposes).
 /// Not currently used for fund transfers in this implementation, but reserved for future use.
@@ -174,7 +175,18 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
     e.storage().instance().set(&key, &bond);
     crate::invariants::assert_self_consistent(e);
 
-    // 8. Emit slashing event for off-chain tracking
+    // 8. Transfer slashed funds to the configured treasury.
+    // This must happen after state is persisted so that any transfer failure
+    // rolls back only the token call (state is already written; Soroban's
+    // atomic tx model ensures full revert on any panic from here).
+    //
+    // The call reverts the transaction if no treasury is configured, ensuring
+    // the protocol never silently drops slashed capital.
+    if actual_slash_amount > 0 {
+        transfer_slashed_funds_to_treasury(e, actual_slash_amount);
+    }
+
+    // 9. Emit slashing event for off-chain tracking
     emit_slashing_event(e, &bond.identity, actual_slash_amount, bond.slashed_amount);
 
     // Emit v2 event with enhanced indexing for backward compatibility during migration
@@ -292,6 +304,35 @@ pub fn is_fully_slashed(bonded_amount: i128, slashed_amount: i128) -> bool {
 #[must_use]
 pub fn is_partial_slash(slash_amount: i128, bonded_amount: i128) -> bool {
     slash_amount < bonded_amount
+}
+
+/// Transfers `amount` tokens from this bond contract to the configured slash treasury.
+///
+/// Reads the treasury address from `DataKey::SlashTreasury`. If the key is absent,
+/// reverts with [`ContractError::TreasuryNotConfigured`] — the protocol must never
+/// silently drop slashed capital.
+///
+/// The transfer is classified as `FundSource::SlashedFunds` at the treasury level.
+/// Callers are responsible for only calling this with `amount > 0`.
+///
+/// # Panics
+/// - `ContractError::TreasuryNotConfigured` when no slash treasury is configured.
+/// - Any token-level panic propagated from the token transfer.
+fn transfer_slashed_funds_to_treasury(e: &Env, amount: i128) {
+    let treasury: Address = e
+        .storage()
+        .instance()
+        .get(&crate::DataKey::SlashTreasury)
+        .unwrap_or_else(|| {
+            panic_with_error!(e, ContractError::TreasuryNotConfigured)
+        });
+    let token_addr: Address = e
+        .storage()
+        .instance()
+        .get(&crate::DataKey::BondToken)
+        .unwrap_or_else(|| panic!("token not configured"));
+    let contract = e.current_contract_address();
+    soroban_sdk::token::TokenClient::new(e, &token_addr).transfer(&contract, &treasury, &amount);
 }
 
 /// NatSpec-style: Emits a slashing event for off-chain tracking and auditing.
