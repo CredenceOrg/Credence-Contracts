@@ -5,15 +5,18 @@ mod claims;
 mod early_exit_penalty;
 mod events;
 mod invariants;
+mod leverage;
 mod math;
 mod migration;
 mod nonce;
+mod parameters;
 mod rolling_bond;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
 mod tiered_bond;
 mod upgrade_auth;
+mod validation;
 mod weighted_attestation;
 
 #[cfg(test)]
@@ -532,6 +535,11 @@ impl CredenceBond {
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
+
+        // Validate inputs
+        validation::validate_bond_amount(amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage(&e, amount, max_leverage);
 
         let bond = IdentityBond {
             identity: identity.clone(),
@@ -1067,10 +1075,17 @@ impl CredenceBond {
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
 
-        bond.bonded_amount = bond
+        let new_bonded_amount = bond
             .bonded_amount
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+
+        // Validate the new total amount
+        validation::validate_bond_amount(new_bonded_amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage(&e, new_bonded_amount, max_leverage);
+
+        bond.bonded_amount = new_bonded_amount;
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
