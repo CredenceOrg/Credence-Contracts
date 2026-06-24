@@ -263,6 +263,9 @@ impl CredenceMultiSig {
                 .publish((Symbol::new(&e, "threshold_auto_adjusted"),), new_count);
         }
 
+        // Keep stored signatures for removed signers so if the signer is later
+        // re-added, their prior approvals can be restored. Execution only counts
+        // signatures from the current signer set.
         e.events()
             .publish((Symbol::new(&e, "signer_removed"),), signer);
     }
@@ -429,8 +432,19 @@ impl CredenceMultiSig {
             .instance()
             .get(&DataKey::SignatureCount(proposal_id))
             .unwrap_or(0);
+        let effective_signatures = Self::count_active_signatures(&e, proposal_id);
 
-        if signatures < threshold {
+        if effective_signatures != signatures {
+            e.storage()
+                .instance()
+                .set(&DataKey::SignatureCount(proposal_id), &effective_signatures);
+            e.events().publish(
+                (Symbol::new(&e, "proposal_signatures_revalidated"),),
+                (proposal_id, signatures, effective_signatures),
+            );
+        }
+
+        if effective_signatures < threshold {
             panic_with_error!(&e, ContractError::InsufficientApprovals);
         }
 
@@ -647,6 +661,26 @@ impl CredenceMultiSig {
         if !is_signer {
             panic_with_error!(e, ContractError::NotSigner);
         }
+    }
+
+    fn count_active_signatures(e: &Env, proposal_id: u64) -> u32 {
+        let signers = Self::get_signers(e.clone());
+        let mut count = 0_u32;
+
+        for signer in signers.iter() {
+            let signed = e
+                .storage()
+                .instance()
+                .get(&DataKey::Signature(proposal_id, signer.clone()))
+                .unwrap_or(false);
+            if signed {
+                count = count
+                    .checked_add(1)
+                    .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+            }
+        }
+
+        count
     }
 
     fn expire_proposal(e: &Env, proposal_id: u64) {
