@@ -250,7 +250,7 @@ impl CredenceArbitration {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(ArbitrationError::NotInitialized)?;
-        
+
         let role = if caller == dispute.creator {
             Symbol::short("creator")
         } else if caller == admin {
@@ -269,8 +269,10 @@ impl CredenceArbitration {
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
 
-        e.events()
-            .publish((Symbol::new(&e, "dispute_cancelled"), dispute_id), (caller.clone(), role, reason));
+        e.events().publish(
+            (Symbol::new(&e, "dispute_cancelled"), dispute_id),
+            (caller.clone(), role, reason),
+        );
         e.events().publish(
             (Symbol::new(&e, "status_transition"), dispute_id),
             (from as u32, DisputeStatus::Cancelled as u32),

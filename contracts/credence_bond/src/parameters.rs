@@ -24,6 +24,8 @@
 //! - old value
 //! - new value
 
+#![allow(dead_code)]
+
 use crate::events::emit_parameter_updated;
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
@@ -42,7 +44,6 @@ pub struct GovernanceApproval {
 // ============================================================================
 // Parameter Bounds Constants
 // ============================================================================
-
 /// Minimum protocol fee rate in basis points (0 bps = 0%)
 pub const MIN_PROTOCOL_FEE_BPS: u32 = 0;
 /// Maximum protocol fee rate in basis points (1000 bps = 10%)

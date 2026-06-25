@@ -111,7 +111,6 @@ mod cooldown_attacker {
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
 
-
             // Attempt reentrancy - this should panic with "reentrancy detected" on fixed code
             // On unfixed code, this may succeed depending on state update order
             client.withdraw_bond(&1000_i128);

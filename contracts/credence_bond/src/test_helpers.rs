@@ -12,7 +12,10 @@ impl MockStellarAsset {
         18
     }
     pub fn balance(e: Env, id: Address) -> i128 {
-        e.storage().instance().get(&id).unwrap_or(10_000_000_000_000_000_000_000_000_000_i128)
+        e.storage()
+            .instance()
+            .get(&id)
+            .unwrap_or(10_000_000_000_000_000_000_000_000_000_i128)
     }
     pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
         let from_bal = Self::balance(e.clone(), from.clone());
@@ -89,7 +92,11 @@ pub fn setup_with_token_mint(
     let expiration = e.ledger().sequence().saturating_add(10000);
     token_client.approve(&identity, &contract_id, &mint_amount, &expiration);
 
-    client.set_token(&admin, &stellar_asset);
+    e.as_contract(&contract_id, || {
+        e.storage()
+            .instance()
+            .set(&crate::DataKey::BondToken, &stellar_asset);
+    });
 
     (client, admin, identity, stellar_asset, contract_id)
 }

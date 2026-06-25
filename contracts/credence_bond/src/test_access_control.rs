@@ -3,7 +3,7 @@ extern crate alloc;
 extern crate std;
 use crate::{CredenceBond, CredenceBondClient, DataKey};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env, IntoVal};
+use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
 
 fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     env.mock_all_auths();
@@ -27,7 +27,7 @@ struct PrivilegedCase {
 
 fn invoke_transfer_admin(env: &Env, client: &CredenceBondClient<'_>, caller: &Address) {
     let new_admin = Address::generate(env);
-    let args = (caller.clone(), new_admin.clone()).into_val(env);
+    let args: Vec<Val> = (caller.clone(), new_admin.clone()).into_val(env);
     env.mock_auths(&[
         soroban_sdk::testutils::MockAuth {
             address: caller,
@@ -260,7 +260,7 @@ fn test_genuine_require_auth_enforcement() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "initialize",
-            args: (&admin,).into_val(&env),
+            args: (&admin, &None::<Address>).into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -283,7 +283,7 @@ fn test_transfer_admin_rotates_admin_and_rejects_old_admin() {
     let new_admin = Address::generate(&env);
     let treasury = Address::generate(&env);
 
-    let args = (admin.clone(), new_admin.clone()).into_val(&env);
+    let args: Vec<Val> = (admin.clone(), new_admin.clone()).into_val(&env);
     env.mock_auths(&[
         soroban_sdk::testutils::MockAuth {
             address: &admin,

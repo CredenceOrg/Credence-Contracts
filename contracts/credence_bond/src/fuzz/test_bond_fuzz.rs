@@ -546,4 +546,3 @@ fn fuzz_bond_operations() {
         std::panic::resume_unwind(err);
     }
 }
-

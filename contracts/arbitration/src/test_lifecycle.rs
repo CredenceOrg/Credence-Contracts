@@ -374,11 +374,14 @@ fn test_cancel_with_reason_and_role() {
     let id = open_dispute(&s);
     let reason = Some(String::from_str(&s.env, "Dispute invalid"));
     s.client.cancel_dispute(&s.creator, &id, &reason);
-    
+
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Cancelled);
     assert_eq!(d.cancellation_reason, reason);
-    assert_eq!(d.cancelled_by_role, Some(soroban_sdk::Symbol::short("creator")));
+    assert_eq!(
+        d.cancelled_by_role,
+        Some(soroban_sdk::Symbol::short("creator"))
+    );
 }
 
 #[test]
@@ -387,10 +390,13 @@ fn test_cancel_admin_role() {
     let id = open_dispute(&s);
     let reason = Some(String::from_str(&s.env, "Admin override"));
     s.client.cancel_dispute(&s.admin, &id, &reason);
-    
+
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Cancelled);
-    assert_eq!(d.cancelled_by_role, Some(soroban_sdk::Symbol::short("admin")));
+    assert_eq!(
+        d.cancelled_by_role,
+        Some(soroban_sdk::Symbol::short("admin"))
+    );
 }
 
 #[test]
@@ -401,6 +407,10 @@ fn test_cancel_reason_too_long() {
     let arr = [b'A'; 257];
     let long_str = core::str::from_utf8(&arr).unwrap();
     let reason = Some(soroban_sdk::String::from_str(&s.env, long_str));
-    let err = s.client.try_cancel_dispute(&s.creator, &id, &reason).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id, &reason)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::ReasonTooLong);
 }

@@ -23,6 +23,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
+use crate::test_helpers::{self, advance_ledger_sequence};
 use crate::{CredenceBond, CredenceBondClient, IdentityBond};
 
 // ---------------------------------------------------------------------------
@@ -68,14 +69,9 @@ fn assert_pinned(label: &str, bond: &IdentityBond, p: &Pinned) {
 #[test]
 fn scenario_full_bond_lifecycle() {
     let env = Env::default();
-    env.mock_all_auths();
-    let id = env.register(CredenceBond, ());
-    let c = CredenceBondClient::new(&env, &id);
-
-    let admin = Address::generate(&env);
-    let identity = Address::generate(&env);
-
-    c.initialize(&admin, &None);
+    let (c, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&env);
+    let slash_treasury = Address::generate(&env);
+    c.set_slash_treasury(&admin, &slash_treasury);
 
     c.create_bond(&identity, &1_000_i128, &10_000_u64, &false, &0_u64);
     assert_pinned(
@@ -121,6 +117,7 @@ fn scenario_full_bond_lifecycle() {
         },
     );
 
+    advance_ledger_sequence(&env);
     c.slash(&admin, &500_i128);
     assert_pinned(
         "after_slash",

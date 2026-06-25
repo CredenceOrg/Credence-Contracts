@@ -128,7 +128,9 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
         }
 
         e.storage().instance().set(&active_key, &true);
-        let size = get_registry_size(e).checked_add(1).expect("registry size overflow");
+        let size = get_registry_size(e)
+            .checked_add(1)
+            .expect("registry size overflow");
         e.storage().instance().set(&ScanKey::RegistrySize, &size);
 
         e.events().publish(
@@ -145,7 +147,9 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
 
     e.storage().instance().set(&active_key, &true);
 
-    let size = get_registry_size(e).checked_add(1).expect("registry size overflow");
+    let size = get_registry_size(e)
+        .checked_add(1)
+        .expect("registry size overflow");
     e.storage().instance().set(&ScanKey::RegistrySize, &size);
 
     e.events().publish(
@@ -178,7 +182,9 @@ pub fn deregister_bond_holder(e: &Env, identity: &Address) {
 
         let size = get_registry_size(e);
         if size > 0 {
-            e.storage().instance().set(&ScanKey::RegistrySize, &(size - 1));
+            e.storage()
+                .instance()
+                .set(&ScanKey::RegistrySize, &(size - 1));
         }
 
         e.events().publish(
@@ -230,8 +236,7 @@ pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
         .len();
 
     // Allow reset to 0 (new pass) or forward advance within bounds
-    let valid =
-        next_cursor == 0 || (next_cursor > current && next_cursor <= registry_slots);
+    let valid = next_cursor == 0 || (next_cursor > current && next_cursor <= registry_slots);
     if !valid {
         panic!("keeper cursor: invalid advance");
     }

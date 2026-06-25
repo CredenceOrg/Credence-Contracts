@@ -124,7 +124,7 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         let admin = Address::generate(&env);
         let treasury = Address::generate(&env);
         let identity = Address::generate(&env);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.set_early_exit_config(&admin, &treasury, &500_u32);
         env.ledger().set_timestamp(0);
         client.create_bond(&identity, &1_000_i128, &1_000_u64, &false, &0_u64);
@@ -139,7 +139,7 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         let client = CredenceBondClient::new(&env, &env.register(CredenceBond, ()));
         let admin = Address::generate(&env);
         let identity = Address::generate(&env);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.create_bond(&identity, &1_000_i128, &1_000_u64, &false, &0_u64);
         client.slash_bond(&admin, &100_i128);
         out.insert("slash_bond".into(), measure(&env));
@@ -152,7 +152,7 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         let admin = Address::generate(&env);
         let attester = Address::generate(&env);
         let subject = Address::generate(&env);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.register_attester(&attester);
         let data = SorobanString::from_str(&env, "kyc:passed");
         client.add_attestation(&attester, &subject, &data, &0_u64);

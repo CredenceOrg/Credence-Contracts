@@ -104,7 +104,7 @@ impl MockFeeOnTransferToken {
     pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
         let from_bal = Self::balance(e.clone(), from.clone());
         let to_bal = Self::balance(e.clone(), to.clone());
-        
+
         let fee = amount / 100;
         let received = amount - fee;
 

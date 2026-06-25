@@ -18,14 +18,11 @@ use std::process::Command;
 use soroban_spec::read::{raw_from_wasm, FromWasmError};
 
 const WASM_REL: &str = "target/wasm32-unknown-unknown/release/credence_delegation.wasm";
-const EXPECTED_SPEC_XDR_HEX: &str =
-    include_str!("spec_xdr/credence_delegation.v1.hex");
+const EXPECTED_SPEC_XDR_HEX: &str = include_str!("spec_xdr/credence_delegation.v1.hex");
 
 /// `{CONTRACT_SPEC_VERSION}:{spec_xdr_hex}` — ties the snapshot to an explicit bump.
-const EXPECTED_VERSIONED_MANIFEST: &str = concat!(
-    "1:",
-    include_str!("spec_xdr/credence_delegation.v1.hex")
-);
+const EXPECTED_VERSIONED_MANIFEST: &str =
+    concat!("1:", include_str!("spec_xdr/credence_delegation.v1.hex"));
 
 fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -72,7 +69,10 @@ fn current_spec_xdr_hex() -> String {
     let wasm = read_release_wasm();
     let raw = raw_from_wasm(&wasm).unwrap_or_else(|err| match err {
         FromWasmError::NotFound => {
-            panic!("contractspecv0 section missing from {}", wasm_path().display())
+            panic!(
+                "contractspecv0 section missing from {}",
+                wasm_path().display()
+            )
         }
         other => panic!("failed to parse contract spec from wasm: {other}"),
     });

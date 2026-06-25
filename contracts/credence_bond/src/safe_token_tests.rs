@@ -15,7 +15,9 @@ fn setup_env() -> Env {
 }
 
 fn set_token_in_storage(env: &Env, token: &Address) {
-    env.storage().instance().set(&crate::DataKey::BondToken, token);
+    env.storage()
+        .instance()
+        .set(&crate::DataKey::BondToken, token);
 }
 
 #[test]
@@ -25,7 +27,7 @@ fn test_safe_transfer_with_valid_params() {
     let recipient = Address::generate(&env);
 
     set_token_in_storage(&env, &token_address);
-    
+
     // No token contract actually exists, so this will panic
     let result = catch_unwind(|| {
         safe_transfer(&env, &recipient, 1000);
@@ -189,9 +191,7 @@ fn test_get_token_with_valid_config() {
 
     set_token_in_storage(&env, &token_address);
 
-    let result = catch_unwind(|| {
-        get_token(&env)
-    });
+    let result = catch_unwind(|| get_token(&env));
     assert!(result.is_ok());
 }
 
@@ -226,18 +226,18 @@ fn test_atomic_transfer_and_update_only_calls_update_if_transfer_succeeds() {
     let env = setup_env();
     let token_address = Address::generate(&env);
     let recipient = Address::generate(&env);
-    
+
     set_token_in_storage(&env, &token_address);
-    
+
     let mut update_called = false;
-    
+
     // Transfer will fail (no real token), so update should NOT run
     let result = catch_unwind(|| {
         atomic_transfer_and_update(&env, &recipient, 100, || {
             update_called = true;
         });
     });
-    
+
     assert!(result.is_err());
     assert!(!update_called); // No partial updates!
 }
@@ -248,15 +248,15 @@ fn test_atomic_transfer_and_update_with_zero_amount() {
     let env = setup_env();
     let token_address = Address::generate(&env);
     let recipient = Address::generate(&env);
-    
+
     set_token_in_storage(&env, &token_address);
-    
+
     let mut update_called = false;
-    
+
     atomic_transfer_and_update(&env, &recipient, 0, || {
         update_called = true;
     });
-    
+
     assert!(update_called);
 }
 
@@ -272,7 +272,7 @@ fn test_edge_cases() {
     let _ = catch_unwind(|| {
         safe_transfer(&env, &recipient, max_amount);
     });
-    
+
     let min_amount = 1i128;
     let _ = catch_unwind(|| {
         safe_transfer(&env, &recipient, min_amount);

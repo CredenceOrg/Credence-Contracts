@@ -6,13 +6,12 @@ use crate::test_helpers;
 use crate::CredenceBondClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::TokenClient;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use soroban_sdk::{contract, contractimpl, Address, Env};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {
     test_helpers::setup_with_token(e)
 }
-
 
 mod failing_withdraw_callback {
     use super::*;
@@ -55,7 +54,10 @@ fn test_withdraw_bond_callback_failure_reverts_state() {
     assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
     assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
     assert_eq!(token_client.balance(&identity), before_identity_balance);
-    assert_eq!(token_client.balance(&bond_contract_id), before_contract_balance);
+    assert_eq!(
+        token_client.balance(&bond_contract_id),
+        before_contract_balance
+    );
 }
 #[test]
 fn test_withdraw_bond_after_lockup_non_rolling() {

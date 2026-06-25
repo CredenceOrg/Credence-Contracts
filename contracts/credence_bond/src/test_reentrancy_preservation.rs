@@ -216,8 +216,7 @@ fn property_withdraw_early_penalty_calculations_preserved() {
 
         // Calculate expected penalty
         let remaining = duration - elapsed;
-        let penalty = (withdraw_amount * remaining * 1000)
-            / (duration * math::BPS_DENOMINATOR);
+        let penalty = (withdraw_amount * remaining * 1000) / (duration * math::BPS_DENOMINATOR);
         let expected_net = withdraw_amount - penalty;
 
         // Perform early withdrawal

@@ -2,7 +2,7 @@
 
 use std::vec::Vec;
 
-use crate::{CredenceBond, CredenceBondClient, test_helpers};
+use crate::{test_helpers, CredenceBond, CredenceBondClient};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},

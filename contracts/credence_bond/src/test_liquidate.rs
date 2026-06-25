@@ -28,6 +28,7 @@
 //!   - `get_liquidation_treasury` returns `None` when unset
 //!   - treasury round-trip: `get` returns the most recently set address
 
+use crate::test_helpers::{self, advance_ledger_sequence};
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
@@ -42,17 +43,16 @@ fn setup_with_treasury(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Ad
     let (client, admin, identity) = setup(e);
     let treasury = Address::generate(e);
     client.set_liquidation_treasury(&admin, &treasury);
+    let slash_treasury = Address::generate(e);
+    client.set_slash_treasury(&admin, &slash_treasury);
     (client, admin, identity, treasury)
 }
 
-/// Register the bond contract without configuring a treasury.
+/// Register the bond contract without configuring a liquidation treasury.
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
-    e.mock_all_auths();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    let identity = Address::generate(e);
-    client.initialize(&admin, &None);
+    let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(e);
+    let slash_treasury = Address::generate(e);
+    client.set_slash_treasury(&admin, &slash_treasury);
     (client, admin, identity)
 }
 
@@ -69,6 +69,7 @@ fn make_bond(
 ) {
     e.ledger().with_mut(|li| li.timestamp = 1_000);
     client.create_bond(identity, &amount, &duration, &is_rolling, &notice);
+    advance_ledger_sequence(e);
 }
 
 // -----------------------------------------------------------------
@@ -158,7 +159,7 @@ fn liquidate_expired_at_exact_boundary_succeeds() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
-    make_bond(&e, &client, &identity, 500_i128, 86_400_u64, false, 0);
+    make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     e.ledger().with_mut(|li| li.timestamp = 87_400); // exactly bond_start + duration
 
     let bond = client.liquidate(&admin);
@@ -215,7 +216,7 @@ fn liquidate_one_second_before_expiry_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
-    make_bond(&e, &client, &identity, 500_i128, 86_400_u64, false, 0);
+    make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     e.ledger().with_mut(|li| li.timestamp = 87_399);
 
     client.liquidate(&admin);

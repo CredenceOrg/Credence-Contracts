@@ -34,7 +34,11 @@ fn test_long_horizon_renewals() {
         renewals += 1;
     }
     // Ensure we performed at least 40 renewals (actually far more).
-    assert!(renewals >= 40, "expected at least 40 renewals, got {}", renewals);
+    assert!(
+        renewals >= 40,
+        "expected at least 40 renewals, got {}",
+        renewals
+    );
 }
 
 /// Test that an overflow in the period calculation correctly panics.

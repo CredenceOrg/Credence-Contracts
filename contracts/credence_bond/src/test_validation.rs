@@ -13,8 +13,6 @@ use crate::test_helpers;
 
 use soroban_sdk::{Address, Env};
 
-
-
 fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let (client, admin, identity, ..) = test_helpers::setup_with_token(e);
     (client, admin, identity)

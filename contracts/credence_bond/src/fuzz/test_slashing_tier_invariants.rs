@@ -305,7 +305,10 @@ fn prop_tier_boundary_values_correct() {
         get_tier_for_amount(&e, TIER_GOLD_MAX),
         BondTier::Platinum
     ));
-    assert!(matches!(get_tier_for_amount(&e, i128::MAX), BondTier::Platinum));
+    assert!(matches!(
+        get_tier_for_amount(&e, i128::MAX),
+        BondTier::Platinum
+    ));
 }
 
 /// Property 10: tier is independent of identity address (pure function of amount).

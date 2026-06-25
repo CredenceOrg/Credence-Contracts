@@ -143,5 +143,3 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
         panic!("unsupported token: transfer amount mismatch (code 213)");
     }
 }
-
-

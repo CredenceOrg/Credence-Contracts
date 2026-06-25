@@ -14,9 +14,15 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address, Address
 fn test_tier_thresholds() {
     let e = Env::default();
     assert_eq!(get_tier_for_amount(&e, 0), BondTier::Bronze);
-    assert_eq!(get_tier_for_amount(&e, TIER_BRONZE_MAX - 1), BondTier::Bronze);
+    assert_eq!(
+        get_tier_for_amount(&e, TIER_BRONZE_MAX - 1),
+        BondTier::Bronze
+    );
     assert_eq!(get_tier_for_amount(&e, TIER_BRONZE_MAX), BondTier::Silver);
-    assert_eq!(get_tier_for_amount(&e, TIER_SILVER_MAX - 1), BondTier::Silver);
+    assert_eq!(
+        get_tier_for_amount(&e, TIER_SILVER_MAX - 1),
+        BondTier::Silver
+    );
     assert_eq!(get_tier_for_amount(&e, TIER_SILVER_MAX), BondTier::Gold);
     assert_eq!(get_tier_for_amount(&e, TIER_GOLD_MAX - 1), BondTier::Gold);
     assert_eq!(get_tier_for_amount(&e, TIER_GOLD_MAX), BondTier::Platinum);

@@ -478,6 +478,7 @@ pub fn expire_claims_bounded(e: &Env, user: &Address, max_iter: u32) -> u32 {
     let mut scan_count = 0u32;
 
     // Scan up to `limit` claims, preserving order
+    #[allow(clippy::explicit_counter_loop)]
     for i in 0..claims.len() {
         if scan_count >= limit {
             // Add remaining unscanned claims to output
