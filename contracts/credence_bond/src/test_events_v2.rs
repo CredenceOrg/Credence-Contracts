@@ -20,7 +20,7 @@ fn test_v2_event_indexing_improvements() {
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // --- SETUP MOCK TOKEN ---
     let token_addr = e.register(test_helpers::MockStellarAsset, ());
@@ -229,7 +229,7 @@ fn test_event_indexing_query_efficiency() {
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Setup token
     let token_addr = e.register(test_helpers::MockStellarAsset, ());
@@ -321,7 +321,7 @@ fn test_event_schema_compatibility() {
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Setup token
     let token_addr = e.register(test_helpers::MockStellarAsset, ());

@@ -55,6 +55,8 @@ pub struct Record {
     pub value: i128,
     /// Ledger timestamp when the record was last updated.
     pub updated_at: u64,
+    /// Ledger timestamp when the record expires (0 = never expires).
+    pub expires_at: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -84,7 +86,7 @@ impl TemplateContract {
     // -----------------------------------------------------------------------
 
     /// Store or overwrite a record for `owner`. Only the admin may call this.
-    pub fn set_record(e: Env, owner: Address, value: i128) {
+    pub fn set_record(e: Env, owner: Address, value: i128, expires_at: u64) {
         let admin: Address = e
             .storage()
             .instance()
@@ -95,6 +97,7 @@ impl TemplateContract {
         let record = Record {
             value,
             updated_at: e.ledger().timestamp(),
+            expires_at,
         };
         e.storage()
             .instance()
@@ -127,15 +130,40 @@ impl TemplateContract {
 
     /// Return the record for `owner`, or panic if none exists.
     pub fn get_record(e: Env, owner: Address) -> Record {
-        e.storage()
+        let record: Record = e
+            .storage()
             .instance()
-            .get(&DataKey::Record(owner))
-            .expect("record not found")
+            .get(&DataKey::Record(owner.clone()))
+            .expect("record not found");
+
+        // Reference expiry pattern: reject and purge on read if expired
+        if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+            e.storage().instance().remove(&DataKey::Record(owner));
+            panic!("record expired");
+        }
+
+        record
     }
 
     /// Return `true` if a record exists for `owner`.
     pub fn has_record(e: Env, owner: Address) -> bool {
-        e.storage().instance().has(&DataKey::Record(owner))
+        if let Some(record) = e.storage().instance().get::<_, Record>(&DataKey::Record(owner.clone())) {
+            if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+                e.storage().instance().remove(&DataKey::Record(owner));
+                return false;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Return `true` if a record exists for `owner` and is currently expired.
+    /// Demonstrates the reference expiry pattern.
+    pub fn is_expired(e: Env, owner: Address) -> bool {
+        if let Some(record) = e.storage().instance().get::<_, Record>(&DataKey::Record(owner)) {
+            return record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at;
+        }
+        false
     }
 
     /// Return the current admin address.

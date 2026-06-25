@@ -264,6 +264,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvariantViolation = 218,
 
+    /// Slash treasury address has not been configured.
+    /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TreasuryNotConfigured = 223,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -567,6 +573,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::StorageCapReached
+            | ContractError::TreasuryNotConfigured
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -614,6 +621,8 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
+            ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
+            ContractError::DelegationNotExpired => ErrorCategory::Delegation,
         }
     }
 
@@ -657,6 +666,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
+            ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -738,6 +748,7 @@ impl ErrorExt for ContractError {
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
+            ContractError::ContractCodeVerificationFailed => "Contract code verification failed",
         }
     }
 
@@ -800,6 +811,7 @@ impl ErrorExt for ContractError {
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
@@ -840,6 +852,7 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0
@@ -856,6 +869,8 @@ impl ErrorExt for ContractError {
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
+            ContractError::ContractCodeVerificationFailed => false,
+            ContractError::DelegationNotExpired => false,
         }
     }
 }

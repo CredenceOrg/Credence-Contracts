@@ -61,7 +61,7 @@ fn test_set_record_stores_value_and_timestamp() {
     let owner = Address::generate(&e);
     advance_time(&e, 100);
 
-    client.set_record(&owner, &42);
+    client.set_record(&owner, &42, &0);
 
     let rec = client.get_record(&owner);
     assert_eq!(rec.value, 42);
@@ -75,9 +75,9 @@ fn test_set_record_overwrites_previous() {
     let (_, _, client) = setup(&e);
 
     let owner = Address::generate(&e);
-    client.set_record(&owner, &10);
+    client.set_record(&owner, &10, &0);
     advance_time(&e, 50);
-    client.set_record(&owner, &99);
+    client.set_record(&owner, &99, &0);
 
     assert_eq!(client.get_record(&owner).value, 99);
 }
@@ -98,7 +98,7 @@ fn test_set_record_requires_admin_auth() {
     // The easiest way in the Soroban test harness is to confirm the auth
     // requirement is present by inspecting auths after a mocked call.
     let owner = Address::generate(&e);
-    client.set_record(&owner, &1);
+    client.set_record(&owner, &1, &0);
 
     let auths = e.auths();
     // At least one auth entry must be for the admin address.
@@ -126,7 +126,7 @@ fn test_has_record_true_after_set() {
     let (_, _, client) = setup(&e);
 
     let owner = Address::generate(&e);
-    client.set_record(&owner, &7);
+    client.set_record(&owner, &7, &0);
     assert!(client.has_record(&owner));
 }
 
@@ -152,7 +152,7 @@ fn test_remove_record_clears_entry() {
     let (_, _, client) = setup(&e);
 
     let owner = Address::generate(&e);
-    client.set_record(&owner, &5);
+    client.set_record(&owner, &5, &0);
     assert!(client.has_record(&owner));
 
     client.remove_record(&owner);
@@ -198,11 +198,11 @@ fn test_updated_at_reflects_ledger_time() {
     let owner = Address::generate(&e);
 
     advance_time(&e, 1_000);
-    client.set_record(&owner, &1);
+    client.set_record(&owner, &1, &0);
     let t1 = client.get_record(&owner).updated_at;
 
     advance_time(&e, 500);
-    client.set_record(&owner, &2);
+    client.set_record(&owner, &2, &0);
     let t2 = client.get_record(&owner).updated_at;
 
     assert!(t2 > t1);
@@ -219,7 +219,7 @@ fn test_set_record_accepts_negative_value() {
     let (_, _, client) = setup(&e);
 
     let owner = Address::generate(&e);
-    client.set_record(&owner, &-100);
+    client.set_record(&owner, &-100, &0);
     assert_eq!(client.get_record(&owner).value, -100);
 }
 
@@ -236,8 +236,8 @@ fn test_multiple_owners_are_independent() {
     let a = Address::generate(&e);
     let b = Address::generate(&e);
 
-    client.set_record(&a, &10);
-    client.set_record(&b, &20);
+    client.set_record(&a, &10, &0);
+    client.set_record(&b, &20, &0);
 
     assert_eq!(client.get_record(&a).value, 10);
     assert_eq!(client.get_record(&b).value, 20);
@@ -245,4 +245,48 @@ fn test_multiple_owners_are_independent() {
     client.remove_record(&a);
     assert!(!client.has_record(&a));
     assert!(client.has_record(&b));
+}
+
+// ---------------------------------------------------------------------------
+// Expiry
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_expiry_pattern() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    let now = e.ledger().timestamp();
+    
+    // Set a record that expires in 100 seconds
+    client.set_record(&owner, &100, &(now + 100));
+    
+    assert!(client.has_record(&owner));
+    assert!(!client.is_expired(&owner));
+    
+    // Advance exactly to expiry
+    advance_time(&e, 100);
+    
+    assert!(client.is_expired(&owner));
+    assert!(!client.has_record(&owner)); // has_record should purge and return false
+    
+    // Now it's truly gone
+    assert!(!client.is_expired(&owner));
+}
+
+#[test]
+#[should_panic(expected = "record expired")]
+fn test_get_expired_record_panics() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    let now = e.ledger().timestamp();
+    client.set_record(&owner, &100, &(now + 10));
+    
+    advance_time(&e, 10);
+    client.get_record(&owner); // panics and purges
 }

@@ -17,7 +17,7 @@ fn setup(
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = soroban_sdk::Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(e);
     client.register_attester(&attester);
     (client, attester, contract_id)

@@ -36,6 +36,7 @@ mod tests {
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
             ContractError::StorageCapReached,
+            ContractError::TreasuryNotConfigured,
             ContractError::DomainMismatch,
             ContractError::OwnerMismatch,
             ContractError::TargetMismatch,
@@ -53,6 +54,7 @@ mod tests {
             ContractError::AlreadyDeactivated,
             ContractError::AlreadyActive,
             ContractError::InvalidContractAddress,
+            ContractError::ContractCodeVerificationFailed,
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
@@ -62,6 +64,7 @@ mod tests {
             ContractError::VerifierNotRegistered,
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
+            ContractError::DelegationNotExpired,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -403,7 +406,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            66,
+            69,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1165,8 +1168,9 @@ mod tests {
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
-            ContractError::InvariantViolation => false, // post-write drift
-            ContractError::DomainMismatch => false,     // payload binding
+            ContractError::InvariantViolation => false,         // post-write drift
+            ContractError::TreasuryNotConfigured => true,       // admin can configure treasury then retry
+            ContractError::DomainMismatch => false,             // payload binding
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1186,6 +1190,7 @@ mod tests {
             ContractError::AlreadyDeactivated => true,
             ContractError::AlreadyActive => true,
             ContractError::InvalidContractAddress => true,
+            ContractError::ContractCodeVerificationFailed => true,
 
             // Delegation: state/caller fixes; fatal cases are scheme/crypto.
             ContractError::ExpiryInPast => true,
@@ -1195,8 +1200,9 @@ mod tests {
             ContractError::UnknownScheme => false, // unsupported scheme
             ContractError::VerifierAlreadyRegistered => true,
             ContractError::VerifierNotRegistered => true,
-            ContractError::VerificationFailed => false, // crypto failure
-            ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
+            ContractError::VerificationFailed => false,          // crypto failure
+            ContractError::RevocationGraceExpired => false,     // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
+            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true, // supply amount > 0
@@ -1268,6 +1274,7 @@ mod tests {
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
             ContractError::StorageCapReached,
+            ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
             ContractError::DomainMismatch,
             ContractError::OwnerMismatch,
@@ -1285,6 +1292,7 @@ mod tests {
             ContractError::AlreadyDeactivated,
             ContractError::AlreadyActive,
             ContractError::InvalidContractAddress,
+            ContractError::ContractCodeVerificationFailed,
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
@@ -1294,6 +1302,7 @@ mod tests {
             ContractError::VerifierNotRegistered,
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
+            ContractError::DelegationNotExpired,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1308,7 +1317,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            73,
+            76,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

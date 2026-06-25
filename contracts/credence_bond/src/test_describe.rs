@@ -21,7 +21,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 
@@ -77,7 +77,7 @@ fn test_describe_config_no_auth_required() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Call without any auth mock — should not panic.
     let cfg = client.describe_config();
@@ -218,7 +218,7 @@ fn test_describe_bond_no_auth_required() {
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
 
     // Call without additional auth — must not panic.

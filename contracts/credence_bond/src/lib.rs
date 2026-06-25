@@ -5,9 +5,11 @@ mod claims;
 mod early_exit_penalty;
 mod events;
 mod invariants;
+mod leverage;
 mod math;
 mod migration;
 mod nonce;
+mod parameters;
 mod rolling_bond;
 mod safe_token;
 mod same_ledger_liquidation_guard;
@@ -16,6 +18,7 @@ mod slashing;
 mod tiered_bond;
 mod token_integration;
 mod upgrade_auth;
+mod validation;
 mod weighted_attestation;
 
 #[cfg(test)]
@@ -134,6 +137,10 @@ pub enum DataKey {
     /// liquidated bond from a bond that exited through `withdraw_bond`. Once
     /// flipped to `true` it is never reset by this contract.
     Liquidated(Address),
+    /// Treasury address that receives slashed funds via `slash()`.
+    /// Value: `Address`. When absent, `slash()` reverts with
+    /// `ContractError::TreasuryNotConfigured`.
+    SlashTreasury,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -379,7 +386,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let treasury = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// // 500 bps = 5% penalty
     /// client.set_early_exit_config(&admin, &treasury, &500_u32);
     /// ```
@@ -413,7 +420,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let attester = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// client.register_attester(&attester);
     /// assert!(client.is_attester(&attester));
     /// ```
@@ -449,7 +456,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let attester = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// client.register_attester(&attester);
     /// client.unregister_attester(&attester);
     /// assert!(!client.is_attester(&attester));
@@ -484,7 +491,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let stranger = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// assert!(!client.is_attester(&stranger));
     /// ```
     pub fn is_attester(e: Env, attester: Address) -> bool {
@@ -514,7 +521,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     ///
     /// // Fixed-duration bond: 1000 tokens locked for 86400 seconds
     /// let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
@@ -542,6 +549,11 @@ impl CredenceBond {
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
+
+        // Validate inputs
+        validation::validate_bond_amount(amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage(&e, amount, max_leverage);
 
         let bond = IdentityBond {
             identity: identity.clone(),
@@ -583,7 +595,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let identity = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// client.create_bond(&identity, &500_i128, &3600_u64, &false, &0_u64);
     ///
     /// let state = client.get_identity_state();
@@ -626,7 +638,7 @@ impl CredenceBond {
     /// let admin = Address::generate(&e);
     /// let attester = Address::generate(&e);
     /// let subject = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// client.register_attester(&attester);
     ///
     /// let data = String::from_str(&e, "kyc:verified");
@@ -1131,9 +1143,17 @@ impl CredenceBond {
         }
 
         bond.bonded_amount = bond
+        let new_bonded_amount = bond
             .bonded_amount
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+
+        // Validate the new total amount
+        validation::validate_bond_amount(new_bonded_amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage(&e, new_bonded_amount, max_leverage);
+
+        bond.bonded_amount = new_bonded_amount;
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
@@ -1392,6 +1412,41 @@ impl CredenceBond {
         e.storage().instance().get(&DataKey::LiquidationTreasury)
     }
 
+    /// Configure the treasury address that receives slashed funds on every `slash()` call.
+    ///
+    /// Admin-only. Once set, every successful `slash()` that produces a non-zero
+    /// `actual_slash_amount` transfers that amount to this address via the bond's
+    /// configured token. Slashing reverts with `ContractError::TreasuryNotConfigured`
+    /// until this is called.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` when admin is not set.
+    /// - `ContractError::NotAdmin` when caller is not the configured admin.
+    ///
+    /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
+    pub fn set_slash_treasury(e: Env, admin: Address, treasury: Address) {
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::SlashTreasury, &treasury);
+        bump_instance_ttl(&e);
+        e.events()
+            .publish((Symbol::new(&e, "slash_treasury_set"),), (treasury,));
+    }
+
+    /// Read the currently configured slash treasury address, or `None`.
+    pub fn get_slash_treasury(e: Env) -> Option<Address> {
+        e.storage().instance().get(&DataKey::SlashTreasury)
+    }
+
     /// Has a bond been finalized via
     /// [`liquidate`](Self::liquidate)? Read-only, no auth required.
     ///
@@ -1563,7 +1618,7 @@ impl CredenceBond {
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
     /// let callback = Address::generate(&e);
-    /// client.initialize(&admin);
+    /// client.initialize(&admin, &None);
     /// client.set_callback(&callback);
     /// ```
     pub fn set_callback(e: Env, addr: Address) {

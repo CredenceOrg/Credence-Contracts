@@ -28,7 +28,7 @@ mod test_admin_transfer {
         let admin = Address::generate(&e);
         let new_admin = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Propose new admin
         client.propose_admin(&admin, &new_admin);
@@ -54,7 +54,7 @@ mod test_admin_transfer {
         let rogue = Address::generate(&e);
         let new_admin = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&rogue, &new_admin); // should panic
     }
 
@@ -70,7 +70,7 @@ mod test_admin_transfer {
         let new_admin = Address::generate(&e);
         let rogue = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&admin, &new_admin);
 
         e.ledger().with_mut(|l| { l.timestamp = l.timestamp + 86_401; });
@@ -89,7 +89,7 @@ mod test_admin_transfer {
         let admin = Address::generate(&e);
         let new_admin = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&admin, &new_admin);
 
         // Do NOT advance time past timelock
@@ -105,7 +105,7 @@ mod test_admin_transfer {
         let client = crate::CredenceBondClient::new(&e, &contract_id);
 
         let admin = Address::generate(&e);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&admin, &admin); // should panic
     }
 }

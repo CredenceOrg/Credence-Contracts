@@ -25,6 +25,9 @@ use soroban_sdk::{Address, Env};
 
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(e);
+    // Configure a slash treasury so that slash() can transfer slashed funds.
+    let treasury = Address::generate(e);
+    client.set_slash_treasury(&admin, &treasury);
     (client, admin, identity)
 }
 
@@ -46,6 +49,8 @@ fn setup_with_bond_max_mint(
     duration: u64,
 ) -> (CredenceBondClient<'_>, Address, Address) {
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_max_mint(e);
+    let treasury = Address::generate(e);
+    client.set_slash_treasury(&admin, &treasury);
     client.create_bond_with_rolling(&identity, &amount, &duration, &false, &0_u64);
     test_helpers::advance_ledger_sequence(e);
     (client, admin, identity)
@@ -702,4 +707,54 @@ fn test_slash_history_get_all_records() {
     assert_eq!(history.len(), 5);
     assert_eq!(history.get(0).unwrap().slash_amount, 100);
     assert_eq!(history.get(4).unwrap().slash_amount, 500);
+}
+
+// ============================================================================
+// Category 13: Treasury Transfer
+// ============================================================================
+
+/// slash() reverts with TreasuryNotConfigured when no treasury is set.
+/// Bond state must be unchanged after the revert.
+#[test]
+#[should_panic]
+fn test_slash_reverts_when_treasury_not_configured() {
+    let e = Env::default();
+    // Use setup_with_token directly — no set_slash_treasury call.
+    let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    // No treasury configured → must panic.
+    client.slash(&admin, &300_i128);
+}
+
+/// slash() transfers actual_slash_amount tokens to the treasury address.
+#[test]
+fn test_slash_transfers_to_treasury() {
+    let e = Env::default();
+    let (client, admin, identity, token_id, bond_id) = test_helpers::setup_with_token(&e);
+
+    let treasury = Address::generate(&e);
+    client.set_slash_treasury(&admin, &treasury);
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    use soroban_sdk::token::TokenClient;
+    let token = TokenClient::new(&e, &token_id);
+
+    let bond_bal_before = token.balance(&bond_id);
+    let treasury_bal_before = token.balance(&treasury);
+
+    client.slash(&admin, &400_i128);
+
+    let bond_bal_after = token.balance(&bond_id);
+    let treasury_bal_after = token.balance(&treasury);
+
+    // Bond contract sent exactly 400, treasury received exactly 400.
+    assert_eq!(bond_bal_before - bond_bal_after, 400);
+    assert_eq!(treasury_bal_after - treasury_bal_before, 400);
+
+    // Bond state is correct.
+    let bond = client.get_identity_state();
+    assert_eq!(bond.slashed_amount, 400);
 }

@@ -148,6 +148,112 @@ fn test_remove_signer_auto_adjusts_threshold() {
     assert_eq!(client.get_threshold(), 2); // auto-adjusted from 3 to 2
 }
 
+#[test]
+#[should_panic(expected = "Error(Contract, #605)")]
+fn test_remove_signer_invalidates_removed_signature_at_execute() {
+    let e = Env::default();
+    let (client, admin, _) = setup(&e);
+    let mut signers = Vec::new(&e);
+    for _ in 0..4 {
+        signers.push_back(Address::generate(&e));
+    }
+
+    client.initialize(&admin, &signers, &3);
+
+    let proposal_id = client.submit_proposal(
+        &signers.get(0).unwrap(),
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Test proposal"),
+        &0_u64,
+        &None,
+        &BytesN::from_array(&e, &[100; 32]),
+    );
+
+    client.sign_proposal(&signers.get(0).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(1).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(2).unwrap(), &proposal_id);
+
+    client.remove_signer(&admin, &signers.get(2).unwrap());
+
+    assert_eq!(client.get_signer_count(), 3);
+    assert_eq!(client.get_threshold(), 3);
+
+    client.execute_proposal(&proposal_id);
+}
+
+#[test]
+fn test_remove_signer_keeps_proposal_executable_when_threshold_still_met() {
+    let e = Env::default();
+    let (client, admin, _) = setup(&e);
+    let mut signers = Vec::new(&e);
+    for _ in 0..4 {
+        signers.push_back(Address::generate(&e));
+    }
+
+    client.initialize(&admin, &signers, &3);
+
+    let proposal_id = client.submit_proposal(
+        &signers.get(0).unwrap(),
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Test proposal"),
+        &0_u64,
+        &None,
+        &BytesN::from_array(&e, &[101; 32]),
+    );
+
+    client.sign_proposal(&signers.get(0).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(1).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(2).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(3).unwrap(), &proposal_id);
+
+    client.remove_signer(&admin, &signers.get(2).unwrap());
+
+    client.execute_proposal(&proposal_id);
+    let proposal = client.get_proposal(&proposal_id);
+    assert_eq!(proposal.status, ProposalStatus::Executed);
+}
+
+#[test]
+fn test_readd_signer_restores_prior_signature_at_execute() {
+    let e = Env::default();
+    let (client, admin, _) = setup(&e);
+    let mut signers = Vec::new(&e);
+    for _ in 0..4 {
+        signers.push_back(Address::generate(&e));
+    }
+
+    client.initialize(&admin, &signers, &3);
+
+    let proposal_id = client.submit_proposal(
+        &signers.get(0).unwrap(),
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Test proposal"),
+        &0_u64,
+        &None,
+        &BytesN::from_array(&e, &[102; 32]),
+    );
+
+    client.sign_proposal(&signers.get(0).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(1).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(2).unwrap(), &proposal_id);
+
+    client.remove_signer(&admin, &signers.get(2).unwrap());
+    client.add_signer(&admin, &signers.get(2).unwrap());
+
+    client.execute_proposal(&proposal_id);
+    let proposal = client.get_proposal(&proposal_id);
+    assert_eq!(proposal.status, ProposalStatus::Executed);
+}
+
 // ==================== Threshold Tests ====================
 
 #[test]

@@ -14,7 +14,7 @@ mod zero_address_tests {
         let admin = Address::generate(env);
 
         env.mock_all_auths();
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         (client, contract_address, admin)
     }
@@ -183,7 +183,7 @@ mod zero_address_tests {
         let contract_address2 = env.register(CredenceBond, ());
         let client2 = CredenceBondClient::new(&env, &contract_address2);
         let admin2 = Address::generate(&env);
-        client2.initialize(&admin2);
+        client2.initialize(&admin2, &None);
 
         client2.set_usdc_token(&admin2, &token, &network);
     }

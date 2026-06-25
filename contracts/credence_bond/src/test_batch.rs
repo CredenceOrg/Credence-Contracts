@@ -34,7 +34,7 @@ fn batch_create_cost(n: u32) -> (u64, u64) {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, n);
 
@@ -53,7 +53,7 @@ fn test_create_single_bond_in_batch() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -130,7 +130,7 @@ fn test_create_batch_bonds_at_max_batch_size() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE);
     let result = client.create_batch_bonds(&params_list);
@@ -147,7 +147,7 @@ fn test_create_batch_bonds_above_max_batch_size_fails() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE + 1);
     client.create_batch_bonds(&params_list);
@@ -161,7 +161,7 @@ fn test_empty_batch_fails() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = Vec::new(&env);
     client.create_batch_bonds(&params_list);
@@ -175,7 +175,7 @@ fn test_negative_amount_fails() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -199,7 +199,7 @@ fn test_zero_amount_fails() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -223,7 +223,7 @@ fn test_duration_overflow_fails() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -252,7 +252,7 @@ fn test_rolling_bond_without_notice_period_fails() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -275,7 +275,7 @@ fn test_validate_batch_bonds_success() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -300,7 +300,7 @@ fn test_validate_batch_bonds_fails_on_invalid() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -323,7 +323,7 @@ fn test_get_batch_total_amount() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&env);
     let identity2 = Address::generate(&env);
@@ -385,7 +385,7 @@ fn test_batch_total_overflow() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&env);
     let identity2 = Address::generate(&env);
@@ -440,7 +440,7 @@ fn test_batch_with_rolling_bonds() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -471,7 +471,7 @@ fn test_atomic_failure_on_second_bond() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&env);
     let identity2 = Address::generate(&env);
@@ -517,7 +517,7 @@ fn test_atomic_failure_validation_order() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -560,7 +560,7 @@ fn test_atomic_failure_with_mixed_valid_invalid_amounts() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -612,7 +612,7 @@ fn test_atomic_failure_with_invalid_rolling_bond_in_batch() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -646,7 +646,7 @@ fn test_atomic_failure_with_duration_overflow_in_middle() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Set high timestamp
     env.ledger().with_mut(|li| {
@@ -684,7 +684,7 @@ fn test_batch_size_boundary_at_max_minus_one() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE - 1);
     let result = client.create_batch_bonds(&params_list);
@@ -699,7 +699,7 @@ fn test_batch_size_boundary_at_one() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, 1);
     let result = client.create_batch_bonds(&params_list);
@@ -715,7 +715,7 @@ fn test_batch_size_boundary_at_max_plus_one() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE + 1);
     client.create_batch_bonds(&params_list);
@@ -729,7 +729,7 @@ fn test_batch_size_boundary_way_above_max() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE * 2);
     client.create_batch_bonds(&params_list);
@@ -742,7 +742,7 @@ fn test_validate_batch_enforces_max_size() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE);
     let is_valid = client.validate_batch_bonds(&params_list);
@@ -757,7 +757,7 @@ fn test_validate_batch_rejects_oversized() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE + 1);
     client.validate_batch_bonds(&params_list);
@@ -770,7 +770,7 @@ fn test_all_bonds_validated_before_any_created() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -845,7 +845,7 @@ fn test_batch_with_large_amounts() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -871,7 +871,7 @@ fn test_batch_with_minimum_valid_amount() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -897,7 +897,7 @@ fn test_batch_with_minimum_valid_duration() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -923,7 +923,7 @@ fn test_batch_with_maximum_valid_duration() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let mut params_list = Vec::new(&env);
 
@@ -952,7 +952,7 @@ fn test_validation_order_size_before_content() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Create oversized batch with invalid content
     let mut params_list = Vec::new(&env);
@@ -982,7 +982,7 @@ fn test_empty_batch_fails_before_size_check() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = Vec::new(&env);
 
@@ -1000,7 +1000,7 @@ fn test_batch_result_structure() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, 3);
     let result = client.create_batch_bonds(&params_list);
@@ -1025,7 +1025,7 @@ fn test_batch_bonds_event_emission() {
     let contract_id = env.register(CredenceBond, ());
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let params_list = build_valid_batch(&env, 2);
     let result = client.create_batch_bonds(&params_list);

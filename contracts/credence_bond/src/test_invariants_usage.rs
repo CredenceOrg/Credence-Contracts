@@ -30,7 +30,7 @@ fn setup() -> Ctx<'static> {
     let client = CredenceBondClient::new(&env, &contract);
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     Ctx {
         env,
         client,

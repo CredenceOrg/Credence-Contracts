@@ -82,7 +82,7 @@ fn test_valid_transition_voting_to_resolved() {
 fn test_valid_transition_voting_to_cancelled_by_creator() {
     let s = setup();
     let id = open_dispute(&s);
-    s.client.cancel_dispute(&s.creator, &id);
+    s.client.cancel_dispute(&s.creator, &id, &None);
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Cancelled);
 }
@@ -91,7 +91,7 @@ fn test_valid_transition_voting_to_cancelled_by_creator() {
 fn test_valid_transition_voting_to_cancelled_by_admin() {
     let s = setup();
     let id = open_dispute(&s);
-    s.client.cancel_dispute(&s.admin, &id);
+    s.client.cancel_dispute(&s.admin, &id, &None);
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Cancelled);
 }
@@ -132,7 +132,7 @@ fn test_invalid_resolve_already_resolved() {
 fn test_invalid_resolve_cancelled_dispute() {
     let s = setup();
     let id = open_dispute(&s);
-    s.client.cancel_dispute(&s.creator, &id);
+    s.client.cancel_dispute(&s.creator, &id, &None);
     // Cancelled → Resolving is not valid
     let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
@@ -147,7 +147,7 @@ fn test_invalid_cancel_already_resolved() {
     // Resolved → Cancelled is not valid
     let err = s
         .client
-        .try_cancel_dispute(&s.creator, &id)
+        .try_cancel_dispute(&s.creator, &id, &None)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
@@ -157,11 +157,11 @@ fn test_invalid_cancel_already_resolved() {
 fn test_invalid_cancel_already_cancelled() {
     let s = setup();
     let id = open_dispute(&s);
-    s.client.cancel_dispute(&s.creator, &id);
+    s.client.cancel_dispute(&s.creator, &id, &None);
     // Cancelled → Cancelled is not valid
     let err = s
         .client
-        .try_cancel_dispute(&s.creator, &id)
+        .try_cancel_dispute(&s.creator, &id, &None)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
@@ -171,7 +171,7 @@ fn test_invalid_cancel_already_cancelled() {
 fn test_invalid_vote_on_cancelled_dispute() {
     let s = setup();
     let id = open_dispute(&s);
-    s.client.cancel_dispute(&s.creator, &id);
+    s.client.cancel_dispute(&s.creator, &id, &None);
     let err = s.client.try_vote(&s.arb, &id, &1).unwrap_err().unwrap();
     assert_eq!(err, ArbitrationError::VotingInactive);
 }
@@ -202,7 +202,7 @@ fn test_invalid_cancel_by_non_creator_non_admin() {
     let stranger = Address::generate(&s.env);
     let err = s
         .client
-        .try_cancel_dispute(&stranger, &id)
+        .try_cancel_dispute(&stranger, &id, &None)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, ArbitrationError::NotAuthorized);
@@ -366,4 +366,41 @@ fn test_status_machine_all_invalid_transitions() {
             to
         );
     }
+}
+
+#[test]
+fn test_cancel_with_reason_and_role() {
+    let s = setup();
+    let id = open_dispute(&s);
+    let reason = Some(String::from_str(&s.env, "Dispute invalid"));
+    s.client.cancel_dispute(&s.creator, &id, &reason);
+    
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, DisputeStatus::Cancelled);
+    assert_eq!(d.cancellation_reason, reason);
+    assert_eq!(d.cancelled_by_role, Some(soroban_sdk::Symbol::short("creator")));
+}
+
+#[test]
+fn test_cancel_admin_role() {
+    let s = setup();
+    let id = open_dispute(&s);
+    let reason = Some(String::from_str(&s.env, "Admin override"));
+    s.client.cancel_dispute(&s.admin, &id, &reason);
+    
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, DisputeStatus::Cancelled);
+    assert_eq!(d.cancelled_by_role, Some(soroban_sdk::Symbol::short("admin")));
+}
+
+#[test]
+fn test_cancel_reason_too_long() {
+    let s = setup();
+    let id = open_dispute(&s);
+    // Create a string of length 257
+    let arr = [b'A'; 257];
+    let long_str = core::str::from_utf8(&arr).unwrap();
+    let reason = Some(soroban_sdk::String::from_str(&s.env, long_str));
+    let err = s.client.try_cancel_dispute(&s.creator, &id, &reason).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::ReasonTooLong);
 }
