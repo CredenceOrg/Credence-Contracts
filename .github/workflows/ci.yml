@@ -7,6 +7,12 @@ on:
     branches: [main, master, develop, 'feature/**']
   pull_request:
     branches: [main, master, develop]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'contracts/**'
+      - 'crates/**'
+      - '.github/workflows/ci.yml'
 
 env:
   CARGO_TERM_COLOR: always
