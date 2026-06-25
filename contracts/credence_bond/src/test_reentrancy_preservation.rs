@@ -1,4 +1,4 @@
-//! Preservation Property Tests - Non-Reentrant Withdrawal Behavior
+﻿//! Preservation Property Tests - Non-Reentrant Withdrawal Behavior
 //!
 //! **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5**
 //!
@@ -221,7 +221,7 @@ fn property_withdraw_early_penalty_calculations_preserved() {
         let expected_net = withdraw_amount - penalty;
 
         // Perform early withdrawal
-        let after_bond = client.withdraw_early(&withdraw_amount);
+        let after_bond = client.withdraw_early(&identity, &withdraw_amount);
 
         // Verify balance updates
         assert_eq!(
@@ -339,7 +339,7 @@ fn property_withdraw_early_after_lockup_error_preserved() {
     });
 
     // Attempt early withdrawal after lock-up - should panic with specific message
-    client.withdraw_early(&500_i128);
+    client.withdraw_early(&identity, &500_i128);
 }
 
 #[test]

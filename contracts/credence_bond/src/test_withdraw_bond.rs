@@ -1,4 +1,4 @@
-//! Comprehensive tests for withdraw_bond functionality.
+﻿//! Comprehensive tests for withdraw_bond functionality.
 //! Covers: lock-up enforcement, cooldown (notice period), partial withdrawals,
 //! insufficient balance, slashing interaction, and edge cases.
 
@@ -104,7 +104,7 @@ fn test_withdraw_bond_rolling_before_cooldown_panics() {
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &true, &10_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     e.ledger().with_mut(|li| li.timestamp = 1005);
 
     client.withdraw_bond(&500);
@@ -117,7 +117,7 @@ fn test_withdraw_bond_rolling_after_cooldown() {
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &true, &10_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     e.ledger().with_mut(|li| li.timestamp = 1011);
 
     let bond = client.withdraw_bond(&500);
@@ -209,7 +209,7 @@ fn test_withdraw_alias_calls_withdraw_bond() {
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
-    let bond = client.withdraw(&500);
+    let bond = client.withdraw(&identity, &500);
     assert_eq!(bond.bonded_amount, 500);
 }
 
@@ -305,7 +305,7 @@ fn test_withdraw_early_before_lockup_applies_penalty() {
     client.create_bond_with_rolling(&identity, &10_000_i128, &86_400_u64, &false, &0_u64);
     // Still within lockup
     e.ledger().with_mut(|li| li.timestamp = 44_200);
-    let bond = client.withdraw_early(&5_000_i128);
+    let bond = client.withdraw_early(&identity, &5_000_i128);
     // bonded_amount reduced by 5_000
     assert_eq!(bond.bonded_amount, 5_000);
 }
@@ -324,7 +324,7 @@ fn test_withdraw_early_after_lockup_panics() {
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     // Past lockup end
     e.ledger().with_mut(|li| li.timestamp = 90_000);
-    client.withdraw_early(&500_i128);
+    client.withdraw_early(&identity, &500_i128);
 }
 
 /// withdraw_early with no early-exit config set must panic.
@@ -338,7 +338,7 @@ fn test_withdraw_early_without_config_panics() {
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     // Still within lockup, but no early exit config
     e.ledger().with_mut(|li| li.timestamp = 44_200);
-    client.withdraw_early(&500_i128);
+    client.withdraw_early(&identity, &500_i128);
 }
 
 /// withdraw_early with amount exceeding available balance must panic.
@@ -354,7 +354,7 @@ fn test_withdraw_early_insufficient_balance_panics() {
 
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     e.ledger().with_mut(|li| li.timestamp = 44_200);
-    client.withdraw_early(&9_999_i128); // more than bonded
+    client.withdraw_early(&identity, &9_999_i128); // more than bonded
 }
 
 /// withdraw_bond on a rolling bond at exact cooldown boundary succeeds.
@@ -366,7 +366,7 @@ fn test_withdraw_bond_rolling_at_exact_cooldown_boundary() {
 
     // notice_period = 100 seconds
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &true, &100_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // requested_at = 1_000; can withdraw at 1_000 + 100 = 1_100
     e.ledger().with_mut(|li| li.timestamp = 1_100);
     let bond = client.withdraw_bond(&500);
@@ -382,7 +382,7 @@ fn test_withdraw_bond_rolling_one_second_before_cooldown_panics() {
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &true, &100_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // one second before cooldown expires
     e.ledger().with_mut(|li| li.timestamp = 1_099);
     client.withdraw_bond(&500);

@@ -1,4 +1,4 @@
-//! Tests for the bond status snapshot helper (issue #275).
+﻿//! Tests for the bond status snapshot helper (issue #275).
 //!
 //! Coverage targets:
 //! - Tier derivation for all four tiers
@@ -85,7 +85,7 @@ fn test_snapshot_cooldown_active() {
     client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
     // Request withdrawal at t=1000; cooldown ends at t=4600
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Still at t=1000 → 3600 s remaining
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.cooldown_remaining_secs, 3600);
@@ -98,7 +98,7 @@ fn test_snapshot_cooldown_partially_elapsed() {
     let (client, admin, identity, ..) = setup(&e);
     client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Advance 1800 s → 1800 s remaining
     e.ledger().with_mut(|li| li.timestamp = 2800);
     let snap = client.get_bond_status_snapshot();
@@ -112,7 +112,7 @@ fn test_snapshot_cooldown_elapsed() {
     let (client, admin, identity, ..) = setup(&e);
     client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Advance past cooldown end
     e.ledger().with_mut(|li| li.timestamp = 4601);
     let snap = client.get_bond_status_snapshot();
@@ -252,7 +252,7 @@ fn test_snapshot_combined_state() {
     );
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &1_000_000_000_i128);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
 
     // Advance 500 s into the 2000 s cooldown
     e.ledger().with_mut(|li| li.timestamp = 5500);
@@ -332,7 +332,7 @@ fn test_snapshot_tier_updates_after_top_up() {
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Bronze);
 
     // Top up to Silver
-    client.top_up(&500_000_000_i128);
+    client.top_up(&identity, &500_000_000_i128);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Silver);
 }
 
@@ -345,7 +345,7 @@ fn test_snapshot_cooldown_exactly_at_end() {
     let (client, admin, identity, ..) = setup(&e);
     client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Exactly at end (t = 1000 + 3600 = 4600) → elapsed, remaining = 0
     e.ledger().with_mut(|li| li.timestamp = 4600);
     let snap = client.get_bond_status_snapshot();

@@ -1,4 +1,4 @@
-/// Tests for rejection of fee-on-transfer tokens and balance-delta verification.
+﻿/// Tests for rejection of fee-on-transfer tokens and balance-delta verification.
 ///
 /// Fee-on-transfer tokens (e.g., some ERC20 variants) charge a fee when tokens are transferred,
 /// resulting in the recipient receiving less than the transfer amount specified in the call.
@@ -71,7 +71,7 @@ fn standard_token_withdrawal_works() {
 
     // Request withdrawal (for rolling bond)
     env.mock_all_auths();
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
 
     // Withdraw after cooldown for rolling bonds
     env.ledger()

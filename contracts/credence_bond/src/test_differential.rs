@@ -1,4 +1,4 @@
-//! Regression guard for the canonical bond implementation.
+﻿//! Regression guard for the canonical bond implementation.
 //!
 //! # What changed (see docs/bond-crate-layout.md)
 //! The previous harness ran four live fork contracts in lock-step and asserted
@@ -107,7 +107,7 @@ fn scenario_full_bond_lifecycle() {
 
     // Advance past lock-up: bond_start=0, duration=10_000, now=10_001.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&2_000_i128);
+    c.withdraw(&identity, &2_000_i128);
     assert_pinned(
         "after_first_withdraw",
         &c.get_identity_state(),
@@ -151,7 +151,7 @@ fn scenario_full_bond_lifecycle() {
 
     // Second withdrawal: available = bonded - slashed = 4000 - 700 = 3300.
     env.ledger().with_mut(|l| l.timestamp = 20_001);
-    c.withdraw(&3_300_i128);
+    c.withdraw(&identity, &3_300_i128);
     assert_pinned(
         "final",
         &c.get_identity_state(),
@@ -222,7 +222,7 @@ fn scenario_rolling_bond_with_renewal() {
 
     // Advance to end of renewed period: 5_001 + 5_000 = 10_001.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&10_000_i128);
+    c.withdraw(&identity, &10_000_i128);
     assert_pinned(
         "after_partial_withdraw",
         &c.get_identity_state(),
@@ -276,7 +276,7 @@ fn scenario_early_exit_and_penalty() {
 
     // Past expiry: withdraw remaining available balance.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&8_000_i128);
+    c.withdraw(&identity, &8_000_i128);
     assert_pinned(
         "after_final_withdraw",
         &c.get_identity_state(),

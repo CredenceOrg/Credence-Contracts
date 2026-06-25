@@ -1,4 +1,4 @@
-#![cfg(test)]
+﻿#![cfg(test)]
 
 use std::vec::Vec;
 
@@ -114,7 +114,7 @@ fn test_v2_event_indexing_improvements() {
     ledger_info.timestamp += duration + 1;
     e.ledger().set(ledger_info);
 
-    client.withdraw(&withdraw_amount);
+    client.withdraw(&identity, &withdraw_amount);
 
     let events = e.events().all();
 
@@ -167,7 +167,7 @@ fn test_v2_event_indexing_improvements() {
     let top_up_amount = 5_000_i128;
     let expected_total_after_top_up = 12_000_i128;
 
-    client.top_up(&top_up_amount);
+    client.top_up(&identity, &top_up_amount);
 
     let events = e.events().all();
 

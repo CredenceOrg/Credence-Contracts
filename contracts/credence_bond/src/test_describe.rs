@@ -149,7 +149,7 @@ fn test_describe_bond_reflects_top_up() {
     let identity = Address::generate(&e);
 
     client.create_bond(&identity, &500_i128, &3600_u64, &false, &0_u64);
-    client.top_up(&250_i128);
+    client.top_up(&identity, &250_i128);
 
     let view = client.describe_bond(&identity).unwrap();
     assert_eq!(view.bonded_amount, 750);
@@ -182,7 +182,7 @@ fn test_describe_bond_reflects_request_withdrawal() {
     // Advance the ledger clock so the recorded request timestamp is non-zero
     // (Env::default() starts at timestamp 0).
     e.ledger().with_mut(|l| l.timestamp = 1_000);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
 
     let view = client.describe_bond(&identity).unwrap();
     assert!(view.is_rolling);
@@ -202,7 +202,7 @@ fn test_describe_bond_reflects_partial_withdraw() {
     info.timestamp += 3601;
     e.ledger().set(info);
 
-    client.withdraw(&400_i128);
+    client.withdraw(&identity, &400_i128);
 
     let view = client.describe_bond(&identity).unwrap();
     assert_eq!(view.bonded_amount, 600);
