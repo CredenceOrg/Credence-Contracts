@@ -27,6 +27,13 @@ pub use domain::{DelegatedActionPayload, DomainTag};
 pub use pausable::PauseProposalView;
 pub use verifier::SchemeTag;
 
+/// Monotonic counter for intentional on-chain ABI (`contractspecv0`) changes.
+///
+/// Increment this whenever the pinned spec snapshot in
+/// `tests/spec_xdr_regression.rs` is refreshed so CI can distinguish deliberate
+/// interface bumps from accidental drift.
+pub const CONTRACT_SPEC_VERSION: u32 = 1;
+
 // ---------------------------------------------------------------------------
 // Contract types
 // ---------------------------------------------------------------------------

@@ -139,6 +139,9 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
+    /// Governance-controlled flag: when `true`, new bond creation and top-ups
+    /// are blocked. Value: `bool`.
+    BorrowFrozen,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
