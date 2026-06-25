@@ -581,7 +581,8 @@ impl ErrorExt for ContractError {
             | ContractError::BondContractNotRegistered
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
-            | ContractError::InvalidContractAddress => ErrorCategory::Registry,
+            | ContractError::InvalidContractAddress
+            | ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
 
             ContractError::ExpiryInPast
             | ContractError::DelegationNotFound
@@ -680,6 +681,9 @@ impl ErrorExt for ContractError {
             ContractError::AlreadyActive => "Record is already in the active state",
             ContractError::InvalidContractAddress => {
                 "Provided contract address is not a deployed contract"
+            }
+            ContractError::ContractCodeVerificationFailed => {
+                "Contract code hash verification failed during trustless registration"
             }
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
@@ -820,7 +824,8 @@ impl ErrorExt for ContractError {
             | ContractError::BondContractNotRegistered
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
-            | ContractError::InvalidContractAddress => true,
+            | ContractError::InvalidContractAddress
+            | ContractError::ContractCodeVerificationFailed => true,
 
             // --- Delegation (500-599): mostly caller-fixable ---
             ContractError::ExpiryInPast                // supply a future expiry
@@ -828,7 +833,8 @@ impl ErrorExt for ContractError {
             | ContractError::AlreadyRevoked            // idempotent
             | ContractError::DelegationExpiryTooLong   // shorten to MAX_DURATION
             | ContractError::VerifierAlreadyRegistered // idempotent
-            | ContractError::VerifierNotRegistered => true,
+            | ContractError::VerifierNotRegistered
+            | ContractError::DelegationNotExpired => true,
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build

@@ -27,7 +27,8 @@ struct PrivilegedCase {
 
 fn invoke_transfer_admin(env: &Env, client: &CredenceBondClient<'_>, caller: &Address) {
     let new_admin = Address::generate(env);
-    let args = (caller.clone(), new_admin.clone()).into_val(env);
+    let args: soroban_sdk::Vec<soroban_sdk::Val> =
+        (caller.clone(), new_admin.clone()).into_val(env);
     env.mock_auths(&[
         soroban_sdk::testutils::MockAuth {
             address: caller,
@@ -283,7 +284,8 @@ fn test_transfer_admin_rotates_admin_and_rejects_old_admin() {
     let new_admin = Address::generate(&env);
     let treasury = Address::generate(&env);
 
-    let args = (admin.clone(), new_admin.clone()).into_val(&env);
+    let args: soroban_sdk::Vec<soroban_sdk::Val> =
+        (admin.clone(), new_admin.clone()).into_val(&env);
     env.mock_auths(&[
         soroban_sdk::testutils::MockAuth {
             address: &admin,

@@ -251,11 +251,19 @@ fn scenario_early_exit_and_penalty() {
     let identity = Address::generate(&env);
     let treasury = Address::generate(&env);
     c.initialize(&admin);
+
+    // Configure a mock token for the test environment.
+    let token_id = env.register(crate::test_helpers::MockStellarAsset, ());
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+    token_admin.mint(&identity, &20_000_i128); // Mint enough for bond + fees
+    c.set_token(&admin, &token_id);
+    let token_client = soroban_sdk::token::Client::new(&env, &token_id);
+    token_client.approve(&identity, &id, &20_000_i128, &99999);
+
     // 500 bps = 5% max penalty (time-decayed).
     c.set_early_exit_config(&admin, &treasury, &500_u32);
 
     c.create_bond(&identity, &10_000_i128, &10_000_u64, &false, &0_u64);
-
     // Half-way through: remaining = 5_000, duration = 10_000.
     // penalty = 2_000 * (500/10_000) * (5_000/10_000) = 50
     // bonded_amount decreases by amount (2_000), not by (amount - penalty).

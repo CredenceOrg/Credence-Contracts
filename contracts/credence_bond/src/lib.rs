@@ -9,10 +9,12 @@ mod math;
 mod migration;
 mod nonce;
 mod rolling_bond;
+mod safe_token;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
 mod tiered_bond;
+mod token_integration;
 mod upgrade_auth;
 mod weighted_attestation;
 
@@ -272,27 +274,32 @@ impl CredenceBond {
     /// let contract_id = e.register(CredenceBond, ());
     /// let client = CredenceBondClient::new(&e, &contract_id);
     /// let admin = Address::generate(&e);
-    /// client.initialize(&admin, None);  // or Some(registry_address) for trustless binding
+    /// client.initialize(&admin);
     /// ```
-    pub fn initialize(e: Env, admin: Address, registry_address: Option<Address>) {
+    pub fn initialize(e: Env, admin: Address) {
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+    }
 
-        // If a registry address is provided, attempt trustless self-registration.
-        // This removes the trust assumption that an admin must manually register the bond.
-        if let Some(registry) = registry_address {
-            // The bond calls the registry's register_trustless function with its identity.
-            // The identity is derived from the admin address for this reference implementation.
-            // In production, this could be a separate identity parameter.
-            let _ = e.invoke_contract::<()>(
-                &registry,
-                &Symbol::new(&e, "register_trustless"),
-                soroban_sdk::vec![&e, admin.into_val(&e)],
-            );
-            // Ignore errors during registration to maintain backward compatibility
-            // and allow bonds to be initialized without a registry.
-        }
+    /// Initialize and attempt trustless self-registration with a registry.
+    pub fn initialize_with_registry(e: Env, admin: Address, registry: Address) {
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &admin);
+        let _ = e.invoke_contract::<()>(
+            &registry,
+            &Symbol::new(&e, "register_trustless"),
+            soroban_sdk::vec![&e, admin.into_val(&e)],
+        );
+    }
+
+    /// Configure the token contract used for bond custody and withdrawals.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` when admin is not set.
+    /// - `ContractError::NotAdmin` when caller is not the configured admin.
+    pub fn set_token(e: Env, admin: Address, token: Address) {
+        token_integration::set_token(&e, &admin, &token);
     }
 
     /// Return a structured snapshot of all contract configuration.
@@ -526,6 +533,9 @@ impl CredenceBond {
     ) -> IdentityBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
+        if token_integration::has_token(&e) {
+            token_integration::transfer_into_contract(&e, &identity, amount);
+        }
         // chaos: ledger timestamp can be manipulated in tests to verify duration invariants.
         let bond_start = e.ledger().timestamp();
 
@@ -839,10 +849,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::AdminUnchanged);
         }
 
-        let zero_str = soroban_sdk::String::from_str(
-            &e,
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        );
+        let zero_str =
+            soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         if new_admin.to_string() == zero_str {
             panic_with_error!(e, ContractError::InvalidAdminAddress);
         }
@@ -916,6 +924,15 @@ impl CredenceBond {
     }
 
     /// Withdraw before lock-up end; applies a time-decayed penalty.
+    ///
+    /// Errors:
+    /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
+    ///   configuration exists. The call will revert instead of silently dropping
+    ///   the penalty amount.
+    /// - `ContractError::Underflow` if arithmetic underflows.
+    /// - `ContractError::Overflow` if arithmetic overflows.
+    /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
+    ///   the gross withdrawal exactly into treasury penalty plus identity payout.
     pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
@@ -939,7 +956,13 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::LockupNotExpired);
         }
 
-        let (treasury, penalty_bps) = early_exit_penalty::get_config(&e);
+        // Require configured treasury + penalty rate before charging users. This prevents
+        // penalties from being silently dropped.
+        let cfg = early_exit_penalty::get_config(&e)
+            .unwrap_or_else(|_| panic_with_error!(e, ContractError::EarlyExitConfigNotSet));
+        let treasury = cfg.treasury.clone();
+        let penalty_bps = cfg.penalty_bps;
+
         let remaining = end.saturating_sub(now);
         let penalty = early_exit_penalty::calculate_penalty(
             amount,
@@ -947,7 +970,19 @@ impl CredenceBond {
             bond.bond_duration,
             penalty_bps,
         );
-        early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
+
+        // Use checked subtraction to ensure arithmetic correctness: penalty + net == amount
+        let net_amount = amount
+            .checked_sub(penalty)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
+        let split_total = net_amount
+            .checked_add(penalty)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+        if penalty < 0 || penalty > amount || split_total != amount {
+            panic_with_error!(e, ContractError::InvariantViolation);
+        }
+
+        early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &cfg.treasury);
 
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         bond.bonded_amount = bond
@@ -962,6 +997,22 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+
+        // Perform token transfers within the reentrancy guard
+        Self::acquire_lock(&e);
+        if penalty > 0 {
+            crate::token_integration::transfer_from_contract_with_source(
+                &e,
+                &treasury,
+                penalty, // penalty is transferred to treasury
+                crate::token_integration::FundSource::ProtocolFee,
+            );
+        }
+        if net_amount > 0 {
+            crate::token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
+        }
+        Self::release_lock(&e);
+
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -1066,6 +1117,10 @@ impl CredenceBond {
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+
+        if token_integration::has_token(&e) {
+            token_integration::transfer_into_contract(&e, &bond.identity, amount);
+        }
 
         bond.bonded_amount = bond
             .bonded_amount
@@ -1809,12 +1864,43 @@ mod tests {
 }
 
 #[cfg(test)]
+mod test_early_exit_treasury_requirement {
+    use super::*;
+    use crate::test_helpers;
+    use soroban_sdk::testutils::Ledger as _;
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #210)")] // EarlyExitConfigNotSet
+    fn withdraw_early_panics_if_config_not_set() {
+        let e = Env::default();
+        let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+
+        // Create a bond but DO NOT set early exit config
+        client.create_bond(&identity, &10_000, &3600, &false, &0);
+
+        // Advance time slightly, but still within lockup
+        let mut ledger_info = e.ledger().get();
+        ledger_info.timestamp += 100;
+        e.ledger().set(ledger_info);
+
+        // This should panic because the early exit config (and thus treasury) is not set.
+        client.withdraw_early(&1000);
+    }
+}
+
+#[cfg(test)]
 mod test_bond_drift;
 
 /// Precision-loss regression tests for the early-exit penalty time-decay
 /// formula (dust-amount zero-penalty exploit).
 #[cfg(test)]
 mod test_early_exit_precision;
+
+#[cfg(test)]
+mod test_early_exit_penalty;
+
+#[cfg(test)]
+mod test_helpers;
 
 /// Deliberately-divergent contract used by `test_differential` to verify the
 /// harness detects behavioural divergence.  Never shipped to mainnet.

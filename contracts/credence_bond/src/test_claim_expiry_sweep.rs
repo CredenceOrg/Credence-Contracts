@@ -36,10 +36,10 @@ fn test_expire_claims_no_expired() {
     env.mock_all_auths();
     let (_client, _admin, _contract_id) = setup_with_contract(&env);
     let user = Address::generate(&env);
-    let now = env.ledger().timestamp();
+    let _now = env.ledger().timestamp();
 
     // Add a claim that expires far in the future
-    let claim_id = claims::add_pending_claim(
+    let _claim_id = claims::add_pending_claim(
         &env,
         &user,
         ClaimType::VerifierReward,

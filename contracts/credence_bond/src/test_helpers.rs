@@ -12,7 +12,10 @@ impl MockStellarAsset {
         18
     }
     pub fn balance(e: Env, id: Address) -> i128 {
-        e.storage().instance().get(&id).unwrap_or(10_000_000_000_000_000_000_000_000_000_i128)
+        e.storage()
+            .instance()
+            .get(&id)
+            .unwrap_or(10_000_000_000_000_000_000_000_000_000_i128)
     }
     pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
         let from_bal = Self::balance(e.clone(), from.clone());

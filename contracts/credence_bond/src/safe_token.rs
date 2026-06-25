@@ -205,12 +205,8 @@ pub fn force_approve(e: &Env, spender: &Address, amount: i128) {
 
 /// Updates state ONLY if the transfer works. No half-finished updates.
 /// If transfer fails, the state update never runs.
-pub fn atomic_transfer_and_update<F>(
-    e: &Env,
-    recipient: &Address,
-    amount: i128,
-    state_update: F,
-) where
+pub fn atomic_transfer_and_update<F>(e: &Env, recipient: &Address, amount: i128, state_update: F)
+where
     F: FnOnce() -> (),
 {
     validate_amount(amount);
