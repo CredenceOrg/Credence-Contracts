@@ -48,6 +48,10 @@ mod test_liquidate;
 #[cfg(test)]
 mod test_claim_expiry_sweep;
 
+/// Authentication boundary tests — every non-view fn must require an auth'd address.
+#[cfg(test)]
+mod test_auth;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,

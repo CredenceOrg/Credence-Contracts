@@ -652,3 +652,6 @@ mod test_pausable;
 
 #[cfg(test)]
 mod test_lifecycle;
+
+#[cfg(test)]
+mod test_auth;
