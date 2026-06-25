@@ -313,6 +313,24 @@ mod tests {
     }
 
     #[test]
+    fn test_execute_operation_times_out_after_grace_period() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[6; 32]);
+        let delay = 86_400;
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
+
+        let op = client.get_operation(&op_id).unwrap();
+        assert_eq!(op.status, OperationStatus::Pending);
+        assert!(!client.is_operation_executed(&op_hash));
+    }
+
+    #[test]
     fn test_replay_guard() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[3; 32]);
