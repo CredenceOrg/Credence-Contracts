@@ -9,6 +9,12 @@ on:
     branches: [main, master, develop]
   pull_request:
     branches: [main, master, develop]
+    paths:
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'contracts/**'
+      - 'crates/**'
+      - '.github/workflows/security.yml'
   # Allow manual trigger for ad-hoc scans
   workflow_dispatch:
 
