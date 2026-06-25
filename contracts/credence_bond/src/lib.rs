@@ -851,10 +851,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::AdminUnchanged);
         }
 
-        let zero_str = soroban_sdk::String::from_str(
-            &e,
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        );
+        let zero_str =
+            soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         if new_admin.to_string() == zero_str {
             panic_with_error!(e, ContractError::InvalidAdminAddress);
         }

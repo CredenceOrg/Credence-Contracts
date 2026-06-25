@@ -259,19 +259,19 @@ fn test_expiry_pattern() {
 
     let owner = Address::generate(&e);
     let now = e.ledger().timestamp();
-    
+
     // Set a record that expires in 100 seconds
     client.set_record(&owner, &100, &(now + 100));
-    
+
     assert!(client.has_record(&owner));
     assert!(!client.is_expired(&owner));
-    
+
     // Advance exactly to expiry
     advance_time(&e, 100);
-    
+
     assert!(client.is_expired(&owner));
     assert!(!client.has_record(&owner)); // has_record should purge and return false
-    
+
     // Now it's truly gone
     assert!(!client.is_expired(&owner));
 }

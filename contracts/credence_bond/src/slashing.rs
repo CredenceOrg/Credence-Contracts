@@ -15,8 +15,8 @@
 //! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
 //! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
 
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 use credence_errors::ContractError;
+use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 
 /// Storage key for tracking accumulated slashed funds (for treasury transfer purposes).
 /// Not currently used for fund transfers in this implementation, but reserved for future use.
@@ -323,9 +323,7 @@ fn transfer_slashed_funds_to_treasury(e: &Env, amount: i128) {
         .storage()
         .instance()
         .get(&crate::DataKey::SlashTreasury)
-        .unwrap_or_else(|| {
-            panic_with_error!(e, ContractError::TreasuryNotConfigured)
-        });
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::TreasuryNotConfigured));
     let token_addr: Address = e
         .storage()
         .instance()

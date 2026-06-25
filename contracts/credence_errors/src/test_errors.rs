@@ -1126,8 +1126,8 @@ mod tests {
     fn expected_is_recoverable(e: ContractError) -> bool {
         match e {
             // Initialization: caller fixes setup state.
-            ContractError::NotInitialized => true,             // init first
-            ContractError::AlreadyInitialized => true,         // idempotent
+            ContractError::NotInitialized => true, // init first
+            ContractError::AlreadyInitialized => true, // idempotent
 
             // Authorization: switch signer/role.
             ContractError::NotAdmin => true,
@@ -1136,29 +1136,29 @@ mod tests {
             ContractError::NotOriginalAttester => true,
             ContractError::NotSigner => true,
             ContractError::UnauthorizedDepositor => true,
-            ContractError::ContractPaused => true,             // wait for unpause
+            ContractError::ContractPaused => true, // wait for unpause
             ContractError::InvalidPauseAction => true,
-            ContractError::InsufficientSignatures => true,     // gather more sigs
-            ContractError::AdminSuspended => true,             // wait for suspension
+            ContractError::InsufficientSignatures => true, // gather more sigs
+            ContractError::AdminSuspended => true, // wait for suspension
 
             // Admin Transfer: state-step fixes.
             ContractError::NoPendingAdmin => true,
             ContractError::InvalidAdminAddress => true,
             ContractError::AdminUnchanged => true,
-            ContractError::TimelockNotReady => true,           // wait for delay
+            ContractError::TimelockNotReady => true, // wait for delay
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
             ContractError::BondNotActive => true,
             ContractError::InsufficientBalance => true,
             ContractError::SlashExceedsBond => true,
-            ContractError::StorageCapReached => false,         // caller cannot free capacity; only operator prune fixes it
+            ContractError::StorageCapReached => false, // caller cannot free capacity; only operator prune fixes it
             ContractError::LockupNotExpired => true,
             ContractError::NotRollingBond => true,
             ContractError::WithdrawalAlreadyRequested => true,
-            ContractError::ReentrancyDetected => false,        // SECURITY HALT
+            ContractError::ReentrancyDetected => false, // SECURITY HALT
             ContractError::InvalidNonce => true,
-            ContractError::SignatureExpired => true,           // re-sign
+            ContractError::SignatureExpired => true, // re-sign
             ContractError::NegativeStake => true,
             ContractError::EarlyExitConfigNotSet => true,
             ContractError::InvalidPenaltyBps => true,
@@ -1168,9 +1168,9 @@ mod tests {
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
-            ContractError::InvariantViolation => false,         // post-write drift
-            ContractError::TreasuryNotConfigured => true,       // admin can configure treasury then retry
-            ContractError::DomainMismatch => false,             // payload binding
+            ContractError::InvariantViolation => false, // post-write drift
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::DomainMismatch => false, // payload binding
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1197,12 +1197,12 @@ mod tests {
             ContractError::DelegationNotFound => true,
             ContractError::AlreadyRevoked => true,
             ContractError::DelegationExpiryTooLong => true,
-            ContractError::UnknownScheme => false,              // unsupported scheme
+            ContractError::UnknownScheme => false, // unsupported scheme
             ContractError::VerifierAlreadyRegistered => true,
             ContractError::VerifierNotRegistered => true,
-            ContractError::VerificationFailed => false,          // crypto failure
-            ContractError::RevocationGraceExpired => false,     // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
-            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
+            ContractError::VerificationFailed => false, // crypto failure
+            ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
+            ContractError::DelegationNotExpired => true, // wait for expiry then retry
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1211,8 +1211,8 @@ mod tests {
             ContractError::ProposalNotFound => true,
             ContractError::ProposalAlreadyExecuted => true,
             ContractError::InsufficientApprovals => true,
-            ContractError::InvalidFlashLoanCallback => false,   // bad magic
-            ContractError::FlashLoanRepaymentFailed => false,   // bad repayment
+            ContractError::InvalidFlashLoanCallback => false, // bad magic
+            ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
 
             // Arithmetic: code-level impossibility.
