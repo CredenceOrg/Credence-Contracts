@@ -44,6 +44,7 @@ impl MockStellarAsset {
 /// Advance ledger sequence (test utility). Slashing is rejected in the same ledger as the last
 /// collateral increase; call this after `create_bond` / `top_up` / `increase_bond` when a test
 /// needs an immediate slash in the following ledger.
+#[allow(dead_code)]
 pub fn advance_ledger_sequence(e: &Env) {
     let mut info = e.ledger().get();
     info.sequence_number = info.sequence_number.saturating_add(1);
@@ -54,6 +55,7 @@ pub fn advance_ledger_sequence(e: &Env) {
 const DEFAULT_MINT: i128 = 100_000_000_000_000_000;
 
 /// Mint amount for tests needing i128::MAX (e.g. overflow tests).
+#[allow(dead_code)]
 const MAX_MINT: i128 = i128::MAX;
 
 /// Setup bond contract with Stellar Asset token.
@@ -64,6 +66,7 @@ pub fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address, A
 }
 
 /// Setup with max mint for overflow/edge case tests.
+#[allow(dead_code)]
 pub fn setup_with_max_mint(
     e: &Env,
 ) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {

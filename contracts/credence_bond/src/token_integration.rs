@@ -17,9 +17,11 @@ pub enum FundSource {
 }
 
 /// Stellar network passphrase label used for USDC mainnet references.
+#[allow(dead_code)]
 pub const STELLAR_MAINNET: &str = "mainnet";
 
 /// Stellar network passphrase label used for USDC testnet references.
+#[allow(dead_code)]
 pub const STELLAR_TESTNET: &str = "testnet";
 
 fn network_key(e: &Env) -> Symbol {
@@ -44,6 +46,7 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
 
 /// @notice Sets the USDC token contract and associated network label.
 /// @dev Network label is informational for auditing and can be "mainnet" or "testnet".
+#[allow(dead_code)]
 pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &String) {
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
@@ -73,6 +76,7 @@ pub fn has_token(e: &Env) -> bool {
 }
 
 /// @notice Returns the configured USDC network label if set.
+#[allow(dead_code)]
 pub fn get_usdc_network(e: &Env) -> Option<String> {
     e.storage().instance().get(&network_key(e))
 }

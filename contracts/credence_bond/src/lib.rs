@@ -286,7 +286,7 @@ impl CredenceBond {
     pub fn initialize_with_registry(e: Env, admin: Address, registry: Address) {
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
-        let _ = e.invoke_contract::<()>(
+        e.invoke_contract::<()>(
             &registry,
             &Symbol::new(&e, "register_trustless"),
             soroban_sdk::vec![&e, admin.into_val(&e)],
@@ -935,6 +935,9 @@ impl CredenceBond {
     ///   the gross withdrawal exactly into treasury penalty plus identity payout.
     pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
+
+        Self::acquire_lock(&e);
+
         let mut bond: IdentityBond = e
             .storage()
             .instance()
@@ -956,11 +959,10 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::LockupNotExpired);
         }
 
-        // Require configured treasury + penalty rate before charging users. This prevents
-        // penalties from being silently dropped.
-        let cfg = early_exit_penalty::get_config(&e)
-            .unwrap_or_else(|_| panic_with_error!(e, ContractError::EarlyExitConfigNotSet));
-        let treasury = cfg.treasury.clone();
+        let cfg = early_exit_penalty::get_config(&e).unwrap_or_else(|_| {
+            Self::release_lock(&e);
+            panic_with_error!(&e, ContractError::EarlyExitConfigNotSet)
+        });
         let penalty_bps = cfg.penalty_bps;
 
         let remaining = end.saturating_sub(now);
@@ -982,7 +984,11 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::InvariantViolation);
         }
 
+        // Emit event before transfers for audit trail consistency
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &cfg.treasury);
+
+        // Update bond state before external calls (CEI pattern)
+        let _original_bonded_amount = bond.bonded_amount;
 
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         bond.bonded_amount = bond
@@ -990,30 +996,32 @@ impl CredenceBond {
             .checked_sub(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
         if bond.slashed_amount > bond.bonded_amount {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::SlashExceedsBond);
         }
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         e.storage().instance().set(&key, &bond);
-        bump_instance_ttl(&e);
 
-        // Perform token transfers within the reentrancy guard
-        Self::acquire_lock(&e);
+        // Transfer penalty to treasury
         if penalty > 0 {
             crate::token_integration::transfer_from_contract_with_source(
                 &e,
-                &treasury,
-                penalty, // penalty is transferred to treasury
+                &cfg.treasury,
+                penalty,
                 crate::token_integration::FundSource::ProtocolFee,
             );
         }
+
+        // Transfer net amount to user
         if net_amount > 0 {
             crate::token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
         }
-        Self::release_lock(&e);
 
+        Self::release_lock(&e);
         invariants::assert_self_consistent(&e);
+
         bond
     }
 
