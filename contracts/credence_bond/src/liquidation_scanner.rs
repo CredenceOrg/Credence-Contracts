@@ -35,6 +35,8 @@
 //! `advance_keeper_cursor` validates that the new cursor equals the value
 //! returned by the last scan, preventing a keeper from skipping positions.
 
+use credence_errors::ContractError;
+use soroban_sdk::panic_with_error;
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 use crate::DataKey;
@@ -284,8 +286,14 @@ pub fn scan_liquidation_candidates(
     let registry_slots = registry.len();
     let active_registry_size = get_registry_size(e);
 
-    if cursor > registry_slots {
-        panic!("cursor out of range");
+    // Reject any cursor that is at or beyond the end of the registry.
+    // The one exception is cursor == 0 on an empty registry, which is the
+    // valid "nothing to scan" state. Using >= (not >) closes the gap where
+    // cursor == registry_slots was silently accepted and returned done=true,
+    // allowing a keeper to synthesize a completed-scan response without
+    // actually visiting any registry slots.
+    if registry_slots > 0 && cursor >= registry_slots {
+        panic_with_error!(e, ContractError::CursorOutOfRange);
     }
 
     // Cap max_iter to hard limit; use default if caller passes 0
