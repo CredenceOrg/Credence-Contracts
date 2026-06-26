@@ -388,6 +388,18 @@ pub fn emit_admin_transfer_completed(e: &Env, old_admin: &Address, new_admin: &A
     e.events().publish(topics, data);
 }
 
+/// Emitted when an admin is rotated (ownership transferred). Includes ledger sequence.
+#[allow(dead_code)]
+pub fn emit_admin_rotated(e: &Env, previous_admin: &Address, new_admin: &Address) {
+    let topics = (
+        Symbol::new(e, "admin_rotated"),
+        previous_admin.clone(),
+        new_admin.clone(),
+    );
+    let ledger_seq: u32 = e.ledger().sequence();
+    e.events().publish(topics, ledger_seq);
+}
+
 /// Emitted when an upgrade admin transfer is initiated.
 pub fn emit_upgrade_admin_transfer_started(
     e: &Env,
