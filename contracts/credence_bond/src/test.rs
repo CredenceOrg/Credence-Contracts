@@ -15,8 +15,8 @@ fn test_create_bond() {
 }
 #[cfg(test)]
 mod test_admin_transfer {
-    use soroban_sdk::{testutils::Address as _, Address, Env};
     use crate::CredenceBond;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     #[test]
     fn test_propose_and_accept_admin() {
@@ -73,7 +73,9 @@ mod test_admin_transfer {
         client.initialize(&admin, &None);
         client.propose_admin(&admin, &new_admin);
 
-        e.ledger().with_mut(|l| { l.timestamp = l.timestamp + 86_401; });
+        e.ledger().with_mut(|l| {
+            l.timestamp = l.timestamp + 86_401;
+        });
 
         client.accept_admin(&rogue); // should panic
     }

@@ -151,7 +151,8 @@ pub fn get_record(e: &Env, id: u64) -> EmergencyWithdrawalRecord {
         .persistent()
         .get(&EmergencyDataKey::Record(id))
         .unwrap_or_else(|| panic!("record not found"))
-}/// @notice Get latest transition ID.
+}
+/// @notice Get latest transition ID.
 pub fn latest_transition_id(e: &Env) -> u64 {
     e.storage()
         .persistent()

@@ -91,8 +91,10 @@ pub fn set_protocol_fee_bps(env: &Env, admin: &Address, new_fee_bps: u32) {
 
     // ── Range check ──────────────────────────────────────────────────────
     if new_fee_bps > MAX_FEE_BPS {
-        panic!("CredenceError::FeeBpsExceedsMaximum ({}): proposed {} bps > max {} bps",
-               FEE_EXCEEDS_MAX_ERROR_CODE, new_fee_bps, MAX_FEE_BPS);
+        panic!(
+            "CredenceError::FeeBpsExceedsMaximum ({}): proposed {} bps > max {} bps",
+            FEE_EXCEEDS_MAX_ERROR_CODE, new_fee_bps, MAX_FEE_BPS
+        );
     }
 
     // ── Read previous value before overwrite ──────────────────────────────
@@ -106,8 +108,6 @@ pub fn set_protocol_fee_bps(env: &Env, admin: &Address, new_fee_bps: u32) {
     // ── Emit event: (previous_bps, new_bps) ──────────────────────────────
     // Topic:  symbol "fee_updated"
     // Data:   (previous_bps: u32, new_bps: u32)  — both in bps
-    env.events().publish(
-        (symbol_short!("fee_upd"),),
-        (previous_bps, new_fee_bps),
-    );
+    env.events()
+        .publish((symbol_short!("fee_upd"),), (previous_bps, new_fee_bps));
 }

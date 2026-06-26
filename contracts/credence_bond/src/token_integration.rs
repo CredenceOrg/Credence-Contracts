@@ -4,13 +4,24 @@
 
 use crate::safe_token;
 use crate::DataKey;
-use soroban_sdk::token::TokenClient;
-use soroban_sdk::{Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, Address, Env, String, Symbol};
+
+/// Source classification for funds leaving the bond contract.
+#[contracttype]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FundSource {
+    /// Protocol fees, including early-exit penalties.
+    ProtocolFee = 0,
+    /// Slashed bond funds.
+    SlashedFunds = 1,
+}
 
 /// Stellar network passphrase label used for USDC mainnet references.
+#[allow(dead_code)]
 pub const STELLAR_MAINNET: &str = "mainnet";
 
 /// Stellar network passphrase label used for USDC testnet references.
+#[allow(dead_code)]
 pub const STELLAR_TESTNET: &str = "testnet";
 
 fn network_key(e: &Env) -> Symbol {
@@ -35,6 +46,7 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
 
 /// @notice Sets the USDC token contract and associated network label.
 /// @dev Network label is informational for auditing and can be "mainnet" or "testnet".
+#[allow(dead_code)]
 pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &String) {
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
@@ -58,7 +70,13 @@ pub fn get_token(e: &Env) -> Address {
         .unwrap_or_else(|| panic!("token not configured - contract not properly initialized"))
 }
 
+/// @notice Returns whether a bond token has been configured.
+pub fn has_token(e: &Env) -> bool {
+    e.storage().instance().has(&crate::DataKey::BondToken)
+}
+
 /// @notice Returns the configured USDC network label if set.
+#[allow(dead_code)]
 pub fn get_usdc_network(e: &Env) -> Option<String> {
     e.storage().instance().get(&network_key(e))
 }
@@ -86,7 +104,6 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 
     require_allowance(e, owner, amount);
     let contract = e.current_contract_address();
-    let token = safe_token::token_client(e);
     let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
@@ -123,7 +140,6 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
-    let token = safe_token::token_client(e);
     let token = crate::safe_token::token_client(e);
 
     // Check contract balance before transfer
@@ -144,4 +160,20 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 }
 
+/// @notice Transfers protocol/accounting-classified funds from the bond contract.
+/// @dev Keeps the token transfer on the existing safe path while preserving source attribution.
+pub fn transfer_from_contract_with_source(
+    e: &Env,
+    recipient: &Address,
+    amount: i128,
+    source: FundSource,
+) {
+    transfer_from_contract(e, recipient, amount);
 
+    if amount > 0 {
+        e.events().publish(
+            (Symbol::new(e, "bond_fund_transfer"),),
+            (recipient.clone(), amount, source),
+        );
+    }
+}

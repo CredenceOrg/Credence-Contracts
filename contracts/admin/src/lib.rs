@@ -1078,3 +1078,6 @@ mod test_authorization;
 
 #[cfg(test)]
 mod test_suspension;
+
+#[cfg(test)]
+mod test_auth_entrypoints;

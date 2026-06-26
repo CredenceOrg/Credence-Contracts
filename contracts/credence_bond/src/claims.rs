@@ -475,21 +475,14 @@ pub fn expire_claims_bounded(e: &Env, user: &Address, max_iter: u32) -> u32 {
     let mut valid_claims = Vec::new(e);
     let mut expired_amount = 0i128;
     let mut expired_count = 0u32;
-    let mut scan_count = 0u32;
 
     // Scan up to `limit` claims, preserving order
-    for i in 0..claims.len() {
-        if scan_count >= limit {
-            // Add remaining unscanned claims to output
-            for j in i..claims.len() {
-                valid_claims.push_back(claims.get(j).unwrap());
-            }
+    for (i, claim) in claims.iter().enumerate() {
+        if (i as u32) >= limit {
+            // Add remaining unscanned claims to output and break
+            valid_claims.append(&claims.slice(i as u32..));
             break;
         }
-
-        let claim = claims.get(i).unwrap();
-        scan_count += 1;
-
         // Skip claims with no expiry (expires_at == 0) or already processed
         if claim.expires_at == 0 || claim.processed {
             valid_claims.push_back(claim);

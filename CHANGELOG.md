@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Timelock Timeout Test**: Added explicit timeout regression coverage for time-locked operation execution after the grace period (`timelock`).
 - **Pause Signer Invariant**: Added invariant test for PauseSignerCount to prevent drift (`credence_delegation`).
 - **Slash Bond Core**: Implemented admin-only `slash_bond` functionality with partial/full slashing and event emission.
 - **Treasury Guardrails**: Added comprehensive tests and functionality for liquidity floor and slippage protection mechanisms in treasury withdrawals (`credence_treasury`).
