@@ -280,6 +280,19 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     CursorOutOfRange = 226,
 
+    /// Batch input exceeds the maximum allowed size constant.
+    /// Prevents a single transaction from exhausting CPU/ledger budgets.
+    /// Replaces: panic!("batch too large")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BatchTooLarge = 227,
+
+    /// Batch input is empty (len == 0) when at least one item is required.
+    /// Replaces: panic!("empty batch")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmptyBatch = 228,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -585,6 +598,8 @@ impl ErrorExt for ContractError {
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
+            | ContractError::BatchTooLarge
+            | ContractError::EmptyBatch
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -758,6 +773,8 @@ impl ErrorExt for ContractError {
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
+            ContractError::BatchTooLarge => "Batch size exceeds the maximum allowed constant",
+            ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
         }
     }
 
@@ -816,7 +833,10 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
-            | ContractError::BondAlreadyExists => true,
+            | ContractError::BondAlreadyExists
+            | ContractError::BatchTooLarge         // reduce batch size
+            | ContractError::EmptyBatch            // supply at least one item
+            => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it

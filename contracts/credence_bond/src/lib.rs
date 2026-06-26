@@ -763,10 +763,10 @@ impl CredenceBond {
     ) -> Vec<Attestation> {
         let n = items.len();
         if n == 0 {
-            panic!("empty batch");
+            panic_with_error!(e, ContractError::EmptyBatch);
         }
         if n > MAX_BATCH_ATTESTATION_SIZE {
-            panic!("batch too large");
+            panic_with_error!(e, ContractError::BatchTooLarge);
         }
 
         // Verify all attesters in the batch are unique.

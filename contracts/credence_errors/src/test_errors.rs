@@ -75,6 +75,8 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::Overflow,
             ContractError::Underflow,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
         ]
     }
 
@@ -165,6 +167,12 @@ mod tests {
     fn test_codes_arithmetic() {
         assert_eq!(ContractError::Overflow as u32, 700);
         assert_eq!(ContractError::Underflow as u32, 701);
+    }
+
+    #[test]
+    fn test_codes_batch() {
+        assert_eq!(ContractError::BatchTooLarge as u32, 227);
+        assert_eq!(ContractError::EmptyBatch as u32, 228);
     }
 
     // --- Category mapping tests ---
@@ -406,7 +414,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            69,
+            71,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1168,6 +1176,8 @@ mod tests {
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
+            ContractError::BatchTooLarge => true,     // reduce batch size
+            ContractError::EmptyBatch => true,         // supply at least one item
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
@@ -1273,6 +1283,8 @@ mod tests {
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1317,7 +1329,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            76,
+            78,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
