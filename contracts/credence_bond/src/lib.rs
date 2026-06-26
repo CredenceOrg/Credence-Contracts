@@ -8,6 +8,7 @@ mod invariants;
 mod leverage;
 mod math;
 mod migration;
+mod normalization;
 mod nonce;
 mod parameters;
 mod rolling_bond;
@@ -24,6 +25,10 @@ mod weighted_attestation;
 #[cfg(test)]
 #[path = "fuzz/test_weighted_attestation_rounding.rs"]
 mod test_weighted_attestation_rounding;
+
+#[cfg(test)]
+#[path = "fuzz/test_normalization_invariant.rs"]
+mod test_normalization_invariant;
 
 #[path = "types/mod.rs"]
 pub mod types;
