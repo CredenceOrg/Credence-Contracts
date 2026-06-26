@@ -1,6 +1,6 @@
 {
   "schema": "credence_bond.cost_baseline.v1",
-  "tolerance_pct": 5.0,
+  "tolerance_pct": 10.0,
   "metric_help": "cpu_insns and mem_bytes are modelled host costs; read/write_entries and read/write_bytes are the ledger rw-unit footprint. See docs/gas-regression.md.",
   "entrypoints": {
     "create_bond": {

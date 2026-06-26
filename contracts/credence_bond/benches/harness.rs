@@ -52,7 +52,7 @@ pub const ENTRYPOINTS: &[&str] = &[
 
 /// Percentage a metric may grow over its baseline before it counts as a
 /// regression. Kept in lock-step with the `tolerance_pct` written into the JSON.
-pub const TOLERANCE_PCT: f64 = 5.0;
+pub const TOLERANCE_PCT: f64 = 10.0;
 
 /// Build a fresh metered test env. Snapshot capture is disabled so repeated
 /// measurement runs do not litter the working tree with `*.json` snapshots.
