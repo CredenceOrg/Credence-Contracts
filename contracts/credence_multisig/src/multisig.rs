@@ -104,6 +104,12 @@ pub enum DataKey {
     ExecutedOp(BytesN<32>),
 }
 
+/// Hard cap on max_iter for proposal pruning to prevent out-of-gas.
+pub const MAX_ITER_HARD_CAP: u32 = 200;
+
+/// Default page size for proposal pruning if the caller passes 0.
+pub const DEFAULT_MAX_ITER: u32 = 50;
+
 fn bump_instance_ttl(e: &Env) {
     e.storage().instance().extend_ttl(
         crate::consts::INSTANCE_TTL_THRESHOLD,
@@ -267,6 +273,9 @@ impl CredenceMultiSig {
         }
         bump_instance_ttl(&e);
 
+        // Keep stored signatures for removed signers so if the signer is later
+        // re-added, their prior approvals can be restored. Execution only counts
+        // signatures from the current signer set.
         e.events()
             .publish((Symbol::new(&e, "signer_removed"),), signer);
     }
@@ -436,8 +445,19 @@ impl CredenceMultiSig {
             .instance()
             .get(&DataKey::SignatureCount(proposal_id))
             .unwrap_or(0);
+        let effective_signatures = Self::count_active_signatures(&e, proposal_id);
 
-        if signatures < threshold {
+        if effective_signatures != signatures {
+            e.storage()
+                .instance()
+                .set(&DataKey::SignatureCount(proposal_id), &effective_signatures);
+            e.events().publish(
+                (Symbol::new(&e, "proposal_signatures_revalidated"),),
+                (proposal_id, signatures, effective_signatures),
+            );
+        }
+
+        if effective_signatures < threshold {
             panic_with_error!(&e, ContractError::InsufficientApprovals);
         }
 
@@ -493,6 +513,73 @@ impl CredenceMultiSig {
 
         e.events()
             .publish((Symbol::new(&e, "proposal_rejected"), proposal_id), admin);
+    }
+
+    /// Prune expired proposals from storage to reclaim space.
+    /// Bounded sweep, permissionless (no require_auth).
+    ///
+    /// @param e Contract environment
+    /// @param start_id Starting proposal ID to scan
+    /// @param max_iter Maximum number of proposals to scan (bounded by MAX_ITER_HARD_CAP)
+    /// @return The count of proposals pruned
+    pub fn prune_expired_proposals(e: Env, start_id: u64, max_iter: u32) -> u32 {
+        crate::pausable::require_not_paused(&e);
+
+        let effective_max = if max_iter == 0 {
+            DEFAULT_MAX_ITER
+        } else {
+            max_iter.min(MAX_ITER_HARD_CAP)
+        };
+
+        let mut pruned_count = 0_u32;
+        let now = e.ledger().timestamp();
+        let signers = Self::get_signers(e.clone());
+
+        for i in 0..effective_max {
+            let proposal_id = match start_id.checked_add(i as u64) {
+                Some(id) => id,
+                None => break,
+            };
+
+            let proposal_key = DataKey::Proposal(proposal_id);
+            if let Some(proposal) = e.storage().instance().get::<_, Proposal>(&proposal_key) {
+                let is_expired = proposal.status == ProposalStatus::Expired
+                    || (proposal.status != ProposalStatus::Executed
+                        && proposal.expires_at > 0
+                        && now >= proposal.expires_at);
+
+                if is_expired {
+                    // Remove proposal itself
+                    e.storage().instance().remove(&proposal_key);
+
+                    // Remove signatures/approvals for all current signers
+                    for signer in signers.iter() {
+                        e.storage()
+                            .instance()
+                            .remove(&DataKey::Signature(proposal_id, signer.clone()));
+                    }
+
+                    // Also remove proposer signature if it was not in active signers
+                    e.storage()
+                        .instance()
+                        .remove(&DataKey::Signature(proposal_id, proposal.proposer.clone()));
+
+                    // Remove signature count
+                    e.storage()
+                        .instance()
+                        .remove(&DataKey::SignatureCount(proposal_id));
+
+                    pruned_count += 1;
+                }
+            }
+        }
+
+        e.events().publish(
+            (Symbol::new(&e, "proposals_pruned"),),
+            (start_id, pruned_count),
+        );
+
+        pruned_count
     }
 
     // ==================== Query Functions ====================
@@ -589,6 +676,26 @@ impl CredenceMultiSig {
         if !is_signer {
             panic_with_error!(e, ContractError::NotSigner);
         }
+    }
+
+    fn count_active_signatures(e: &Env, proposal_id: u64) -> u32 {
+        let signers = Self::get_signers(e.clone());
+        let mut count = 0_u32;
+
+        for signer in signers.iter() {
+            let signed = e
+                .storage()
+                .instance()
+                .get(&DataKey::Signature(proposal_id, signer.clone()))
+                .unwrap_or(false);
+            if signed {
+                count = count
+                    .checked_add(1)
+                    .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+            }
+        }
+
+        count
     }
 
     fn expire_proposal(e: &Env, proposal_id: u64) {

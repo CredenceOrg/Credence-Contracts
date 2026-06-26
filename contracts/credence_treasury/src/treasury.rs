@@ -11,6 +11,9 @@ use crate::pausable;
 
 const CUMULATIVE_SEGMENT: u128 = (i128::MAX as u128) + 1;
 
+/// Default proposal time-to-live in ledger seconds (7 days).
+const DEFAULT_PROPOSAL_TTL: u64 = 7 * 24 * 60 * 60;
+
 fn bump_instance_ttl(e: &Env) {
     e.storage().instance().extend_ttl(
         crate::consts::INSTANCE_TTL_THRESHOLD,
@@ -38,6 +41,9 @@ pub struct WithdrawalProposal {
     pub amount: i128,
     /// Ledger timestamp when proposed.
     pub proposed_at: u64,
+    /// Proposal expiry timestamp (proposed_at + ttl). Approvals and execution are
+    /// rejected once now >= expires_at.
+    pub expires_at: u64,
     /// Proposer (signer who created the proposal).
     pub proposer: Address,
     /// True once executed.
@@ -94,6 +100,8 @@ pub enum DataKey {
     MinLiquidity,
     /// The token address managed by the treasury.
     Token,
+    /// Proposal TTL in seconds (default 7 days). Configurable by admin.
+    ProposalTtl,
 }
 
 #[contract]
@@ -133,7 +141,12 @@ fn add_to_cumulative(e: &Env, current: &CumulativeAmount, amount: i128) -> Cumul
     }
 }
 
-fn proportional_deduction(e: &Env, source_balance: i128, amount: i128, total: i128) -> i128 {
+pub(crate) fn proportional_deduction(
+    e: &Env,
+    source_balance: i128,
+    amount: i128,
+    total: i128,
+) -> i128 {
     if source_balance == 0 || amount == 0 {
         return 0;
     }
@@ -200,6 +213,9 @@ impl CredenceTreasury {
             .instance()
             .set(&DataKey::ProposalCounter, &0_u64);
         e.storage().instance().set(&DataKey::MinLiquidity, &0_i128);
+        e.storage()
+            .instance()
+            .set(&DataKey::ProposalTtl, &DEFAULT_PROPOSAL_TTL);
         bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
@@ -462,10 +478,24 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &next_id);
+        let proposed_at = e.ledger().timestamp();
+        let ttl: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalTtl)
+            .unwrap_or(DEFAULT_PROPOSAL_TTL);
+        let expires_at = if ttl == 0 {
+            u64::MAX
+        } else {
+            proposed_at
+                .checked_add(ttl)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow))
+        };
         let proposal = WithdrawalProposal {
             recipient: recipient.clone(),
             amount,
-            proposed_at: e.ledger().timestamp(),
+            proposed_at,
+            expires_at,
             proposer: proposer.clone(),
             executed: false,
         };
@@ -502,6 +532,13 @@ impl CredenceTreasury {
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+        }
+        if e.ledger().timestamp() >= proposal.expires_at {
+            e.events().publish(
+                (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
+                (),
+            );
+            panic_with_error!(&e, ContractError::ProposalExpired);
         }
         let already = e
             .storage()
@@ -557,6 +594,13 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::Proposal(proposal_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
+        if e.ledger().timestamp() >= proposal.expires_at {
+            e.events().publish(
+                (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
+                (),
+            );
+            panic_with_error!(&e, ContractError::ProposalExpired);
+        }
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
@@ -694,6 +738,30 @@ impl CredenceTreasury {
             .publish((Symbol::new(&e, "min_liquidity_updated"),), min_liquidity);
     }
 
+    /// Set the proposal TTL (time-to-live) in ledger seconds. Only admin can call.
+    /// Proposals expire `ttl` seconds after they are proposed, after which
+    /// approvals and execution are rejected.
+    /// Pass `0` for no expiry (legacy behaviour).
+    pub fn set_proposal_ttl(e: Env, admin: Address, ttl: u64) {
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+        e.storage().instance().set(&DataKey::ProposalTtl, &ttl);
+        e.events()
+            .publish((Symbol::new(&e, "proposal_ttl_updated"),), ttl);
+    }
+
+    /// Get the current proposal TTL in ledger seconds.
+    pub fn get_proposal_ttl(e: Env) -> u64 {
+        e.storage()
+            .instance()
+            .get(&DataKey::ProposalTtl)
+            .unwrap_or(DEFAULT_PROPOSAL_TTL)
+    }
+
     /// Get current minimum liquidity floor.
     pub fn get_min_liquidity(e: Env) -> i128 {
         e.storage()
@@ -816,14 +884,22 @@ impl CredenceTreasury {
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
-    /// Rescue stuck native token balance from the contract.
-    /// Only callable by admin with strict access control.
-    /// This function protects user-accounted balances from accidental extraction.
+    /// Rescue excess native tokens from the contract.
+    ///
+    /// Only callable by admin. Transfers only the *excess* balance — the difference
+    /// between the contract's actual token balance and the internally accounted
+    /// `TotalBalance` — so user/protocol funds cannot be drained.
+    ///
+    /// # Excess-only bound
+    /// ```text
+    /// excess = token_client.balance(contract) - TotalBalance
+    /// ```
+    /// `amount` must satisfy `0 < amount <= excess`. Any attempt to rescue more than
+    /// the excess reverts with `InsufficientTreasuryBalance`.
     pub fn rescue_native(e: Env, admin: Address, to: Address, amount: i128) {
         pausable::require_not_paused(&e);
         admin.require_auth();
 
-        // Verify admin authorization
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -837,29 +913,28 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::AmountMustBePositive);
         }
 
-        // Ensure we're not rescuing funds tied to active accounting
-        let treasury_balance: i128 = e
+        let token_addr = Self::get_token(e.clone());
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+
+        let actual_balance = token_client.balance(&contract_addr);
+        let total_accounted: i128 = e
             .storage()
             .instance()
             .get(&DataKey::TotalBalance)
             .unwrap_or(0);
 
-        // Only allow rescue of excess native tokens beyond accounted treasury balance
-        // For now, we'll skip the actual balance check to avoid re-entry issues in tests
-        // In production, this would need to be handled differently
-        let available_for_rescue = treasury_balance; // Simplified for testing
+        // Excess = tokens held by the contract beyond what is accounted for.
+        let excess = actual_balance
+            .checked_sub(total_accounted)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
 
-        if amount > available_for_rescue {
+        if amount > excess {
             panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
         }
 
-        // For testing purposes, we'll just emit the event without actual transfer
-        // In production, this would need proper native token transfer implementation
-        // let contract_address = e.current_contract_address();
-        // let token_client = soroban_sdk::token::TokenClient::new(&e, &contract_address);
-        // token_client.transfer(&contract_address, &to, &amount);
+        token_client.transfer(&contract_addr, &to, &amount);
 
-        // Emit rescue event for transparency
         e.events()
             .publish((Symbol::new(&e, "native_rescued"),), (to, amount, admin));
     }

@@ -8,10 +8,12 @@ description = "Credence delegation contract — delegate attestation and managem
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { version = "22.0", features = ["testutils"] }
+soroban-sdk = "22.0"
 credence_errors = { path = "../credence_errors" }
 
 [dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
+soroban-spec = "22.0"
 insta = { version = "1.34", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

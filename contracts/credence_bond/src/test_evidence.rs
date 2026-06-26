@@ -13,7 +13,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     e.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 

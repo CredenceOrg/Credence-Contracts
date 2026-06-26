@@ -45,7 +45,7 @@ fn setup_with_decimals(
     let admin = Address::generate(e);
     let identity = Address::generate(e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let token_id = e.register(MockToken, ());
     // Set decimals for the mock token
@@ -66,7 +66,7 @@ fn test_tier_silver_with_6_decimals() {
 
     // 1000 tokens in 6 decimals = 1,000,000,000
     let amount = 1_000_000_000;
-    let bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let bond = client.create_bond(&identity, &amount, &86400, &false, &0);
 
     // Silver tier starts at 1000 tokens (normalized: 10^21)
     assert_eq!(client.get_tier(), BondTier::Silver);
@@ -80,7 +80,7 @@ fn test_tier_silver_with_18_decimals() {
 
     // 1000 tokens in 18 decimals = 1,000 * 10^18
     let amount = 1_000_000_000_000_000_000_000;
-    let bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let bond = client.create_bond(&identity, &amount, &86400, &false, &0);
 
     assert_eq!(client.get_tier(), BondTier::Silver);
     assert_eq!(bond.bonded_amount, 1_000_000_000_000_000_000_000);
@@ -93,7 +93,7 @@ fn test_tier_silver_with_8_decimals() {
 
     // 1000 tokens in 8 decimals = 1000 * 10^8
     let amount = 100_000_000_000;
-    let _bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let _bond = client.create_bond(&identity, &amount, &86400, &false, &0);
 
     assert_eq!(client.get_tier(), BondTier::Silver);
 }
@@ -105,7 +105,7 @@ fn test_24_decimals_panics() {
     let (client, _admin, identity, _token) = setup_with_decimals(&e, 24);
 
     let amount = 1_000_000_000;
-    client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    client.create_bond(&identity, &amount, &86400, &false, &0);
 }
 
 #[test]
@@ -114,7 +114,7 @@ fn test_withdraw_correct_amount_6_decimals() {
     let (client, _admin, identity, _token) = setup_with_decimals(&e, 6);
 
     let amount = 1_000_000_000; // 1000 tokens
-    client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    client.create_bond(&identity, &amount, &86400, &false, &0);
 
     // Fast forward
     e.ledger().with_mut(|l| l.timestamp = 100_000);
@@ -134,5 +134,5 @@ fn test_validation_bounds_18_decimals() {
 
     // Min bond in tests is 1000 normalized units
     let too_small = 999;
-    client.create_bond_with_rolling(&identity, &too_small, &86400, &false, &0);
+    client.create_bond(&identity, &too_small, &86400, &false, &0);
 }

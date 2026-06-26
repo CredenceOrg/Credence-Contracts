@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
 
 use crate::DataKey;
 
@@ -37,7 +37,18 @@ pub fn require_not_paused(e: &Env) {
 pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: bool) {
     require_admin_auth(e, admin);
 
-    // Zero-address check
+    // Reject zero/invalid signer address
+    if signer.to_string()
+        == String::from_str(
+            e,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        )
+    {
+        panic_with_error!(e, ContractError::InvalidAdminAddress);
+    }
+    if *signer == e.current_contract_address() {
+        panic_with_error!(e, ContractError::InvalidAdminAddress);
+    }
 
     let key = DataKey::PauseSigner(signer.clone());
     let existing: bool = e.storage().instance().get(&key).unwrap_or(false);

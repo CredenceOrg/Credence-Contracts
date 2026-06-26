@@ -1,28 +1,16 @@
 #![no_std]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol,
+    contract, contractimpl, contracttype, panic_with_error, symbol_short, Address, Env, Map,
+    String, Symbol, Vec,
 };
 
 pub mod consts;
 pub mod pausable;
 pub mod status;
 
+use status::ArbitrationError as Error;
 use status::{require_transition, ArbitrationError, DisputeStatus};
 
 #[contracttype]
@@ -37,6 +25,8 @@ pub struct Dispute {
     pub status: DisputeStatus,
     /// Winning outcome (0 = unresolved/tie, >0 = specific outcome).
     pub outcome: u32,
+    pub cancellation_reason: Option<String>,
+    pub cancelled_by_role: Option<Symbol>,
 }
 
 #[contracttype]
@@ -55,6 +45,10 @@ pub enum DataKey {
     DisputeCounter,
     DisputeVotes(u64),
     VoterCasted(u64, Address),
+    VoterCounter(u64),
+    ArbitratorRegistry,
+    MinTotalWeight,
+    MinVoters,
 }
 
 fn bump_instance_ttl(e: &Env) {
@@ -108,8 +102,29 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Arbitrator(arbitrator.clone()), &weight);
-        bump_instance_ttl(&e);
 
+        // Update the arbitrator registry list
+        let mut registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let mut exists = false;
+        for addr in registry.iter() {
+            if addr == arbitrator {
+                exists = true;
+                break;
+            }
+        }
+        if !exists {
+            registry.push_back(arbitrator.clone());
+            e.storage()
+                .instance()
+                .set(&DataKey::ArbitratorRegistry, &registry);
+        }
+
+        bump_instance_ttl(&e);
         e.events().publish(
             (Symbol::new(&e, "arbitrator_registered"), arbitrator),
             weight,
@@ -131,6 +146,24 @@ impl CredenceArbitration {
             .instance()
             .remove(&DataKey::Arbitrator(arbitrator.clone()));
 
+        // Update the arbitrator registry list with removal compaction
+        let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let mut new_registry = Vec::new(&e);
+        for addr in registry.iter() {
+            if addr != arbitrator {
+                new_registry.push_back(addr);
+            }
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::ArbitratorRegistry, &new_registry);
+
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "arbitrator_unregistered"), arbitrator), ());
         Ok(())
@@ -170,6 +203,8 @@ impl CredenceArbitration {
             voting_end: end,
             status: DisputeStatus::Voting,
             outcome: 0,
+            cancellation_reason: None,
+            cancelled_by_role: None,
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
@@ -191,9 +226,16 @@ impl CredenceArbitration {
         e: Env,
         caller: Address,
         dispute_id: u64,
+        reason: Option<String>,
     ) -> Result<(), ArbitrationError> {
         pausable::require_not_paused(&e);
         caller.require_auth();
+
+        if let Some(r) = &reason {
+            if r.len() > 256 {
+                return Err(ArbitrationError::ReasonTooLong);
+            }
+        }
 
         let mut dispute: Dispute = e
             .storage()
@@ -207,21 +249,30 @@ impl CredenceArbitration {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(ArbitrationError::NotInitialized)?;
-        if caller != dispute.creator && caller != admin {
-            return Err(ArbitrationError::NotAuthorized);
-        }
 
-        let from = dispute.status.clone();
+        let role = if caller == dispute.creator {
+            symbol_short!("creator")
+        } else if caller == admin {
+            symbol_short!("admin")
+        } else {
+            return Err(ArbitrationError::NotAuthorized);
+        };
+
+        let from = dispute.status;
         require_transition(from, DisputeStatus::Cancelled)?;
 
         dispute.status = DisputeStatus::Cancelled;
+        dispute.cancellation_reason = reason.clone();
+        dispute.cancelled_by_role = Some(role.clone());
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
         bump_instance_ttl(&e);
 
-        e.events()
-            .publish((Symbol::new(&e, "dispute_cancelled"), dispute_id), caller);
+        e.events().publish(
+            (Symbol::new(&e, "dispute_cancelled"), dispute_id),
+            (caller.clone(), role, reason),
+        );
         e.events().publish(
             (Symbol::new(&e, "status_transition"), dispute_id),
             (from as u32, DisputeStatus::Cancelled as u32),
@@ -271,7 +322,16 @@ impl CredenceArbitration {
             return Err(ArbitrationError::AlreadyVoted);
         }
         e.storage().instance().set(&voter_casted_key, &true);
-        bump_instance_ttl(&e);
+
+        // Track distinct voter count for quorum
+        let voter_counter_key = DataKey::VoterCounter(dispute_id);
+        let voter_count: u32 = e.storage().instance().get(&voter_counter_key).unwrap_or(0);
+        e.storage().instance().set(
+            &voter_counter_key,
+            &voter_count
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow)),
+        );
 
         let votes_key = DataKey::DisputeVotes(dispute_id);
         let mut votes: Map<u32, i128> = e
@@ -309,12 +369,53 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::DisputeNotFound)?;
 
         // Must be Voting to start resolution
-        require_transition(dispute.status.clone(), DisputeStatus::Resolving)?;
+        require_transition(dispute.status, DisputeStatus::Resolving)?;
 
         let now = e.ledger().timestamp();
         if now <= dispute.voting_end {
             return Err(ArbitrationError::VotingNotEnded);
         }
+
+        // --- Quorum check (before Resolving transition) ---
+        let min_total_weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MinTotalWeight)
+            .unwrap_or(0);
+        let min_voters: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
+
+        if min_total_weight > 0 || min_voters > 0 {
+            let votes: Map<u32, i128> = e
+                .storage()
+                .instance()
+                .get(&DataKey::DisputeVotes(dispute_id))
+                .unwrap_or(Map::new(&e));
+
+            let mut total_weight: i128 = 0;
+            for (_, w) in votes.iter() {
+                total_weight = total_weight
+                    .checked_add(w)
+                    .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+            }
+
+            let voter_count: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::VoterCounter(dispute_id))
+                .unwrap_or(0);
+
+            let weight_met = total_weight >= min_total_weight;
+            let voters_met = voter_count >= min_voters;
+
+            if !weight_met || !voters_met {
+                e.events().publish(
+                    (Symbol::new(&e, "quorum_not_met"), dispute_id),
+                    (total_weight, min_total_weight, voter_count, min_voters),
+                );
+                return Err(ArbitrationError::QuorumNotMet);
+            }
+        }
+        // --- End quorum check ---
 
         // Voting → Resolving
         dispute.status = DisputeStatus::Resolving;
@@ -376,6 +477,52 @@ impl CredenceArbitration {
         Ok(winning_outcome)
     }
 
+    /// Set quorum requirements for dispute resolution.
+    ///
+    /// Once set, `resolve_dispute` will reject with `QuorumNotMet` unless:
+    /// - The sum of all vote weights cast ≥ `min_total_weight`
+    /// - The number of distinct voters ≥ `min_voters`
+    ///
+    /// Default (0, 0) preserves the legacy behaviour with no quorum gate.
+    pub fn set_quorum(
+        e: Env,
+        admin: Address,
+        min_total_weight: i128,
+        min_voters: u32,
+    ) -> Result<(), ArbitrationError> {
+        pausable::require_not_paused(&e);
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ArbitrationError::NotInitialized)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(ArbitrationError::NotAdmin);
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::MinTotalWeight, &min_total_weight);
+        e.storage().instance().set(&DataKey::MinVoters, &min_voters);
+        bump_instance_ttl(&e);
+        e.events().publish(
+            (Symbol::new(&e, "quorum_set"),),
+            (min_total_weight, min_voters),
+        );
+        Ok(())
+    }
+
+    /// Get the current quorum configuration.
+    pub fn get_quorum(e: Env) -> (i128, u32) {
+        let min_total_weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MinTotalWeight)
+            .unwrap_or(0);
+        let min_voters: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
+        (min_total_weight, min_voters)
+    }
+
     /// Get dispute details.
     pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
         e.storage()
@@ -393,6 +540,59 @@ impl CredenceArbitration {
             .get(&votes_key)
             .unwrap_or(Map::new(&e));
         votes.get(outcome).unwrap_or(0)
+    }
+
+    /// Get the voting weight of a registered arbitrator.
+    pub fn get_arbitrator_weight(e: Env, arbitrator: Address) -> Result<u32, Error> {
+        let weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::Arbitrator(arbitrator))
+            .ok_or(Error::NotArbitrator)?;
+        Ok(weight as u32)
+    }
+
+    /// Check if a voter has already cast a vote for a specific dispute.
+    pub fn has_voted(e: Env, dispute_id: u64, voter: Address) -> bool {
+        e.storage()
+            .instance()
+            .has(&DataKey::VoterCasted(dispute_id, voter))
+    }
+
+    /// Get a paginated list of registered arbitrator addresses.
+    pub fn get_arbitrators_page(e: Env, cursor: u32, limit: u32) -> (Vec<Address>, Option<u32>) {
+        let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let registry_len = registry.len();
+
+        if cursor >= registry_len {
+            return (Vec::new(&e), None);
+        }
+
+        const MAX_ITER_HARD_CAP: u32 = 200;
+        const DEFAULT_MAX_ITER: u32 = 50;
+
+        let effective_limit = if limit == 0 {
+            DEFAULT_MAX_ITER
+        } else {
+            limit.min(MAX_ITER_HARD_CAP)
+        };
+
+        let end = (cursor + effective_limit).min(registry_len);
+        let mut page = Vec::new(&e);
+        for i in cursor..end {
+            if let Some(addr) = registry.get(i) {
+                page.push_back(addr);
+            }
+        }
+
+        let next_cursor = if end >= registry_len { None } else { Some(end) };
+
+        (page, next_cursor)
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
@@ -427,11 +627,11 @@ impl CredenceArbitration {
 #[cfg(test)]
 mod test;
 
-#[cfg(test)]
 mod test_pausable;
 
 #[cfg(test)]
 mod test_ttl;
 
-#[cfg(test)]
 mod test_lifecycle;
+
+mod test_auth;

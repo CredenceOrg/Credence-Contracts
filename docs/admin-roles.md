@@ -49,6 +49,7 @@ The system implements three distinct roles with clear privilege separation:
 - Admin deactivation and reactivation
 - Maintains audit history during deactivation
 - Preserves role assignments during inactive periods
+- **Timed suspension** — block-bounded, self-expiring suspension distinct from indefinite deactivation
 
 ## Security Features
 
@@ -111,7 +112,7 @@ update_admin_role(env, caller, admin_address, new_role)
 ```rust
 deactivate_admin(env, caller, admin_address)
 ```
-- Deactivates an admin temporarily
+- Deactivates an admin **permanently** (until manually reactivated)
 - Preserves admin history
 - Emits `admin_deactivated` event
 
@@ -121,6 +122,25 @@ reactivate_admin(env, caller, admin_address)
 - Reactivates a deactivated admin
 - Restores full privileges
 - Emits `admin_reactivated` event
+
+```rust
+suspend_admin(env, caller, admin, until_ts)
+```
+- Suspends `admin` until `until_ts` (Unix timestamp, seconds)
+- `until_ts` must be **strictly in the future**; equal or past timestamps are rejected with `AdminSuspended` (109)
+- While suspended, `is_admin` and `has_role_at_least` return `false`
+- **Auto-reactivation**: once `e.ledger().timestamp() >= until_ts` the admin is automatically treated as active again — no second transaction is required
+- Authorization: caller must have a role ≥ target's role (same rule as `deactivate_admin`)
+- MinAdmins guard: rejection if suspending would leave fewer than `min_admins` effective active admins
+- Emits `admin_suspended` with `(admin_address, until_ts)`
+
+**Suspension vs. deactivation**
+
+| | `deactivate_admin` | `suspend_admin` |
+|---|---|---|
+| Expiry | Indefinite — manual `reactivate_admin` required | Automatic at `until_ts` |
+| Use case | Long-term revocation | Temp key rotation, incident cool-off |
+| Recovery tx | Required | None |
 
 ### Query Functions
 
@@ -213,8 +233,9 @@ The contract emits the following events for audit and monitoring:
 - `admin_added`: New admin added
 - `admin_removed`: Admin removed
 - `admin_role_updated`: Admin role changed
-- `admin_deactivated`: Admin deactivated
-- `admin_reactivated`: Admin reactivated
+- `admin_deactivated`: Admin deactivated (indefinite)
+- `admin_reactivated`: Admin reactivated (manual)
+- `admin_suspended`: Admin suspended until a future timestamp; auto-reactivation is implicit — no `admin_reinstated` event is emitted
 
 ## Security Considerations
 
@@ -313,3 +334,6 @@ Admin rotation uses a secure two-step flow with a 24-hour timelock:
 - Fat-finger protection: wrong address cannot self-accept
 - Timelock: gives time to cancel if admin is compromised
 - No single call can hijack admin
+
+### Dual-auth bond transfer_admin
+The bond contract uses a direct dual-auth transfer flow: `transfer_admin(current_admin, new_admin)` requires both the current admin and the new admin to authorize the transaction. This ensures the new admin explicitly accepts the role and prevents accidental or unilateral ownership changes. On success the bond contract emits an `admin_transferred` event carrying the tuple `(old_admin, new_admin)` to aid off-chain indexers and auditing.

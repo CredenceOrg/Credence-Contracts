@@ -19,9 +19,11 @@ Attestation value depends on the attester's credibility (stake). Weight is deriv
 
 ## Weight computation
 
-- When adding an attestation, weight is computed using checked/saturating arithmetic: stake * multiplier_bps / 10_000.
-- Computed weight is clamped to `max_weight` and `MAX_ATTESTATION_WEIGHT`.
-- If `max_weight > 0`, weight is never below 1; if `max_weight == 0`, weight is 0.
+- When adding an attestation, weight is computed with integer floor division:
+  `floor(stake * min(multiplier_bps, 10_000) / 10_000)`.
+- The calculation is split into quotient/remainder terms before multiplication, so max-range stake inputs clamp instead of overflowing before the cap is applied.
+- Computed weight is clamped to the stored `max_weight` and `MAX_ATTESTATION_WEIGHT`.
+- Stored attestations must have positive weight, so any zero raw result (including zero stake, zero multiplier, or `max_weight == 0`) is lifted to the default weight 1.
 - Existing attestations keep their stored weight; when attester stake or config changes, only new attestations use the new weight.
 
 ## Security

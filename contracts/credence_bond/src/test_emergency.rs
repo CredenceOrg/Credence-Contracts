@@ -21,7 +21,7 @@ fn test_emergency_withdraw_success_records_audit_trail() {
     let (client, admin, governance, treasury, identity) = setup(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &500, &true);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
 
     let reason = Symbol::new(&e, "crisis");
     let bond = client.emergency_withdraw(&admin, &governance, &200_i128, &reason);
@@ -50,7 +50,7 @@ fn test_emergency_withdraw_multiple_records_increment_ids() {
     let (client, admin, governance, treasury, identity) = setup(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &100, &true);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
 
     client.emergency_withdraw(&admin, &governance, &100_i128, &Symbol::new(&e, "ops1"));
     e.ledger().with_mut(|li| li.timestamp = 101);
@@ -107,7 +107,7 @@ fn test_emergency_withdraw_rejected_when_disabled() {
     let (client, admin, governance, treasury, identity) = setup(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &500, &false);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
 
     client.emergency_withdraw(&admin, &governance, &100_i128, &Symbol::new(&e, "crisis"));
 }
@@ -120,7 +120,7 @@ fn test_emergency_withdraw_requires_governance_approver() {
     let wrong_governance = Address::generate(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &500, &true);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
 
     client.emergency_withdraw(
         &admin,
@@ -137,7 +137,7 @@ fn test_emergency_withdraw_respects_slashed_available_balance() {
     let (client, admin, governance, treasury, identity) = setup(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &500, &true);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &900_i128);
 
@@ -151,7 +151,7 @@ fn test_emergency_withdraw_rejects_non_positive_amount() {
     let (client, admin, governance, treasury, identity) = setup(&e);
 
     client.set_emergency_config(&admin, &governance, &treasury, &500, &true);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
     client.emergency_withdraw(&admin, &governance, &0_i128, &Symbol::new(&e, "crisis"));
 }
 

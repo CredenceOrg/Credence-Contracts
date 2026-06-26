@@ -1,4 +1,4 @@
-//! Tests for the bond status snapshot helper (issue #275).
+﻿//! Tests for the bond status snapshot helper (issue #275).
 //!
 //! Coverage targets:
 //! - Tier derivation for all four tiers
@@ -28,7 +28,7 @@ fn test_snapshot_tier_bronze() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // < 1_000_000_000 → Bronze
-    client.create_bond_with_rolling(&identity, &500_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &500_000_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.tier, BondTier::Bronze);
 }
@@ -38,7 +38,7 @@ fn test_snapshot_tier_silver() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // 1_000_000_000 ≤ x < 5_000_000_000 → Silver
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.tier, BondTier::Silver);
 }
@@ -48,7 +48,7 @@ fn test_snapshot_tier_gold() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // 5_000_000_000 ≤ x < 20_000_000_000 → Gold
-    client.create_bond_with_rolling(&identity, &5_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &5_000_000_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.tier, BondTier::Gold);
 }
@@ -58,7 +58,7 @@ fn test_snapshot_tier_platinum() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // ≥ 20_000_000_000 → Platinum
-    client.create_bond_with_rolling(&identity, &20_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &20_000_000_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.tier, BondTier::Platinum);
 }
@@ -70,7 +70,7 @@ fn test_snapshot_cooldown_no_request() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     client.set_cooldown_period(&admin, &3600_u64);
     // No withdrawal request → cooldown_remaining_secs == 0
     let snap = client.get_bond_status_snapshot();
@@ -82,10 +82,10 @@ fn test_snapshot_cooldown_active() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
     // Request withdrawal at t=1000; cooldown ends at t=4600
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Still at t=1000 → 3600 s remaining
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.cooldown_remaining_secs, 3600);
@@ -96,9 +96,9 @@ fn test_snapshot_cooldown_partially_elapsed() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Advance 1800 s → 1800 s remaining
     e.ledger().with_mut(|li| li.timestamp = 2800);
     let snap = client.get_bond_status_snapshot();
@@ -110,9 +110,9 @@ fn test_snapshot_cooldown_elapsed() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Advance past cooldown end
     e.ledger().with_mut(|li| li.timestamp = 4601);
     let snap = client.get_bond_status_snapshot();
@@ -124,7 +124,7 @@ fn test_snapshot_cooldown_zero_period() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     // No cooldown period set → 0
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.cooldown_remaining_secs, 0);
@@ -136,7 +136,7 @@ fn test_snapshot_cooldown_zero_period() {
 fn test_snapshot_emergency_mode_default_false() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     // No emergency config set → defaults to false
     let snap = client.get_bond_status_snapshot();
     assert!(!snap.emergency_mode);
@@ -147,7 +147,7 @@ fn test_snapshot_emergency_mode_set_false() {
     let e = Env::default();
     let (client, admin, identity, governance, treasury) = setup(&e);
     client.set_emergency_config(&admin, &governance, &treasury, &500_u32, &false);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert!(!snap.emergency_mode);
 }
@@ -157,7 +157,7 @@ fn test_snapshot_emergency_mode_enabled() {
     let e = Env::default();
     let (client, admin, identity, governance, treasury) = setup(&e);
     client.set_emergency_config(&admin, &governance, &treasury, &500_u32, &true);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert!(snap.emergency_mode);
 }
@@ -167,7 +167,7 @@ fn test_snapshot_emergency_mode_toggled() {
     let e = Env::default();
     let (client, admin, identity, governance, treasury) = setup(&e);
     client.set_emergency_config(&admin, &governance, &treasury, &500_u32, &false);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     assert!(!client.get_bond_status_snapshot().emergency_mode);
 
     client.set_emergency_mode(&admin, &governance, &true, &Symbol::new(&e, "test"));
@@ -183,7 +183,7 @@ fn test_snapshot_emergency_mode_toggled() {
 fn test_snapshot_available_balance_unslashed() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.available_balance, 1_000);
 }
@@ -192,7 +192,7 @@ fn test_snapshot_available_balance_unslashed() {
 fn test_snapshot_available_balance_partially_slashed() {
     let e = Env::default();
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &300_i128);
     let snap = client.get_bond_status_snapshot();
@@ -203,7 +203,7 @@ fn test_snapshot_available_balance_partially_slashed() {
 fn test_snapshot_available_balance_fully_slashed() {
     let e = Env::default();
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &1_000_i128);
     let snap = client.get_bond_status_snapshot();
@@ -217,7 +217,7 @@ fn test_snapshot_timestamp_reflects_ledger() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 99_999);
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     let snap = client.get_bond_status_snapshot();
     assert_eq!(snap.snapshot_timestamp, 99_999);
 }
@@ -243,7 +243,7 @@ fn test_snapshot_combined_state() {
     client.set_emergency_config(&admin, &governance, &treasury, &0_u32, &true);
     client.set_cooldown_period(&admin, &2000_u64);
     // Gold tier: 10_000_000_000
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &10_000_000_000_i128,
         &86400_u64,
@@ -252,7 +252,7 @@ fn test_snapshot_combined_state() {
     );
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &1_000_000_000_i128);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
 
     // Advance 500 s into the 2000 s cooldown
     e.ledger().with_mut(|li| li.timestamp = 5500);
@@ -272,7 +272,7 @@ fn test_snapshot_tier_boundary_bronze_max() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // 999_999_999 → still Bronze
-    client.create_bond_with_rolling(&identity, &999_999_999_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &999_999_999_i128, &86400_u64, &false, &0_u64);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Bronze);
 }
 
@@ -281,7 +281,7 @@ fn test_snapshot_tier_boundary_silver_min() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // 1_000_000_000 → Silver
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &false, &0_u64);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Silver);
 }
 
@@ -290,7 +290,7 @@ fn test_snapshot_tier_boundary_gold_min() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // 5_000_000_000 → Gold
-    client.create_bond_with_rolling(&identity, &5_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &5_000_000_000_i128, &86400_u64, &false, &0_u64);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Gold);
 }
 
@@ -299,7 +299,7 @@ fn test_snapshot_tier_boundary_platinum_min() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // 20_000_000_000 → Platinum
-    client.create_bond_with_rolling(&identity, &20_000_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &20_000_000_000_i128, &86400_u64, &false, &0_u64);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Platinum);
 }
 
@@ -309,7 +309,7 @@ fn test_snapshot_tier_boundary_platinum_min() {
 fn test_snapshot_does_not_mutate_bond() {
     let e = Env::default();
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86400_u64, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &200_i128);
 
@@ -328,11 +328,11 @@ fn test_snapshot_tier_updates_after_top_up() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
     // Start Bronze
-    client.create_bond_with_rolling(&identity, &500_000_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &500_000_000_i128, &86400_u64, &false, &0_u64);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Bronze);
 
     // Top up to Silver
-    client.top_up(&500_000_000_i128);
+    client.top_up(&identity, &500_000_000_i128);
     assert_eq!(client.get_bond_status_snapshot().tier, BondTier::Silver);
 }
 
@@ -343,9 +343,9 @@ fn test_snapshot_cooldown_exactly_at_end() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
+    client.create_bond(&identity, &1_000_000_000_i128, &86400_u64, &true, &3600_u64);
     client.set_cooldown_period(&admin, &3600_u64);
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
     // Exactly at end (t = 1000 + 3600 = 4600) → elapsed, remaining = 0
     e.ledger().with_mut(|li| li.timestamp = 4600);
     let snap = client.get_bond_status_snapshot();

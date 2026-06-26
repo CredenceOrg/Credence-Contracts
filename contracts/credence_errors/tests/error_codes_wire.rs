@@ -34,6 +34,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
     assert_eq!(ContractError::BondAlreadyExists as u32, 217);
     assert_eq!(ContractError::InvariantViolation as u32, 218);
+    assert_eq!(ContractError::TreasuryNotConfigured as u32, 223);
 
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
     assert_eq!(ContractError::AttestationNotFound as u32, 301);
@@ -48,6 +49,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::AlreadyDeactivated as u32, 404);
     assert_eq!(ContractError::AlreadyActive as u32, 405);
     assert_eq!(ContractError::InvalidContractAddress as u32, 406);
+    assert_eq!(ContractError::ContractCodeVerificationFailed as u32, 407);
 
     assert_eq!(ContractError::ExpiryInPast as u32, 500);
     assert_eq!(ContractError::DelegationNotFound as u32, 501);
@@ -62,6 +64,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InsufficientApprovals as u32, 605);
     assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
     assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
+    assert_eq!(ContractError::ProposalExpired as u32, 608);
 
     assert_eq!(ContractError::Overflow as u32, 700);
     assert_eq!(ContractError::Underflow as u32, 701);

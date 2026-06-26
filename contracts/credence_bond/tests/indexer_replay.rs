@@ -1,4 +1,4 @@
-//! Indexer-side invariant tests.
+﻿//! Indexer-side invariant tests.
 //!
 //! Downstream indexers never see contract storage — they see only the event
 //! stream. This suite asserts the **replay invariant**: an indexer that folds a
@@ -228,7 +228,7 @@ fn scenario_create_then_topup() {
     let f = setup();
     f.client
         .create_bond(&f.identity, &5_000_i128, &10_000_u64, &false, &0_u64);
-    f.client.top_up(&2_500_i128);
+    f.client.top_up(&f.identity, &2_500_i128);
     assert_replay_matches(&f);
 }
 
@@ -238,8 +238,8 @@ fn scenario_multiple_topups() {
     let f = setup();
     f.client
         .create_bond(&f.identity, &1_000_i128, &10_000_u64, &false, &0_u64);
-    f.client.top_up(&1_000_i128);
-    f.client.top_up(&3_000_i128);
+    f.client.top_up(&f.identity, &1_000_i128);
+    f.client.top_up(&f.identity, &3_000_i128);
     assert_replay_matches(&f);
 }
 
@@ -260,11 +260,11 @@ fn scenario_full_lifecycle() {
     f.env.ledger().set_timestamp(0);
     f.client
         .create_bond(&f.identity, &10_000_i128, &1_000_u64, &false, &0_u64);
-    f.client.top_up(&5_000_i128);
+    f.client.top_up(&identity, &5_000_i128);
     f.client.slash_bond(&f.admin, &2_000_i128);
     // Advance past the lock-up so the standard withdraw path is allowed.
     f.env.ledger().set_timestamp(2_000);
-    f.client.withdraw(&1_000_i128);
+    f.client.withdraw(&identity, &1_000_i128);
     assert_replay_matches(&f);
 }
 
@@ -279,7 +279,7 @@ fn scenario_withdraw_early() {
     f.client
         .create_bond(&f.identity, &10_000_i128, &10_000_u64, &false, &0_u64);
     f.env.ledger().set_timestamp(1_000); // still within lock-up
-    f.client.withdraw_early(&1_000_i128);
+    f.client.withdraw_early(&identity, &1_000_i128);
     assert_replay_matches(&f);
 }
 
@@ -294,7 +294,7 @@ fn dropping_topup_event_diverges() {
     let f = setup();
     f.client
         .create_bond(&f.identity, &5_000_i128, &10_000_u64, &false, &0_u64);
-    f.client.top_up(&2_500_i128);
+    f.client.top_up(&identity, &2_500_i128);
 
     let full_stream = capture(&f.env);
     // Sanity: the intact stream reconstructs correctly.

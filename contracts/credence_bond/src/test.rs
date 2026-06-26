@@ -6,7 +6,7 @@ fn test_create_bond() {
     let e = Env::default();
     let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
-    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     assert!(bond.active);
     assert_eq!(bond.bonded_amount, 1000_i128);
@@ -15,8 +15,8 @@ fn test_create_bond() {
 }
 #[cfg(test)]
 mod test_admin_transfer {
-    use soroban_sdk::{testutils::Address as _, Address, Env};
     use crate::CredenceBond;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     #[test]
     fn test_propose_and_accept_admin() {
@@ -28,7 +28,7 @@ mod test_admin_transfer {
         let admin = Address::generate(&e);
         let new_admin = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Propose new admin
         client.propose_admin(&admin, &new_admin);
@@ -54,7 +54,7 @@ mod test_admin_transfer {
         let rogue = Address::generate(&e);
         let new_admin = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&rogue, &new_admin); // should panic
     }
 
@@ -70,10 +70,12 @@ mod test_admin_transfer {
         let new_admin = Address::generate(&e);
         let rogue = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&admin, &new_admin);
 
-        e.ledger().with_mut(|l| { l.timestamp = l.timestamp + 86_401; });
+        e.ledger().with_mut(|l| {
+            l.timestamp = l.timestamp + 86_401;
+        });
 
         client.accept_admin(&rogue); // should panic
     }
@@ -89,7 +91,7 @@ mod test_admin_transfer {
         let admin = Address::generate(&e);
         let new_admin = Address::generate(&e);
 
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&admin, &new_admin);
 
         // Do NOT advance time past timelock
@@ -105,7 +107,7 @@ mod test_admin_transfer {
         let client = crate::CredenceBondClient::new(&e, &contract_id);
 
         let admin = Address::generate(&e);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.propose_admin(&admin, &admin); // should panic
     }
 }

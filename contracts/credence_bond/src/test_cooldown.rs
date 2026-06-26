@@ -13,7 +13,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 
@@ -83,7 +83,7 @@ fn test_request_cooldown_withdrawal() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 5000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &3600);
 
     let req = client.request_cooldown_withdrawal(&identity, &500);
@@ -98,7 +98,7 @@ fn test_request_cooldown_withdrawal_full_amount() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     let req = client.request_cooldown_withdrawal(&identity, &1000);
@@ -111,7 +111,7 @@ fn test_request_cooldown_zero_amount() {
     let e = Env::default();
     e.mock_all_auths();
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &0);
@@ -123,7 +123,7 @@ fn test_request_cooldown_negative_amount() {
     let e = Env::default();
     e.mock_all_auths();
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &-10);
@@ -135,7 +135,7 @@ fn test_request_cooldown_exceeds_balance() {
     let e = Env::default();
     e.mock_all_auths();
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &1001);
@@ -147,7 +147,7 @@ fn test_request_cooldown_exceeds_available_after_slash() {
     let e = Env::default();
     e.mock_all_auths();
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &300);
     client.set_cooldown_period(&admin, &100);
@@ -163,7 +163,7 @@ fn test_request_cooldown_duplicate() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &500);
@@ -188,7 +188,7 @@ fn test_request_cooldown_wrong_identity() {
     let e = Env::default();
     e.mock_all_auths();
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     let other = Address::generate(&e);
@@ -205,7 +205,7 @@ fn test_execute_cooldown_withdrawal_after_period() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &400);
 
@@ -221,7 +221,7 @@ fn test_execute_cooldown_withdrawal_exact_boundary() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &250);
 
@@ -237,7 +237,7 @@ fn test_execute_cooldown_removes_request() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &400);
 
@@ -257,7 +257,7 @@ fn test_execute_cooldown_with_zero_period() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     // Cooldown period defaults to 0 (instant)
     client.request_cooldown_withdrawal(&identity, &300);
 
@@ -273,7 +273,7 @@ fn test_execute_cooldown_too_early() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &500);
 
@@ -288,7 +288,7 @@ fn test_execute_cooldown_no_request() {
     let e = Env::default();
     e.mock_all_auths();
     let (client, _admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.execute_cooldown_withdrawal(&identity);
 }
 
@@ -299,7 +299,7 @@ fn test_execute_cooldown_balance_slashed_during_cooldown() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &800);
 
@@ -322,7 +322,7 @@ fn test_cancel_cooldown() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &500);
 
@@ -351,7 +351,7 @@ fn test_execute_after_cancel() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &500);
     client.cancel_cooldown(&identity);
@@ -370,7 +370,7 @@ fn test_get_cooldown_request() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 2000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
     client.request_cooldown_withdrawal(&identity, &750);
 
@@ -463,7 +463,7 @@ fn test_full_cooldown_lifecycle() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &5000, &86400, &false, &0);
+    client.create_bond(&identity, &5000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &3600);
 
     // Request withdrawal
@@ -494,7 +494,7 @@ fn test_cancel_and_rerequest_lifecycle() {
     e.mock_all_auths();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity) = setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000, &86400, &false, &0);
+    client.create_bond(&identity, &1000, &86400, &false, &0);
     client.set_cooldown_period(&admin, &100);
 
     client.request_cooldown_withdrawal(&identity, &800);

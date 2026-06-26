@@ -1,10 +1,6 @@
-use crate::{early_exit_penalty, rolling_bond, tiered_bond};
 use crate::{BondTier, DataKey, IdentityBond};
-
 use credence_errors::ContractError;
-use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, String, Symbol,
-};
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, String};
 
 /// Deliberately divergent fork: tier thresholds are shifted so that every amount >= 1 returns Gold.
 /// This is used by the differential harness to prove it can catch behavioural divergence.
@@ -96,7 +92,7 @@ impl CredenceBond {
             .instance()
             .get::<_, IdentityBond>(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bond.bonded_amount = bond.bonded_amount + amount;
+        bond.bonded_amount += amount;
         e.storage().instance().set(&key, &bond);
         bond
     }

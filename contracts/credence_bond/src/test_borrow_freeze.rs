@@ -10,7 +10,7 @@ fn setup_no_token(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 
@@ -62,14 +62,14 @@ fn test_create_bond_blocked_when_frozen() {
 }
 
 #[test]
-fn test_create_bond_with_rolling_blocked_when_frozen() {
+fn test_create_bond_blocked_when_frozen() {
     let e = Env::default();
     let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
 
     client.set_borrow_frozen(&admin, &true);
 
     assert!(client
-        .try_create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64)
+        .try_create_bond(&identity, &1_000_i128, &86_400_u64, &false, &0_u64)
         .is_err());
 }
 
@@ -81,7 +81,7 @@ fn test_top_up_blocked_when_frozen() {
     let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
 
     // Create bond first (freeze not yet active)
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
 
     client.set_borrow_frozen(&admin, &true);
 
@@ -95,7 +95,7 @@ fn test_withdraw_allowed_when_frozen() {
     let e = Env::default();
     let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
 
     client.set_borrow_frozen(&admin, &true);
 

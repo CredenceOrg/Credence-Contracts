@@ -491,9 +491,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "hex",
  "serde",
  "serde_json",
  "soroban-client",
+ "stellar-baselib",
+ "tokio",
 ]
 
 [[package]]
@@ -526,6 +529,7 @@ dependencies = [
  "serde",
  "serde_json",
  "soroban-sdk",
+ "soroban-spec",
 ]
 
 [[package]]
@@ -538,9 +542,20 @@ dependencies = [
 [[package]]
 name = "credence_math"
 version = "0.1.0"
+dependencies = [
+ "ethnum",
+]
 
 [[package]]
 name = "credence_multisig"
+version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "soroban-sdk",
+]
+
+[[package]]
+name = "credence_registry"
 version = "0.1.0"
 dependencies = [
  "credence_errors",

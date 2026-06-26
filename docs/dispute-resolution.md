@@ -1,38 +1,72 @@
-# Dispute Resolution: Closure Invariants
+# Arbitration: Dispute Resolution
 
-This document describes terminal-state closure guarantees for the `dispute_resolution` contract.
+This document describes the dispute resolution lifecycle and quorum configuration for the `credence_arbitration` contract.
 
-## Closure API
+## Dispute Lifecycle
 
-- `resolve_dispute(closer: Address, dispute_id: u64)`
-- `expire_dispute(closer: Address, dispute_id: u64)`
+```
+Open → Voting → Resolving → Resolved
+  ↘        ↘
+  Cancelled  Cancelled
+```
 
-Both closure functions require explicit signer authorization from `closer` and enforce role checks.
+Valid transitions enforced by the status machine:
 
-## Authorized Closers
+| From | To | Trigger |
+|---|---|---|
+| Open | Voting | `create_dispute` (implicit) |
+| Open | Cancelled | `cancel_dispute` (creator or admin) |
+| Voting | Resolving | `resolve_dispute` (after voting ends) |
+| Voting | Cancelled | `cancel_dispute` (creator or admin) |
+| Resolving | Resolved | `resolve_dispute` (after tally) |
 
-A dispute may be closed only by:
+## Quorum Gate
 
-- the original `disputer`, or
-- the contract `admin` (when initialized)
+The admin may set two quorum parameters via `set_quorum`:
 
-Any other caller is rejected with:
+- **`min_total_weight`** (`i128`) — minimum sum of vote weights required
+- **`min_voters`** (`u32`) — minimum number of distinct voters required
 
-- `Error::Unauthorized` (`#6`)
+Both default to `0`, preserving legacy behaviour (no quorum gate).
 
-## Terminal-State Invariants
+### Resolution flow with quorum
 
-The contract enforces deterministic terminal state:
+1. Voting period ends
+2. Quorum check (before the Resolving transition):
+   - Sum all vote weights across all outcomes
+   - Count distinct voters from `VoterCounter`
+   - If either threshold is unmet → emit `quorum_not_met` event, return `QuorumNotMet`
+   - Dispute **stays in Voting**; caller may retry after more votes are cast
+3. Transition to Resolving
+4. Tally votes → determine winner
+5. Transition to Resolved
 
-- No double-close: disputes in `Resolved` or `Expired` cannot be closed again (`Error::DisputeNotOpen`, `#3`)
-- No unauthorized close: closure attempts by non-disputer/non-admin fail (`Error::Unauthorized`, `#6`)
+### Error
 
-These checks ensure a dispute transitions from `Open` to exactly one terminal state and remains immutable afterward.
+`ArbitrationError::QuorumNotMet` (13) — returned when quorum thresholds are not satisfied.
 
-## Regression Coverage
+### Events
 
-Tests in `contracts/dispute_resolution/src/test.rs` cover:
+| Event | Topics | Data | Trigger |
+|---|---|---|---|
+| `quorum_set` | `("quorum_set",)` | `(min_total_weight, min_voters)` | `set_quorum` |
+| `quorum_not_met` | `("quorum_not_met", dispute_id)` | `(total_weight, min_total_weight, voter_count, min_voters)` | `resolve_dispute` when quorum not met |
 
-- unauthorized resolve attempts
-- unauthorized expire attempts
-- state immutability after failed second close
+## Admin Functions
+
+- `set_quorum(admin, min_total_weight, min_voters)` — requires admin auth
+- `get_quorum()` — returns `(min_total_weight, min_voters)`
+
+## Edge Cases
+
+- **Weight quorum met, voter quorum not met** → `QuorumNotMet`
+- **Voter quorum met, weight quorum not met** → `QuorumNotMet`
+- **Both met** → resolution proceeds
+- **Default (0, 0)** → legacy behaviour, no quorum gate
+- **Single voter under `min_voters`** → `QuorumNotMet`
+
+## Tests
+
+Quorum tests are in:
+- `contracts/arbitration/src/test.rs` — basic config + single-voter edge case
+- `contracts/arbitration/src/test_lifecycle.rs` — lifecycle integration tests for all quorum branches

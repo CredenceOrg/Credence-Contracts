@@ -25,7 +25,7 @@ fn setup(
     let g2 = Address::generate(e);
     let g3 = Address::generate(e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
     test_helpers::advance_ledger_sequence(e);
 
     let governors = Vec::from_array(e, [g1.clone(), g2.clone(), g3.clone()]);

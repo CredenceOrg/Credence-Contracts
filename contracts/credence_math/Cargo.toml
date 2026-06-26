@@ -6,3 +6,6 @@ description = "Shared overflow-safe arithmetic helpers for Credence contracts."
 
 [lib]
 crate-type = ["rlib"]
+
+[dependencies]
+ethnum = { version = "1.5.2", default-features = false }

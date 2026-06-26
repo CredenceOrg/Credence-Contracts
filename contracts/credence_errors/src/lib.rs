@@ -132,6 +132,14 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientSignatures = 108,
 
+    /// The target admin is currently suspended (suspended_until > now).
+    /// Used by suspend_admin when `until_ts` is not strictly in the future,
+    /// and by callers that detect a suspended admin attempting a privileged
+    /// action.
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    AdminSuspended = 113,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -256,6 +264,22 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvariantViolation = 218,
 
+    /// Slash treasury address has not been configured.
+    /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TreasuryNotConfigured = 223,
+
+    /// Pagination cursor is out of range (cursor >= registry_slots).
+    /// Triggered by: `scan_liquidation_candidates` when the supplied cursor
+    /// equals or exceeds the current registry slot count. Accepting
+    /// cursor == registry_slots would silently return a done=true result,
+    /// allowing a malicious keeper to synthesize a completed-scan response
+    /// without actually scanning any positions.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CursorOutOfRange = 226,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -330,6 +354,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidContractAddress = 406,
 
+    /// Contract code hash verification failed during trustless registration.
+    /// The calling contract's WASM code hash does not match the expected bond code hash.
+    /// Contracts: registry
+    /// Wire-stable: do not renumber this error code.
+    ContractCodeVerificationFailed = 407,
+
     // --- Delegation (500-599) ---
     /// Delegation expiry timestamp must be in the future.
     /// Replaces: panic!("expiry must be in the future")
@@ -376,6 +406,18 @@ pub enum ContractError {
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
     VerificationFailed = 507,
+
+    /// Post-expiry revocation attempted outside the configured grace window.
+    /// Triggered when `revocation_grace_period > 0` and
+    /// `now > expires_at + revocation_grace_period`.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    RevocationGraceExpired = 508,
+
+    /// Cleanup attempted on a delegation that is not expired yet.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    DelegationNotExpired = 509,
 
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
@@ -445,6 +487,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     FlashLoanRepaymentFailed = 607,
 
+    /// Withdrawal proposal has expired and can no longer be approved or executed.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    ProposalExpired = 608,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -459,15 +506,44 @@ pub enum ContractError {
     Underflow = 701,
 }
 
-/// @title  ErrorExt
-/// @notice Provides category() and description() on every ContractError variant.
-/// @dev    Use this for structured logging, monitoring, and off-chain display.
+/// @title ErrorExt
+/// @notice Provides category(), description(), and is_recoverable() on every
+/// ContractError variant.
+/// @dev Use this for structured logging, monitoring, and off-chain display.
+///
+/// `is_recoverable()` classifies an error as recoverable when the
+/// caller can fix their input or wait for state to change and retry
+/// the same kind of operation successfully (e.g. `AlreadyInitialized`,
+/// `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
+/// for **fatal** errors that indicate either a code-level fault
+/// (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
+/// (`ReentrancyDetected`), a cryptographic failure
+/// (`VerificationFailed`), or a payload binding mismatch
+/// (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
+/// `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
+/// alerting) should use this signal to decide between
+/// "retry/ignore" vs "alert/halt".
+///
+/// `is_recoverable()` is metadata only: it does not panic, does not
+/// allocate, and does not touch storage. It does not change any
+/// wire codes, categories, or description strings.
+///
+/// New `ContractError` variants must be added with an explicit
+/// classification — the matching `impl` is exhaustive and the test
+/// suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
 pub trait ErrorExt {
     /// @return The ErrorCategory bucket this error belongs to.
     fn category(&self) -> ErrorCategory;
 
     /// @return A static string description safe for logging or display.
     fn description(&self) -> &'static str;
+
+    /// @return `true` if a caller can fix their input or wait for state to
+    ///         change and retry the same operation successfully;
+    ///         `false` if the error indicates a code-level fault, security
+    ///         halt, or payload-binding mismatch where blind retry will not
+    ///         help.
+    fn is_recoverable(&self) -> bool;
 }
 
 impl ErrorExt for ContractError {
@@ -484,7 +560,8 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedDepositor
             | ContractError::ContractPaused
             | ContractError::InvalidPauseAction
-            | ContractError::InsufficientSignatures => ErrorCategory::Authorization,
+            | ContractError::InsufficientSignatures
+            | ContractError::AdminSuspended => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -506,6 +583,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::StorageCapReached
+            | ContractError::TreasuryNotConfigured
+            | ContractError::CursorOutOfRange
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -520,7 +599,8 @@ impl ErrorExt for ContractError {
             | ContractError::BondContractNotRegistered
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
-            | ContractError::InvalidContractAddress => ErrorCategory::Registry,
+            | ContractError::InvalidContractAddress
+            | ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
 
             ContractError::ExpiryInPast
             | ContractError::DelegationNotFound
@@ -529,7 +609,9 @@ impl ErrorExt for ContractError {
             | ContractError::UnknownScheme
             | ContractError::VerifierAlreadyRegistered
             | ContractError::VerifierNotRegistered
-            | ContractError::VerificationFailed => ErrorCategory::Delegation,
+            | ContractError::VerificationFailed
+            | ContractError::RevocationGraceExpired
+            | ContractError::DelegationNotExpired => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -538,7 +620,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalAlreadyExecuted
             | ContractError::InsufficientApprovals
             | ContractError::InvalidFlashLoanCallback
-            | ContractError::FlashLoanRepaymentFailed => ErrorCategory::Treasury,
+            | ContractError::FlashLoanRepaymentFailed
+            | ContractError::ProposalExpired => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
             ContractError::NoPendingAdmin
@@ -567,6 +650,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
+            ContractError::AdminSuspended => "Admin is currently suspended",
             ContractError::BondNotFound => "No bond found for the given key",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -591,6 +675,8 @@ impl ErrorExt for ContractError {
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
+            ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
+            ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -616,6 +702,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidContractAddress => {
                 "Provided contract address is not a deployed contract"
             }
+            ContractError::ContractCodeVerificationFailed => {
+                "Contract code hash verification failed during trustless registration"
+            }
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
             ContractError::AlreadyRevoked => "Delegation has already been revoked",
@@ -631,6 +720,12 @@ impl ErrorExt for ContractError {
             }
             ContractError::VerificationFailed => {
                 "Signature verification failed for the given scheme and payload"
+            }
+            ContractError::RevocationGraceExpired => {
+                "Post-expiry revocation attempted outside the configured grace window"
+            }
+            ContractError::DelegationNotExpired => {
+                "Cleanup attempted on a delegation that is not expired yet"
             }
             ContractError::AmountMustBePositive => "Amount must be strictly positive (> 0)",
             ContractError::ThresholdExceedsSigners => {
@@ -652,6 +747,7 @@ impl ErrorExt for ContractError {
             ContractError::FlashLoanRepaymentFailed => {
                 "Flashloan principal plus fee was not fully repaid"
             }
+            ContractError::ProposalExpired => "Withdrawal proposal has expired",
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -662,6 +758,126 @@ impl ErrorExt for ContractError {
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
+        }
+    }
+
+    fn is_recoverable(&self) -> bool {
+        // Classification rule (informs every arm below):
+        //   RECOVERABLE — caller can fix their own input or wait for state
+        //                 they observe to change, then retry the same
+        //                 kind of operation successfully without code/
+        //                 deployment changes.
+        //   FATAL       — retrying the same caller input is guaranteed
+        //                 to fail, and the fix is not in caller's hands:
+        //                 code-level impossibility, security halt,
+        //                 cryptographic failure, or system capacity
+        //                 reached. Indexers/admins should be alerted;
+        //                 clients should NOT retry.
+        // Per-arm rationale is the trailing `// ...` comment so reviewers
+        // can audit each decision next to its arm. The `///` trait rustdoc
+        // captures the rule globally.
+        match self {
+            // --- Initialization: caller fixes setup state. ---
+            ContractError::NotInitialized | ContractError::AlreadyInitialized => true,
+
+            // --- Authorization (100-199) + Admin Transfer (109-112):
+            //     switch to the correct signer/role, or wait/correct
+            //     payload/state. Caller-fixable in every case. ---
+            ContractError::NotAdmin
+            | ContractError::NotBondOwner
+            | ContractError::UnauthorizedAttester
+            | ContractError::NotOriginalAttester
+            | ContractError::NotSigner
+            | ContractError::UnauthorizedDepositor
+            | ContractError::ContractPaused         // wait for unpause
+            | ContractError::InvalidPauseAction     // correct action byte
+            | ContractError::InsufficientSignatures // gather more approvals
+            | ContractError::AdminSuspended         // wait for suspension
+            | ContractError::NoPendingAdmin         // call begin_admin_transfer first
+            | ContractError::InvalidAdminAddress
+            | ContractError::AdminUnchanged
+            | ContractError::TimelockNotReady => true,
+
+            // --- Bond (200-299): most errors are caller-fixable. ---
+            ContractError::BondNotFound                 // create_bond first
+            | ContractError::BondNotActive
+            | ContractError::InsufficientBalance        // top up
+            | ContractError::SlashExceedsBond           // reduce slash amount
+            | ContractError::LockupNotExpired           // wait for the lock-up
+            | ContractError::NotRollingBond
+            | ContractError::WithdrawalAlreadyRequested // wait for the existing request
+            | ContractError::InvalidNonce               // bump nonce
+            | ContractError::SignatureExpired           // re-sign with later deadline
+            | ContractError::NegativeStake              // reduce the stake
+            | ContractError::EarlyExitConfigNotSet      // configure early exit first
+            | ContractError::InvalidPenaltyBps          // use 0..=10000
+            | ContractError::LeverageExceeded           // reduce operation size
+            | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+            | ContractError::InvalidBondAmount
+            | ContractError::InvalidBondDuration
+            | ContractError::InvalidNoticePeriod
+            | ContractError::BondAlreadyExists => true,
+
+            // FATAL Bond: caller cannot directly fix any of these.
+            ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
+            ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
+            ContractError::InvariantViolation => false,   // post-write drift detection
+
+            // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
+            // Same payload will fail again; clients must not blindly retry.
+            ContractError::DomainMismatch
+            | ContractError::OwnerMismatch
+            | ContractError::TargetMismatch
+            | ContractError::ContractIdMismatch => false,
+
+            // --- Attestation (300-399): all caller-fixable. ---
+            ContractError::DuplicateAttestation
+            | ContractError::AttestationNotFound
+            | ContractError::AttestationAlreadyRevoked
+            | ContractError::InvalidAttestationWeight
+            | ContractError::AttestationWeightExceedsMax => true,
+
+            // --- Registry (400-499): all caller-fixable. ---
+            ContractError::IdentityAlreadyRegistered
+            | ContractError::BondContractAlreadyRegistered
+            | ContractError::IdentityNotRegistered
+            | ContractError::BondContractNotRegistered
+            | ContractError::AlreadyDeactivated
+            | ContractError::AlreadyActive
+            | ContractError::InvalidContractAddress
+            | ContractError::ContractCodeVerificationFailed => true,
+
+            // --- Delegation (500-599): mostly caller-fixable ---
+            ContractError::ExpiryInPast                // supply a future expiry
+            | ContractError::DelegationNotFound        // create the delegation first
+            | ContractError::AlreadyRevoked            // idempotent
+            | ContractError::DelegationExpiryTooLong   // shorten to MAX_DURATION
+            | ContractError::VerifierAlreadyRegistered // idempotent
+            | ContractError::VerifierNotRegistered
+            | ContractError::DelegationNotExpired => true,
+
+            // FATAL Delegation: caller cannot fix these.
+            ContractError::UnknownScheme => false,         // scheme tag not supported by this build
+            ContractError::VerificationFailed => false,    // crypto failure; same input will fail
+            ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+
+            // --- Treasury (600-699): mostly caller-fixable ---
+            ContractError::AmountMustBePositive            // supply amount > 0
+            | ContractError::ThresholdExceedsSigners        // lower threshold to <= signer count
+            | ContractError::InsufficientTreasuryBalance    // top up
+            | ContractError::ProposalNotFound               // supply a valid proposal id
+            | ContractError::ProposalAlreadyExecuted        // idempotent
+            | ContractError::InsufficientApprovals          // collect more approvals
+            | ContractError::ProposalExpired => true,       // create a new proposal
+
+            // FATAL Treasury flashloan failures: callback contract misbehaved.
+            ContractError::InvalidFlashLoanCallback => false, // bad magic value
+            ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
+
+            // --- Arithmetic (700-799): code-level impossibility. ---
+            ContractError::Overflow | ContractError::Underflow => false,
         }
     }
 }

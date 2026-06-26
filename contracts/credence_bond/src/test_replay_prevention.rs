@@ -17,7 +17,7 @@ fn setup(
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = soroban_sdk::Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(e);
     client.register_attester(&attester);
     (client, attester, contract_id)
@@ -352,7 +352,10 @@ fn delegation_namespace_replay_rejected_on_add_attestation_without_consuming_bon
         &deadline,
         &0_u64,
     );
-    assert!(result.is_err(), "delegation namespace must not execute in bond");
+    assert!(
+        result.is_err(),
+        "delegation namespace must not execute in bond"
+    );
     assert_eq!(client.get_nonce(&attester), 0);
 
     client.add_attestation(
@@ -394,7 +397,10 @@ fn delegation_namespace_replay_rejected_on_revoke_without_consuming_bond_nonce()
         &deadline,
         &1_u64,
     );
-    assert!(result.is_err(), "delegation namespace must not revoke in bond");
+    assert!(
+        result.is_err(),
+        "delegation namespace must not revoke in bond"
+    );
     assert_eq!(client.get_nonce(&attester), 1);
 
     client.revoke_attestation(&attester, &attestation.id, &contract_id, &deadline, &1_u64);

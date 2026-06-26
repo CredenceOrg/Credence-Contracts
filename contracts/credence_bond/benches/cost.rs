@@ -1,10 +1,10 @@
 //! Gas-regression gate for the `credence_bond` contract.
 //!
-//! Run via `cargo bench -p credence_bond --bench cost` (or in CI). It measures
-//! every tracked entrypoint with [`Env::cost_estimate`], compares against the
-//! committed `cost_baseline.json`, prints a table, and **exits non-zero if any
-//! metric regressed past the baseline's tolerance**. That non-zero exit is what
-//! fails the PR.
+//! Run via `cargo bench -p credence_bond --features gas-bench --bench cost` (or
+//! in CI). It measures every tracked entrypoint with [`Env::cost_estimate`],
+//! compares against the committed `cost_baseline.json`, prints a table, and
+//! **exits non-zero if any metric regressed past the baseline's tolerance**.
+//! That non-zero exit is what fails the PR.
 //!
 //! To intentionally accept new numbers, refresh the baseline with
 //! `cargo run -p credence_bond --bin update-cost-baseline`. See

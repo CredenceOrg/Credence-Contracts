@@ -29,6 +29,7 @@ Canonical Soroban contract template for the Credence workspace. Copy this crate 
 |--------------|-------|----------------------------------------------|
 | `value`      | i128  | Arbitrary numeric value set by the admin     |
 | `updated_at` | u64   | Ledger timestamp of the last write           |
+| `expires_at` | u64   | Ledger timestamp when the record expires (0 = never expires) |
 
 ## Contract Functions
 
@@ -36,7 +37,7 @@ Canonical Soroban contract template for the Credence workspace. Copy this crate 
 
 Set the contract admin. Panics with `"already initialized"` if called more than once. Emits an `initialized` event.
 
-### `set_record(owner: Address, value: i128)`
+### `set_record(owner: Address, value: i128, expires_at: u64)`
 
 Store or overwrite a `Record` for `owner`. Requires admin authorization. Records the current ledger timestamp in `updated_at`. Emits a `record_set` event.
 
@@ -46,11 +47,22 @@ Delete the record for `owner`. Requires admin authorization. No-op if the record
 
 ### `get_record(owner: Address) -> Record`
 
-Return the record for `owner`. Panics with `"record not found"` if none exists.
+Return the record for `owner`. Panics with `"record not found"` if none exists, or `"record expired"` if the current timestamp is >= `expires_at`. Expired records are auto-purged on read.
 
 ### `has_record(owner: Address) -> bool`
 
-Return `true` if a record exists for `owner`, `false` otherwise.
+Return `true` if an active record exists for `owner`, `false` otherwise. If the record is expired, it is auto-purged and returns `false`.
+
+### `is_expired(owner: Address) -> bool`
+
+Return `true` if a record exists for `owner` but is currently expired.
+
+## How to add TTL/expiry
+
+This template implements an upgrade-safe, auto-purging expiry pattern:
+1. Store an `expires_at` (`u64`) timestamp alongside the data.
+2. Provide an `is_expired` read view for indexers and clients.
+3. In `get_` and `has_` methods, check `e.ledger().timestamp() >= expires_at`. If true, delete the data and return as if it was not found. This clears dead state passively without requiring cron jobs.
 
 ### `get_admin() -> Address`
 

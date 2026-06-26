@@ -443,3 +443,90 @@ pub fn get_claims_summary(e: &Env, user: &Address) -> Map<ClaimType, i128> {
 
     summary
 }
+
+/// Permissionless, bounded sweep to expire stale pending claims.
+///
+/// Scans up to `max_iter` of the user's pending claims, removes those past
+/// `expires_at`, and returns the count pruned. Never touches claims with
+/// `expires_at == 0` (no expiry) or processed claims.
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address whose claims to prune
+/// * `max_iter` - Maximum number of claims to scan (hard-capped at MAX_BATCH_CLAIMS)
+///
+/// # Returns
+/// Number of expired claims removed
+pub fn expire_claims_bounded(e: &Env, user: &Address, max_iter: u32) -> u32 {
+    let now = e.ledger().timestamp();
+    let claims = get_pending_claims(e, user);
+
+    if claims.is_empty() {
+        return 0;
+    }
+
+    // Cap the iteration limit at MAX_BATCH_CLAIMS for gas safety
+    let limit = if max_iter == 0 {
+        MAX_BATCH_CLAIMS
+    } else {
+        max_iter.min(MAX_BATCH_CLAIMS)
+    };
+
+    let mut valid_claims = Vec::new(e);
+    let mut expired_amount = 0i128;
+    let mut expired_count = 0u32;
+
+    // Scan up to `limit` claims, preserving order
+    for (i, claim) in claims.iter().enumerate() {
+        if (i as u32) >= limit {
+            // Add remaining unscanned claims to output and break
+            valid_claims.append(&claims.slice(i as u32..));
+            break;
+        }
+        // Skip claims with no expiry (expires_at == 0) or already processed
+        if claim.expires_at == 0 || claim.processed {
+            valid_claims.push_back(claim);
+            continue;
+        }
+
+        // Check if expired
+        if now > claim.expires_at {
+            expired_amount = expired_amount
+                .checked_add(claim.amount)
+                .expect("expired amount overflow");
+            expired_count += 1;
+            // Don't add to valid_claims; this removes it
+        } else {
+            valid_claims.push_back(claim);
+        }
+    }
+
+    if expired_count > 0 {
+        // Update storage with the pruned claims
+        if valid_claims.is_empty() {
+            e.storage()
+                .persistent()
+                .remove(&DataKey::PendingClaims(user.clone()));
+            e.storage()
+                .persistent()
+                .remove(&DataKey::ClaimableAmount(user.clone()));
+        } else {
+            e.storage()
+                .persistent()
+                .set(&DataKey::PendingClaims(user.clone()), &valid_claims);
+
+            let remaining_amount = get_claimable_amount(e, user)
+                .checked_sub(expired_amount)
+                .expect("claimable amount underflow");
+
+            e.storage()
+                .persistent()
+                .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
+        }
+
+        // Emit event with pruned count
+        events::emit_claims_expired(e, user, expired_count, expired_amount);
+    }
+
+    expired_count
+}

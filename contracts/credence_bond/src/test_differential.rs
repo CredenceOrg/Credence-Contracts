@@ -68,14 +68,9 @@ fn assert_pinned(label: &str, bond: &IdentityBond, p: &Pinned) {
 #[test]
 fn scenario_full_bond_lifecycle() {
     let env = Env::default();
-    env.mock_all_auths();
-    let id = env.register(CredenceBond, ());
-    let c = CredenceBondClient::new(&env, &id);
-
-    let admin = Address::generate(&env);
-    let identity = Address::generate(&env);
-
-    c.initialize(&admin);
+    let (c, admin, identity, ..) = crate::test_helpers::setup_with_token(&env);
+    let slash_treasury = Address::generate(&env);
+    c.set_slash_treasury(&admin, &slash_treasury);
 
     c.create_bond(&identity, &1_000_i128, &10_000_u64, &false, &0_u64);
     assert_pinned(
@@ -91,7 +86,7 @@ fn scenario_full_bond_lifecycle() {
         },
     );
 
-    c.top_up(&5_000_i128);
+    c.top_up(&identity, &5_000_i128);
     assert_pinned(
         "after_top_up",
         &c.get_identity_state(),
@@ -107,7 +102,7 @@ fn scenario_full_bond_lifecycle() {
 
     // Advance past lock-up: bond_start=0, duration=10_000, now=10_001.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&2_000_i128);
+    c.withdraw(&identity, &2_000_i128);
     assert_pinned(
         "after_first_withdraw",
         &c.get_identity_state(),
@@ -151,7 +146,7 @@ fn scenario_full_bond_lifecycle() {
 
     // Second withdrawal: available = bonded - slashed = 4000 - 700 = 3300.
     env.ledger().with_mut(|l| l.timestamp = 20_001);
-    c.withdraw(&3_300_i128);
+    c.withdraw(&identity, &3_300_i128);
     assert_pinned(
         "final",
         &c.get_identity_state(),
@@ -200,7 +195,7 @@ fn scenario_rolling_bond_with_renewal() {
     );
 
     env.ledger().with_mut(|l| l.timestamp = 5_001);
-    c.renew_if_rolling();
+    c.renew_if_rolling(&identity);
     // apply_renewal sets bond_start = now (5_001) and resets withdrawal_requested_at = 0.
     let bond_after_renew = c.get_identity_state();
     assert_eq!(
@@ -213,7 +208,7 @@ fn scenario_rolling_bond_with_renewal() {
     );
     assert_eq!(bond_after_renew.bonded_amount, 50_000);
 
-    c.request_withdrawal();
+    c.request_withdrawal(&identity);
     let bond_after_req = c.get_identity_state();
     assert_eq!(
         bond_after_req.withdrawal_requested_at, 5_001,
@@ -222,7 +217,7 @@ fn scenario_rolling_bond_with_renewal() {
 
     // Advance to end of renewed period: 5_001 + 5_000 = 10_001.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&10_000_i128);
+    c.withdraw(&identity, &10_000_i128);
     assert_pinned(
         "after_partial_withdraw",
         &c.get_identity_state(),
@@ -243,14 +238,8 @@ fn scenario_rolling_bond_with_renewal() {
 #[test]
 fn scenario_early_exit_and_penalty() {
     let env = Env::default();
-    env.mock_all_auths();
-    let id = env.register(CredenceBond, ());
-    let c = CredenceBondClient::new(&env, &id);
-
-    let admin = Address::generate(&env);
-    let identity = Address::generate(&env);
+    let (c, admin, identity, ..) = crate::test_helpers::setup_with_token(&env);
     let treasury = Address::generate(&env);
-    c.initialize(&admin);
     // 500 bps = 5% max penalty (time-decayed).
     c.set_early_exit_config(&admin, &treasury, &500_u32);
 
@@ -276,7 +265,7 @@ fn scenario_early_exit_and_penalty() {
 
     // Past expiry: withdraw remaining available balance.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&8_000_i128);
+    c.withdraw(&identity, &8_000_i128);
     assert_pinned(
         "after_final_withdraw",
         &c.get_identity_state(),
@@ -332,7 +321,7 @@ fn scenario_extend_duration() {
     c.initialize(&admin);
     c.create_bond(&identity, &1_000_i128, &3_600_u64, &false, &0_u64);
 
-    c.extend_duration(&1_800_u64);
+    c.extend_duration(&identity, &1_800_u64);
     assert_pinned(
         "after_extend",
         &c.get_identity_state(),
@@ -362,7 +351,7 @@ fn scenario_rolling_renew_at_exact_expiry() {
 
     // Exactly at expiry: is_period_ended(3600, 0, 3600) → 3600 >= 3600 → true.
     env.ledger().with_mut(|l| l.timestamp = 3_600);
-    c.renew_if_rolling();
+    c.renew_if_rolling(&identity);
     let bond = c.get_identity_state();
     assert_eq!(bond.bond_start, 3_600, "bond_start after first renewal");
     assert_eq!(bond.bond_duration, 3_600);
@@ -373,7 +362,7 @@ fn scenario_rolling_renew_at_exact_expiry() {
 
     // Past end of renewed period: 3_600 + 3_600 = 7_200; advance past it.
     env.ledger().with_mut(|l| l.timestamp = 7_201);
-    c.renew_if_rolling();
+    c.renew_if_rolling(&identity);
     let bond2 = c.get_identity_state();
     assert_eq!(bond2.bond_start, 7_201, "bond_start after second renewal");
 }

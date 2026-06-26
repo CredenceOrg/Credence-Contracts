@@ -379,6 +379,40 @@ impl CredenceIdentity {
 }
 ```
 
+## Invalid-Address Policy
+
+Every privileged admin entrypoint that accepts a target `Address` MUST
+reject the zero/invalid address sentinel.  The sentinel is the strkey
+encoding of the all-zero Ed25519 public key:
+
+```
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+```
+
+Assigning a role to — or transferring ownership to — this address can
+permanently strand governance, so the guard is enforced before any
+authorisation or storage mutation.  The rejection uses
+`ContractError::InvalidAdminAddress` (code 110).
+
+### Entrypoints protected
+
+| Entrypoint           | Parameter guarded     |
+|----------------------|-----------------------|
+| `add_admin`          | `new_admin`           |
+| `update_admin_role`  | `admin_address`       |
+| `transfer_ownership` | `new_owner`           |
+| `reactivate_admin`   | `admin_address`       |
+| `deactivate_admin`   | `admin_address`       |
+| `remove_admin`       | `admin_to_remove`     |
+| `set_pause_signer`   | `signer`              |
+
+### Semantics
+
+An address is considered **invalid** when its string representation
+exactly equals the sentinel above.  This is a purely syntactic check:
+it catches uninitialised / garbage strkeys.  A valid (non-sentinel)
+contract or account address is never rejected by this guard.
+
 ## Future Enhancements
 
 Potential improvements for future versions:
@@ -395,3 +429,23 @@ Potential improvements for future versions:
 - [Soroban Documentation](https://soroban.stellar.org/docs)
 - [Access Control Best Practices](https://soroban.stellar.org/docs/learn/security)
 - [Event Logging Guidelines](https://soroban.stellar.org/docs/learn/events)
+
+## Bond Contract Privileged Access Matrix
+
+The following table summarizes every privileged/admin entrypoint in the Bond Contract that requires authorization to prevent regressions. They are exhaustively checked through a data-driven negative matrix in the test suite to ensure:
+- non-admin rejection coverage (unauthorized callers are rejected)
+- uninitialized coverage (uninitialized contract execution fails)
+- real auth enforcement coverage (genuine `require_auth` enforcement without test mocks)
+
+| Entrypoint | Type | Scope |
+|---|---|---|
+| `set_early_exit_config` | Admin-only | Updates early exit parameters and sets treasury. |
+| `register_attester` | Admin-only | Adds a new attester to the contract. |
+| `unregister_attester` | Admin-only | Removes an existing attester from the contract. |
+| `set_attester_stake` | Admin-only | Sets specific attester stake amount. |
+| `set_weight_config` | Admin-only | Configures weighting multipliers and limits. |
+| `slash` | Admin-only | Fully or partially slashes a bond and distributes fees. |
+| `slash_bond` | Admin-only | Internal/variant wrapper to perform bond slashing. |
+| `collect_fees` | Admin-only | Collects all accumulated protocol fees. |
+
+*Note: Any new admin entrypoint must be appended to this matrix and included in the `PrivilegedCase` test array.*

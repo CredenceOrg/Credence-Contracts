@@ -255,6 +255,67 @@ let result = client.create_batch_bonds(&params_list);
 
 ## Testing
 
+## Permissionless Claim Expiry Sweep
+
+The bond contract maintains a pull-payment claims system where each claim has an
+optional expiry (default 30 days). Expired claims accumulate in a per-user vector
+and must be pruned to prevent storage bloat.
+
+### expire_claims
+
+Bounded, permissionless sweep to expire and remove stale pending claims.
+
+**Signature:**
+```rust
+pub fn expire_claims(
+    e: Env,
+    user: Address,
+    max_iter: u32
+) -> u32
+```
+
+**Parameters:**
+- `user`: Address whose claims to scan and prune
+- `max_iter`: Maximum number of claims to scan (hard-capped at 50 for gas safety)
+
+**Returns:**
+- Number of expired claims removed
+
+**Behavior:**
+- Scans up to `max_iter` claims (capped at `MAX_BATCH_CLAIMS = 50`)
+- Removes only claims where `now > expires_at` (never touches claims with `expires_at == 0`)
+- Callable by anyone (no authorization required)
+- Emits `claims_expired(user, pruned_count)` event for each sweep
+- Preserves claim order and claim IDs of remaining claims
+
+**Use Cases:**
+1. **Keeper incentivization**: Off-chain keepers call this to earn rewards
+2. **Storage maintenance**: Regular sweeps prevent vector bloat
+3. **User self-service**: Users can manually prune their own claims
+4. **Governance**: Can be triggered by off-chain indexers on behalf of users
+
+**Example:**
+```rust
+let pruned = client.expire_claims(&user, &50);
+println!("Swept and removed {} expired claims", pruned);
+
+// Idempotent: calling again returns 0 if all expired claims already removed
+let pruned_again = client.expire_claims(&user, &50);
+assert_eq!(pruned_again, 0);
+```
+
+**Gas Safety:**
+- Maximum iteration count is 50 claims per call
+- Multiple calls can be made to sweep large backlogs progressively
+- Each call is O(min(max_iter, pending_count))
+
+**Implementation Notes:**
+- Claims with `expires_at == 0` are never pruned (permanent claims)
+- Claims marked as `processed = true` skip expiry check (already claimed)
+- Claimable amount is decremented only for removed claims
+- Idempotent: repeated calls on same user find no work
+
+
 Comprehensive test coverage includes:
 
 - ✅ Single bond in batch

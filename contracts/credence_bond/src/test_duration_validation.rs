@@ -13,7 +13,7 @@ fn setup(e: &Env) -> CredenceBondClient<'_> {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client
 }
 
@@ -96,7 +96,7 @@ fn test_validate_duration_u64_max() {
 fn test_create_bond_min_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    let bond = client.create_bond_with_rolling(
+    let bond = client.create_bond(
         &identity,
         &1000000_i128,
         &MIN_BOND_DURATION,
@@ -112,7 +112,7 @@ fn test_create_bond_min_duration() {
 fn test_create_bond_max_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    let bond = client.create_bond_with_rolling(
+    let bond = client.create_bond(
         &identity,
         &1000000_i128,
         &MAX_BOND_DURATION,
@@ -130,7 +130,7 @@ fn test_create_bond_typical_duration() {
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
     let thirty_days = 30 * 86_400_u64;
     let bond =
-        client.create_bond_with_rolling(&identity, &1000000_i128, &thirty_days, &false, &0_u64);
+        client.create_bond(&identity, &1000000_i128, &thirty_days, &false, &0_u64);
     assert!(bond.active);
     assert_eq!(bond.bond_duration, thirty_days);
 }
@@ -143,7 +143,7 @@ fn test_create_bond_zero_duration_rejected() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond_with_rolling(&identity, &1000000_i128, &0_u64, &false, &0_u64);
+    client.create_bond(&identity, &1000000_i128, &0_u64, &false, &0_u64);
 }
 
 /// Bond creation with duration below minimum must be rejected.
@@ -154,7 +154,7 @@ fn test_create_bond_below_min_duration_rejected() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &1000000_i128,
         &(MIN_BOND_DURATION - 1),
@@ -171,7 +171,7 @@ fn test_create_bond_above_max_duration_rejected() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &1000000_i128,
         &(MAX_BOND_DURATION + 1),
@@ -185,7 +185,7 @@ fn test_create_bond_above_max_duration_rejected() {
 fn test_create_rolling_bond_valid_duration() {
     let e = Env::default();
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    let bond = client.create_bond_with_rolling(
+    let bond = client.create_bond(
         &identity,
         &1000000_i128,
         &MIN_BOND_DURATION,
@@ -205,7 +205,7 @@ fn test_create_rolling_bond_invalid_duration_rejected() {
     e.mock_all_auths();
     let client = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond_with_rolling(&identity, &1000000_i128, &3600_u64, &true, &1800_u64);
+    client.create_bond(&identity, &1000000_i128, &3600_u64, &true, &1800_u64);
 }
 
 /// Constants have expected values.

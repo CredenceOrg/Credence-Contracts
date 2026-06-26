@@ -1,8 +1,8 @@
-#![cfg(test)]
+﻿#![cfg(test)]
 
 use std::vec::Vec;
 
-use crate::{CredenceBond, CredenceBondClient, test_helpers};
+use crate::{test_helpers, CredenceBond, CredenceBondClient};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
@@ -20,7 +20,7 @@ fn test_v2_event_indexing_improvements() {
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // --- SETUP MOCK TOKEN ---
     let token_addr = e.register(test_helpers::MockStellarAsset, ());
@@ -43,7 +43,7 @@ fn test_v2_event_indexing_improvements() {
     let notice_period = 0_u64;
     let bond_start = e.ledger().timestamp();
 
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &initial_amount,
         &duration,
@@ -114,7 +114,7 @@ fn test_v2_event_indexing_improvements() {
     ledger_info.timestamp += duration + 1;
     e.ledger().set(ledger_info);
 
-    client.withdraw(&withdraw_amount);
+    client.withdraw(&identity, &withdraw_amount);
 
     let events = e.events().all();
 
@@ -167,7 +167,7 @@ fn test_v2_event_indexing_improvements() {
     let top_up_amount = 5_000_i128;
     let expected_total_after_top_up = 12_000_i128;
 
-    client.top_up(&top_up_amount);
+    client.top_up(&identity, &top_up_amount);
 
     let events = e.events().all();
 
@@ -229,7 +229,7 @@ fn test_event_indexing_query_efficiency() {
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Setup token
     let token_addr = e.register(test_helpers::MockStellarAsset, ());
@@ -250,7 +250,7 @@ fn test_event_indexing_query_efficiency() {
         let identity = if i % 2 == 0 { &identity1 } else { &identity2 };
         timestamps.push(e.ledger().timestamp());
 
-        client.create_bond_with_rolling(identity, &amount, &86400_u64, &false, &0_u64);
+        client.create_bond(identity, &amount, &86400_u64, &false, &0_u64);
 
         // Advance time for uniqueness
         let mut ledger_info = e.ledger().get();
@@ -321,7 +321,7 @@ fn test_event_schema_compatibility() {
     let admin = Address::generate(&e);
     let identity = Address::generate(&e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Setup token
     let token_addr = e.register(test_helpers::MockStellarAsset, ());
@@ -333,7 +333,7 @@ fn test_event_schema_compatibility() {
     client.set_token(&admin, &token_addr);
 
     // Test that both old and new events are emitted for backward compatibility
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
 
     let events = e.events().all();
 

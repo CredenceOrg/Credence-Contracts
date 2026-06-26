@@ -81,7 +81,7 @@ fn setup_with_bond(amount: i128) -> (Env, CredenceBondClient<'static>, Address) 
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1_000);
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &amount,
         &crate::validation::MIN_BOND_DURATION,
@@ -305,7 +305,10 @@ fn prop_tier_boundary_values_correct() {
         get_tier_for_amount(&e, TIER_GOLD_MAX),
         BondTier::Platinum
     ));
-    assert!(matches!(get_tier_for_amount(&e, i128::MAX), BondTier::Platinum));
+    assert!(matches!(
+        get_tier_for_amount(&e, i128::MAX),
+        BondTier::Platinum
+    ));
 }
 
 /// Property 10: tier is independent of identity address (pure function of amount).
