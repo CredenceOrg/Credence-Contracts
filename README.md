@@ -69,7 +69,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
 - `contracts/credence_delegation/` — Delegation contract
-- `docs/` — Feature docs (`rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`)
+- `docs/` — Feature docs (`rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`) and [cross-contract call graph](docs/cross-contract-call-graph.md)
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths.
 
