@@ -14,6 +14,7 @@
     clippy::restriction
 )]
 
+pub mod consts;
 pub mod pausable;
 
 #[cfg(test)]
@@ -80,6 +81,13 @@ enum DataKey {
     Owner,
     /// Pending owner for two-step ownership transfer
     PendingOwner,
+}
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage().instance().extend_ttl(
+        consts::INSTANCE_TTL_THRESHOLD,
+        consts::INSTANCE_TTL_EXTEND_TO,
+    );
 }
 
 #[contract]
@@ -167,6 +175,7 @@ impl AdminContract {
 
         // Set the initial owner as the super admin
         e.storage().instance().set(&DataKey::Owner, &super_admin);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "admin_initialized"),), super_admin);
@@ -257,6 +266,7 @@ impl AdminContract {
         e.storage()
             .instance()
             .set(&DataKey::RoleAdmins(role), &role_admins);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "admin_added"),), admin_info.clone());
@@ -352,6 +362,7 @@ impl AdminContract {
                 .instance()
                 .set(&DataKey::RoleAdmins(admin_info.role), &role_admins);
         }
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "admin_removed"),), admin_info);
@@ -445,6 +456,7 @@ impl AdminContract {
             &DataKey::AdminInfo(admin_address.clone()),
             &admin_info.clone(),
         );
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "admin_role_updated"),),
@@ -498,6 +510,7 @@ impl AdminContract {
             &DataKey::AdminInfo(admin_address.clone()),
             &admin_info.clone(),
         );
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "admin_deactivated"),), admin_info);
@@ -545,6 +558,7 @@ impl AdminContract {
             &DataKey::AdminInfo(admin_address.clone()),
             &admin_info.clone(),
         );
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "admin_reactivated"),), admin_info.clone());
@@ -613,6 +627,7 @@ impl AdminContract {
         e.storage()
             .instance()
             .set(&DataKey::PendingOwner, &new_owner.clone());
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "ownership_transfer_initiated"),),
@@ -662,6 +677,7 @@ impl AdminContract {
         e.storage()
             .instance()
             .set(&DataKey::Owner, &pending_owner.clone());
+        bump_instance_ttl(&e);
 
         // Clear pending owner
         e.storage().instance().remove(&DataKey::PendingOwner);
@@ -874,6 +890,9 @@ impl AdminContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_ttl;
 
 // Pause mechanism entrypoints
 #[contractimpl]

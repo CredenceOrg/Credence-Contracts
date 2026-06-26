@@ -14,6 +14,7 @@
     clippy::restriction
 )]
 
+pub mod consts;
 pub mod pausable;
 pub mod receiver;
 pub mod treasury;
@@ -22,6 +23,8 @@ pub use treasury::*;
 
 #[cfg(test)]
 mod test_treasury;
+#[cfg(test)]
+mod test_ttl;
 
 #[cfg(test)]
 mod test_pausable;

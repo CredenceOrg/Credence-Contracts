@@ -19,6 +19,7 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol,
 };
 
+pub mod consts;
 pub mod pausable;
 pub mod status;
 
@@ -56,6 +57,13 @@ pub enum DataKey {
     VoterCasted(u64, Address),
 }
 
+fn bump_instance_ttl(e: &Env) {
+    e.storage().instance().extend_ttl(
+        consts::INSTANCE_TTL_THRESHOLD,
+        consts::INSTANCE_TTL_EXTEND_TO,
+    );
+}
+
 #[contract]
 pub struct CredenceArbitration;
 
@@ -75,6 +83,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::PauseProposalCounter, &0_u64);
+        bump_instance_ttl(&e);
         Ok(())
     }
 
@@ -99,6 +108,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Arbitrator(arbitrator.clone()), &weight);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "arbitrator_registered"), arbitrator),
@@ -163,6 +173,7 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        bump_instance_ttl(&e);
 
         // Lifecycle events: created + status transition
         e.events()
@@ -207,6 +218,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "dispute_cancelled"), dispute_id), caller);
@@ -259,6 +271,7 @@ impl CredenceArbitration {
             return Err(ArbitrationError::AlreadyVoted);
         }
         e.storage().instance().set(&voter_casted_key, &true);
+        bump_instance_ttl(&e);
 
         let votes_key = DataKey::DisputeVotes(dispute_id);
         let mut votes: Map<u32, i128> = e
@@ -275,6 +288,7 @@ impl CredenceArbitration {
                 .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow)),
         );
         e.storage().instance().set(&votes_key, &votes);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "vote_cast"), dispute_id, voter),
@@ -345,6 +359,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "status_transition"), dispute_id),
@@ -414,6 +429,9 @@ mod test;
 
 #[cfg(test)]
 mod test_pausable;
+
+#[cfg(test)]
+mod test_ttl;
 
 #[cfg(test)]
 mod test_lifecycle;

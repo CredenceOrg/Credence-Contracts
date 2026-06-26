@@ -18,18 +18,7 @@
 //                    key is missing but delegation keys still exist.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Safety buffer added on top of the delegation's `expires_at` TTL.
-/// ~1 day at 5 s/ledger.
-pub const LEDGER_BUMP_BUFFER: u32 = 17_280;
-
-/// Minimum TTL for a Nonce entry regardless of delegation expiry.
-/// ~30 days at 5 s/ledger.
-pub const MIN_NONCE_TTL: u32 = 518_400;
-
-/// Maximum persistent TTL allowed by the Soroban network.
-/// ~6 months at 5 s/ledger.
-pub const MAX_TTL: u32 = 3_110_400;
-
+use crate::consts::{LEDGER_BUMP_BUFFER, MAX_TTL, MIN_NONCE_TTL};
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{Address, Env};

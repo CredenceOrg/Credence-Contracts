@@ -104,6 +104,13 @@ pub enum DataKey {
     ExecutedOp(BytesN<32>),
 }
 
+fn bump_instance_ttl(e: &Env) {
+    e.storage().instance().extend_ttl(
+        crate::consts::INSTANCE_TTL_THRESHOLD,
+        crate::consts::INSTANCE_TTL_EXTEND_TO,
+    );
+}
+
 #[contract]
 pub struct CredenceMultiSig;
 
@@ -150,6 +157,7 @@ impl CredenceMultiSig {
                 .instance()
                 .set(&DataKey::Signer(signer.clone()), &true);
         }
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "multisig_initialized"),),
@@ -197,6 +205,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .set(&DataKey::SignerList, &signer_list);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "signer_added"),), signer);
@@ -256,6 +265,7 @@ impl CredenceMultiSig {
             e.events()
                 .publish((Symbol::new(&e, "threshold_auto_adjusted"),), new_count);
         }
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "signer_removed"),), signer);
@@ -277,6 +287,7 @@ impl CredenceMultiSig {
         }
 
         e.storage().instance().set(&DataKey::Threshold, &threshold);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "threshold_updated"),), threshold);
@@ -337,6 +348,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .set(&DataKey::SignatureCount(id), &0_u32);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "proposal_submitted"), id),
@@ -392,6 +404,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .set(&DataKey::SignatureCount(proposal_id), &new_count);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "proposal_signed"), proposal_id),
@@ -449,6 +462,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "proposal_executed"), proposal_id, op_hash),
@@ -475,6 +489,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "proposal_rejected"), proposal_id), admin);
@@ -587,6 +602,7 @@ impl CredenceMultiSig {
         e.storage()
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
+        bump_instance_ttl(e);
 
         e.events()
             .publish((Symbol::new(&e, "proposal_expired"), proposal_id), ());

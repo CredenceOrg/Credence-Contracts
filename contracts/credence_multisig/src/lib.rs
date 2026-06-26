@@ -14,6 +14,7 @@
     clippy::restriction
 )]
 
+pub mod consts;
 pub mod multisig;
 pub mod pausable;
 
@@ -23,3 +24,5 @@ pub use multisig::*;
 mod test_multisig;
 #[cfg(test)]
 mod test_pausable;
+#[cfg(test)]
+mod test_ttl;

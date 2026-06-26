@@ -11,6 +11,13 @@ use crate::pausable;
 
 const CUMULATIVE_SEGMENT: u128 = (i128::MAX as u128) + 1;
 
+fn bump_instance_ttl(e: &Env) {
+    e.storage().instance().extend_ttl(
+        crate::consts::INSTANCE_TTL_THRESHOLD,
+        crate::consts::INSTANCE_TTL_EXTEND_TO,
+    );
+}
+
 /// Fund source for accounting and reporting.
 #[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -193,6 +200,7 @@ impl CredenceTreasury {
             .instance()
             .set(&DataKey::ProposalCounter, &0_u64);
         e.storage().instance().set(&DataKey::MinLiquidity, &0_i128);
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
     }
@@ -269,6 +277,7 @@ impl CredenceTreasury {
             &DataKey::CumulativeReceivedBySource(source),
             &new_cumulative_source,
         );
+        bump_instance_ttl(&e);
 
         // Perform actual token transfer into the treasury.
         let token_addr = Self::get_token(e.clone());
@@ -296,6 +305,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::Depositor(depositor.clone()), &true);
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "depositor_added"),), depositor);
     }
@@ -347,6 +357,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::SignerCount, &new_count);
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "signer_added"),), signer);
     }
@@ -384,6 +395,7 @@ impl CredenceTreasury {
         if threshold > new_count {
             e.storage().instance().set(&DataKey::Threshold, &new_count);
         }
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "signer_removed"),), signer);
     }
@@ -407,6 +419,7 @@ impl CredenceTreasury {
         }
         let old_threshold: u32 = e.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
         e.storage().instance().set(&DataKey::Threshold, &threshold);
+        bump_instance_ttl(&e);
         // Emit old and new values for auditability
         e.events().publish(
             (Symbol::new(&e, "threshold_updated"),),
@@ -462,6 +475,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ApprovalCount(id), &0_u32);
+        bump_instance_ttl(&e);
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_proposed"), id),
             (recipient, amount, proposer),
@@ -511,6 +525,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ApprovalCount(proposal_id), &new_count);
+        bump_instance_ttl(&e);
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_approved"), proposal_id),
             (approver,),
@@ -632,6 +647,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
+        bump_instance_ttl(&e);
         // Emit (recipient, min_amount_out, actual_amount) so observers can verify settlement.
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
@@ -656,6 +672,7 @@ impl CredenceTreasury {
         }
         admin.require_auth();
         e.storage().instance().set(&DataKey::Token, &token);
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "token_updated"),), token);
     }
@@ -672,6 +689,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::MinLiquidity, &min_liquidity);
+        bump_instance_ttl(&e);
         e.events()
             .publish((Symbol::new(&e, "min_liquidity_updated"),), min_liquidity);
     }

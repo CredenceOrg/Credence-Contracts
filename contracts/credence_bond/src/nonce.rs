@@ -1,8 +1,6 @@
 //! Nonce tracking for replay prevention in the credence bond contract.
-//!
-//! Safety buffer added on top of the nonce TTL.
-const MIN_NONCE_TTL: u32 = 518_400;
 
+use crate::consts::MIN_NONCE_TTL;
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{Address, Env};

@@ -1,5 +1,7 @@
 #![no_std]
 
+mod consts;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
@@ -42,6 +44,13 @@ pub enum DataKey {
     ExecutedOp(BytesN<32>),
 }
 
+fn bump_instance_ttl(e: &Env) {
+    e.storage().instance().extend_ttl(
+        consts::INSTANCE_TTL_THRESHOLD,
+        consts::INSTANCE_TTL_EXTEND_TO,
+    );
+}
+
 #[contract]
 pub struct TimelockContract;
 
@@ -56,6 +65,7 @@ impl TimelockContract {
         e.storage()
             .instance()
             .set(&DataKey::OperationCounter, &0_u64);
+        bump_instance_ttl(&e);
     }
 
     /// Queue a new administrative operation to be executed after the delay.
@@ -113,6 +123,7 @@ impl TimelockContract {
         };
 
         e.storage().instance().set(&DataKey::Operation(op_id), &op);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "operation_queued"), op_id),
@@ -159,6 +170,7 @@ impl TimelockContract {
 
         op.status = OperationStatus::Executed;
         e.storage().instance().set(&DataKey::Operation(op_id), &op);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "operation_executed"), op_id), op.op_hash);
@@ -189,6 +201,7 @@ impl TimelockContract {
 
         op.status = OperationStatus::Cancelled;
         e.storage().instance().set(&DataKey::Operation(op_id), &op);
+        bump_instance_ttl(&e);
 
         e.events()
             .publish((Symbol::new(&e, "operation_cancelled"), op_id), op.op_hash);
@@ -217,6 +230,9 @@ impl TimelockContract {
 }
 
 #[cfg(test)]
+mod test_ttl;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::{
@@ -228,7 +244,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
-        let contract_id = env.register_contract(None, TimelockContract);
+        let contract_id = env.register(TimelockContract, ());
         let client = TimelockContractClient::new(&env, &contract_id);
         client.initialize(&admin);
         (env, client, admin)

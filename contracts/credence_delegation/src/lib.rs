@@ -18,6 +18,7 @@ use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
+pub mod consts;
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
@@ -122,6 +123,13 @@ pub enum DataKey {
 // Contract implementation
 // ---------------------------------------------------------------------------
 
+fn bump_instance_ttl(e: &Env) {
+    e.storage().instance().extend_ttl(
+        consts::INSTANCE_TTL_THRESHOLD,
+        consts::INSTANCE_TTL_EXTEND_TO,
+    );
+}
+
 #[contract]
 pub struct CredenceDelegation;
 
@@ -167,6 +175,7 @@ impl CredenceDelegation {
         e.storage()
             .instance()
             .set(&DataKey::PauseProposalCounter, &0_u64);
+        bump_instance_ttl(&e);
     }
 
     // -----------------------------------------------------------------------
@@ -515,6 +524,7 @@ impl CredenceDelegation {
         // Register the verifier
         let key = DataKey::Verifier(scheme);
         e.storage().instance().set(&key, &verifier_id);
+        bump_instance_ttl(&e);
 
         // Emit audit event
         verifier::emit_verifier_registered(&e, scheme, &verifier_id, &admin);

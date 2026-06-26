@@ -2,6 +2,7 @@
 
 mod batch;
 mod claims;
+mod consts;
 mod early_exit_penalty;
 mod events;
 mod invariants;
@@ -151,12 +152,11 @@ pub struct TierThresholds {
     pub gold_max: i128,
 }
 
-const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
-
 fn bump_instance_ttl(e: &Env) {
-    e.storage()
-        .instance()
-        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+    e.storage().instance().extend_ttl(
+        consts::INSTANCE_TTL_THRESHOLD,
+        consts::INSTANCE_TTL_EXTEND_TO,
+    );
 }
 
 /// Read-only snapshot of all contract-level configuration.

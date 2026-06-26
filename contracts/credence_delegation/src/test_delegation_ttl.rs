@@ -10,11 +10,12 @@
 //! 7. TTL is capped at MAX_TTL for very long-lived delegations.
 
 use super::*;
+use soroban_sdk::testutils::storage::Instance as InstanceTestutils;
 use soroban_sdk::testutils::storage::Persistent as PersistentTestutils;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::Env;
 
-use crate::nonce::{LEDGER_BUMP_BUFFER, MAX_TTL, MIN_NONCE_TTL};
+use crate::consts::{INSTANCE_TTL_EXTEND_TO, LEDGER_BUMP_BUFFER, MAX_TTL, MIN_NONCE_TTL};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -358,5 +359,68 @@ fn test_delegation_ttl_capped_at_max() {
     assert_eq!(
         ttl, MAX_TTL,
         "TTL {ttl} should be capped at MAX_TTL {MAX_TTL}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 9: Instance storage TTL is bumped by initialize()
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_instance_ttl_bumped_on_initialize() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| {
+        li.max_entry_ttl = INSTANCE_TTL_EXTEND_TO + 1;
+    });
+    let contract_id = e.register(CredenceDelegation, ());
+    let client = CredenceDelegationClient::new(&e, &contract_id);
+    let admin = Address::generate(&e);
+    client.initialize(&admin);
+
+    let ttl = e.as_contract(&contract_id, || {
+        InstanceTestutils::get_ttl(&e.storage().instance())
+    });
+    assert!(
+        ttl > 0,
+        "Instance TTL should be > 0 after initialize, got {ttl}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Test 10: Instance storage TTL is refreshed by a second write
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_instance_ttl_refreshed_on_second_write() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| {
+        li.max_entry_ttl = INSTANCE_TTL_EXTEND_TO + 1;
+    });
+    let contract_id = e.register(CredenceDelegation, ());
+    let client = CredenceDelegationClient::new(&e, &contract_id);
+    let admin = Address::generate(&e);
+    client.initialize(&admin);
+
+    let ttl_first = e.as_contract(&contract_id, || {
+        InstanceTestutils::get_ttl(&e.storage().instance())
+    });
+
+    // Register a verifier to trigger a second instance write
+    let verifier = Address::generate(&e);
+    client.register_verifier(&admin, &0_u32, &verifier);
+
+    let ttl_second = e.as_contract(&contract_id, || {
+        InstanceTestutils::get_ttl(&e.storage().instance())
+    });
+    assert!(
+        ttl_second > 0,
+        "Instance TTL should be > 0 after register_verifier, got {ttl_second}"
+    );
+    // TTL should remain high (extend_ttl is idempotent when already at max)
+    assert!(
+        ttl_second >= ttl_first.saturating_sub(1),
+        "Instance TTL should not decrease: first={ttl_first} second={ttl_second}"
     );
 }
