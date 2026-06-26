@@ -15,6 +15,7 @@
 
 use crate::*;
 use soroban_sdk::{testutils::Address as _, Address, Env};
+use testutils::{admin as test_admin, user};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -23,7 +24,7 @@ use soroban_sdk::{testutils::Address as _, Address, Env};
 fn setup_env() -> (Env, Address, Address) {
     let env = Env::default();
     let contract_address = env.register_contract(None, AdminContract);
-    let super_admin = Address::generate(&env);
+    let super_admin = test_admin(&env);
     env.mock_all_auths();
     env.as_contract(&contract_address, || {
         AdminContract::initialize(env.clone(), super_admin.clone(), 1, 10);
@@ -58,7 +59,7 @@ fn advance(env: &Env, secs: u64) {
 #[test]
 fn update_admin_role_succeeds_when_super_admin_authorizes() {
     let (env, contract, super_admin) = setup_env();
-    let operator = Address::generate(&env);
+    let operator = user(&env);
     add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
 
     let info = env.as_contract(&contract, || {
@@ -77,8 +78,8 @@ fn update_admin_role_succeeds_when_super_admin_authorizes() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn update_admin_role_rejected_when_operator_tries_to_promote() {
     let (env, contract, super_admin) = setup_env();
-    let op1 = Address::generate(&env);
-    let op2 = Address::generate(&env);
+    let op1 = user(&env);
+    let op2 = user(&env);
     add_admin(&env, &contract, &super_admin, &op1, AdminRole::Operator);
     add_admin(&env, &contract, &super_admin, &op2, AdminRole::Operator);
 
@@ -101,7 +102,7 @@ fn update_admin_role_rejected_when_operator_tries_to_promote() {
 #[test]
 fn deactivate_admin_succeeds_when_caller_outranks_target() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
+    let admin = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     env.as_contract(&contract, || {
@@ -119,8 +120,8 @@ fn deactivate_admin_succeeds_when_caller_outranks_target() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn deactivate_admin_rejected_when_caller_does_not_outrank_target() {
     let (env, contract, super_admin) = setup_env();
-    let admin1 = Address::generate(&env);
-    let admin2 = Address::generate(&env);
+    let admin1 = test_admin(&env);
+    let admin2 = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin1, AdminRole::Admin);
     add_admin(&env, &contract, &super_admin, &admin2, AdminRole::Admin);
 
@@ -137,7 +138,7 @@ fn deactivate_admin_rejected_when_caller_does_not_outrank_target() {
 #[test]
 fn reactivate_admin_succeeds_when_super_admin_authorizes() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
+    let admin = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     // Deactivate first.
@@ -158,8 +159,8 @@ fn reactivate_admin_succeeds_when_super_admin_authorizes() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn reactivate_admin_rejected_when_caller_does_not_outrank_target() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
-    let operator = Address::generate(&env);
+    let admin = test_admin(&env);
+    let operator = user(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
     add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
 
@@ -181,7 +182,7 @@ fn reactivate_admin_rejected_when_caller_does_not_outrank_target() {
 #[test]
 fn suspend_admin_succeeds_when_super_admin_authorizes() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
+    let admin = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     let until_ts = env.ledger().timestamp() + 3600;
@@ -199,7 +200,7 @@ fn suspend_admin_succeeds_when_super_admin_authorizes() {
 #[should_panic]
 fn suspend_admin_rejected_when_until_ts_is_in_the_past() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
+    let admin = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     advance(&env, 10_000);
@@ -214,8 +215,8 @@ fn suspend_admin_rejected_when_until_ts_is_in_the_past() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn suspend_admin_rejected_when_caller_does_not_outrank_target() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
-    let operator = Address::generate(&env);
+    let admin = test_admin(&env);
+    let operator = user(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
     add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
 
@@ -235,7 +236,7 @@ fn suspend_admin_rejected_when_caller_does_not_outrank_target() {
 fn transfer_ownership_succeeds_when_owner_authorizes() {
     let (env, contract, super_admin) = setup_env();
     // Create a second SuperAdmin to transfer ownership to.
-    let new_super = Address::generate(&env);
+    let new_super = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
     env.as_contract(&contract, || {
@@ -251,8 +252,8 @@ fn transfer_ownership_succeeds_when_owner_authorizes() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn transfer_ownership_rejected_when_caller_is_not_owner() {
     let (env, contract, super_admin) = setup_env();
-    let admin = Address::generate(&env);
-    let new_super = Address::generate(&env);
+    let admin = test_admin(&env);
+    let new_super = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
@@ -270,7 +271,7 @@ fn transfer_ownership_rejected_when_caller_is_not_owner() {
 #[test]
 fn accept_ownership_succeeds_when_pending_owner_authorizes() {
     let (env, contract, super_admin) = setup_env();
-    let new_super = Address::generate(&env);
+    let new_super = test_admin(&env);
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
     env.as_contract(&contract, || {
@@ -289,8 +290,8 @@ fn accept_ownership_succeeds_when_pending_owner_authorizes() {
 #[should_panic(expected = "Error(Contract, #100)")]
 fn accept_ownership_rejected_when_caller_is_not_pending_owner() {
     let (env, contract, super_admin) = setup_env();
-    let new_super = Address::generate(&env);
-    let stranger = Address::generate(&env);
+    let new_super = test_admin(&env);
+    let stranger = user(&env);
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
     env.as_contract(&contract, || {
