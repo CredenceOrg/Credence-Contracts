@@ -58,6 +58,10 @@ mod test_claim_expiry_sweep;
 #[cfg(test)]
 mod test_auth;
 
+/// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
+#[cfg(test)]
+mod test_rolling_notice;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, IntoVal, String, Symbol,
