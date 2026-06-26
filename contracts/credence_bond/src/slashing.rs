@@ -157,7 +157,9 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 
     // 6. Add slashing reward claim for the admin (10% of slashed amount)
     if actual_slash_amount > 0 {
-        let reward_amount = actual_slash_amount / 10; // 10% reward
+        let reward_amount = actual_slash_amount
+            .checked_div(10)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow)); // 10% reward
         if reward_amount > 0 {
             let source_id = get_next_slash_id(e);
             crate::claims::add_pending_claim(
