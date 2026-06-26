@@ -34,8 +34,7 @@ fn validate_amount(amount: i128) {
 
 // Grab the token address from storage, fail loudly if not there
 pub fn get_token(e: &Env) -> Address {
-    let token = crate::token_integration::get_token(e);
-    token
+    crate::token_integration::get_token(e)
 }
 
 // Get a token client we can actually use to call functions
@@ -205,13 +204,10 @@ pub fn force_approve(e: &Env, spender: &Address, amount: i128) {
 
 /// Updates state ONLY if the transfer works. No half-finished updates.
 /// If transfer fails, the state update never runs.
-pub fn atomic_transfer_and_update<F>(
-    e: &Env,
-    recipient: &Address,
-    amount: i128,
-    state_update: F,
-) where
-    F: FnOnce() -> (),
+#[allow(dead_code)]
+pub fn atomic_transfer_and_update<F>(e: &Env, recipient: &Address, amount: i128, state_update: F)
+where
+    F: FnOnce(),
 {
     validate_amount(amount);
     if amount == 0 {

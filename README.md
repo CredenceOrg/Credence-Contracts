@@ -55,6 +55,10 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the same checks.
 
+## Security scanning
+
+Pull requests run `cargo audit --deny warnings`; dependency vulnerabilities are surfaced in a sticky PR comment and the full JSON report is uploaded as a workflow artifact. See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for the local command and triage flow.
+
 ## WASM size budget
 
 Release Wasm for every deployable contract must stay within per-contract size ceilings enforced in CI. See [docs/wasm-size-budget.md](docs/wasm-size-budget.md) for the enforced limits and [`.github/workflows/wasm-size.yml`](.github/workflows/wasm-size.yml) for the gate.
@@ -68,6 +72,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Slashing: `slash()` with available-balance enforcement
   - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
+  - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
 - `contracts/credence_delegation/` — Delegation contract
 - `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`)
 

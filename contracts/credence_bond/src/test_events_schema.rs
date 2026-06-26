@@ -3,9 +3,9 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Env, testutils::Events, testutils::Address as TestAddress};
-    use std::fs;
     use serde_json::Value;
+    use soroban_sdk::{testutils::Address as TestAddress, testutils::Events, Env};
+    use std::fs;
 
     fn load_schema(name: &str) -> Value {
         let path = format!("../event_schemas/{}.v1.json", name);

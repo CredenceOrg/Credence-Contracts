@@ -286,7 +286,7 @@ fn test_get_expired_record_panics() {
     let owner = Address::generate(&e);
     let now = e.ledger().timestamp();
     client.set_record(&owner, &100, &(now + 10));
-    
+
     advance_time(&e, 10);
     client.get_record(&owner); // panics and purges
 }

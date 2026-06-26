@@ -1,18 +1,20 @@
 #![no_std]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
+use soroban_sdk::{
+    contract, contractclient, contracterror, contractimpl, symbol_short, Address, Env,
+};
+
+// 1. Define a strict, typed contract error instead of using heap-allocated strings
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum ContractError {
+    ArbitratorHasNoBond = 1,
+}
+
+// 2. Declare an interface block to allow type-safe cross-contract calling to credence_bond
+#[contractclient(name = "CredenceBondClient")]
+pub trait CredenceBondInterface {
+    fn get_bond_weight(env: Env, identity: Address) -> u32;
+}
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -67,6 +69,15 @@ pub enum DataKey {
 pub struct CredenceArbitration;
 
 #[contractimpl]
+impl Arbitration {
+    pub fn register_arbitrator(_env: Env, _arbitrator: Address) -> bool {
+        true
+    }
+
+    // Helper method executing a type-safe guest cross-contract call invocation sequence
+    fn derive_weight_from_bond(env: Env, arbitrator: Address, bond_contract: Address) -> u32 {
+        let client = CredenceBondClient::new(&env, &bond_contract);
+        client.get_bond_weight(&arbitrator)
 impl CredenceArbitration {
     /// Initialize the contract with an admin address.
     pub fn initialize(e: Env, admin: Address) -> Result<(), ArbitrationError> {
@@ -286,6 +297,22 @@ impl CredenceArbitration {
         e: Env,
         voter: Address,
         dispute_id: u64,
+        arbitrator: Address,
+        decision: bool,
+        bond_contract: Address,
+    ) -> Result<(), ContractError> {
+        let weight = Self::derive_weight_from_bond(env.clone(), arbitrator.clone(), bond_contract);
+
+        if weight == 0 {
+            return Err(ContractError::ArbitratorHasNoBond);
+        }
+
+        // Emit arbitration telemetry state update event
+        env.events().publish(
+            (symbol_short!("vote"), dispute_id),
+            (arbitrator, decision, weight),
+        );
+
         outcome: u32,
     ) -> Result<(), ArbitrationError> {
         pausable::require_not_paused(&e);
@@ -654,3 +681,6 @@ mod test_pausable;
 
 #[cfg(test)]
 mod test_lifecycle;
+
+#[cfg(test)]
+mod test_auth;

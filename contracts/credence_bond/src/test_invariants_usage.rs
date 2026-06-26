@@ -1,4 +1,4 @@
-//! Tests that exercise the reusable [`crate::test_invariants`] library.
+﻿//! Tests that exercise the reusable [`crate::test_invariants`] library.
 //!
 //! Every state-changing contract call is followed by
 //! [`assert_all_invariants`], demonstrating the intended usage pattern and
@@ -61,15 +61,15 @@ fn invariants_hold_through_full_lifecycle() {
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 2: after top_up
-    ctx.client.top_up(&5_000);
+    ctx.client.top_up(&identity, &5_000);
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 3: after extend_duration
-    ctx.client.extend_duration(&500);
+    ctx.client.extend_duration(&identity, &500);
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 4: after second top_up
-    ctx.client.top_up(&1);
+    ctx.client.top_up(&identity, &1);
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 5: after slash
@@ -79,7 +79,7 @@ fn invariants_hold_through_full_lifecycle() {
 
     // Site 6: after withdraw (post lock-up)
     advance(&ctx.env, 5_000);
-    ctx.client.withdraw(&100);
+    ctx.client.withdraw(&identity, &100);
     assert_all_invariants(&ctx.env, &ctx.contract);
 }
 
@@ -134,7 +134,7 @@ fn invariants_hold_after_withdraw_request() {
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 14
 
     advance(&ctx.env, 50); // ensure a non-zero "requested at" timestamp
-    ctx.client.request_withdrawal();
+    ctx.client.request_withdrawal(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 15
 
     let bond = load_bond(&ctx.env, &ctx.contract);
@@ -151,7 +151,7 @@ fn invariants_hold_after_withdraw_request_then_slash() {
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 17
 
     advance(&ctx.env, 50);
-    ctx.client.request_withdrawal();
+    ctx.client.request_withdrawal(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 18
 
     advance(&ctx.env, 1);
@@ -172,7 +172,7 @@ fn invariants_hold_after_renew() {
 
     // Advance past the period end so renew_if_rolling renews the bond.
     advance(&ctx.env, 2_000);
-    ctx.client.renew_if_rolling();
+    ctx.client.renew_if_rolling(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 21
 
     let bond = load_bond(&ctx.env, &ctx.contract);
@@ -190,12 +190,12 @@ fn invariants_hold_after_request_then_renew_is_noop() {
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 23
 
     advance(&ctx.env, 50);
-    ctx.client.request_withdrawal();
+    ctx.client.request_withdrawal(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 24
 
     // With a pending request, renew_if_rolling is a no-op; invariants still hold.
     advance(&ctx.env, 2_000);
-    ctx.client.renew_if_rolling();
+    ctx.client.renew_if_rolling(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 25
 }
 

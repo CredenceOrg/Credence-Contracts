@@ -1,4 +1,4 @@
-//! Regression guard for the canonical bond implementation.
+﻿//! Regression guard for the canonical bond implementation.
 //!
 //! # What changed (see docs/bond-crate-layout.md)
 //! The previous harness ran four live fork contracts in lock-step and asserted
@@ -23,6 +23,7 @@ use soroban_sdk::{
     Address, Env,
 };
 
+use crate::test_helpers::{self, advance_ledger_sequence};
 use crate::{CredenceBond, CredenceBondClient, IdentityBond};
 
 // ---------------------------------------------------------------------------
@@ -68,14 +69,9 @@ fn assert_pinned(label: &str, bond: &IdentityBond, p: &Pinned) {
 #[test]
 fn scenario_full_bond_lifecycle() {
     let env = Env::default();
-    env.mock_all_auths();
-    let id = env.register(CredenceBond, ());
-    let c = CredenceBondClient::new(&env, &id);
-
-    let admin = Address::generate(&env);
-    let identity = Address::generate(&env);
-
-    c.initialize(&admin, &None);
+    let (c, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&env);
+    let slash_treasury = Address::generate(&env);
+    c.set_slash_treasury(&admin, &slash_treasury);
 
     c.create_bond(&identity, &1_000_i128, &10_000_u64, &false, &0_u64);
     assert_pinned(
@@ -107,7 +103,7 @@ fn scenario_full_bond_lifecycle() {
 
     // Advance past lock-up: bond_start=0, duration=10_000, now=10_001.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&2_000_i128);
+    c.withdraw(&identity, &2_000_i128);
     assert_pinned(
         "after_first_withdraw",
         &c.get_identity_state(),
@@ -121,6 +117,7 @@ fn scenario_full_bond_lifecycle() {
         },
     );
 
+    advance_ledger_sequence(&env);
     c.slash(&admin, &500_i128);
     assert_pinned(
         "after_slash",
@@ -151,7 +148,7 @@ fn scenario_full_bond_lifecycle() {
 
     // Second withdrawal: available = bonded - slashed = 4000 - 700 = 3300.
     env.ledger().with_mut(|l| l.timestamp = 20_001);
-    c.withdraw(&3_300_i128);
+    c.withdraw(&identity, &3_300_i128);
     assert_pinned(
         "final",
         &c.get_identity_state(),
@@ -222,7 +219,7 @@ fn scenario_rolling_bond_with_renewal() {
 
     // Advance to end of renewed period: 5_001 + 5_000 = 10_001.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&10_000_i128);
+    c.withdraw(&identity, &10_000_i128);
     assert_pinned(
         "after_partial_withdraw",
         &c.get_identity_state(),
@@ -250,12 +247,20 @@ fn scenario_early_exit_and_penalty() {
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
     let treasury = Address::generate(&env);
-    c.initialize(&admin, &None);
+    c.initialize(&admin);
+
+    // Configure a mock token for the test environment.
+    let token_id = env.register(crate::test_helpers::MockStellarAsset, ());
+    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_id);
+    token_admin.mint(&identity, &20_000_i128); // Mint enough for bond + fees
+    c.set_token(&admin, &token_id);
+    let token_client = soroban_sdk::token::Client::new(&env, &token_id);
+    token_client.approve(&identity, &id, &20_000_i128, &99999);
+
     // 500 bps = 5% max penalty (time-decayed).
     c.set_early_exit_config(&admin, &treasury, &500_u32);
 
     c.create_bond(&identity, &10_000_i128, &10_000_u64, &false, &0_u64);
-
     // Half-way through: remaining = 5_000, duration = 10_000.
     // penalty = 2_000 * (500/10_000) * (5_000/10_000) = 50
     // bonded_amount decreases by amount (2_000), not by (amount - penalty).
@@ -276,7 +281,7 @@ fn scenario_early_exit_and_penalty() {
 
     // Past expiry: withdraw remaining available balance.
     env.ledger().with_mut(|l| l.timestamp = 10_001);
-    c.withdraw(&8_000_i128);
+    c.withdraw(&identity, &8_000_i128);
     assert_pinned(
         "after_final_withdraw",
         &c.get_identity_state(),

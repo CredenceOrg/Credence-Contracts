@@ -6,7 +6,7 @@
 
 //! Example unit test templates for Soroban contracts.
 
-use soroban_sdk::{Env};
+use soroban_sdk::Env;
 
 // The following test functions are skeletons. Replace `YourLendingClient`,
 // storage read helpers and math with the actual contract client and helpers.

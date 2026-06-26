@@ -1,6 +1,6 @@
-use soroban_sdk::{contracttype, Address, Env};
 use crate::Bond;
 use credence_errors::ContractError;
+use soroban_sdk::{contracttype, Address, Env};
 
 #[contracttype]
 pub enum DataKey {
@@ -23,7 +23,10 @@ pub fn set_admin(e: &Env, admin: &Address) {
 }
 
 pub fn get_token(e: &Env) -> Address {
-    e.storage().instance().get(&DataKey::Token).expect("token not initialized")
+    e.storage()
+        .instance()
+        .get(&DataKey::Token)
+        .expect("token not initialized")
 }
 
 pub fn set_token(e: &Env, token: &Address) {
@@ -42,11 +45,16 @@ pub fn get_bond(e: &Env, identity: &Address) -> Result<Bond, ContractError> {
 }
 
 pub fn set_bond(e: &Env, identity: &Address, bond: &Bond) {
-    e.storage().instance().set(&DataKey::Bond(identity.clone()), bond);
+    e.storage()
+        .instance()
+        .set(&DataKey::Bond(identity.clone()), bond);
 }
 
 pub fn is_locked(e: &Env) -> bool {
-    e.storage().instance().get(&DataKey::Locked).unwrap_or(false)
+    e.storage()
+        .instance()
+        .get(&DataKey::Locked)
+        .unwrap_or(false)
 }
 
 pub fn set_lock(e: &Env, locked: bool) {

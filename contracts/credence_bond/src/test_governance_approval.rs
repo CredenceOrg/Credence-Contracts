@@ -58,7 +58,8 @@ fn test_initialize_governance_unauthorized() {
 fn test_propose_slash() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _identity) = setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     let id = client.propose_slash(&admin, &100_i128);
     assert_eq!(id, 0);
     let prop = client.get_slash_proposal(&id);
@@ -75,7 +76,8 @@ fn test_propose_slash() {
 fn test_vote_approve_and_execute() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _identity) = setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     let _id = client.propose_slash(&admin, &100_i128);
     client.governance_vote(&g1, &0_u64, &true);
     let bond = client.execute_slash_with_governance(&admin, &0_u64);

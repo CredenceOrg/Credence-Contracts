@@ -1,4 +1,4 @@
-#![cfg(test)]
+﻿#![cfg(test)]
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
@@ -46,7 +46,7 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
     let before_user = token_client.balance(&identity);
     let before_contract = token_client.balance(&contract_id);
 
-    let updated = client.top_up(&500_i128);
+    let updated = client.top_up(&identity, &500_i128);
 
     assert_eq!(updated.bonded_amount, 1500);
     assert_eq!(token_client.balance(&identity), before_user - 500);
@@ -64,7 +64,7 @@ fn test_increase_bond_fails_without_token_configuration() {
 
     let admin = Address::generate(&e);
     client.initialize(&admin, &None);
-    client.top_up(&10_i128);
+    client.top_up(&identity, &10_i128);
 }
 
 #[test]
@@ -82,7 +82,7 @@ fn test_increase_bond_fails_for_non_owner() {
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
-    client.top_up(&500_i128);
+    client.top_up(&identity, &500_i128);
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn test_increase_bond_rejects_zero_amount() {
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
-    client.top_up(&0_i128);
+    client.top_up(&identity, &0_i128);
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn test_increase_bond_overflow_protection() {
     // Now try to increase by i128::MAX - this should cause overflow
     token_client.approve(&identity, &contract_id, &i128::MAX, &1000_u32);
 
-    client.top_up(&i128::MAX);
+    client.top_up(&identity, &i128::MAX);
 }
 
 #[test]
@@ -126,7 +126,7 @@ fn test_increase_bond_fails_without_allowance() {
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
     // No approval for top_up - should fail
-    client.top_up(&500_i128);
+    client.top_up(&identity, &500_i128);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn test_increase_bond_emits_event() {
 
     client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
 
-    let _ = client.top_up(&250_i128);
+    let _ = client.top_up(&identity, &250_i128);
 
     let events = e.events().all();
     assert!(!events.is_empty());
@@ -176,7 +176,7 @@ fn test_increase_bond_preserves_other_fields() {
     let original =
         client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &true, &7200_u64);
 
-    let updated = client.top_up(&150_i128);
+    let updated = client.top_up(&identity, &150_i128);
 
     assert_eq!(updated.identity, original.identity);
     assert_eq!(updated.bond_start, original.bond_start);
@@ -210,7 +210,7 @@ fn test_increase_bond_preserves_time_fields() {
 
     // Advance time before top-up
     e.ledger().with_mut(|li| li.timestamp = 2_000_000);
-    let updated = client.top_up(&500_i128);
+    let updated = client.top_up(&identity, &500_i128);
 
     assert_eq!(
         updated.bond_start, original.bond_start,
@@ -231,7 +231,7 @@ fn test_increase_bond_preserves_rolling_fields() {
     token_client.approve(&identity, &contract_id, &3_000_i128, &1_000_u32);
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &true, &3_600_u64);
 
-    let updated = client.top_up(&500_i128);
+    let updated = client.top_up(&identity, &500_i128);
 
     assert!(
         updated.is_rolling,
@@ -256,7 +256,7 @@ fn test_increase_bond_respects_supply_cap() {
     client.set_supply_cap(&admin, &1_200_i128);
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     // total=1_000, cap=1_200 → top-up of 300 would push to 1_300 > 1_200
-    client.top_up(&300_i128);
+    client.top_up(&identity, &300_i128);
 }
 
 /// top-up of exactly 1 (minimum positive) is accepted.
@@ -267,7 +267,7 @@ fn test_increase_bond_minimum_positive_amount_accepted() {
 
     token_client.approve(&identity, &contract_id, &2_000_i128, &1_000_u32);
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
-    let updated = client.top_up(&1_i128);
+    let updated = client.top_up(&identity, &1_i128);
     assert_eq!(updated.bonded_amount, 1_001);
 }
 
@@ -289,7 +289,7 @@ fn test_increase_bond_does_not_clear_slashed_amount() {
     let before = client.get_identity_state();
     assert_eq!(before.slashed_amount, 500);
 
-    client.top_up(&1_000_i128);
+    client.top_up(&identity, &1_000_i128);
     let after = client.get_identity_state();
     assert_eq!(
         after.slashed_amount, 500,

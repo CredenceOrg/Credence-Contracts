@@ -270,12 +270,12 @@ mod tests {
         assert_eq!(op.status, OperationStatus::Pending);
 
         // Before ETA: must fail
-        env.ledger().set_timestamp(op.eta - 1);
+        env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
 
         // At ETA: must succeed
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
         let op = client.get_operation(&op_id).unwrap();
@@ -293,7 +293,7 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
 
         // At expires_at: must succeed
-        env.ledger().set_timestamp(op.expires_at);
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at);
         client.execute_operation(&op_id);
     }
 
@@ -307,9 +307,27 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
 
         // At expires_at + 1: must fail
-        env.ledger().set_timestamp(op.expires_at + 1);
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_execute_operation_times_out_after_grace_period() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[6; 32]);
+        let delay = 86_400;
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
+
+        let op = client.get_operation(&op_id).unwrap();
+        assert_eq!(op.status, OperationStatus::Pending);
+        assert!(!client.is_operation_executed(&op_hash));
     }
 
     #[test]
@@ -321,7 +339,7 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
         // Try to queue same hash again: must fail
@@ -342,7 +360,7 @@ mod tests {
         assert_eq!(op.status, OperationStatus::Cancelled);
 
         // Try to execute cancelled: must fail
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
     }
