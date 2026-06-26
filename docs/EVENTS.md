@@ -12,14 +12,42 @@ Where both a `v1` and `v2` variant exist, **both are emitted** on every call for
 
 ---
 
-## Contracts
+## Quick Navigation
 - [Credence Bond](#credence-bond)
+  - [Bond Lifecycle](#bond-lifecycle)
+  - [Slashing](#slashing)
+  - [Attestations](#attestations)
+  - [Tier System](#tier-system)
+  - [Governance (Slash Proposals)](#governance-slash-proposals)
+  - [Evidence](#evidence)
+  - [Claims (Pull-Payment)](#claims-pull-payment)
+  - [Fees](#fees)
+  - [Early Exit Penalty](#early-exit-penalty)
+  - [Cooldown](#cooldown)
+  - [Emergency](#emergency)
+  - [Verifiers](#verifiers)
+  - [Parameters](#parameters)
+  - [Upgrade Authorization](#upgrade-authorization)
+  - [Admin Transfers](#admin-transfers)
+  - [Bond Drift](#bond-drift)
 - [Credence Delegation](#credence-delegation)
+  - [Delegation Lifecycle](#delegation-lifecycle)
+  - [Nonce Management](#nonce-management)
+  - [Verifier Registry](#verifier-registry-1)
+  - [Pausable Operations](#pausable-operations)
+- [Indexer Query Patterns](#indexer-query-patterns)
+- [Additional Resources](#additional-resources)
 
 ---
 
 ## Credence Bond
 Identity bond contract that handles staking, slashing, attestations, and more.
+
+### Replay Semantics
+Many bond events carry authoritative state information for indexer replay. The `*_v2` variants are designed for efficient replay with indexed timestamps and amounts.
+- **Bond Lifecycle**: Use `bond_created_v2`, `bond_increased_v2`, `bond_withdrawn_v2`, `bond_liquidated` to reconstruct bond state
+- **Slashes**: Use `bond_slashed_v2` to track total slashed amounts
+- **Tier Changes**: Derived from bond amount, `tier_changed` is informational only
 
 ### Bond Lifecycle
 #### `bond_created`
@@ -559,6 +587,44 @@ Emitted when inconsistent bond or attestation state is detected.
 ## Credence Delegation
 Delegation contract that handles delegated actions and signature verification.
 
+### Delegation Lifecycle
+#### `delegation_created`
+Emitted when a new delegation is created.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"delegation_created"` |
+| Data | 0 | Delegation | Full delegation state |
+
+#### `delegation_revoked`
+Emitted when a delegation is revoked.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"delegation_revoked"` |
+| Data | 0 | Delegation | Updated delegation state with revoked flag |
+
+#### `delegation_cleaned`
+Emitted when an expired delegation is cleaned up.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"delegation_cleaned"` |
+| Topics | 1 | Address | Delegation owner |
+| Topics | 2 | Address | Delegate |
+| Data | 0 | DelegationType | Type of delegation |
+
+### Nonce Management
+#### `nonce_invalidated`
+Emitted when a range of nonces is invalidated for replay protection.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"nonce_invalidated"` |
+| Topics | 1 | Address | Identity |
+| Data | 0 | u64 | From nonce (inclusive) |
+| Data | 1 | u64 | To nonce (exclusive) |
+
 ### Verifier Registry
 #### `("verifier", "registered")`
 Emitted when a signature verifier is registered.
@@ -569,14 +635,57 @@ Emitted when a signature verifier is registered.
 | Topics | 1 | Symbol | `"registered"` |
 | Data | 0 | VerifierRegisteredEvent | Event payload |
 
+#### `verifier_registered`
+Emitted when a signature verifier is registered (alternative format).
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"verifier_registered"` |
+| Topics | 1 | u32 | Scheme tag (0=Ed25519, 1=Secp256r1, 2=MLDSA44) |
+| Data | 0 | Address | Verifier contract address |
+
+### Pausable Operations
+#### `pause_signer_set`
+Emitted when a pause signer is added or removed.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"pause_signer_set"` |
+| Topics | 1 | Address | Signer address |
+| Data | 0 | bool | Enabled flag |
+
+#### `pause_threshold_set`
+Emitted when the pause approval threshold is updated.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"pause_threshold_set"` |
+| Data | 0 | u32 | New threshold |
+
+#### `paused`
+Emitted when a pause proposal is executed.
+
+| Component | Position | Type | Description |
+|-----------|----------|------|-------------|
+| Topics | 0 | Symbol | `"paused"` |
+| Data | 0 | u64 | Proposal ID |
+
 ---
 
 ## Indexer Query Patterns
+
+### Credence Bond Queries
 - **All events for an identity**: Filter `topics[1] == identity` across all relevant event names.
 - **Large bonds created**: Filter `bond_created_v2` where `topics[2] >= threshold`.
 - **Recent activity**: Filter any `*_v2` event where the timestamp topic is within range.
 - **Admin accountability**: Filter `bond_slashed_v2` where `topics[5] == admin_address`.
 - **Governance audit trail**: Collect `slash_proposed` → `governance_vote` → `slash_proposal_executed` / `slash_proposal_rejected` grouped by `data[0]` (proposal ID).
+- **Verifier reputation changes**: Filter `verifier_reputation_updated` by `topics[1]` (verifier address) to track reputation history.
+
+### Credence Delegation Queries
+- **All delegations for an owner**: Filter `delegation_created` and `delegation_revoked` events and replay to get current state.
+- **Nonce invalidation history**: Filter `nonce_invalidated` by `topics[1]` (identity) to track replay protection ranges.
+- **Pause operations audit**: Track `pause_signer_set`, `pause_threshold_set`, and `paused` events to monitor contract pause activity.
 
 ---
 
