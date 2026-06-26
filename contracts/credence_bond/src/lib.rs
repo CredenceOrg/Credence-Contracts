@@ -78,6 +78,22 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
+/// Maximum number of attestations allowed in a single batch operation.
+/// Enforces a safe upper bound on CPU/memory resource usage to prevent exceeding Soroban transaction limits.
+pub const MAX_BATCH_ATTESTATION_SIZE: u32 = 64;
+
+/// Input item for a batch attestation operation.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttestationBatchItem {
+    /// Address of the authorized attester (verifier).
+    pub attester: Address,
+    /// Opaque attestation payload.
+    pub attestation_data: String,
+    /// Nonce for replay prevention for this attester.
+    pub nonce: u64,
+}
+
 // Re-export attestation type for external callers.
 pub use types::Attestation;
 
@@ -714,6 +730,152 @@ impl CredenceBond {
 
         invariants::assert_self_consistent_for_subject(&e, &subject);
         attestation
+    }
+
+    /// Add multiple weighted attestations for a subject atomically.
+    /// Fans in up to MAX_BATCH_ATTESTATION_SIZE attestations, enforces weight caps inside the batch,
+    /// and emits a single aggregate event.
+    pub fn add_attestation_batch(
+        e: Env,
+        subject: Address,
+        items: Vec<AttestationBatchItem>,
+    ) -> Vec<Attestation> {
+        let n = items.len();
+        if n == 0 {
+            panic!("empty batch");
+        }
+        if n > MAX_BATCH_ATTESTATION_SIZE {
+            panic!("batch too large");
+        }
+
+        // Verify all attesters in the batch are unique.
+        for i in 0..n {
+            let item_i = items.get(i).unwrap();
+            for j in (i + 1)..n {
+                let item_j = items.get(j).unwrap();
+                if item_i.attester == item_j.attester {
+                    panic!("duplicate attester in batch");
+                }
+            }
+        }
+
+        // Enforce authorization, registration, and consume nonces
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            item.attester.require_auth();
+
+            let is_authorized = e
+                .storage()
+                .instance()
+                .get(&DataKey::Attester(item.attester.clone()))
+                .unwrap_or(false);
+            if !is_authorized {
+                panic_with_error!(e, ContractError::UnauthorizedAttester);
+            }
+
+            nonce::consume_nonce(&e, &item.attester, item.nonce);
+        }
+
+        // Check duplicate key in storage
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            let dedup_key = types::AttestationDedupKey {
+                verifier: item.attester.clone(),
+                identity: subject.clone(),
+                attestation_data: item.attestation_data.clone(),
+            };
+            if e.storage().instance().has(&dedup_key) {
+                panic_with_error!(e, ContractError::DuplicateAttestation);
+            }
+        }
+
+        // Get weight configuration
+        let (_, max_weight) = weighted_attestation::get_weight_config(&e);
+
+        // Compute weights, validate weight limits, and accumulate total weight.
+        let mut total_weight = 0u64;
+        let mut weights = Vec::new(&e);
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            let weight = weighted_attestation::compute_weight(&e, &item.attester);
+            types::Attestation::validate_weight(weight);
+            total_weight = total_weight
+                .checked_add(weight as u64)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+            weights.push_back(weight);
+        }
+
+        if total_weight > max_weight as u64 {
+            panic_with_error!(e, ContractError::AttestationWeightExceedsMax);
+        }
+
+        // Read SubjectAttestations once
+        let subject_key = DataKey::SubjectAttestations(subject.clone());
+        let mut subject_attestations: Vec<u64> = e
+            .storage()
+            .instance()
+            .get(&subject_key)
+            .unwrap_or(Vec::new(&e));
+
+        let mut added = Vec::new(&e);
+        let counter_key = DataKey::AttestationCounter;
+        let mut next_id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
+
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            let weight = weights.get(i).unwrap();
+            let id = next_id;
+            next_id = next_id
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+
+            let attestation = types::Attestation {
+                id,
+                verifier: item.attester.clone(),
+                identity: subject.clone(),
+                timestamp: e.ledger().timestamp(),
+                weight,
+                attestation_data: item.attestation_data.clone(),
+                revoked: false,
+            };
+
+            // Set attestation and dedup key
+            e.storage()
+                .instance()
+                .set(&DataKey::Attestation(id), &attestation);
+
+            let dedup_key = types::AttestationDedupKey {
+                verifier: item.attester.clone(),
+                identity: subject.clone(),
+                attestation_data: item.attestation_data.clone(),
+            };
+            e.storage().instance().set(&dedup_key, &true);
+
+            subject_attestations.push_back(id);
+            added.push_back(attestation);
+        }
+
+        // Write updated ID counter and SubjectAttestations once
+        e.storage().instance().set(&counter_key, &next_id);
+        e.storage().instance().set(&subject_key, &subject_attestations);
+
+        // Update SubjectAttestationCount
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&count_key, &count.saturating_add(n));
+
+        bump_instance_ttl(&e);
+
+        // Emit aggregate event
+        e.events().publish(
+            (Symbol::new(&e, "attestations_batch_added"), subject.clone()),
+            (added.clone(),),
+        );
+
+        invariants::assert_self_consistent_for_subject(&e, &subject);
+        added
     }
 
     /// Revoke an attestation (only the original attester can revoke). Requires correct nonce.
@@ -1880,3 +2042,6 @@ pub mod test_access_control;
 /// plus a cross-contract divergence-detection smoke test.
 #[cfg(test)]
 mod test_differential;
+
+#[cfg(test)]
+mod test_attestation_batch;
