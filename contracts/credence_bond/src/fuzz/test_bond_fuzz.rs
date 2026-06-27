@@ -1,4 +1,4 @@
-//! Fuzz-style tests for core bond operations.
+﻿//! Fuzz-style tests for core bond operations.
 //!
 //! These tests are deterministic (seeded) and run inside `cargo test`, so they can be executed in
 //! CI without requiring `cargo-fuzz`/libFuzzer. They aim to discover edge cases and invariant
@@ -446,7 +446,7 @@ fn fuzz_bond_operations() {
                             // Request withdrawal then advance beyond notice period.
                             e.ledger()
                                 .with_mut(|li| li.timestamp = state.bond_start.saturating_add(1));
-                            let _ = catch_unwind(AssertUnwindSafe(|| client.request_withdrawal()));
+                            let _ = catch_unwind(AssertUnwindSafe(|| client.request_withdrawal(&identity)));
                             let now = e
                                 .ledger()
                                 .timestamp()
@@ -464,7 +464,7 @@ fn fuzz_bond_operations() {
 
                         let res = catch_unwind(AssertUnwindSafe(|| {
                             if use_early {
-                                client.withdraw_early(&withdraw_amount)
+                                client.withdraw_early(&identity, &withdraw_amount)
                             } else {
                                 client.withdraw_bond(&withdraw_amount)
                             }
@@ -546,4 +546,3 @@ fn fuzz_bond_operations() {
         std::panic::resume_unwind(err);
     }
 }
-

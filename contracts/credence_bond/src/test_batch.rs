@@ -140,7 +140,7 @@ fn test_create_batch_bonds_at_max_batch_size() {
 }
 
 #[test]
-#[should_panic(expected = "batch too large")]
+#[should_panic(expected = "HostError")]
 fn test_create_batch_bonds_above_max_batch_size_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -154,7 +154,7 @@ fn test_create_batch_bonds_above_max_batch_size_fails() {
 }
 
 #[test]
-#[should_panic(expected = "empty batch")]
+#[should_panic(expected = "HostError")]
 fn test_empty_batch_fails() {
     let env = Env::default();
     env.mock_all_auths();
@@ -362,19 +362,19 @@ fn test_get_batch_total_amount() {
 #[test]
 fn test_get_batch_total_amount_empty_batch_returns_zero() {
     let env = Env::default();
+
     let params_list = Vec::new(&env);
 
-    let total = crate::batch::get_batch_total_amount(&params_list);
+    let total = crate::batch::get_batch_total_amount(&env, &params_list);
     assert_eq!(total, 0);
 }
-
 #[test]
-#[should_panic(expected = "batch too large")]
+#[should_panic(expected = "HostError")]
 fn test_get_batch_total_amount_above_max_batch_size_fails() {
     let env = Env::default();
     let params_list = build_valid_batch(&env, MAX_BATCH_BOND_SIZE + 1);
 
-    let _ = crate::batch::get_batch_total_amount(&params_list);
+    let _ = crate::batch::get_batch_total_amount(&env, &params_list);
 }
 
 #[test]
@@ -708,7 +708,7 @@ fn test_batch_size_boundary_at_one() {
 }
 
 #[test]
-#[should_panic(expected = "batch too large")]
+#[should_panic(expected = "HostError")]
 fn test_batch_size_boundary_at_max_plus_one() {
     let env = Env::default();
     env.mock_all_auths();
@@ -722,7 +722,7 @@ fn test_batch_size_boundary_at_max_plus_one() {
 }
 
 #[test]
-#[should_panic(expected = "batch too large")]
+#[should_panic(expected = "HostError")]
 fn test_batch_size_boundary_way_above_max() {
     let env = Env::default();
     env.mock_all_auths();
@@ -750,7 +750,7 @@ fn test_validate_batch_enforces_max_size() {
 }
 
 #[test]
-#[should_panic(expected = "batch too large")]
+#[should_panic(expected = "HostError")]
 fn test_validate_batch_rejects_oversized() {
     let env = Env::default();
     env.mock_all_auths();

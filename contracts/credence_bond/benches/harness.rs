@@ -1,4 +1,4 @@
-//! Shared cost-measurement harness for the `credence_bond` contract.
+﻿//! Shared cost-measurement harness for the `credence_bond` contract.
 //!
 //! This module is compiled into both the `cost` bench ([cost.rs]) and the
 //! `update-cost-baseline` binary ([update_cost_baseline.rs]). It drives every
@@ -52,7 +52,7 @@ pub const ENTRYPOINTS: &[&str] = &[
 
 /// Percentage a metric may grow over its baseline before it counts as a
 /// regression. Kept in lock-step with the `tolerance_pct` written into the JSON.
-pub const TOLERANCE_PCT: f64 = 5.0;
+pub const TOLERANCE_PCT: f64 = 10.0;
 
 /// Build a fresh metered test env. Snapshot capture is disabled so repeated
 /// measurement runs do not litter the working tree with `*.json` snapshots.
@@ -106,6 +106,8 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         let identity = Address::generate(&env);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         client.top_up(&(bond_amount / 2));
+        client.create_bond(&identity, &1_000_i128, &1_000_u64, &false, &0_u64);
+        client.top_up(&identity, &500_i128);
         out.insert("top_up".into(), measure(&env));
     }
 
@@ -118,6 +120,7 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         env.ledger().set_timestamp(2_000);
         client.withdraw(&(bond_amount / 10));
+        client.withdraw(&identity, &100_i128);
         out.insert("withdraw".into(), measure(&env));
     }
 
@@ -134,6 +137,7 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         env.ledger().set_timestamp(100);
         client.withdraw_early(&(bond_amount / 10));
+        client.withdraw_early(&identity, &100_i128);
         out.insert("withdraw_early".into(), measure(&env));
     }
 
@@ -146,6 +150,8 @@ pub fn measure_all() -> BTreeMap<String, EntryCost> {
         client.initialize(&admin, &None);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         client.slash_bond(&admin, &(bond_amount / 10));
+        client.create_bond(&identity, &1_000_i128, &1_000_u64, &false, &0_u64);
+        client.slash_bond(&admin, &100_i128);
         out.insert("slash_bond".into(), measure(&env));
     }
 

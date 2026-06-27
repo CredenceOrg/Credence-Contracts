@@ -49,9 +49,7 @@ fn scan_with_bond(
             withdrawal_requested_at: 0,
             notice_period_duration: 0,
         };
-        e.storage()
-            .instance()
-            .set(&crate::DataKey::Bond, &bond);
+        e.storage().instance().set(&crate::DataKey::Bond, &bond);
     });
 
     // Register the holder so the scanner can find it.
@@ -116,19 +114,31 @@ fn bug_exploration_c_bonded_7_slashed_3_threshold_4286() {
 #[test]
 fn regression_bonded_3_slashed_2() {
     let result = scan_with_bond(3, 2, 6667);
-    assert_eq!(result.candidates.len(), 1, "regression: bonded=3, slashed=2 at threshold 6667");
+    assert_eq!(
+        result.candidates.len(),
+        1,
+        "regression: bonded=3, slashed=2 at threshold 6667"
+    );
 }
 
 #[test]
 fn regression_bonded_10001_slashed_5001() {
     let result = scan_with_bond(10_001, 5_001, 5001);
-    assert_eq!(result.candidates.len(), 1, "regression: bonded=10_001, slashed=5_001 at threshold 5001");
+    assert_eq!(
+        result.candidates.len(),
+        1,
+        "regression: bonded=10_001, slashed=5_001 at threshold 5001"
+    );
 }
 
 #[test]
 fn regression_bonded_7_slashed_3() {
     let result = scan_with_bond(7, 3, 4286);
-    assert_eq!(result.candidates.len(), 1, "regression: bonded=7, slashed=3 at threshold 4286");
+    assert_eq!(
+        result.candidates.len(),
+        1,
+        "regression: bonded=7, slashed=3 at threshold 4286"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -140,7 +150,11 @@ fn regression_bonded_7_slashed_3() {
 #[test]
 fn exact_divisible_no_regression() {
     let result = scan_with_bond(100, 50, 5000);
-    assert_eq!(result.candidates.len(), 1, "exact-divisible position must always be included");
+    assert_eq!(
+        result.candidates.len(),
+        1,
+        "exact-divisible position must always be included"
+    );
 }
 
 /// Position genuinely below threshold must NOT be included.
@@ -148,5 +162,9 @@ fn exact_divisible_no_regression() {
 fn below_threshold_excluded() {
     // bonded=100, slashed=40, ratio=4000 bps < threshold 5000
     let result = scan_with_bond(100, 40, 5000);
-    assert_eq!(result.candidates.len(), 0, "below-threshold position must be excluded");
+    assert_eq!(
+        result.candidates.len(),
+        0,
+        "below-threshold position must be excluded"
+    );
 }

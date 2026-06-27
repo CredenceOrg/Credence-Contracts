@@ -51,26 +51,14 @@ mod zero_address_tests {
 
         // Test zero governance address
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            client.set_emergency_config(
-                &admin,
-                &zero_address,
-                &valid_address,
-                &50,
-                &true,
-            );
+            client.set_emergency_config(&admin, &zero_address, &valid_address, &50, &true);
         }));
 
         assert!(result.is_err());
 
         // Test zero treasury address
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            client.set_emergency_config(
-                &admin,
-                &valid_address,
-                &zero_address,
-                &50,
-                &true,
-            );
+            client.set_emergency_config(&admin, &valid_address, &zero_address, &50, &true);
         }));
 
         assert!(result.is_err());
@@ -165,13 +153,7 @@ mod zero_address_tests {
         // These should all succeed
         client.set_early_exit_config(&admin, &treasury, &100);
 
-        client.set_emergency_config(
-            &admin,
-            &governance,
-            &treasury,
-            &50,
-            &true,
-        );
+        client.set_emergency_config(&admin, &governance, &treasury, &50, &true);
 
         client.register_attester(&attester);
 

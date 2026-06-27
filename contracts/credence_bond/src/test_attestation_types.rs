@@ -1,14 +1,12 @@
 //! Tests for Attestation data structure: validation, serialization, and dedup key.
 
-use std::string::String as StdString;
 use crate::types::attestation::{
-    DEFAULT_ATTESTATION_WEIGHT,
-    MAX_ATTESTATION_DATA_LENGTH,
-    MAX_ATTESTATION_WEIGHT,
+    DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_DATA_LENGTH, MAX_ATTESTATION_WEIGHT,
 };
 use crate::types::{Attestation, AttestationDedupKey};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Env, String};
+use std::string::String as StdString;
 
 #[test]
 fn attestation_weight_validation_accepts_valid() {

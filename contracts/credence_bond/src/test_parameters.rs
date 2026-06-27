@@ -13,7 +13,7 @@
 use crate::parameters::*;
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
-use soroban_sdk::{IntoVal, TryIntoVal, symbol_short, Address, Env, Symbol, TryFromVal};
+use soroban_sdk::{symbol_short, Address, Env, IntoVal, Symbol, TryFromVal, TryIntoVal};
 
 // ============================================================================
 // Test Setup Utilities

@@ -8,6 +8,8 @@
 //! The bond contract normalizes all token amounts to 18 decimals before validation,
 //! ensuring consistent behavior across tokens with different decimal places.
 
+#![allow(dead_code)]
+
 use soroban_sdk::Address;
 
 // ─── Address Validation ─────────────────────────────────────────────────────

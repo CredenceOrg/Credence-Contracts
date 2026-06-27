@@ -14,6 +14,7 @@ fn setup(env: &Env) -> (Address, Address) {
 #[cfg(test)]
 mod suspension_tests {
     use super::*;
+    use credence_errors::Role;
     use soroban_sdk::testutils::Ledger;
 
     // ── 1. suspend_admin succeeds ─────────────────────────────────────────────
@@ -77,9 +78,12 @@ mod suspension_tests {
             );
         });
 
-        assert!(!env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::User
+        );
         assert!(!env.as_contract(&contract, || {
             AdminContract::has_role_at_least(env.clone(), target.clone(), AdminRole::Operator)
         }));
@@ -115,9 +119,12 @@ mod suspension_tests {
         // Advance ledger past expiry — no reactivate_admin call needed
         env.ledger().with_mut(|li| li.timestamp = now + 101);
 
-        assert!(env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::Admin
+        );
         assert!(env.as_contract(&contract, || {
             AdminContract::has_role_at_least(env.clone(), target.clone(), AdminRole::Admin)
         }));
@@ -317,15 +324,21 @@ mod suspension_tests {
 
         // Still inactive within the extended window
         env.ledger().with_mut(|li| li.timestamp = now + 100);
-        assert!(!env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::User
+        );
 
         // Active after the extended deadline
         env.ledger().with_mut(|li| li.timestamp = now + 201);
-        assert!(env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::Admin
+        );
     }
 
     // ── 11. Suspended admin cannot call privileged operations ─────────────────

@@ -63,6 +63,14 @@ pub enum DataKey {
     MinVoters,
 }
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 #[contract]
 pub struct CredenceArbitration;
 
@@ -70,6 +78,7 @@ pub struct CredenceArbitration;
 impl CredenceArbitration {
     /// Initialize the contract with an admin address.
     pub fn initialize(e: Env, admin: Address) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             return Err(ArbitrationError::AlreadyInitialized);
         }
@@ -91,6 +100,7 @@ impl CredenceArbitration {
         arbitrator: Address,
         weight: i128,
     ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -137,6 +147,7 @@ impl CredenceArbitration {
 
     /// Remove an arbitrator.
     pub fn unregister_arbitrator(e: Env, arbitrator: Address) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let admin: Address = e
             .storage()
@@ -179,6 +190,7 @@ impl CredenceArbitration {
         description: String,
         duration: u64,
     ) -> Result<u64, ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         creator.require_auth();
 
@@ -229,6 +241,7 @@ impl CredenceArbitration {
         dispute_id: u64,
         reason: Option<String>,
     ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth();
 
@@ -250,7 +263,7 @@ impl CredenceArbitration {
             .instance()
             .get(&DataKey::Admin)
             .ok_or(ArbitrationError::NotInitialized)?;
-        
+
         let role = if caller == dispute.creator {
             Symbol::short("creator")
         } else if caller == admin {
@@ -269,8 +282,10 @@ impl CredenceArbitration {
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
 
-        e.events()
-            .publish((Symbol::new(&e, "dispute_cancelled"), dispute_id), (caller.clone(), role, reason));
+        e.events().publish(
+            (Symbol::new(&e, "dispute_cancelled"), dispute_id),
+            (caller.clone(), role, reason),
+        );
         e.events().publish(
             (Symbol::new(&e, "status_transition"), dispute_id),
             (from as u32, DisputeStatus::Cancelled as u32),
@@ -286,6 +301,7 @@ impl CredenceArbitration {
         dispute_id: u64,
         outcome: u32,
     ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         voter.require_auth();
 
@@ -357,6 +373,7 @@ impl CredenceArbitration {
 
     /// Transition Voting → Resolving → Resolved after the voting period ends.
     pub fn resolve_dispute(e: Env, dispute_id: u64) -> Result<u32, ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
 
         let mut dispute: Dispute = e
@@ -486,6 +503,7 @@ impl CredenceArbitration {
         min_total_weight: i128,
         min_voters: u32,
     ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
@@ -509,6 +527,7 @@ impl CredenceArbitration {
 
     /// Get the current quorum configuration.
     pub fn get_quorum(e: Env) -> (i128, u32) {
+        bump_instance_ttl(&e);
         let min_total_weight: i128 = e
             .storage()
             .instance()
@@ -520,6 +539,7 @@ impl CredenceArbitration {
 
     /// Get dispute details.
     pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
@@ -528,6 +548,7 @@ impl CredenceArbitration {
 
     /// Get current total weight for an outcome.
     pub fn get_tally(e: Env, dispute_id: u64, outcome: u32) -> i128 {
+        bump_instance_ttl(&e);
         let votes_key = DataKey::DisputeVotes(dispute_id);
         let votes: Map<u32, i128> = e
             .storage()
@@ -546,6 +567,7 @@ impl CredenceArbitration {
     /// # Returns
     /// The arbitrator's weight as `u32` if registered, or `Error::NotArbitrator` if not.
     pub fn get_arbitrator_weight(e: Env, arbitrator: Address) -> Result<u32, Error> {
+        bump_instance_ttl(&e);
         let weight: i128 = e
             .storage()
             .instance()
@@ -564,6 +586,7 @@ impl CredenceArbitration {
     /// # Returns
     /// `true` if the voter has already voted, `false` otherwise.
     pub fn has_voted(e: Env, dispute_id: u64, voter: Address) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .has(&DataKey::VoterCasted(dispute_id, voter))
@@ -581,6 +604,7 @@ impl CredenceArbitration {
     /// 1. A page of arbitrator addresses.
     /// 2. `Some(next_cursor)` if more results remain, or `None` if pagination is complete.
     pub fn get_arbitrators_page(e: Env, cursor: u32, limit: u32) -> (Vec<Address>, Option<u32>) {
+        bump_instance_ttl(&e);
         let registry: Vec<Address> = e
             .storage()
             .instance()
@@ -616,30 +640,37 @@ impl CredenceArbitration {
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 }
@@ -652,3 +683,6 @@ mod test_pausable;
 
 #[cfg(test)]
 mod test_lifecycle;
+
+#[cfg(test)]
+mod test_auth;
