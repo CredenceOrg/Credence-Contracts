@@ -70,6 +70,11 @@ enum DataKey {
     BondCodeHash,
 }
 
+/// Maximum number of identities that can be returned in a single page
+/// This hard cap prevents unbounded ledger reads that could exceed Soroban's
+/// per-transaction resource limits as the registry grows.
+const MAX_IDENTITIES_PAGE_SIZE: u32 = 200;
+
 pub mod pausable;
 
 #[contract]
@@ -419,10 +424,66 @@ impl CredenceRegistry {
             .publish((Symbol::new(&e, "identity_reactivated"),), entry);
     }
 
+    /// Get a paginated page of registered identities.
+    ///
+    /// # Arguments
+    /// * `offset` - Number of identities to skip (for pagination)
+    /// * `limit` - Maximum number of identities to return (capped at MAX_IDENTITIES_PAGE_SIZE)
+    ///
+    /// # Returns
+    /// A `Vec` of identity addresses for the requested page
+    ///
+    /// # Ordering
+    /// Identities are returned in insertion order (the order they were registered).
+    /// This ordering is stable and deterministic, allowing callers to paginate
+    /// without gaps or duplicates.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // Get first page of 50 identities
+    /// let page1 = registry.get_identities_page(&env, 0, 50);
+    ///
+    /// // Get second page
+    /// let page2 = registry.get_identities_page(&env, 50, 50);
+    /// ```
+    pub fn get_identities_page(e: Env, offset: u32, limit: u32) -> Vec<Address> {
+        let all_identities: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::RegisteredIdentities)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let actual_limit = limit.min(MAX_IDENTITIES_PAGE_SIZE);
+        let total_count = all_identities.len() as u32;
+
+        // Handle offset past end
+        if offset >= total_count {
+            return Vec::new(&e);
+        }
+
+        let start = offset;
+        let end = (start + actual_limit).min(total_count);
+
+        let mut result = Vec::new(&e);
+        for i in start..end {
+            result.push_back(all_identities.get(i as u32).unwrap());
+        }
+
+        result
+    }
+
     /// Get all registered identities.
+    ///
+    /// # Deprecated
+    /// This function is deprecated because it returns an unbounded list that will
+    /// eventually exceed Soroban's per-transaction resource limits as the registry grows.
+    ///
+    /// Use `get_identities_page` instead for bounded, paginated access.
+    /// For event-based discovery, listen to `identity_registered` events.
     ///
     /// # Returns
     /// A `Vec` of all registered identity addresses
+    #[deprecated(note = "Use get_identities_page for bounded pagination")]
     pub fn get_all_identities(e: Env) -> Vec<Address> {
         bump_instance_ttl(&e);
         e.storage()
