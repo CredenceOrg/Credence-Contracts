@@ -1,5 +1,6 @@
 #![cfg(test)]
 
+use std::format;
 extern crate std;
 
 use crate::{

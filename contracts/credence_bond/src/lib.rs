@@ -139,6 +139,7 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
+    BorrowFrozen,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -260,6 +261,11 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the contract with admin authority.
     ///
     /// Errors:

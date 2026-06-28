@@ -24,6 +24,13 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     client.initialize(&admin, &None);
     (client, admin)
 }
+#[test]
+fn test_version() {
+    let e = Env::default();
+    let (client, _admin) = setup(&e);
+    assert_eq!(client.version(), String::from_str(&e, "0.1.0"));
+}
+
 
 // ── describe_config ──────────────────────────────────────────────────────────
 

@@ -15,6 +15,8 @@
 )]
 
 use soroban_sdk::contracterror;
+/// Project-wide version constant.
+pub const VERSION: &str = "0.1.0";
 
 /// @title  ErrorCategory
 /// @notice Groups errors by domain for monitoring, alerting, and dashboards.
@@ -501,26 +503,26 @@ pub enum ContractError {
 ///         ContractError variant.
 /// @dev    Use this for structured logging, monitoring, and off-chain display.
 ///
-///         `is_recoverable()` classifies an error as recoverable when the
-///         caller can fix their input or wait for state to change and retry
-///         the same kind of operation successfully (e.g. `AlreadyInitialized`,
-///         `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
-///         for **fatal** errors that indicate either a code-level fault
-///         (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
-///         (`ReentrancyDetected`), a cryptographic failure
-///         (`VerificationFailed`), or a payload binding mismatch
-///         (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
-///         `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
-///         alerting) should use this signal to decide between
-///         "retry/ignore" vs "alert/halt".
+/// `is_recoverable()` classifies an error as recoverable when the
+/// caller can fix their input or wait for state to change and retry
+/// the same kind of operation successfully (e.g. `AlreadyInitialized`,
+/// `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
+/// for **fatal** errors that indicate either a code-level fault
+/// (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
+/// (`ReentrancyDetected`), a cryptographic failure
+/// (`VerificationFailed`), or a payload binding mismatch
+/// (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
+/// `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
+/// alerting) should use this signal to decide between
+/// "retry/ignore" vs "alert/halt".
 ///
-///         `is_recoverable()` is metadata only: it does not panic, does not
-///         allocate, and does not touch storage. It does not change any
-///         wire codes, categories, or description strings.
+/// `is_recoverable()` is metadata only: it does not panic, does not
+/// allocate, and does not touch storage. It does not change any
+/// wire codes, categories, or description strings.
 ///
-///         New `ContractError` variants must be added with an explicit
-///         classification — the matching `impl` is exhaustive and the test
-///         suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
+/// New `ContractError` variants must be added with an explicit
+/// classification - the matching `impl` is exhaustive and the test
+/// suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
 pub trait ErrorExt {
     /// @return The ErrorCategory bucket this error belongs to.
     fn category(&self) -> ErrorCategory;
@@ -621,8 +623,6 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
-            ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
-            ContractError::DelegationNotExpired => ErrorCategory::Delegation,
         }
     }
 
@@ -748,7 +748,6 @@ impl ErrorExt for ContractError {
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
-            ContractError::ContractCodeVerificationFailed => "Contract code verification failed",
         }
     }
 
@@ -868,8 +867,6 @@ impl ErrorExt for ContractError {
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
-            ContractError::ContractCodeVerificationFailed => false,
-            ContractError::DelegationNotExpired => false,
         }
     }
 }

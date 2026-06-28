@@ -18,6 +18,7 @@ use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
+use soroban_sdk::String;
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
@@ -207,6 +208,11 @@ pub const MAX_DELEGATION_DURATION: u64 = 365 * 24 * 60 * 60;
 
 #[contractimpl]
 impl CredenceDelegation {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the contract with an admin address.
     pub fn initialize(e: Env, admin: Address) {
         if e.storage().instance().has(&DataKey::Admin) {

@@ -4,6 +4,7 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
+use soroban_sdk::String;
 use ethnum::U256;
 use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
 
@@ -167,7 +168,13 @@ pub(crate) fn proportional_deduction(
 
 #[contractimpl]
 impl CredenceTreasury {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the treasury. Sets the admin; only admin can configure signers and depositors.
+    ///
     /// @param e The contract environment
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
     pub fn initialize(e: Env, admin: Address, token: Address) {
