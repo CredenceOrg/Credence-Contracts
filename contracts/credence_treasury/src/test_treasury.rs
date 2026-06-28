@@ -617,7 +617,7 @@ fn test_execute_withdrawal_min_amount_out_below_proposal_succeeds() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #602)")]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_execute_withdrawal_slippage_reverts_when_below_min() {
     // min_amount_out > proposal.amount → must revert.
     let (_e, client, id) = setup_ready_proposal(500);
@@ -625,7 +625,7 @@ fn test_execute_withdrawal_slippage_reverts_when_below_min() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #602)")]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_execute_withdrawal_slippage_reverts_adversarial_large_min() {
     // Adversarial: caller sets an unreachably high min_amount_out.
     let (_e, client, id) = setup_ready_proposal(100);

@@ -110,7 +110,7 @@ fn test_withdrawal_fails_when_tax_causes_slippage() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #602)")]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_slippage_revert_with_taxed_token() {
     let e = Env::default();
     let (client, admin, token_id) = setup_adversarial(&e);

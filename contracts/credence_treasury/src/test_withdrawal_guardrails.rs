@@ -246,7 +246,7 @@ fn test_slippage_guard_accepts_lower_minimum() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #602)")]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_slippage_guard_rejects_higher_minimum() {
     let e = Env::default();
     let (client, _admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 10_000, 0);
@@ -259,7 +259,7 @@ fn test_slippage_guard_rejects_higher_minimum() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #602)")]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_slippage_guard_rejects_max_minimum() {
     let e = Env::default();
     let (client, _admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 10_000, 0);
@@ -314,7 +314,7 @@ fn test_liquidity_guard_checked_before_slippage() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #602)")]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_slippage_guard_checked_after_liquidity() {
     let e = Env::default();
     let (client, _admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 10_000, 3_000);

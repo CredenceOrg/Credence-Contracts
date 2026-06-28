@@ -512,6 +512,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ProposalExpired = 608,
 
+    /// Settled withdrawal amount fell below the caller's `min_amount_out`
+    /// slippage bound. Distinct from `InsufficientTreasuryBalance`: the treasury
+    /// had funds, but the realized amount tripped the caller's slippage guard.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    SlippageExceeded = 609,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -643,7 +650,8 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientApprovals
             | ContractError::InvalidFlashLoanCallback
             | ContractError::FlashLoanRepaymentFailed
-            | ContractError::ProposalExpired => ErrorCategory::Treasury,
+            | ContractError::ProposalExpired
+            | ContractError::SlippageExceeded => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow => ErrorCategory::Arithmetic,
             ContractError::NoPendingAdmin
@@ -771,6 +779,9 @@ impl ErrorExt for ContractError {
                 "Flashloan principal plus fee was not fully repaid"
             }
             ContractError::ProposalExpired => "Withdrawal proposal has expired",
+            ContractError::SlippageExceeded => {
+                "Settled withdrawal amount fell below the caller's minimum (slippage)"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -897,7 +908,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalNotFound               // supply a valid proposal id
             | ContractError::ProposalAlreadyExecuted        // idempotent
             | ContractError::InsufficientApprovals          // collect more approvals
-            | ContractError::ProposalExpired => true,       // create a new proposal
+            | ContractError::ProposalExpired                // create a new proposal
+            | ContractError::SlippageExceeded => true,      // retry with a looser min_amount_out
 
             // FATAL Treasury flashloan failures: callback contract misbehaved.
             ContractError::InvalidFlashLoanCallback => false, // bad magic value

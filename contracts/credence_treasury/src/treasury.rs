@@ -587,10 +587,17 @@ impl CredenceTreasury {
     /// # Arguments
     /// * `proposal_id`   - ID of the approved withdrawal proposal.
     /// * `min_amount_out` - Caller-provided minimum acceptable settlement amount.
-    ///                      Reverts with "slippage: received amount below minimum" when
-    ///                      the proposal amount is less than this value, protecting the
+    ///                      Reverts with `SlippageExceeded` when the realized
+    ///                      `actual_amount` is less than this value, protecting the
     ///                      caller against unfavorable price movement between proposal
     ///                      creation and execution.  Pass `0` to skip the check.
+    ///
+    /// # Failure modes
+    /// This path distinguishes two failures that previously shared one code:
+    /// * `InsufficientTreasuryBalance` - the treasury lacks funds or the
+    ///   withdrawal would breach the `MinLiquidity` floor (operator must top up).
+    /// * `SlippageExceeded` - the treasury had funds but the settled amount fell
+    ///   below `min_amount_out` (caller should retry with a looser bound).
     ///
     /// # Events
     /// Emits `treasury_withdrawal_executed` with `(recipient, expected, actual)` so
@@ -658,9 +665,13 @@ impl CredenceTreasury {
             .checked_sub(recipient_balance_before)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
 
-        // Slippage guard: revert if the settled amount falls below the caller's threshold.
+        // Slippage guard: revert if the settled amount falls below the caller's
+        // threshold. This is a distinct failure mode from a balance/liquidity
+        // shortfall (which raises `InsufficientTreasuryBalance` above): here the
+        // treasury had funds but the realized amount tripped the caller's bound,
+        // so callers and indexers must be able to tell the two apart.
         if actual_amount < min_amount_out {
-            panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
+            panic_with_error!(&e, ContractError::SlippageExceeded);
         }
 
         let new_total = total
