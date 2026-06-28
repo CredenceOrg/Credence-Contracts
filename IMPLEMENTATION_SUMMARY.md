@@ -55,6 +55,11 @@ Added 16 public contract methods:
 | `protocol_fee_bps` | u32 | 50 (0.5%) | 0 | 1000 (10%) | Protocol-wide fee |
 | `attestation_fee_bps` | u32 | 10 (0.1%) | 0 | 500 (5%) | Attestation operation fee |
 
+### Security Enhancements
+| Category | Status | Description |
+|----------|--------|-------------|
+| **Settlement Flag** | ✅ Added | Defense-in-depth fix to prevent re-entrant token settlement. Added `DataKey::Settling` to track and block malicious token re-entry attacks. |
+
 ### Cooldown Periods (Seconds)
 | Parameter | Type | Default | Min | Max | Description |
 |-----------|------|---------|-----|-----|-------------|

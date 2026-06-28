@@ -96,6 +96,8 @@ pub enum DataKey {
     Token,
     /// Proposal TTL in seconds (default 7 days). Configurable by admin.
     ProposalTtl,
+    /// Flag to prevent re-entering settlement for external token calls.
+    Settling,
 }
 
 #[contract]
