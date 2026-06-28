@@ -52,7 +52,8 @@ fn fingerprints(env: &Env) -> Vec<(&'static str, String)> {
 
 fn render(fps: &[(&'static str, String)]) -> String {
     let mut out = String::new();
-    for (name, hex in fps {
+    for (name, hex) in fps {
+
         out.push_str(name);
         out.push_str(" = ");
         out.push_str(hex);

@@ -230,7 +230,6 @@ fn test_expire_claims_skips_no_expiry() {
             Some(Symbol::new(&env, "normal_expiry")),
         );
 
-
         // Manually add a claim with no expiry (expires_at = 0)
         let no_expiry_claim = PendingClaim {
             claim_id: 999,
