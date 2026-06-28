@@ -31,13 +31,22 @@ fn setup_env() -> (Env, Address, Address) {
     (env, contract_address, super_admin)
 }
 
-fn add_admin(env: &Env, contract: &Address, caller: &Address, new_admin: &Address, role: AdminRole) {
+fn add_admin(
+    env: &Env,
+    contract: &Address,
+    caller: &Address,
+    new_admin: &Address,
+    role: AdminRole,
+) {
     env.as_contract(contract, || {
         AdminContract::add_admin(env.clone(), caller.clone(), new_admin.clone(), role);
     });
 }
 
-fn advance(env: &Env, secs: u64) {
+fn advance(
+    env: &Env,
+    secs: u64,
+) {
     env.ledger().set(soroban_sdk::testutils::LedgerInfo {
         timestamp: env.ledger().timestamp() + secs,
         protocol_version: 22,
@@ -105,7 +114,11 @@ fn deactivate_admin_succeeds_when_caller_outranks_target() {
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     env.as_contract(&contract, || {
-        AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
+        AdminContract::deactivate_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+        );
     });
 
     let info = env.as_contract(&contract, || {
@@ -125,7 +138,11 @@ fn deactivate_admin_rejected_when_caller_does_not_outrank_target() {
     add_admin(&env, &contract, &super_admin, &admin2, AdminRole::Admin);
 
     env.as_contract(&contract, || {
-        AdminContract::deactivate_admin(env.clone(), admin1.clone(), admin2.clone());
+        AdminContract::deactivate_admin(
+            env.clone(),
+            admin1.clone(),
+            admin2.clone(),
+        );
     });
 }
 
@@ -142,12 +159,20 @@ fn reactivate_admin_succeeds_when_super_admin_authorizes() {
 
     // Deactivate first.
     env.as_contract(&contract, || {
-        AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
+        AdminContract::deactivate_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+        );
     });
 
     // Reactivate.
     env.as_contract(&contract, || {
-        AdminContract::reactivate_admin(env.clone(), super_admin.clone(), admin.clone());
+        AdminContract::reactivate_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+        );
     });
 
     assert!(env.as_contract(&contract, || AdminContract::is_admin(env.clone(), admin)));
@@ -164,12 +189,20 @@ fn reactivate_admin_rejected_when_caller_does_not_outrank_target() {
     add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
 
     env.as_contract(&contract, || {
-        AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
+        AdminContract::deactivate_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+        );
     });
 
     // Operator tries to reactivate the Admin — must be rejected.
     env.as_contract(&contract, || {
-        AdminContract::reactivate_admin(env.clone(), operator.clone(), admin.clone());
+        AdminContract::reactivate_admin(
+            env.clone(),
+            operator.clone(),
+            admin.clone(),
+        );
     });
 }
 
@@ -186,7 +219,12 @@ fn suspend_admin_succeeds_when_super_admin_authorizes() {
 
     let until_ts = env.ledger().timestamp() + 3600;
     env.as_contract(&contract, || {
-        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
+        AdminContract::suspend_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+            until_ts,
+        );
     });
 
     // Admin should appear inactive while timestamp < until_ts.
@@ -205,7 +243,12 @@ fn suspend_admin_rejected_when_until_ts_is_in_the_past() {
     advance(&env, 10_000);
     let past_ts = env.ledger().timestamp() - 1;
     env.as_contract(&contract, || {
-        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), past_ts);
+        AdminContract::suspend_admin(
+            env.clone(),
+            super_admin.clone(),
+            admin.clone(),
+            past_ts,
+        );
     });
 }
 
@@ -222,7 +265,12 @@ fn suspend_admin_rejected_when_caller_does_not_outrank_target() {
     let until_ts = env.ledger().timestamp() + 3600;
     env.as_contract(&contract, || {
         // Operator tries to suspend Admin — caller role (1) < target role (2).
-        AdminContract::suspend_admin(env.clone(), operator.clone(), admin.clone(), until_ts);
+        AdminContract::suspend_admin(
+            env.clone(),
+            operator.clone(),
+            admin.clone(),
+            until_ts,
+        );
     });
 }
 
@@ -239,7 +287,11 @@ fn transfer_ownership_succeeds_when_owner_authorizes() {
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
     env.as_contract(&contract, || {
-        AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());
+        AdminContract::transfer_ownership(
+            env.clone(),
+            super_admin.clone(),
+            new_super.clone(),
+        );
     });
 
     let pending = env.as_contract(&contract, || AdminContract::get_pending_owner(env.clone()));
@@ -258,7 +310,11 @@ fn transfer_ownership_rejected_when_caller_is_not_owner() {
 
     env.as_contract(&contract, || {
         // admin is not the owner — must be rejected.
-        AdminContract::transfer_ownership(env.clone(), admin.clone(), new_super.clone());
+        AdminContract::transfer_ownership(
+            env.clone(),
+            admin.clone(),
+            new_super.clone(),
+        );
     });
 }
 
@@ -274,7 +330,11 @@ fn accept_ownership_succeeds_when_pending_owner_authorizes() {
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
     env.as_contract(&contract, || {
-        AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());
+        AdminContract::transfer_ownership(
+            env.clone(),
+            super_admin.clone(),
+            new_super.clone(),
+        );
     });
     env.as_contract(&contract, || {
         AdminContract::accept_ownership(env.clone(), new_super.clone());
@@ -294,7 +354,11 @@ fn accept_ownership_rejected_when_caller_is_not_pending_owner() {
     add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
 
     env.as_contract(&contract, || {
-        AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());
+        AdminContract::transfer_ownership(
+            env.clone(),
+            super_admin.clone(),
+            new_super.clone(),
+        );
     });
     env.as_contract(&contract, || {
         // stranger is not the pending owner.

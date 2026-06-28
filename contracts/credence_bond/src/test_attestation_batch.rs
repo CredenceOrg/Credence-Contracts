@@ -3,12 +3,10 @@
 extern crate std;
 
 use crate::{
-    AttestationBatchItem, CredenceBond,
-    CredenceBondClient,
+    AttestationBatchItem, CredenceBond, CredenceBondClient,
 };
 use soroban_sdk::{
-    testutils::{Address as _, Events},
-    Address, Env, String, Symbol, Vec, FromVal,
+    testutils::{Address as _, Events}, Address, Env, String, Symbol, Vec, FromVal,
 };
 use std::panic::AssertUnwindSafe;
 
@@ -79,7 +77,8 @@ fn test_batch_success() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "attestations_batch_added")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
+                    == Symbol::new(&e, "attestations_batch_added")
         })
         .collect();
     assert_eq!(batch_events.len(), 1);

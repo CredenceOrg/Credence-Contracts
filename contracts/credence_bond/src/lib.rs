@@ -1338,7 +1338,6 @@ impl CredenceBond {
             token_integration::transfer_into_contract(&e, &bond.identity, amount);
         }
 
-        bond.bonded_amount = bond
         let new_bonded_amount = bond
             .bonded_amount
             .checked_add(amount)
