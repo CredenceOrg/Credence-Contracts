@@ -744,9 +744,78 @@ fn test_slash_transfers_to_treasury() {
     assert_eq!(bond.slashed_amount, 400);
 }
 
+/// Happy-path regression test:
+/// - slashed funds are transferred to the configured slash destination
+/// - the transfer amount is exactly the (non-capped) slashed amount
+/// - no residual funds remain incorrectly locked in the bond instance
+#[test]
+fn test_slashed_funds_transfer_to_configured_destination() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let (client, admin, identity, token_id, bond_id) = test_helpers::setup_with_token(&e);
+
+    let destination = Address::generate(&e);
+    client.set_slash_treasury(&admin, &destination);
+
+    // Create bond with bonded_amount=1000, and slash 250 (should not be capped).
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    use soroban_sdk::token::TokenClient;
+    let token = TokenClient::new(&e, &token_id);
+
+    let bond_bal_before = token.balance(&bond_id);
+    let dest_bal_before = token.balance(&destination);
+
+    client.slash(&admin, &250_i128);
+
+    let bond_bal_after = token.balance(&bond_id);
+    let dest_bal_after = token.balance(&destination);
+
+    // Exact movement: bonded contract -> destination.
+    assert_eq!(bond_bal_before - bond_bal_after, 250_i128);
+    assert_eq!(dest_bal_after - dest_bal_before, 250_i128);
+
+    // Bond state must reflect exact slashing.
+    let bond = client.get_identity_state();
+    assert_eq!(bond.slashed_amount, 250_i128);
+}
+
+/// Sad-path regression test:
+/// Unauthorized callers must not be able to slash, and no tokens must be transferred.
+#[test]
+#[should_panic(expected = "not admin")]
+fn test_unauthorized_slash_does_not_transfer_tokens() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let (client, admin, identity, token_id, bond_id) = test_helpers::setup_with_token(&e);
+
+    let destination = Address::generate(&e);
+    client.set_slash_treasury(&admin, &destination);
+
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    use soroban_sdk::token::TokenClient;
+    let token = TokenClient::new(&e, &token_id);
+
+    let bond_bal_before = token.balance(&bond_id);
+    let dest_bal_before = token.balance(&destination);
+
+    let attacker = Address::generate(&e);
+    client.slash(&attacker, &250_i128);
+
+    // The call above must panic before any transfer occurs.
+    // Unreachable in success path due to #[should_panic].
+    let _ = (bond_bal_before, dest_bal_before);
+}
+
 // ============================================================================
 // Regression: checked arithmetic in slash reward calculation (issue fix)
 // ============================================================================
+
 
 /// The slash reward is `actual_slash_amount / 10`.
 /// Before the fix this used a bare `/` operator; the fix replaces it with
