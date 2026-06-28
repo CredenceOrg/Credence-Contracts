@@ -1,6 +1,14 @@
 # Bond Introspection API
 
-Two read-only entrypoints that give operators and indexers a single-call snapshot of contract configuration and per-identity bond state.
+Read-only entrypoints that give operators and indexers a snapshot of contract configuration, versioning, and per-identity bond state.
+
+## Entrypoints
+
+### `version(env) -> String`
+
+Returns the constant version string for the contract (e.g., `"0.1.0"`). This is used for off-chain monitoring to identify which build is currently deployed.
+
+**Auth:** none — no `require_auth` is called on this path.
 
 ## Motivation
 

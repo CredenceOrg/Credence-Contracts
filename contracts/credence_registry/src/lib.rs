@@ -20,6 +20,7 @@
 //! - Validates addresses before registration
 //! - Emits events for audit trail
 
+use soroban_sdk::String;
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
@@ -59,7 +60,6 @@ enum DataKey {
     BondToIdentity(Address),
     RegisteredIdentities,
     AllowNonInterface(Address),
-    BondCodeHash,
 }
 
 pub mod pausable;
@@ -69,6 +69,11 @@ pub struct CredenceRegistry;
 
 #[contractimpl]
 impl CredenceRegistry {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the registry contract with an admin address.
     ///
     /// # Arguments
@@ -521,190 +526,5 @@ impl CredenceRegistry {
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
-    /// Set the expected bond contract code hash for trustless verification.
-    ///
-    /// # Arguments
-    /// * `code_hash` - The WASM code hash (32 bytes) of a valid bond contract
-    ///
-    /// # Security
-    /// - Admin-only operation (requires admin authorization)
-    /// - Used by `register_trustless` to verify that a caller is a genuine bond contract
-    pub fn set_bond_code_hash(e: Env, code_hash: soroban_sdk::Bytes) {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
-
-        admin.require_auth();
-
-        e.storage()
-            .instance()
-            .set(&DataKey::BondCodeHash, &code_hash);
-
-        e.events().publish(
-            (Symbol::new(&e, "bond_code_hash_updated"),),
-            code_hash.clone(),
-        );
-    }
-
-    /// Get the expected bond contract code hash.
-    ///
-    /// # Returns
-    /// The stored bond code hash, or an empty Bytes if not set
-    pub fn get_bond_code_hash(e: Env) -> soroban_sdk::Bytes {
-        e.storage()
-            .instance()
-            .get(&DataKey::BondCodeHash)
-            .unwrap_or_else(|| soroban_sdk::Bytes::new(&e))
-    }
-
-    /// Self-register a bond contract with trustless code-hash verification.
-    ///
-    /// Called by a bond contract during its `initialize()` to register itself
-    /// with the registry. The caller's WASM code hash is verified against the
-    /// admin-pinned expected bond code hash, ensuring the caller is a genuine
-    /// bond contract instance.
-    ///
-    /// # Arguments
-    /// * `identity` - The identity address this bond is for
-    ///
-    /// # Returns
-    /// The created `RegistryEntry`
-    ///
-    /// # Panics
-    /// * `ContractError::NotInitialized` – bond code hash not yet configured by admin
-    /// * `ContractError::ContractCodeVerificationFailed` – caller's code hash does not match
-    /// * `ContractError::IdentityAlreadyRegistered` – identity already has an active registration
-    /// * `ContractError::BondContractAlreadyRegistered` – calling bond already registered for another identity
-    ///
-    /// # Idempotency
-    /// If the bond is already registered for the same identity, returns the existing
-    /// entry without error. If registered for a different identity, panics.
-    ///
-    /// # Security
-    /// - Caller must be a contract (verified via code-hash check)
-    /// - Code hash must match the admin-configured expected bond code hash
-    /// - This removes the need for manual admin-controlled registration
-    ///
-    /// # Events
-    /// Emits `bond_registered` with the `RegistryEntry` on successful registration
-    pub fn register_trustless(e: Env, identity: Address) -> RegistryEntry {
-        pausable::require_not_paused(&e);
-
-        let caller = e.invoker();
-        let expected_hash = Self::get_bond_code_hash(e.clone());
-
-        // Ensure admin has pinned a bond code hash
-        if expected_hash.is_empty() {
-            panic_with_error!(&e, ContractError::NotInitialized);
-        }
-
-        // Verify the caller's contract code hash matches the expected bond code hash.
-        // This uses Soroban's contract instance introspection to fetch the caller's
-        // WASM code hash and compare it against the admin-pinned reference.
-        // The comparison must be constant-time to prevent timing attacks.
-        let caller_code_hash = e
-            .invoke_contract::<soroban_sdk::Bytes>(
-                &caller,
-                &Symbol::new(&e, "get_contract_code_hash"),
-                soroban_sdk::vec![&e],
-            )
-            .unwrap_or_else(|_| {
-                // If code hash retrieval fails, treat as verification failure
-                panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
-            });
-
-        // Constant-time comparison: if hashes don't match, reject the registration
-        if caller_code_hash.len() != expected_hash.len()
-            || !constant_time_eq(caller_code_hash.as_ref(), expected_hash.as_ref())
-        {
-            panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
-        }
-
-        let identity_key = DataKey::IdentityToBond(identity.clone());
-        let bond_key = DataKey::BondToIdentity(caller.clone());
-
-        // Idempotency: if already registered by this bond for this identity, return existing entry
-        if let Some(existing_entry) = e
-            .storage()
-            .instance()
-            .get::<_, RegistryEntry>(&identity_key)
-        {
-            if existing_entry.bond_contract == caller && existing_entry.active {
-                // Already registered and active — idempotent success
-                e.events().publish(
-                    (Symbol::new(&e, "bond_registered"),),
-                    existing_entry.clone(),
-                );
-                return existing_entry;
-            }
-            // Registered for a different bond or deactivated — reject
-            panic_with_error!(&e, ContractError::IdentityAlreadyRegistered);
-        }
-
-        // Ensure bond contract is not already registered for another identity
-        if e.storage().instance().has(&bond_key) {
-            panic_with_error!(&e, ContractError::BondContractAlreadyRegistered);
-        }
-
-        // Create registry entry with current ledger timestamp
-        let entry = RegistryEntry {
-            identity: identity.clone(),
-            bond_contract: caller.clone(),
-            registered_at: e.ledger().timestamp(),
-            active: true,
-        };
-
-        // Persist both forward and reverse mappings
-        e.storage().instance().set(&identity_key, &entry);
-        e.storage().instance().set(&bond_key, &identity);
-
-        // Update the registered identities list if not already present
-        let mut identities: Vec<Address> = e
-            .storage()
-            .instance()
-            .get(&DataKey::RegisteredIdentities)
-            .unwrap_or_else(|| Vec::new(&e));
-
-        if !identities.iter().any(|a| a == &identity) {
-            identities.push_back(identity.clone());
-            e.storage()
-                .instance()
-                .set(&DataKey::RegisteredIdentities, &identities);
-        }
-
-        // Emit trustless binding event
-        e.events().publish(
-            (Symbol::new(&e, "bond_registered"),),
-            entry.clone(),
-        );
-
-        entry
-    }
 }
 
-/// Constant-time comparison for security-sensitive data.
-/// Prevents timing attacks by ensuring comparison time does not leak
-/// information about where the first difference occurs.
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    if left.len() != right.len() {
-        return false;
-    }
-    left.iter()
-        .zip(right.iter())
-        .fold(0, |acc, (l, r)| acc | (l ^ r))
-        == 0
-}
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod test_pausable;
-
-#[cfg(test)]
-mod test_interface;
-
-#[cfg(test)]
-mod test_uniqueness;

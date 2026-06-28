@@ -100,6 +100,11 @@ pub struct AdminContract;
 
 #[contractimpl]
 impl AdminContract {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the admin contract with a super admin.
     ///
     /// # Arguments
