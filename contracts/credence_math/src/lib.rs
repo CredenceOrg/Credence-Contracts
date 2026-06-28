@@ -208,7 +208,9 @@ pub fn split_bps(
 
 #[cfg(test)]
 mod tests {
-    use super::{bps, bps_round_up, bps_u64, ceil_div_i128, mul_div_i128, split_bps, Rounding};
+    use super::{
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps, Rounding,
+    };
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
         amount
@@ -398,5 +400,56 @@ mod tests {
         assert_eq!(ceil_div_i128(2 * 10_000, 3, "test"), 6667);
         // bonded=7, slashed=3: ceil(3*10_000/7) = 4286
         assert_eq!(ceil_div_i128(3 * 10_000, 7, "test"), 4286);
+    }
+
+    // -----------------------------------------------------------------------
+    // Overflow boundary of the inner `a + (b - 1)` add (issue #660)
+    // -----------------------------------------------------------------------
+
+    /// `a == i128::MAX, b == 2` makes the inner `a + (b - 1)` overflow, which
+    /// must hit the `checked_add` panic path with the supplied message.
+    #[test]
+    #[should_panic(expected = "ceil overflow")]
+    fn ceil_div_i128_inner_add_overflows() {
+        let _ = ceil_div_i128(i128::MAX, 2, "ceil overflow");
+    }
+
+    /// `b == 1` is the identity: `a + 0` never overflows and `a / 1 == a`.
+    #[test]
+    fn ceil_div_i128_divisor_one_is_identity() {
+        assert_eq!(ceil_div_i128(i128::MAX, 1, "test"), i128::MAX);
+        assert_eq!(ceil_div_i128(0, 1, "test"), 0);
+        assert_eq!(ceil_div_i128(42, 1, "test"), 42);
+    }
+
+    /// `b == i128::MAX` with `a == i128::MAX` overflows the inner add as well
+    /// (`a + (b - 1)` exceeds `i128::MAX`).
+    #[test]
+    #[should_panic(expected = "ceil overflow")]
+    fn ceil_div_i128_large_divisor_overflows() {
+        let _ = ceil_div_i128(i128::MAX, i128::MAX, "ceil overflow");
+    }
+
+    /// Just under the overflow threshold: `a == i128::MAX - (b - 1)` makes the
+    /// inner add land exactly on `i128::MAX` and must still succeed.
+    #[test]
+    fn ceil_div_i128_just_under_overflow_succeeds() {
+        // b = 2 → a + (b - 1) = (i128::MAX - 1) + 1 = i128::MAX, no overflow.
+        let a = i128::MAX - 1;
+        let expected = (i128::MAX) / 2; // ceil((MAX-1)/2) == MAX/2
+        assert_eq!(ceil_div_i128(a, 2, "test"), expected);
+    }
+
+    /// With a remainder, ceiling division exceeds floor division by exactly one;
+    /// with no remainder the two agree.
+    #[test]
+    fn ceil_div_i128_differs_from_floor_by_one_on_remainder() {
+        // remainder present: ceil(11/5) = 3, floor(11/5) = 2
+        assert_eq!(
+            ceil_div_i128(11, 5, "test"),
+            div_i128(11, 5, "test") + 1
+        );
+        // exact division: ceil(10/5) == floor(10/5)
+        assert_eq!(ceil_div_i128(10, 5, "test"), div_i128(10, 5, "test"));
     }
 }
