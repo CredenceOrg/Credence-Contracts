@@ -44,6 +44,12 @@ fn test_expire_claims_no_expired() {
     let (_client, _admin, contract_id) = setup_with_contract(&env);
     let user = Address::generate(&env);
 
+    // Uses contract entrypoint, so it already runs in-contract.
+    // With an empty queue, there is nothing to prune.
+    let pruned = client.expire_claims(&user, &50);
+    assert_eq!(pruned, 0);
+}
+
 #[test]
 fn test_expire_claims_all_expired() {
     let env = Env::default();
@@ -63,6 +69,12 @@ fn test_expire_claims_all_expired() {
             1000 + (i as i128),
             i as u64,
             Some(Symbol::new(&env, &label)),
+            1000,
+            1,
+            Some(Symbol::new(&env, "normal_expiry")),
+        );
+    }
+
     as_bond(&env, &contract_id, || {
         // Add a claim that expires far in the future
         let _claim_id = claims::add_pending_claim(
@@ -205,8 +217,7 @@ fn test_expire_claims_skips_no_expiry() {
     for i in 0u32..10u32 {
         let mut label = alloc::string::String::from("claim_");
         write!(&mut label, "{}", i).unwrap();
-    as_bond(&env, &contract_id, || {
-        // Add a claim with normal expiry
+
         claims::add_pending_claim(
             &env,
             &user,
@@ -218,6 +229,7 @@ fn test_expire_claims_skips_no_expiry() {
             1,
             Some(Symbol::new(&env, "normal_expiry")),
         );
+
 
         // Manually add a claim with no expiry (expires_at = 0)
         let no_expiry_claim = PendingClaim {

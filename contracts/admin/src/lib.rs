@@ -797,18 +797,21 @@ impl AdminContract {
         e.storage().instance().remove(&DataKey::PendingOwner);
 
         // Emit admin rotated event with ledger sequence
-let ledger_seq: u32 = e.ledger().sequence();
-e.events().publish(
-    (Symbol::new(&e, "admin_rotated"), previous_owner.clone(), pending_owner.clone()),
-    ledger_seq,
-);
+        let ledger_seq: u32 = e.ledger().sequence();
+        e.events().publish(
+            (
+                Symbol::new(&e, "admin_rotated"),
+                previous_owner.clone(),
+                pending_owner.clone(),
+            ),
+            ledger_seq,
+        );
 
-// Emit original ownership transfer accepted event
-e.events().publish(
-    (Symbol::new(&e, "ownership_transfer_accepted"),),
-    (previous_owner.clone(), pending_owner.clone()),
-);
-
+        // Emit original ownership transfer accepted event
+        e.events().publish(
+            (Symbol::new(&e, "ownership_transfer_accepted"),),
+            (previous_owner.clone(), pending_owner.clone()),
+        );
     }
 
     /// Get the current owner of the contract.
