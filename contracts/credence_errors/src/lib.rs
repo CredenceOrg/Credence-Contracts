@@ -272,6 +272,29 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     TreasuryNotConfigured = 223,
 
+    /// Pagination cursor is out of range (cursor >= registry_slots).
+    /// Triggered by: `scan_liquidation_candidates` when the supplied cursor
+    /// equals or exceeds the current registry slot count. Accepting
+    /// cursor == registry_slots would silently return a done=true result,
+    /// allowing a malicious keeper to synthesize a completed-scan response
+    /// without actually scanning any positions.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CursorOutOfRange = 226,
+
+    /// Batch input exceeds the maximum allowed size constant.
+    /// Prevents a single transaction from exhausting CPU/ledger budgets.
+    /// Replaces: panic!("batch too large")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BatchTooLarge = 227,
+
+    /// Batch input is empty (len == 0) when at least one item is required.
+    /// Replaces: panic!("empty batch")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmptyBatch = 228,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -576,6 +599,9 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
+            | ContractError::CursorOutOfRange
+            | ContractError::BatchTooLarge
+            | ContractError::EmptyBatch
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -667,6 +693,7 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
+            ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -806,11 +833,15 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
-            | ContractError::BondAlreadyExists => true,
+            | ContractError::BondAlreadyExists
+            | ContractError::BatchTooLarge         // reduce batch size
+            | ContractError::EmptyBatch            // supply at least one item
+            => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
@@ -844,13 +875,13 @@ impl ErrorExt for ContractError {
             | ContractError::AlreadyRevoked            // idempotent
             | ContractError::DelegationExpiryTooLong   // shorten to MAX_DURATION
             | ContractError::VerifierAlreadyRegistered // idempotent
-            | ContractError::VerifierNotRegistered => true,
+            | ContractError::VerifierNotRegistered
+            | ContractError::DelegationNotExpired => true,
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0

@@ -1,5 +1,6 @@
 #![cfg(test)]
 
+extern crate alloc;
 extern crate std;
 
 use crate::{
@@ -9,6 +10,7 @@ use crate::{
 use std::panic::AssertUnwindSafe;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, Vec};
+use core::fmt::Write;
 
 // Helper: register contract + admin, return (client, admin, contract_id).
 fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
@@ -35,14 +37,16 @@ fn test_claim_pagination_bounds_gas_usage() {
 
     // Create many claims to test pagination
     let mut claim_ids = Vec::new(&env);
-    for i in 0..100 {
+    for i in 0u32..100u32 {
+        let mut label = alloc::string::String::from("claim_");
+        write!(&mut label, "{}", i).unwrap();
         let claim_id = claims::add_pending_claim(
             &env,
             &user,
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i,
-            Some(soroban_sdk::Symbol::new(&env, &format!("claim_{}", i))),
+            Some(soroban_sdk::Symbol::new(&env, &label)),
         );
         claim_ids.push_back(claim_id);
     }
@@ -106,14 +110,16 @@ fn test_paginated_claim_processing() {
     let user = create_test_address(&env);
 
     // Create many claims
-    for i in 0..60 {
+    for i in 0u32..60u32 {
+        let mut label = alloc::string::String::from("claim_");
+        write!(&mut label, "{}", i).unwrap();
         claims::add_pending_claim(
             &env,
             &user,
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i,
-            Some(soroban_sdk::Symbol::new(&env, &format!("claim_{}", i))),
+            Some(soroban_sdk::Symbol::new(&env, &label)),
         );
     }
 
@@ -143,19 +149,21 @@ fn test_claim_type_filtering_with_pagination() {
     let user = create_test_address(&env);
 
     // Create claims of different types
-    for i in 0..30 {
+    for i in 0u32..30u32 {
         let claim_type = if i % 2 == 0 {
             ClaimType::VerifierReward
         } else {
             ClaimType::SlashingReward
         };
+        let mut label = alloc::string::String::from("claim_");
+        write!(&mut label, "{}", i).unwrap();
         claims::add_pending_claim(
             &env,
             &user,
             claim_type,
             1000 + (i as i128),
             i,
-            Some(soroban_sdk::Symbol::new(&env, &format!("claim_{}", i))),
+            Some(soroban_sdk::Symbol::new(&env, &label)),
         );
     }
 
@@ -174,17 +182,16 @@ fn test_large_claim_set_handling() {
     let user = create_test_address(&env);
 
     // Create a large set of claims (simulating potential griefing scenario)
-    for i in 0..200 {
+    for i in 0u32..200u32 {
+        let mut label = alloc::string::String::from("large_claim_");
+        write!(&mut label, "{}", i).unwrap();
         claims::add_pending_claim(
             &env,
             &user,
             ClaimType::VerifierReward,
             1000 + (i as i128),
             i,
-            Some(soroban_sdk::Symbol::new(
-                &env,
-                &format!("large_claim_{}", i),
-            )),
+            Some(soroban_sdk::Symbol::new(&env, &label)),
         );
     }
 

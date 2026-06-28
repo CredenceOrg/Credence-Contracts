@@ -3,7 +3,8 @@ extern crate alloc;
 extern crate std;
 use crate::{CredenceBond, CredenceBondClient, DataKey};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env, IntoVal};
+use soroban_sdk::{Address, Env, IntoVal, Val};
+use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
 
 fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     env.mock_all_auths();
@@ -260,7 +261,7 @@ fn test_genuine_require_auth_enforcement() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &contract_id,
             fn_name: "initialize",
-            args: (&admin,).into_val(&env),
+            args: (&admin, &None::<Address>).into_val(&env),
             sub_invokes: &[],
         },
     }]);
@@ -356,7 +357,7 @@ fn test_admin_success() {
 
     client.set_early_exit_config(&admin, &treasury, &500_u32);
 
-    let config = client.describe_config();
+    let config = client.describe_config().unwrap();
     assert_eq!(config.early_exit_penalty_bps, Some(500));
 }
 
@@ -391,7 +392,7 @@ fn test_admin_as_attester_edge_case() {
     }]);
 
     client.set_early_exit_config(&admin, &treasury, &600_u32);
-    let config = client.describe_config();
+    let config = client.describe_config().unwrap();
     assert_eq!(config.early_exit_penalty_bps, Some(600));
 
     let non_admin_attester = Address::generate(&env);

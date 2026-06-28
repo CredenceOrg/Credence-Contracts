@@ -147,7 +147,11 @@ impl TemplateContract {
 
     /// Return `true` if a record exists for `owner`.
     pub fn has_record(e: Env, owner: Address) -> bool {
-        if let Some(record) = e.storage().instance().get::<_, Record>(&DataKey::Record(owner.clone())) {
+        if let Some(record) = e
+            .storage()
+            .instance()
+            .get::<_, Record>(&DataKey::Record(owner.clone()))
+        {
             if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
                 e.storage().instance().remove(&DataKey::Record(owner));
                 return false;
@@ -160,7 +164,11 @@ impl TemplateContract {
     /// Return `true` if a record exists for `owner` and is currently expired.
     /// Demonstrates the reference expiry pattern.
     pub fn is_expired(e: Env, owner: Address) -> bool {
-        if let Some(record) = e.storage().instance().get::<_, Record>(&DataKey::Record(owner)) {
+        if let Some(record) = e
+            .storage()
+            .instance()
+            .get::<_, Record>(&DataKey::Record(owner))
+        {
             return record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at;
         }
         false

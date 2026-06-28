@@ -41,32 +41,6 @@ Slashed funds are now transferred to the configured slash treasury on every `sla
 
 **Production path:** A multi-bond contract with a `Map<Address, IdentityBond>` storage layout would allow a single contract to serve many identities. The registry would still be useful for discovery but would not be strictly required for storage. See [registry.md](registry.md).
 
----
-
-## 3. Treasury is a Pure Accounting System (No Token Custody)
-
-**Where:** `contracts/credence_treasury/src/`
-
-**What:** The treasury contract tracks fee balances and withdrawal records internally but does not hold tokens directly. `receive_fee()` accepts fee reports from bond contracts without an actual token transfer. `execute_withdrawal()` updates internal balance tracking without moving tokens.
-
-**Impact:** Fee accounting is correct and auditable on-chain, but the treasury cannot actually disburse funds without an additional integration layer that connects the accounting records to a real token transfer.
-
-**Production path:** The treasury should be extended to hold a token balance and execute real `transfer()` calls on `execute_withdrawal()`. The bond contract's fee collection path would then call `transfer` to the treasury address rather than just reporting. See [treasury.md](treasury.md).
-
----
-
-## 6. Early-Exit Penalty Transfer to Treasury is Conditional
-
-**Where:** `contracts/credence_bond/src/early_exit_penalty.rs`
-
-**What:** The early-exit penalty is calculated correctly and deducted from the withdrawal amount, but the penalty portion is only transferred to the treasury if a treasury address is configured. If no treasury is set, the penalty is silently dropped (the identity receives `amount - penalty` and the penalty is not sent anywhere).
-
-**Impact:** In a test or unconfigured environment, penalty funds are effectively burned. The accounting is correct from the identity's perspective but the protocol does not capture the penalty revenue.
-
-**Production path:** Require a treasury address to be set before `withdraw_early` is callable, or revert if no treasury is configured. See [early-exit.md](early-exit.md).
-
----
-
 ## 7. get_all_identities() Has No Pagination
 
 **Where:** `contracts/credence_registry/src/lib.rs`
@@ -76,8 +50,6 @@ Slashed funds are now transferred to the configured slash treasury on every `sla
 **Impact:** As the registry grows, this call will consume increasing amounts of ledger read budget and may eventually exceed Soroban's per-transaction resource limits.
 
 **Production path:** Add a `get_identities_page(offset: u32, limit: u32)` function and deprecate the unbounded variant. Off-chain indexers should use event-based discovery (`identity_registered` events) rather than polling `get_all_identities()`. See [registry.md](registry.md).
-
-
 
 ## 9. Arbitration Voting Weights Are Not Stake-Backed
 
@@ -90,8 +62,6 @@ Slashed funds are now transferred to the configured slash treasury on every `sla
 **Production path:** Derive arbitrator weight from the arbitrator's bond balance (queried from `credence_bond` via cross-contract call), or require arbitrators to stake tokens into the arbitration contract. This creates economic alignment and makes the system permissionless. See [arbitration.md](arbitration.md).
 
 ---
-
-
 
 ## 11. Multisig Proposals Have No Expiry
 

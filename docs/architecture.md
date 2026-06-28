@@ -378,6 +378,8 @@ See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
 
 ## Cross-Crate Relationships
 
+For a detailed visual mapping of dynamic interactions, callbacks, token custody pathways, and authentication entrypoints, see the [Cross-Contract Call Graph & Authorization Flow](cross-contract-call-graph.md).
+
 ```
 credence_bond
   ├── uses credence_math        (arithmetic)

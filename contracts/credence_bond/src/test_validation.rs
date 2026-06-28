@@ -1,4 +1,4 @@
-//! Tests for Bond Amount Validation Module
+﻿//! Tests for Bond Amount Validation Module
 //!
 //! Tests the validation functions for bond amounts to ensure they properly enforce
 //! minimum and maximum limits.
@@ -12,8 +12,6 @@ use super::CredenceBondClient;
 use crate::test_helpers;
 
 use soroban_sdk::{Address, Env};
-
-
 
 fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let (client, admin, identity, ..) = test_helpers::setup_with_token(e);
@@ -140,7 +138,7 @@ fn test_top_up_with_valid_amount() {
     client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
 
     // Top up with valid amount
-    let bond = client.top_up(&1000); // 1 additional unit
+    let bond = client.top_up(&identity, &1000); // 1 additional unit
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT + 1000);
     assert!(bond.active);
 }
@@ -155,7 +153,7 @@ fn test_top_up_with_zero_amount() {
     client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
 
     // Try to top up with zero amount
-    client.top_up(&0_i128);
+    client.top_up(&identity, &0_i128);
 }
 
 #[test]
@@ -168,7 +166,7 @@ fn test_top_up_with_negative_amount() {
     client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
 
     // Try to top up with negative amount
-    client.top_up(&(-1000_i128));
+    client.top_up(&identity, &(-1000_i128));
 }
 
 // ============================================================================
@@ -222,11 +220,11 @@ fn test_create_bond_then_top_up_valid_scenario() {
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT);
 
     // Top up with valid amount
-    let bond = client.top_up(&1000); // 1 additional unit
+    let bond = client.top_up(&identity, &1000); // 1 additional unit
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT + 1000);
 
     // Top up again with another valid amount
-    let bond = client.top_up(&5000); // 5 additional units
+    let bond = client.top_up(&identity, &5000); // 5 additional units
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT + 1000 + 5000);
 }
 
@@ -240,5 +238,5 @@ fn test_create_bond_with_min_amount_then_invalid_top_up() {
     client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
 
     // Try to top up with zero (should fail)
-    client.top_up(&0_i128);
+    client.top_up(&identity, &0_i128);
 }

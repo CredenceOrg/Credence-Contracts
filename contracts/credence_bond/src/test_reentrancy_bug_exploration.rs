@@ -1,4 +1,4 @@
-//! Bug Condition Exploration Test - Reentrancy Vulnerability
+﻿//! Bug Condition Exploration Test - Reentrancy Vulnerability
 //!
 //! **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
 //!
@@ -79,7 +79,7 @@ mod withdraw_early_attacker {
 
             // Attempt reentrancy - this should panic with "reentrancy detected" on fixed code
             // On unfixed code, this succeeds and drains more funds than available
-            client.withdraw_early(&500_i128);
+            client.withdraw_early(&identity, &500_i128);
         }
 
         pub fn setup(e: Env, target: Address) {
@@ -110,7 +110,6 @@ mod cooldown_attacker {
                 .get(&Symbol::new(&e, "target"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-
 
             // Attempt reentrancy - this should panic with "reentrancy detected" on fixed code
             // On unfixed code, this may succeed depending on state update order
@@ -212,7 +211,7 @@ fn test_withdraw_early_reentrancy_attack() {
     // Attempt early withdrawal - attacker will try to re-enter during callback
     // On UNFIXED code: Both withdrawals succeed, draining more than available balance
     // On FIXED code: Second withdrawal panics with "reentrancy detected"
-    client.withdraw_early(&500_i128);
+    client.withdraw_early(&identity, &500_i128);
 
     // If we reach here on unfixed code, the vulnerability was exploited
     // On fixed code, we never reach here (panic occurs in callback)
@@ -243,7 +242,7 @@ fn test_execute_cooldown_withdrawal_reentrancy_attack() {
     client.create_bond_with_rolling(&identity, &2000_i128, &86400_u64, &true, &3600_u64);
 
     // Request withdrawal
-    client.request_withdrawal();
+    client.request_withdrawal(&identity);
 
     // Advance time past cooldown period
     e.ledger().with_mut(|l| {

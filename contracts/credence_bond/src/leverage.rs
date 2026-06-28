@@ -22,6 +22,13 @@ use crate::validation::MIN_BOND_AMOUNT;
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Env};
 
+/// Division helper: returns `ContractError::Overflow` instead of panicking.
+#[inline]
+fn checked_div_leverage(e: &Env, a: i128, b: i128) -> i128 {
+    a.checked_div(b)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow))
+}
+
 /// Validates that `bond_amount` does not exceed the leverage cap.
 ///
 /// # Arguments
@@ -41,7 +48,7 @@ pub fn validate_leverage(e: &Env, bond_amount: i128, max_leverage: u32) {
     if bond_amount <= 0 {
         return;
     }
-    let leverage = bond_amount / MIN_BOND_AMOUNT;
+    let leverage = checked_div_leverage(e, bond_amount, MIN_BOND_AMOUNT);
     if leverage > max_leverage as i128 {
         panic_with_error!(e, ContractError::LeverageExceeded);
     }
