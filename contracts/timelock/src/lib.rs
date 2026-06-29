@@ -389,4 +389,105 @@ mod tests {
         let res = client.try_queue_operation(&admin, &op_hash, &delay);
         assert!(res.is_err());
     }
+
+    // --- is_ready boundary regression suite ---
+    //
+    // `is_ready(eta, now)` returns `true` iff `now >= eta`.
+    // `min_delay_seconds()` returns 86_400, interpreted as 1 second per ledger
+    // (i.e. the minimum queue delay is 86 400 ledgers / seconds = 24 hours).
+    //
+    // The table below covers every interesting u64 boundary:
+    //   eta == 0, now == 0, eta == u64::MAX, now == u64::MAX,
+    //   eta == now (tie-break), eta == now + 1 (one ledger early),
+    //   now == eta + 1 (one ledger late).
+    // No combination should panic; the comparison is total over u64.
+
+    #[test]
+    fn is_ready_boundary_eta_zero_now_zero() {
+        // eta == 0, now == 0  →  0 >= 0  →  true
+        assert!(is_ready(0, 0));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_zero_now_nonzero() {
+        // eta == 0, now > 0  →  always ready
+        assert!(is_ready(0, 1));
+        assert!(is_ready(0, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_zero_eta_nonzero() {
+        // now == 0, eta > 0  →  never ready
+        assert!(!is_ready(1, 0));
+        assert!(!is_ready(u64::MAX, 0));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_equals_now_exact_tie() {
+        // eta == now: the tie-break that decides whether an action executes
+        // on the exact ledger it becomes valid.  Must return true.
+        let t: u64 = 1_000_000;
+        assert!(is_ready(t, t));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_one_before_eta() {
+        // now == eta - 1: one ledger before the ETA — must be false.
+        let eta: u64 = 500;
+        assert!(!is_ready(eta, eta - 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_one_after_eta() {
+        // now == eta + 1: one ledger after the ETA — must be true.
+        let eta: u64 = 500;
+        assert!(is_ready(eta, eta + 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_now_max_minus_one() {
+        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  →  false
+        assert!(!is_ready(u64::MAX, u64::MAX - 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_now_max() {
+        // eta == u64::MAX, now == u64::MAX  →  true (tie-break at maximum value)
+        assert!(is_ready(u64::MAX, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_minus_one_now_max() {
+        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  →  true
+        assert!(is_ready(u64::MAX - 1, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_no_panic_exhaustive_pairs() {
+        // Spot-check a selection of extreme pairs to confirm no overflow/panic.
+        let pairs: &[(u64, u64)] = &[
+            (0, 0),
+            (0, u64::MAX),
+            (u64::MAX, 0),
+            (u64::MAX, u64::MAX),
+            (u64::MAX - 1, u64::MAX),
+            (u64::MAX, u64::MAX - 1),
+            (1, 0),
+            (0, 1),
+        ];
+        for &(eta, now) in pairs {
+            let _ = is_ready(eta, now); // must not panic
+        }
+    }
+
+    #[test]
+    fn min_delay_seconds_is_86400_one_second_per_ledger() {
+        // min_delay_seconds() must equal 86_400.
+        // Under the assumed 1-second-per-ledger cadence this corresponds to
+        // exactly 24 hours, the minimum window before a queued action may execute.
+        assert_eq!(min_delay_seconds(), 86_400);
+        // Verify the constant fits comfortably in u64 (no truncation).
+        let delay: u64 = min_delay_seconds();
+        assert_eq!(delay, 86_400_u64);
+    }
 }
