@@ -3,9 +3,11 @@
 //! Rejects fee-on-transfer tokens where balance verification fails.
 
 use crate::safe_token;
+use crate::storage;
 use crate::DataKey;
+use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{Address, Env, String, Symbol};
+use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
 
 /// Stellar network passphrase label used for USDC mainnet references.
 pub const STELLAR_MAINNET: &str = "mainnet";
@@ -19,6 +21,7 @@ fn network_key(e: &Env) -> Symbol {
 
 /// @notice Sets the token contract used by bond operations.
 /// @dev Requires admin auth and stores token in instance storage.
+/// Validates that the token is in the accepted tokens set.
 pub fn set_token(e: &Env, admin: &Address, token: &Address) {
     let stored_admin: Address = e
         .storage()
@@ -28,6 +31,11 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
     admin.require_auth();
     if *admin != stored_admin {
         panic!("not admin");
+    }
+
+    // Validate token is in accepted tokens set
+    if !storage::is_token_accepted(e, token) {
+        panic_with_error!(e, ContractError::UnauthorizedToken);
     }
 
     e.storage().instance().set(&DataKey::BondToken, token);

@@ -121,6 +121,11 @@ pub enum ContractError {
     /// Contracts: multisig, treasury
     InsufficientSignatures = 108,
 
+    /// Signature deadline has expired (even with grace window).
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond
+    SignatureExpired = 109,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -213,6 +218,11 @@ pub enum ContractError {
     /// Triggered by: create_bond called for an identity that already has an active bond
     /// Contracts: bond
     BondAlreadyExists = 217,
+
+    /// Token address is not in the set of accepted tokens.
+    /// Triggered by: initialize called with a token not in the accepted tokens set
+    /// Contracts: bond
+    UnauthorizedToken = 218,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -424,7 +434,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
-            | ContractError::BondAlreadyExists => ErrorCategory::Bond,
+            | ContractError::BondAlreadyExists
+            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -507,6 +518,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
+            ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",

@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{contracttype, Address, Env, Vec};
 use crate::Bond;
 use credence_errors::ContractError;
 
@@ -12,6 +12,7 @@ pub enum DataKey {
     AttestationCounter,
     SubjectAttestations(Address),
     Locked,
+    AcceptedTokens,
 }
 
 pub fn get_admin(e: &Env) -> Option<Address> {
@@ -51,4 +52,20 @@ pub fn is_locked(e: &Env) -> bool {
 
 pub fn set_lock(e: &Env, locked: bool) {
     e.storage().instance().set(&DataKey::Locked, &locked);
+}
+
+pub fn get_accepted_tokens(e: &Env) -> Vec<Address> {
+    e.storage()
+        .instance()
+        .get(&DataKey::AcceptedTokens)
+        .unwrap_or_else(|| Vec::new(e))
+}
+
+pub fn set_accepted_tokens(e: &Env, tokens: &Vec<Address>) {
+    e.storage().instance().set(&DataKey::AcceptedTokens, tokens);
+}
+
+pub fn is_token_accepted(e: &Env, token: &Address) -> bool {
+    let accepted = get_accepted_tokens(e);
+    accepted.iter().any(|t| t == token)
 }

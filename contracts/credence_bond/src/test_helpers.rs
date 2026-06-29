@@ -1,7 +1,7 @@
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
 #[contract]
 pub struct MockStellarAsset;
@@ -88,6 +88,11 @@ pub fn setup_with_token_mint(
     let token_client = TokenClient::new(e, &stellar_asset);
     let expiration = e.ledger().sequence().saturating_add(10000);
     token_client.approve(&identity, &contract_id, &mint_amount, &expiration);
+
+    // Set accepted tokens to include the stellar asset
+    let mut accepted_tokens = Vec::new(e);
+    accepted_tokens.push_back(stellar_asset.clone());
+    client.set_accepted_tokens(&admin, &accepted_tokens);
 
     client.set_token(&admin, &stellar_asset);
 
