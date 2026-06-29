@@ -21,8 +21,8 @@ pub fn get_delegation_summary(
 | `status` | `DelegationStatus` | Explicit lifecycle: `Active`, `InGrace`, `Expired`, or `Revoked`. |
 | `time_to_expiry` | `u64` | The remaining lifetime of the delegation in seconds (`expires_at - now`). Returns 0 if expired. |
 | `delegation_type` | `DelegationType` | The type of delegation (`Attestation` or `Management`). |
-| `revoked_at` | `u64` | The ledger timestamp when the delegation was revoked; `0` while not revoked. |
-| `scheme` | `u8` | The signature scheme used to create the delegation. Currently returns 0 (Ed25519) as it is not persisted in storage. |
+| `revoked_at` | `u64` | The ledger timestamp when the delegation was revoked; `0` while not revoked. Persisted on the `Delegation` record — see [Revocation timestamp semantics](#revocation-timestamp-semantics). |
+| `scheme` | `u8` | The signature scheme used to create the delegation (`0` = Ed25519). Persisted from the delegated-action payload; the direct `delegate()` path always stores `0`. |
 
 ## Grace window and authority semantics
 
@@ -34,6 +34,50 @@ The admin-configurable `revocation_grace_period` (default `0`) controls:
 `is_valid` and `is_valid_delegate` remain a **hard cliff** at `expires_at`. `InGrace` is informational only and does **not** re-grant delegate authority.
 
 When `grace = 0` (default), status jumps directly to `Expired` at `expires_at`, and post-expiry revocation remains permitted at any time (legacy behaviour).
+
+## Revocation timestamp semantics
+
+`revoked_at` records *when* a delegation was pulled, not merely *that* it was. This
+distinction is forensically important for delegated-authority systems: it answers
+"was this action signed before or after the owner revoked?", which a boolean
+`revoked` flag cannot.
+
+### How it is set
+
+`revoked_at` is set to `e.ledger().timestamp()` at the moment of revocation. All
+revoke paths share a single internal writer (`mark_delegation_revoked`), so they
+produce consistent values:
+
+- `revoke_delegation` (direct, owner-authenticated)
+- `revoke_attestation` (direct, attester-authenticated)
+- `execute_delegated_revoke` (relayer-friendly, payload-authenticated)
+- `execute_delegated_revoke_attest` (relayer-friendly attestation revoke)
+
+The same writer also sets `revoked = true` and re-publishes the full `Delegation`
+(including `revoked_at`) in the `delegation_revoked` event, so indexers receive the
+timestamp without an extra read.
+
+### The `0` sentinel and idempotency
+
+- `revoked_at == 0` means **never revoked**. A live delegation always reads `0`.
+- Revocation is **not idempotent**: a second revoke panics with `AlreadyRevoked`
+  (`#502`) *before* any write, so the **first** `revoked_at` is preserved and never
+  overwritten.
+- `revoked_at` is independent of `expires_at`. A delegation can be revoked before,
+  at, or (within the grace window) after expiry; `is_valid` is a hard cliff at
+  `expires_at` regardless of `revoked_at`.
+
+### Back-compat read convention (v1 → v2 entries)
+
+`revoked_at` (and `scheme`) were added in the v2 `Delegation` layout. Entries
+persisted before the upgrade are read back through the legacy decoder, which fills
+`revoked_at = 0` and `scheme = 0`. Therefore:
+
+- A pre-v2 entry that was **never revoked** reads `revoked_at = 0` — correct.
+- A pre-v2 entry that **was revoked** before the upgrade also reads `revoked_at = 0`.
+  Consumers must treat `revoked == true && revoked_at == 0` as "revoked at an
+  unknown (pre-upgrade) time", not as "not revoked". For never-revoked entries the
+  pair is always `revoked == false && revoked_at == 0`.
 
 ## Configuration
 
