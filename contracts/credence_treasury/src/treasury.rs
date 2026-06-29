@@ -6,7 +6,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::String;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256};
 
 use crate::pausable;
 
@@ -106,6 +106,28 @@ fn zero_cumulative_amount() -> CumulativeAmount {
         rollovers: 0,
         remainder: 0,
     }
+}
+
+/// Reconstruct a [] as a single [] host value.
+///
+/// # Formula
+///
+/// 
+///
+///  alone overflows for multi-rollover sums, so rollover-safe storage
+/// splits the value across two fields.  This helper is the single canonical
+/// reconstruction so every off-chain consumer uses the same arithmetic.
+///
+/// # Arguments
+/// *  - Contract environment (required to construct the host U256)
+/// *  - The rollover-safe cumulative amount to flatten
+pub fn cumulative_to_u256(e: &Env, amount: &CumulativeAmount) -> SdkU256 {
+    // CUMULATIVE_SEGMENT = 2^127 fits in u128 exactly.
+    let segment = SdkU256::from_u128(e, CUMULATIVE_SEGMENT);
+    let rollovers = SdkU256::from_u128(e, amount.rollovers as u128);
+    // remainder is always in [0, CUMULATIVE_SEGMENT) and fits in u128.
+    let remainder = SdkU256::from_u128(e, amount.remainder as u128);
+    rollovers.mul(&segment).add(&remainder)
 }
 
 fn add_to_cumulative(e: &Env, current: &CumulativeAmount, amount: i128) -> CumulativeAmount {
@@ -817,6 +839,41 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::CumulativeReceivedBySource(source))
             .unwrap_or_else(zero_cumulative_amount)
+    }
+
+    /// Get the lifetime cumulative received amount across all sources as a single [].
+    ///
+    /// Equivalent to  but flattens the rollover/remainder
+    /// accounting into one comparable value using []:
+    ///
+    /// 
+    ///
+    /// Use this instead of [] when you need a single value
+    /// for comparisons, dashboards, or indexers — it is the canonical on-chain source
+    /// of truth for the rollover reconstruction formula.
+    pub fn get_cumulative_received_u256(e: Env) -> SdkU256 {
+        bump_instance_ttl(&e);
+        let amount: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceived)
+            .unwrap_or_else(zero_cumulative_amount);
+        cumulative_to_u256(&e, &amount)
+    }
+
+    /// Get the lifetime cumulative received amount for a specific [] as a [].
+    ///
+    /// Per-source variant of [].  The two sources
+    /// ( + ) always reconcile with the total returned by
+    /// [].
+    pub fn get_cumulative_by_source_u256(e: Env, source: FundSource) -> SdkU256 {
+        bump_instance_ttl(&e);
+        let amount: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceivedBySource(source))
+            .unwrap_or_else(zero_cumulative_amount);
+        cumulative_to_u256(&e, &amount)
     }
 
     /// Get admin address.
