@@ -41,3 +41,6 @@ mod test_proportional_deduction;
 
 #[cfg(test)]
 mod test_pause_withdrawal_lifecycle;
+
+#[cfg(test)]
+mod test_per_source_reconciliation;
