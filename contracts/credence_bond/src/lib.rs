@@ -1132,7 +1132,16 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+
+        Self::check_settling(&e);
+
+        if amount > 0 {
+            crate::token_integration::transfer_from_contract(&e, &bond.identity, amount);
+        }
+
+        Self::release_lock(&e);
         invariants::assert_self_consistent(&e);
+
         bond
     }
 
@@ -1924,6 +1933,22 @@ impl CredenceBond {
         e.storage().instance().get(&key).unwrap_or(false)
     }
 
+    fn is_settling(e: &Env) -> bool {
+        let key = Symbol::new(e, "settling");
+        e.storage().instance().get(&key).unwrap_or(false)
+    }
+
+    fn set_settling(e: &Env, settling: bool) {
+        let key = Symbol::new(e, "settling");
+        e.storage().instance().set(&key, &settling);
+    }
+
+    fn check_settling(e: &Env) {
+        if Self::is_settling(e) {
+            panic_with_error!(e, ContractError::ReentrancyDetected);
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Pause
     // -----------------------------------------------------------------------
@@ -2359,3 +2384,7 @@ mod test_attestation_batch;
 /// Regression tests for storage TTL bumps (issue #570).
 #[cfg(test)]
 mod test_storage_ttl;
+
+/// Settling protection tests for external token call reentrancy.
+#[cfg(test)]
+mod test_settling_protection;
