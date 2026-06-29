@@ -163,6 +163,9 @@ pub enum DataKey {
     ClaimById(u64),
     /// Upgrade-authorization namespace, sub-keyed by [`UpgradeKey`].
     Upgrade(UpgradeKey),
+    /// Reentrancy protection flag. Value: `bool`. When `true`, prevents
+    /// external token calls from re-entering and double-spending.
+    SettlingFlag,
     // --- Liquidation namespace (appended for issue #366) ---
     /// Treasury recipient for residual funds swept by
     /// [`liquidate`](CredenceBond::liquidate). Value: `Address`. Optional; when
@@ -303,10 +306,36 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
-    /// Return the contract version.
-    pub fn version(e: Env) -> String {
-        String::from_str(&e, credence_errors::VERSION)
-    }
+        /// Acquire reentrancy lock to prevent double-spend during token operations.
+        ///
+        /// This function should be called at the beginning of any function that performs
+        /// external token calls (e.g., withdraw, top_up, increase_bond). It ensures
+        /// that a malicious token cannot re-enter settle and double-spend by setting
+        /// a "settling" flag in storage.
+        ///
+        /// Errors:
+        /// - `ContractError::ReentrancyDetected` if a settle operation is already in progress.
+        fn acquire_lock(&e: &Env) {
+            let key = DataKey::SettlingFlag;
+            if e.storage().instance().has(&key) {
+                panic_with_error!(e, ContractError::ReentrancyDetected);
+            }
+            e.storage().instance().set(&key, &true);
+        }
+
+        /// Release reentrancy lock after external token operations complete.
+        ///
+        /// This function should be called at the end of functions that have called
+        /// `acquire_lock`. It clears the "settling" flag to allow future settle operations.
+        fn release_lock(&e: &Env) {
+            let key = DataKey::SettlingFlag;
+            e.storage().instance().remove(&key);
+        }
+
+        /// Return the contract version.
+        pub fn version(e: Env) -> String {
+            String::from_str(&e, credence_errors::VERSION)
+        }
 
     /// Initialize the contract with admin authority.
     ///
