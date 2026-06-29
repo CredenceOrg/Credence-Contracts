@@ -1,0 +1,10 @@
+# Bumped 1.85.1 -> 1.89.0: transitive host-side deps of credence_admin_cli
+# (soroban-client -> reqwest/idna -> icu_* 2.2.0 require rustc 1.86; and
+# soroban-client -> stellar-baselib -> libsodium-sys-stable -> zip 8.x /
+# libflate 2.3 require rustc 1.88). Pinning these down to 1.85-compatible
+# versions is infeasible (cascading version conflicts / yanked releases),
+# so the channel is raised to the minimal toolchain that satisfies them.
+[toolchain]
+channel = "1.89.0"
+components = ["rustfmt", "clippy", "llvm-tools-preview"]
+targets = ["wasm32-unknown-unknown"]

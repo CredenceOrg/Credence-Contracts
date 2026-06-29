@@ -43,6 +43,10 @@ Create a delegation through a relayed, domain-separated payload. The same expiry
 
 Revoke an active delegation. Requires owner authorization. Panics if the delegation does not exist or is already revoked. Emits a `delegation_revoked` event.
 
+### `cleanup_expired(owner, delegate, delegation_type)`
+
+Remove an expired delegation storage entry. This function is permissionless (anyone can call it) to allow reclaiming storage rent once `expires_at` has passed. It panics if the delegation entry does not exist or is not yet expired. Emits a `delegation_cleaned` event.
+
 ### `get_delegation(owner, delegate, delegation_type) -> Delegation`
 
 Retrieve a stored delegation. Panics if not found.
@@ -59,11 +63,13 @@ Delegations expire at the exact `expires_at` timestamp. A record with `expires_a
 | ------------------ | ---------- | -------------------------- |
 | delegation_created | Delegation | A new delegation is stored |
 | delegation_revoked | Delegation | A delegation is revoked    |
+| delegation_cleaned | DelegationType | An expired delegation is removed from storage |
 
 ## Security
 
 - Only the owner can create or revoke their delegations (`require_auth`).
-- Delegated payload verification now reports distinct error codes for each failure mode: `DomainMismatch` (503), `OwnerMismatch` (504), `TargetMismatch` (505), and `ContractIdMismatch` (506).
+- Delegated payload verification normalizes all mismatch failures to `InvalidNonce` so callers do not learn which payload field differed.
+- Failure-mode ordering is pinned for relayed revokes: payload domain → nonce → state, so replayed revoke payloads fail with `InvalidNonce`. See `docs/delegation-failure-modes.md` for details.
 - Delegations are time-bound; expired delegations are treated as invalid.
 - Delegation lifetime is capped by `MAX_DELEGATION_DURATION` (`365 days`) to prevent never-expiring management or attestation authority.
 - Owners may revoke expired delegations; the record remains invalid before and after revocation, and the explicit `revoked` flag preserves audit state.
@@ -101,6 +107,8 @@ cargo build -p credence_delegation
 cargo test -p credence_delegation
 ```
 
-## Known Simplifications
+## Cross-namespace nonce replay guarantee
 
-Expired delegations are invalid and bounded at creation time, but they are not automatically cleaned up from storage. See [known-simplifications.md](known-simplifications.md#8-expired-delegations-are-not-auto-cleaned) for details and the production path.
+Delegation nonces are scoped to the delegation contract namespace and are additionally bound by each delegated payload's `contract_id` and `DomainTag`. A payload whose nonce value is correct in another Credence namespace, such as the bond contract's signed-action namespace, is rejected by the delegated execution entry points before the delegation nonce is consumed.
+
+The regression suite covers replay attempts from a bond-bound payload into `execute_delegated_delegate`, `execute_delegated_revoke`, and `execute_delegated_revoke_attest`. It also verifies that `invalidate_nonce_range` burns only the delegation window: stale delegation payloads below the new nonce are rejected, the counter remains monotonic, and contract-domain mismatches do not advance or leak into another namespace.

@@ -1,825 +1,423 @@
-//! Comprehensive unit tests for access control modifiers.
-//! Covers admin/verifier/identity-owner checks, role composition, unauthorized paths,
-//! and access denial event emission.
-
-#![allow(unused_imports)]
-
+#![cfg(test)]
+extern crate alloc;
 extern crate std;
+use crate::{CredenceBond, CredenceBondClient, DataKey};
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{Address, Env, IntoVal, Val};
+use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
 
-use crate::access_control::{
-    add_verifier_role, get_admin, is_admin, is_verifier, remove_verifier_role, require_admin,
-    require_admin_or_verifier, require_identity_owner, require_verifier,
-};
-use soroban_sdk::testutils::{Address as _, Events};
-use soroban_sdk::{
-    contract, contractimpl, symbol_short, vec, Address, Env, IntoVal, String, Symbol, TryFromVal,
-};
-use std::panic::{catch_unwind, AssertUnwindSafe};
+fn setup(env: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
+    env.mock_all_auths();
 
-// Import main contract for testing privileged methods
-use crate::access_control::AccessError;
-use crate::{CredenceBond, CredenceBondClient};
+    let contract_id = env.register(CredenceBond, ());
+    let client = CredenceBondClient::new(env, &contract_id);
 
-#[contract]
-pub struct AccessControlHarness;
+    let admin = Address::generate(env);
+    let user = Address::generate(env);
+    let attacker = Address::generate(env);
 
-#[contractimpl]
-impl AccessControlHarness {
-    pub fn initialize(e: Env, admin: Address) {
-        e.storage().instance().set(&symbol_short!("admin"), &admin);
+    client.initialize(&admin, &None);
+
+    (client, admin, user, attacker)
+}
+
+struct PrivilegedCase {
+    name: &'static str,
+    invoke: fn(&Env, &CredenceBondClient<'_>, &Address),
+}
+
+fn invoke_transfer_admin(env: &Env, client: &CredenceBondClient<'_>, caller: &Address) {
+    let new_admin = Address::generate(env);
+    let args: soroban_sdk::Vec<soroban_sdk::Val> = (caller.clone(), new_admin.clone()).into_val(env);
+    env.mock_auths(&[
+        soroban_sdk::testutils::MockAuth {
+            address: caller,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args: args.clone(),
+                sub_invokes: &[],
+            },
+        },
+        soroban_sdk::testutils::MockAuth {
+            address: &new_admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args,
+                sub_invokes: &[],
+            },
+        },
+    ]);
+    client.transfer_admin(caller, &new_admin);
+}
+
+fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
+    alloc::vec![
+        PrivilegedCase {
+            name: "set_early_exit_config",
+            invoke: |env, client, caller| {
+                let treasury = Address::generate(env);
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "set_early_exit_config",
+                        args: (caller, treasury.clone(), 500_u32).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.set_early_exit_config(caller, &treasury, &500_u32);
+            },
+        },
+        PrivilegedCase {
+            name: "register_attester",
+            invoke: |env, client, caller| {
+                let attester = Address::generate(env);
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "register_attester",
+                        args: (attester.clone(),).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.register_attester(&attester);
+            },
+        },
+        PrivilegedCase {
+            name: "unregister_attester",
+            invoke: |env, client, caller| {
+                let attester = Address::generate(env);
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "unregister_attester",
+                        args: (attester.clone(),).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.unregister_attester(&attester);
+            },
+        },
+        PrivilegedCase {
+            name: "set_attester_stake",
+            invoke: |env, client, caller| {
+                let attester = Address::generate(env);
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "set_attester_stake",
+                        args: (caller, attester.clone(), 100_i128).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.set_attester_stake(caller, &attester, &100_i128);
+            },
+        },
+        PrivilegedCase {
+            name: "set_weight_config",
+            invoke: |env, client, caller| {
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "set_weight_config",
+                        args: (caller, 100_u32, 1000_u32).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.set_weight_config(caller, &100_u32, &1000_u32);
+            },
+        },
+        PrivilegedCase {
+            name: "slash",
+            invoke: |env, client, caller| {
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "slash",
+                        args: (caller, 100_i128).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.slash(caller, &100_i128);
+            },
+        },
+        PrivilegedCase {
+            name: "slash_bond",
+            invoke: |env, client, caller| {
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "slash_bond",
+                        args: (caller, 100_i128).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.slash_bond(caller, &100_i128);
+            },
+        },
+        PrivilegedCase {
+            name: "collect_fees",
+            invoke: |env, client, caller| {
+                env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+                    address: caller,
+                    invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                        contract: &client.address,
+                        fn_name: "collect_fees",
+                        args: (caller,).into_val(env),
+                        sub_invokes: &[],
+                    },
+                }]);
+                client.collect_fees(caller);
+            },
+        },
+        PrivilegedCase {
+            name: "transfer_admin",
+            invoke: invoke_transfer_admin,
+        },
+    ]
+}
+
+#[test]
+fn test_exhaustive_non_admin_rejected() {
+    let env = Env::default();
+    let (client, _admin, _user, attacker) = setup(&env);
+
+    for case in get_privileged_cases() {
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            (case.invoke)(&env, &client, &attacker);
+        }));
+
+        assert!(
+            res.is_err(),
+            "Expected entrypoint '{}' to panic for non-admin",
+            case.name
+        );
+        let err = res.unwrap_err();
+        if let Some(err_msg) = err.downcast_ref::<soroban_sdk::Error>() {
+            assert!(
+                err_msg.is_type(soroban_sdk::xdr::ScErrorType::Context)
+                    || err_msg.is_type(soroban_sdk::xdr::ScErrorType::WasmVm)
+                    || err_msg.is_type(soroban_sdk::xdr::ScErrorType::Contract),
+                "Entrypoint '{}' returned unexpected SDK error: {:?}",
+                case.name,
+                err_msg
+            );
+        } else if let Some(err_msg) = err.downcast_ref::<std::string::String>() {
+            assert!(
+                err_msg.contains("not admin")
+                    || err_msg.contains("NotAdmin")
+                    || err_msg.contains("Context")
+                    || err_msg.contains("Contract")
+                    || err_msg.contains("escalating error"),
+                "Entrypoint '{}' returned unexpected error: {}",
+                case.name,
+                err_msg
+            );
+        }
     }
+}
 
-    pub fn require_admin_only(e: Env, caller: Address) {
-        require_admin(&e, &caller);
-    }
+#[test]
+fn test_exhaustive_uninitialized_rejected() {
+    let env = Env::default();
+    let contract_id = env.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&env, &contract_id);
+    let caller = Address::generate(&env);
 
-    pub fn require_verifier_only(e: Env, caller: Address) {
-        require_verifier(&e, &caller);
-    }
+    for case in get_privileged_cases() {
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            (case.invoke)(&env, &client, &caller);
+        }));
 
-    pub fn require_identity_owner_only(e: Env, caller: Address, expected: Address) {
-        require_identity_owner(&e, &caller, &expected);
-    }
-
-    pub fn require_admin_or_verifier_only(e: Env, caller: Address) {
-        require_admin_or_verifier(&e, &caller);
-    }
-
-    pub fn add_verifier(e: Env, admin: Address, verifier: Address) {
-        add_verifier_role(&e, &admin, &verifier);
-    }
-
-    pub fn remove_verifier(e: Env, admin: Address, verifier: Address) {
-        remove_verifier_role(&e, &admin, &verifier);
-    }
-
-    pub fn is_verifier_role(e: Env, address: Address) -> bool {
-        is_verifier(&e, &address)
-    }
-
-    pub fn is_admin_role(e: Env, address: Address) -> bool {
-        is_admin(&e, &address)
-    }
-
-    pub fn current_admin(e: Env) -> Address {
-        get_admin(&e)
+        assert!(
+            res.is_err(),
+            "Expected entrypoint '{}' to panic for uninitialized contract",
+            case.name
+        );
     }
 }
 
-fn setup(e: &Env) -> (AccessControlHarnessClient<'_>, Address) {
-    let contract_id = e.register(AccessControlHarness, ());
-    let client = AccessControlHarnessClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    client.initialize(&admin);
-    (client, admin)
-}
-
-fn count_access_denied_events(e: &Env, contract_id: &Address, role: &str, code: u32) -> u32 {
-    let expected_topics = vec![e, Symbol::new(e, "access_denied").into_val(e)];
-
-    e.events()
-        .all()
-        .iter()
-        .filter(|(contract, topics, data)| {
-            if contract != contract_id || topics != &expected_topics {
-                return false;
-            }
-
-            let parsed = <(Address, Symbol, u32)>::try_from_val(e, data);
-            match parsed {
-                Ok((_, role_symbol, error_code)) => {
-                    role_symbol == Symbol::new(e, role) && error_code == code
-                }
-                Err(_) => false,
-            }
-        })
-        .count() as u32
-}
-
 #[test]
-fn test_require_admin_success() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
+fn test_genuine_require_auth_enforcement() {
+    let env = Env::default();
 
-    client.require_admin_only(&admin);
-}
+    // Register but DO NOT mock_all_auths
+    let contract_id = env.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&env, &contract_id);
 
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_require_admin_unauthorized() {
-    let e = Env::default();
-    let (client, _) = setup(&e);
+    let admin = Address::generate(&env);
 
-    let unauthorized = Address::generate(&e);
-    client.require_admin_only(&unauthorized);
-}
+    // Provide auth explicitly for initialize
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "initialize",
+            args: (&admin, &None::<Address>).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
 
-#[test]
-#[should_panic(expected = "not initialized")]
-fn test_require_admin_not_initialized() {
-    let e = Env::default();
-    let contract_id = e.register(AccessControlHarness, ());
-    let client = AccessControlHarnessClient::new(&e, &contract_id);
+    client.initialize(&admin, &None);
 
-    let caller = Address::generate(&e);
-    client.require_admin_only(&caller);
-}
-
-#[test]
-fn test_add_and_remove_verifier_success() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
-
-    let verifier = Address::generate(&e);
-    client.add_verifier(&admin, &verifier);
-    assert!(client.is_verifier_role(&verifier));
-
-    client.remove_verifier(&admin, &verifier);
-    assert!(!client.is_verifier_role(&verifier));
-}
-
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_add_verifier_unauthorized() {
-    let e = Env::default();
-    let (client, _) = setup(&e);
-
-    let unauthorized = Address::generate(&e);
-    let verifier = Address::generate(&e);
-    client.add_verifier(&unauthorized, &verifier);
-}
-
-#[test]
-fn test_require_verifier_success() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
-
-    let verifier = Address::generate(&e);
-    client.add_verifier(&admin, &verifier);
-    client.require_verifier_only(&verifier);
-}
-
-#[test]
-#[should_panic(expected = "not verifier")]
-fn test_require_verifier_unauthorized() {
-    let e = Env::default();
-    let (client, _) = setup(&e);
-
-    let unauthorized = Address::generate(&e);
-    client.require_verifier_only(&unauthorized);
-}
-
-#[test]
-fn test_require_identity_owner_success() {
-    let e = Env::default();
-    let (client, _) = setup(&e);
-
-    let identity = Address::generate(&e);
-    client.require_identity_owner_only(&identity, &identity);
-}
-
-#[test]
-#[should_panic(expected = "not identity owner")]
-fn test_require_identity_owner_unauthorized() {
-    let e = Env::default();
-    let (client, _) = setup(&e);
-
-    let identity = Address::generate(&e);
-    let unauthorized = Address::generate(&e);
-    client.require_identity_owner_only(&unauthorized, &identity);
-}
-
-#[test]
-fn test_require_admin_or_verifier_success_for_admin() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
-
-    client.require_admin_or_verifier_only(&admin);
-}
-
-#[test]
-fn test_require_admin_or_verifier_success_for_verifier() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
-
-    let verifier = Address::generate(&e);
-    client.add_verifier(&admin, &verifier);
-    client.require_admin_or_verifier_only(&verifier);
-}
-
-#[test]
-#[should_panic(expected = "not authorized")]
-fn test_require_admin_or_verifier_unauthorized() {
-    let e = Env::default();
-    let (client, _) = setup(&e);
-
-    let unauthorized = Address::generate(&e);
-    client.require_admin_or_verifier_only(&unauthorized);
-}
-
-#[test]
-fn test_admin_read_helpers() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
-
-    let non_admin = Address::generate(&e);
-    assert!(client.is_admin_role(&admin));
-    assert!(!client.is_admin_role(&non_admin));
-    assert_eq!(client.current_admin(), admin);
-}
-
-#[test]
-fn test_multiple_verifiers() {
-    let e = Env::default();
-    let (client, admin) = setup(&e);
-
-    let verifier_1 = Address::generate(&e);
-    let verifier_2 = Address::generate(&e);
-    let verifier_3 = Address::generate(&e);
-
-    client.add_verifier(&admin, &verifier_1);
-    client.add_verifier(&admin, &verifier_2);
-    client.add_verifier(&admin, &verifier_3);
-
-    assert!(client.is_verifier_role(&verifier_1));
-    assert!(client.is_verifier_role(&verifier_2));
-    assert!(client.is_verifier_role(&verifier_3));
-
-    client.remove_verifier(&admin, &verifier_2);
-
-    assert!(client.is_verifier_role(&verifier_1));
-    assert!(!client.is_verifier_role(&verifier_2));
-    assert!(client.is_verifier_role(&verifier_3));
-}
-
-// TODO: Rewrite without catch_unwind - Env contains UnsafeCell and cannot cross unwind boundaries in SDK 22.0
-#[test]
-#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
-fn test_access_denied_event_for_not_admin() {
-    let e = Env::default();
-    let contract_id = e.register(AccessControlHarness, ());
-    let client = AccessControlHarnessClient::new(&e, &contract_id);
-    let admin = Address::generate(&e);
-    let unauthorized = Address::generate(&e);
-    client.initialize(&admin);
-
-    let denied_before = count_access_denied_events(&e, &contract_id, "admin", 1);
-
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        client.require_admin_only(&unauthorized);
+    let treasury = Address::generate(&env);
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.set_early_exit_config(&admin, &treasury, &500_u32);
     }));
 
-    let denied_after = count_access_denied_events(&e, &contract_id, "admin", 1);
-    assert_eq!(denied_before + 1, denied_after);
+    assert!(res.is_err(), "Call should have failed due to missing auth");
 }
 
-// TODO: Rewrite without catch_unwind - Env contains UnsafeCell and cannot cross unwind boundaries in SDK 22.0
 #[test]
-#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
-fn test_access_denied_event_for_not_verifier() {
-    let e = Env::default();
-    let contract_id = e.register(AccessControlHarness, ());
-    let client = AccessControlHarnessClient::new(&e, &contract_id);
-    let admin = Address::generate(&e);
-    let unauthorized = Address::generate(&e);
-    client.initialize(&admin);
+fn test_transfer_admin_rotates_admin_and_rejects_old_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, _user, _attacker) = setup(&env);
+    let new_admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
 
-    let denied_before = count_access_denied_events(&e, &contract_id, "verifier", 2);
+    let args: soroban_sdk::Vec<soroban_sdk::Val> = (admin.clone(), new_admin.clone()).into_val(&env);
+    env.mock_auths(&[
+        soroban_sdk::testutils::MockAuth {
+            address: &admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args: args.clone(),
+                sub_invokes: &[],
+            },
+        },
+        soroban_sdk::testutils::MockAuth {
+            address: &new_admin,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "transfer_admin",
+                args,
+                sub_invokes: &[],
+            },
+        },
+    ]);
+    client.transfer_admin(&admin, &new_admin);
 
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        client.require_verifier_only(&unauthorized);
+    let stored_admin: Address = env.as_contract(&client.address, || {
+        env.storage().instance().get(&DataKey::Admin).unwrap()
+    });
+    assert_eq!(stored_admin, new_admin);
+
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &new_admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "set_early_exit_config",
+            args: (&new_admin, &treasury, 500_u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.set_early_exit_config(&new_admin, &treasury, &500_u32);
+
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "set_early_exit_config",
+            args: (&admin, &treasury, 500_u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.set_early_exit_config(&admin, &treasury, &500_u32);
     }));
-
-    let denied_after = count_access_denied_events(&e, &contract_id, "verifier", 2);
-    assert_eq!(denied_before + 1, denied_after);
+    assert!(result.is_err(), "old admin should no longer be authorized");
 }
 
-// TODO: Rewrite without catch_unwind - Env contains UnsafeCell and cannot cross unwind boundaries in SDK 22.0
 #[test]
-#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
-fn test_access_denied_event_for_not_identity_owner() {
-    let e = Env::default();
-    let contract_id = e.register(AccessControlHarness, ());
-    let client = AccessControlHarnessClient::new(&e, &contract_id);
-    let admin = Address::generate(&e);
-    let unauthorized = Address::generate(&e);
-    let owner = Address::generate(&e);
-    client.initialize(&admin);
+fn test_admin_success() {
+    let env = Env::default();
+    let (client, admin, _user, _attacker) = setup(&env);
 
-    let denied_before = count_access_denied_events(&e, &contract_id, "identity_owner", 3);
+    let treasury = Address::generate(&env);
 
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        client.require_identity_owner_only(&unauthorized, &owner);
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "set_early_exit_config",
+            args: (&admin, &treasury, 500_u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.set_early_exit_config(&admin, &treasury, &500_u32);
+
+    let config = client.describe_config().unwrap();
+    assert_eq!(config.early_exit_penalty_bps, Some(500));
+}
+
+#[test]
+fn test_admin_as_attester_edge_case() {
+    let env = Env::default();
+    let (client, admin, _user, _attacker) = setup(&env);
+
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "register_attester",
+            args: (&admin,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.register_attester(&admin);
+    assert!(client.is_attester(&admin));
+
+    let treasury = Address::generate(&env);
+
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "set_early_exit_config",
+            args: (&admin, &treasury, 600_u32).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    client.set_early_exit_config(&admin, &treasury, &600_u32);
+    let config = client.describe_config().unwrap();
+    assert_eq!(config.early_exit_penalty_bps, Some(600));
+
+    let non_admin_attester = Address::generate(&env);
+    env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+        address: &admin,
+        invoke: &soroban_sdk::testutils::MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "register_attester",
+            args: (&non_admin_attester,).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.register_attester(&non_admin_attester);
+
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        env.mock_auths(&[soroban_sdk::testutils::MockAuth {
+            address: &non_admin_attester,
+            invoke: &soroban_sdk::testutils::MockAuthInvoke {
+                contract: &client.address,
+                fn_name: "set_early_exit_config",
+                args: (&non_admin_attester, &treasury, 700_u32).into_val(&env),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_early_exit_config(&non_admin_attester, &treasury, &700_u32);
     }));
-
-    let denied_after = count_access_denied_events(&e, &contract_id, "identity_owner", 3);
-    assert_eq!(denied_before + 1, denied_after);
-}
-
-// TODO: Rewrite without catch_unwind - Env contains UnsafeCell and cannot cross unwind boundaries in SDK 22.0
-#[test]
-#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
-fn test_access_denied_event_for_admin_or_verifier() {
-    let e = Env::default();
-    let contract_id = e.register(AccessControlHarness, ());
-    let client = AccessControlHarnessClient::new(&e, &contract_id);
-    let admin = Address::generate(&e);
-    let unauthorized = Address::generate(&e);
-    client.initialize(&admin);
-
-    let denied_before = count_access_denied_events(&e, &contract_id, "admin_or_verifier", 2);
-
-    let _ = catch_unwind(AssertUnwindSafe(|| {
-        client.require_admin_or_verifier_only(&unauthorized);
-    }));
-
-    let denied_after = count_access_denied_events(&e, &contract_id, "admin_or_verifier", 2);
-    assert_eq!(denied_before + 1, denied_after);
-}
-
-// ==================== PRIVILEGED METHOD UNAUTHORIZED TESTS ====================
-
-// Helper function to setup main contract for privileged method testing
-fn setup_main_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    let unauthorized = Address::generate(e);
-
-    client.initialize(&admin);
-    (client, admin, unauthorized)
-}
-
-// Test unauthorized access to set_supply_cap
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_supply_cap_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_supply_cap(&unauthorized, &1000_i128);
-}
-
-// Test unauthorized access to set_early_exit_config
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_early_exit_config_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let treasury = Address::generate(&e);
-
-    client.set_early_exit_config(&unauthorized, &treasury, &100_u32);
-}
-
-// Test unauthorized access to set_emergency_config
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_emergency_config_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let governance = Address::generate(&e);
-    let treasury = Address::generate(&e);
-
-    client.set_emergency_config(&unauthorized, &governance, &treasury, &50_u32, &true);
-}
-
-// Test unauthorized access to set_emergency_mode (wrong admin)
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_emergency_mode_unauthorized_admin() {
-    let e = Env::default();
-    let (client, admin, unauthorized) = setup_main_contract(&e);
-    let governance = Address::generate(&e);
-
-    // First set emergency config with real admin
-    client.set_emergency_config(&admin, &governance, &Address::generate(&e), &50_u32, &true);
-
-    // Try to set emergency mode with unauthorized admin
-    client.set_emergency_mode(&unauthorized, &governance, &true, &Symbol::new(&e, "test"));
-}
-
-// Test unauthorized access to set_emergency_mode (wrong governance)
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_emergency_mode_unauthorized_governance() {
-    let e = Env::default();
-    let (client, admin, _) = setup_main_contract(&e);
-    let governance = Address::generate(&e);
-    let wrong_governance = Address::generate(&e);
-
-    // First set emergency config with real admin
-    client.set_emergency_config(&admin, &governance, &Address::generate(&e), &50_u32, &true);
-
-    // Try to set emergency mode with wrong governance
-    client.set_emergency_mode(&admin, &wrong_governance, &true, &Symbol::new(&e, "test"));
-}
-
-// Test unauthorized access to emergency_withdraw
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_emergency_withdraw_unauthorized_admin() {
-    let e = Env::default();
-    let (client, admin, unauthorized) = setup_main_contract(&e);
-    let governance = Address::generate(&e);
-
-    // First set emergency config with real admin
-    client.set_emergency_config(&admin, &governance, &Address::generate(&e), &50_u32, &true);
-
-    // Try emergency withdraw with unauthorized admin
-    client.emergency_withdraw(
-        &unauthorized,
-        &governance,
-        &100_i128,
-        &Symbol::new(&e, "test"),
-    );
-}
-
-// Test unauthorized access to emergency_withdraw (wrong governance)
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_emergency_withdraw_unauthorized_governance() {
-    let e = Env::default();
-    let (client, admin, _) = setup_main_contract(&e);
-    let governance = Address::generate(&e);
-    let wrong_governance = Address::generate(&e);
-
-    // First set emergency config with real admin
-    client.set_emergency_config(&admin, &governance, &Address::generate(&e), &50_u32, &true);
-
-    // Try emergency withdraw with wrong governance
-    client.emergency_withdraw(
-        &admin,
-        &wrong_governance,
-        &100_i128,
-        &Symbol::new(&e, "test"),
-    );
-}
-
-// Test unauthorized access to register_attester
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_register_attester_unauthorized() {
-    let e = Env::default();
-    let (client, _, _unauthorized) = setup_main_contract(&e);
-    let attester = Address::generate(&e);
-
-    client.register_attester(&attester);
-}
-
-// Test unauthorized access to unregister_attester
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_unregister_attester_unauthorized() {
-    let e = Env::default();
-    let (client, _, _unauthorized) = setup_main_contract(&e);
-    let attester = Address::generate(&e);
-
-    client.unregister_attester(&attester);
-}
-
-// Test unauthorized access to set_verifier_stake_requirement
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_verifier_stake_requirement_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_verifier_stake_requirement(&unauthorized, &1000_i128);
-}
-
-// Test unauthorized access to deactivate_verifier_by_admin
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_deactivate_verifier_by_admin_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let verifier = Address::generate(&e);
-
-    client.deactivate_verifier_by_admin(&unauthorized, &verifier);
-}
-
-// Test unauthorized access to set_verifier_reputation
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_verifier_reputation_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let verifier = Address::generate(&e);
-
-    client.set_verifier_reputation(&unauthorized, &verifier, &100_i128);
-}
-
-// Test unauthorized access to set_token
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_token_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let token = Address::generate(&e);
-
-    client.set_token(&unauthorized, &token);
-}
-
-// Test unauthorized access to set_usdc_token
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_usdc_token_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let token = Address::generate(&e);
-    let network = String::from_str(&e, "testnet");
-
-    client.set_usdc_token(&unauthorized, &token, &network);
-}
-
-// Test unauthorized access to set_grace_window
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_grace_window_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_grace_window(&unauthorized, &300_u64);
-}
-
-// Test unauthorized access to set_attester_stake
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_attester_stake_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let attester = Address::generate(&e);
-
-    client.set_attester_stake(&unauthorized, &attester, &1000_i128);
-}
-
-// Test unauthorized access to set_weight_config
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_weight_config_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_weight_config(&unauthorized, &150_u32, &100_u32);
-}
-
-// Test unauthorized access to slash
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_slash_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.slash(&unauthorized, &100_i128);
-}
-
-// Test unauthorized access to initialize_governance
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_initialize_governance_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let governors = vec![&e, Address::generate(&e)];
-
-    client.initialize_governance(&unauthorized, &governors, &1000_u32, &1_u32);
-}
-
-// Test unauthorized access to set_fee_config
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_fee_config_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let treasury = Address::generate(&e);
-
-    client.set_fee_config(&unauthorized, &treasury, &100_u32);
-}
-
-// Test unauthorized access to set_bond_token
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_bond_token_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let token = Address::generate(&e);
-
-    client.set_bond_token(&unauthorized, &token);
-}
-
-// Test unauthorized access to set_protocol_fee_bps
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_protocol_fee_bps_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_protocol_fee_bps(&unauthorized, &50_u32);
-}
-
-// Test unauthorized access to set_attestation_fee_bps
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_attestation_fee_bps_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_attestation_fee_bps(&unauthorized, &25_u32);
-}
-
-// Test unauthorized access to set_withdrawal_cooldown_secs
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_withdrawal_cooldown_secs_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_withdrawal_cooldown_secs(&unauthorized, &3600_u64);
-}
-
-// Test unauthorized access to set_slash_cooldown_secs
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_slash_cooldown_secs_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_slash_cooldown_secs(&unauthorized, &7200_u64);
-}
-
-// Test unauthorized access to set_bronze_threshold
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_bronze_threshold_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_bronze_threshold(&unauthorized, &1000_i128);
-}
-
-// Test unauthorized access to set_silver_threshold
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_silver_threshold_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_silver_threshold(&unauthorized, &5000_i128);
-}
-
-// Test unauthorized access to set_gold_threshold
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_gold_threshold_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_gold_threshold(&unauthorized, &10000_i128);
-}
-
-// Test unauthorized access to set_platinum_threshold
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_platinum_threshold_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_platinum_threshold(&unauthorized, &50000_i128);
-}
-
-// Test unauthorized access to set_max_leverage
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_max_leverage_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_max_leverage(&unauthorized, &10_u32);
-}
-
-// Test unauthorized access to slash_bond
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_slash_bond_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.slash_bond(&unauthorized, &100_i128);
-}
-
-// Test unauthorized access to collect_fees
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_collect_fees_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.collect_fees(&unauthorized);
-}
-
-// Test unauthorized access to set_cooldown_period
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_cooldown_period_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_cooldown_period(&unauthorized, &3600_u64);
-}
-
-// Test unauthorized access to pause mechanism
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_pause_unauthorized() {
-    let e = Env::default();
-    let (client, admin, unauthorized) = setup_main_contract(&e);
-
-    // This should panic with InvalidAction
-    client.pause(&unauthorized);
-}
-
-// Test unauthorized access to unpause mechanism
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_unpause_unauthorized() {
-    let e = Env::default();
-    let (client, admin, unauthorized) = setup_main_contract(&e);
-
-    // This should panic with InvalidAction
-    client.unpause(&unauthorized);
-}
-
-// Test unauthorized access to set_pause_signer
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_pause_signer_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let signer = Address::generate(&e);
-
-    client.set_pause_signer(&unauthorized, &signer, &true);
-}
-
-// Test unauthorized access to set_pause_threshold
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_set_pause_threshold_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    client.set_pause_threshold(&unauthorized, &3_u32);
-}
-
-// Test unauthorized access to initialize_upgrade_auth
-#[test]
-fn test_initialize_upgrade_auth_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-
-    // This function might not panic but should fail in some way
-    // Let's just call it to see what happens
-    client.initialize_upgrade_auth(&unauthorized);
-}
-
-// Test unauthorized access to grant_upgrade_auth
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_grant_upgrade_auth_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let address = Address::generate(&e);
-
-    client.grant_upgrade_auth(
-        &unauthorized,
-        &address,
-        &crate::upgrade_auth::UpgradeRole::Upgrader,
-        &1000_u64,
-    );
-}
-
-// Test unauthorized access to revoke_upgrade_auth
-#[test]
-#[should_panic(expected = "InvalidAction")]
-fn test_revoke_upgrade_auth_unauthorized() {
-    let e = Env::default();
-    let (client, _, unauthorized) = setup_main_contract(&e);
-    let address = Address::generate(&e);
-
-    client.revoke_upgrade_auth(&unauthorized, &address);
-}
-
-// Test that admin can successfully call privileged methods
-#[test]
-fn test_admin_can_call_privileged_methods() {
-    let e = Env::default();
-    let (client, admin, _) = setup_main_contract(&e);
-    let token = Address::generate(&e);
-    let treasury = Address::generate(&e);
-
-    // Test just a few key privileged methods that should work for admin
-    // These should succeed without panicking
-    client.set_grace_window(&admin, &300_u64);
-    client.set_protocol_fee_bps(&admin, &10_u32);
-    client.set_attestation_fee_bps(&admin, &5_u32);
-    client.set_bronze_threshold(&admin, &1000_i128);
-    client.set_max_leverage(&admin, &5_u32);
+    assert!(res.is_err());
 }

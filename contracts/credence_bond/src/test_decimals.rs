@@ -45,7 +45,7 @@ fn setup_with_decimals(
     let admin = Address::generate(e);
     let identity = Address::generate(e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let token_id = e.register(MockToken, ());
     // Set decimals for the mock token

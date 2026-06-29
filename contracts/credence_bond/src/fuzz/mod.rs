@@ -1,9 +1,5 @@
-<<<<<<< HEAD
 #![cfg(test)]
 
 mod test_bond_fuzz;
 mod test_reward_accrual_fuzz;
-=======
-#[cfg(test)]
-mod test_bond_fuzz;
->>>>>>> main
+mod test_weighted_attestation_rounding;

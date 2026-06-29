@@ -1,0 +1,6 @@
+{
+  "event": "bond_slashed",
+  "version": "v1",
+  "topics_len": 2,
+  "data_kind": "Struct"
+}

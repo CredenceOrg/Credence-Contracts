@@ -7,7 +7,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     e.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin)
 }
 
@@ -19,7 +19,7 @@ fn test_create_bond_success() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let amount = 1000_i128;
@@ -42,7 +42,7 @@ fn test_create_bond_zero_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &0_i128, &86400_u64);
@@ -59,7 +59,7 @@ fn test_create_bond_negative_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &(-100_i128), &86400_u64);
@@ -75,7 +75,7 @@ fn test_set_supply_cap_success() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let cap = 10000_i128;
     client.set_supply_cap(&admin, &cap);
@@ -91,11 +91,13 @@ fn test_set_supply_cap_negative() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     client.set_supply_cap(&admin, &-1000_i128);
 }
 
+/// THREAT: T-021
+/// Validates supply cap is enforced when creating bonds.
 #[test]
 fn test_supply_cap_enforcement_below_cap() {
     let e = Env::default();
@@ -103,7 +105,7 @@ fn test_supply_cap_enforcement_below_cap() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let cap = 10000_i128;
@@ -115,6 +117,8 @@ fn test_supply_cap_enforcement_below_cap() {
     assert_eq!(client.get_total_supply(), 5000_i128);
 }
 
+/// THREAT: T-021
+/// Ensures supply cap prevents excessive total bonded amount across all identities.
 #[test]
 #[should_panic(expected = "supply cap exceeded")]
 fn test_supply_cap_enforcement_above_cap() {
@@ -123,7 +127,7 @@ fn test_supply_cap_enforcement_above_cap() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let cap = 10000_i128;
@@ -140,7 +144,7 @@ fn test_supply_cap_with_multiple_bonds() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let cap = 10000_i128;
@@ -162,7 +166,7 @@ fn test_supply_cap_no_cap() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Don't set cap (defaults to 0 = no cap)
@@ -180,7 +184,7 @@ fn test_supply_cap_withdrawal_reduces_supply() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let cap = 10000_i128;
@@ -208,7 +212,7 @@ fn test_create_bond_max_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let max_amount = i128::MAX;
@@ -225,7 +229,7 @@ fn test_create_bond_zero_duration() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1000_i128, &0_u64);
@@ -242,7 +246,7 @@ fn test_create_bond_max_duration() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let duration = u64::MAX / 2; // Safe duration that won't overflow with typical timestamps
@@ -264,7 +268,7 @@ fn test_create_bond_duration_overflow() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let duration = 2000_u64; // Will overflow when added to timestamp
@@ -279,7 +283,7 @@ fn test_create_bond_duplicate() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
 
@@ -305,7 +309,7 @@ fn test_create_bond_different_identities() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
@@ -327,7 +331,7 @@ fn test_create_bond_field_initialization() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &5000_i128, &604800_u64);
@@ -347,7 +351,7 @@ fn test_create_bond_storage_persistence() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let amount = 3000_i128;
@@ -369,7 +373,7 @@ fn test_create_bond_min_positive_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1_i128, &86400_u64);
@@ -386,7 +390,7 @@ fn test_create_bond_usdc_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let usdc_amount = 1000_000000_i128; // 1000 USDC with 6 decimals
@@ -403,7 +407,7 @@ fn test_create_bond_timestamp() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let bond = client.create_bond(&identity, &1000_i128, &86400_u64);
@@ -421,7 +425,7 @@ fn test_create_bond_sequential() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
 

@@ -15,6 +15,7 @@ use crate::DataKey;
 use soroban_sdk::Env;
 
 /// Persist the current ledger sequence after a successful collateral increase.
+#[allow(dead_code)]
 pub fn record_collateral_increase(e: &Env) {
     let seq = e.ledger().sequence();
     e.storage()

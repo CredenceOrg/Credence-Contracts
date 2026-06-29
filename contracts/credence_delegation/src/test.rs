@@ -80,7 +80,7 @@ fn test_delegate_management() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    let d = client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64);
+    let d = client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64, &0_u64);
 
     assert_eq!(d.owner, owner);
     assert_eq!(d.delegate, delegate);
@@ -92,7 +92,7 @@ fn test_get_delegation() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
 
     let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
     assert_eq!(d.owner, owner);
@@ -112,7 +112,7 @@ fn test_revoke_delegation() {
         &86400_u64,
         &0_u64,
     );
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64, &1_u64);
 
     let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
     assert!(d.revoked);
@@ -123,7 +123,7 @@ fn test_is_valid_delegate() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
 
     assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
 }
@@ -141,8 +141,8 @@ fn test_is_valid_delegate_after_revoke() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64);
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Management);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64, &0_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Management, &1_u64);
 
     assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
 }
@@ -152,7 +152,7 @@ fn test_is_valid_delegate_after_expiry() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &100_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &100_u64, &0_u64);
 
     assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
 
@@ -169,11 +169,11 @@ fn test_independent_delegation_types() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
-    client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &86400_u64, &0_u64);
 
     // Revoke only attestation
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
 
     assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
     assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
@@ -197,7 +197,7 @@ fn test_delegate_with_past_expiry() {
 
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &500_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &500_u64, &0_u64);
 }
 
 #[test]
@@ -210,7 +210,7 @@ fn test_delegate_rejects_expiry_at_now() {
 
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &1000_u64);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &1000_u64, &0_u64);
 }
 
 #[test]
@@ -224,7 +224,7 @@ fn test_delegate_accepts_exact_max_expiry() {
     let delegate = Address::generate(&e);
     let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION;
 
-    let d = client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+    let d = client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at, &0_u64);
 
     assert_eq!(d.expires_at, expires_at);
     assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
@@ -242,7 +242,7 @@ fn test_delegate_rejects_expiry_over_max() {
     let delegate = Address::generate(&e);
     let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION + 1;
 
-    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at, &0_u64);
 }
 
 #[test]
@@ -252,7 +252,7 @@ fn test_delegate_rejects_u64_max_expiry() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
 
-    client.delegate(&owner, &delegate, &DelegationType::Management, &u64::MAX);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &u64::MAX, &0_u64);
 }
 
 #[test]
@@ -304,7 +304,7 @@ fn test_is_valid_delegate_false_at_exact_expiry_boundary() {
     let delegate = Address::generate(&e);
     let expires_at = e.ledger().timestamp() + 10;
 
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
     e.ledger().with_mut(|li| {
         li.timestamp = expires_at;
     });
@@ -319,14 +319,14 @@ fn test_revoke_delegation_after_expiry_marks_revoked_and_stays_invalid() {
     let delegate = Address::generate(&e);
     let expires_at = e.ledger().timestamp() + 10;
 
-    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at);
+    client.delegate(&owner, &delegate, &DelegationType::Management, &expires_at, &0_u64);
     e.ledger().with_mut(|li| {
         li.timestamp = expires_at;
     });
 
     assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
 
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Management);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Management, &1_u64);
 
     let d = client.get_delegation(&owner, &delegate, &DelegationType::Management);
     assert!(d.revoked);
@@ -349,9 +349,9 @@ fn test_double_revoke() {
     let (e, client) = setup();
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64);
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation);
-    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation);
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &86400_u64, &0_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
 }
 
 // ---------------------------------------------------------------------------
@@ -372,6 +372,7 @@ fn test_revoke_attestation_happy_path() {
         &subject,
         &DelegationType::Attestation,
         &86400_u64,
+        &0_u64,
     );
 
     // Status before revocation
@@ -381,7 +382,7 @@ fn test_revoke_attestation_happy_path() {
     ));
 
     // Revoke
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 
     // Status after revocation
     assert!(matches!(
@@ -403,8 +404,9 @@ fn test_revoke_attestation_history_preserved() {
         &subject,
         &DelegationType::Attestation,
         &86400_u64,
+        &0_u64,
     );
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 
     // Full record must still be reachable via get_delegation
     let d = client.get_delegation(&attester, &subject, &DelegationType::Attestation);
@@ -426,10 +428,11 @@ fn test_revoke_attestation_is_valid_false() {
         &subject,
         &DelegationType::Attestation,
         &86400_u64,
+        &0_u64,
     );
     assert!(client.is_valid_delegate(&attester, &subject, &DelegationType::Attestation));
 
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
     assert!(!client.is_valid_delegate(&attester, &subject, &DelegationType::Attestation));
 }
 
@@ -441,7 +444,7 @@ fn test_revoke_attestation_not_found() {
     let attester = Address::generate(&e);
     let subject = Address::generate(&e);
 
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 }
 
 /// Double-revoking an attestation must panic with `"Error(Contract, #502)"`.
@@ -457,10 +460,11 @@ fn test_revoke_attestation_double_revoke() {
         &subject,
         &DelegationType::Attestation,
         &86400_u64,
+        &0_u64,
     );
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
     // Second revoke must panic
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 }
 
 /// `get_attestation_status` returns `Active` for a live attestation.
@@ -475,6 +479,7 @@ fn test_get_attestation_status_active() {
         &subject,
         &DelegationType::Attestation,
         &86400_u64,
+        &0_u64,
     );
 
     assert!(matches!(
@@ -509,10 +514,11 @@ fn test_revoke_attestation_does_not_affect_management() {
         &subject,
         &DelegationType::Attestation,
         &86400_u64,
+        &0_u64,
     );
-    client.delegate(&attester, &subject, &DelegationType::Management, &86400_u64);
+    client.delegate(&attester, &subject, &DelegationType::Management, &86400_u64, &0_u64);
 
-    client.revoke_attestation(&attester, &subject);
+    client.revoke_attestation(&attester, &subject, &1_u64);
 
     // Attestation is revoked
     assert!(matches!(
@@ -523,3 +529,155 @@ fn test_revoke_attestation_does_not_affect_management() {
     // Management delegation is unaffected
     assert!(client.is_valid_delegate(&attester, &subject, &DelegationType::Management));
 }
+
+#[test]
+fn test_get_delegation_summary() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    
+    // 1. Initial creation
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &1000_u64, &0_u64);
+    
+    let summary = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(summary.is_valid);
+    assert_eq!(summary.time_to_expiry, 1000);
+    assert!(matches!(summary.delegation_type, DelegationType::Attestation));
+    assert_eq!(summary.revoked_at, 0);
+    assert_eq!(summary.scheme, 0);
+
+    // 2. Advance time
+    e.ledger().with_mut(|li| {
+        li.timestamp = 400;
+    });
+    let summary2 = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(summary2.is_valid);
+    assert_eq!(summary2.time_to_expiry, 600);
+
+    // 3. Revoke
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+    let summary3 = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(!summary3.is_valid);
+    assert_eq!(summary3.time_to_expiry, 600);
+
+    // 4. Expire
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1100;
+    });
+    let summary4 = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    assert!(!summary4.is_valid);
+    assert_eq!(summary4.time_to_expiry, 0);
+}
+
+// ---------------------------------------------------------------------------
+// cleanup_expired — tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_cleanup_expired_happy_path() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
+
+    // Verify it exists and is valid
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
+
+    // Try cleanup before expiry (should fail)
+    let res = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res.is_err());
+    
+    // Advance ledger past expiry
+    e.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    // Cleanup should succeed now
+    let res_ok = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_ok.is_ok());
+
+    // Verify entry is removed: is_valid_delegate returns false, get_delegation panics
+    assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
+    
+    let res_get = client.try_get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_get.is_err());
+
+    // Verify delegation_cleaned event is emitted
+    let events = e.events().all();
+    let cleaned_events: std::vec::Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == client.address
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "delegation_cleaned")
+        })
+        .collect();
+
+    assert_eq!(cleaned_events.len(), 1);
+    let event = &cleaned_events[0];
+    let topic_name = Symbol::from_val(&e, &event.1.get(0).unwrap());
+    let topic_owner = Address::from_val(&e, &event.1.get(1).unwrap());
+    let topic_delegate = Address::from_val(&e, &event.1.get(2).unwrap());
+    let data_type = DelegationType::from_val(&e, &event.2);
+
+    assert_eq!(topic_name, Symbol::new(&e, "delegation_cleaned"));
+    assert_eq!(topic_owner, owner);
+    assert_eq!(topic_delegate, delegate);
+    assert_eq!(data_type, DelegationType::Attestation);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #501)")]
+fn test_cleanup_expired_nonexistent() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+
+    client.cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #509)")]
+fn test_cleanup_expired_non_expired() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
+
+    client.cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+}
+
+#[test]
+fn test_cleanup_expired_revoked_but_not_expired() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expires_at = e.ledger().timestamp() + 10;
+
+    client.delegate(&owner, &delegate, &DelegationType::Attestation, &expires_at, &0_u64);
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
+
+    // Verify it is revoked
+    let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    assert!(d.revoked);
+
+    // Try to cleanup (should fail with DelegationNotExpired because now < expires_at)
+    let res = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res.is_err());
+    
+    // Advance time past expiry
+    e.ledger().with_mut(|li| {
+        li.timestamp = expires_at;
+    });
+
+    // Cleanup should now succeed
+    let res_ok = client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_ok.is_ok());
+
+    let res_get = client.try_get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    assert!(res_get.is_err());
+}
+

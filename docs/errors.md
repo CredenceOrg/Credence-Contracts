@@ -20,6 +20,8 @@ All Credence smart contracts share a single error type: `ContractError`, defined
 | 700-799  | Arithmetic     | bond, treasury, and others                     |
 
 > **Stability Guarantee** — Error codes are wire-stable and must never be renumbered after deployment. New variants are appended at the end of their category block only.
+>
+> See `docs/error-codes-wire.md` for the official bump procedure and wire-format stability test.
 
 ---
 

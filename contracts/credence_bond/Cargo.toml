@@ -2,13 +2,57 @@
 name = "credence_bond"
 version = "0.1.0"
 edition = "2021"
+# Disable autodiscovery of the stale `tests/` integration crates. Those files
+# (test_access_control.rs, test_fee_on_transfer_rejection.rs) target an
+# abandoned token-based contract API (set_token/get_nonce/create_bond_with_rolling)
+# that does not exist in the canonical contract; they never compiled. The bond
+# invariants suite lives in the library's #[cfg(test)] modules instead, so the
+# whole package builds and tests green with `cargo test -p credence_bond`.
+autotests = false
+# The gas baseline lives in benches/ and the refresher in a bin; declare both
+# explicitly so cargo does not try to autodiscover the shared `harness.rs`
+# module as its own target.
+autobenches = false
+autobins = false
 
 [lib]
-crate-type = ["lib"]
+# `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
+# the contract as a normal Rust dependency. The `cdylib` artifact used for the
+# on-chain wasm is unaffected.
+crate-type = ["cdylib", "rlib"]
+
+# Deterministic gas-regression gate. Run with
+# `cargo bench -p credence_bond --features gas-bench --bench cost`.
+[[bench]]
+name = "cost"
+path = "benches/cost.rs"
+harness = false
+test = false
+required-features = ["gas-bench"]
+
+# Baseline refresher & diff reporter. Run with
+# `cargo run -p credence_bond --features gas-bench --bin update-cost-baseline`.
+[[bin]]
+name = "update-cost-baseline"
+path = "benches/update_cost_baseline.rs"
+test = false
+required-features = ["gas-bench"]
+
+# Storage cost regression test. Runs as part of `cargo test` on every CI matrix.
+[[test]]
+name = "test_cost_regression"
+path = "tests/test_cost_regression.rs"
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }
+credence_math = { path = "../credence_math" }
+timelock = { path = "../timelock" }
 soroban-sdk = { version = "22.0", features = ["testutils"] }
-
-[dev-dependencies]
 proptest = "1.11.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(skip_slash_invariant)'] }
+
+[features]
+default = []
+gas-bench = ["soroban-sdk/testutils"]

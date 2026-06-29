@@ -7,6 +7,23 @@ in the `credence_errors` crate. Every public entry-point returns
 `Result<T, ContractError>` so callers always receive a typed, categorised,
 wire-stable error code instead of an opaque transaction failure.
 
+In addition to the numeric discriminant, every variant exposes structured
+metadata through the `ErrorExt` trait:
+
+| Method            | Returns          | Used for                                            |
+|-------------------|------------------|-----------------------------------------------------|
+| `category()`      | `ErrorCategory`  | Domain-grouped monitoring and dashboards.          |
+| `description()`   | `&'static str`   | Static human-readable description for logging.      |
+| `is_recoverable()`| `bool`           | Off-chain "retry/ignore" vs "alert/halt" decision. |
+
+`is_recoverable()` returns `true` when the caller can fix their input or wait
+for state to change and retry the same kind of operation successfully. It
+returns `false` (fatal) for code-level faults, security halts, cryptographic
+failures, and payload-binding mismatches where blind retry will not help. The
+mapping is centrally maintained in `credence_errors::ErrorExt`; clients,
+indexers, and the admin CLI should consult it instead of hardcoding their own
+classification, so every consumer stays consistent as new variants are added.
+
 ---
 
 ## Error Code Layout
@@ -155,8 +172,89 @@ cargo test -p credence_errors
 Target: >= 95% line coverage on `src/lib.rs`.
 
 The test suite covers:
-- Wire code stability for all 42 variants
+- Wire code stability for all variants
 - Category mapping for every variant
 - Unique non-empty descriptions
 - Copy and Eq semantics
 - Result integration tests mirroring every real contract call site
+- `is_recoverable()` classifier with a compile-time exhaustiveness check
+  (adding a new variant forces a classification) plus per-category
+  recoverable/fatal spot-checks
+
+## Recoverability Reference
+
+| Variant                          | is_recoverable | Reason |
+|----------------------------------|----------------|--------|
+| `NotInitialized`                 | true           | Initialize first, then retry |
+| `AlreadyInitialized`             | true           | Idempotent |
+| `NotAdmin`                       | true           | Use admin signer |
+| `NotBondOwner`                   | true           | Use bond owner signer |
+| `UnauthorizedAttester`           | true           | Use an authorized attester |
+| `NotOriginalAttester`            | true           | Only the original attester may revoke |
+| `NotSigner`                      | true           | Use a registered signer |
+| `UnauthorizedDepositor`          | true           | Use admin or authorized depositor |
+| `ContractPaused`                 | true           | Wait for unpause, then retry |
+| `InvalidPauseAction`             | true           | Correct the action byte, retry |
+| `InsufficientSignatures`         | true           | Gather more approvals |
+| `AdminSuspended`                 | true           | Wait until suspension elapses |
+| `NoPendingAdmin`                 | true           | Call `begin_admin_transfer` first |
+| `InvalidAdminAddress`            | true           | Provide a valid admin address |
+| `AdminUnchanged`                 | true           | Provide a different admin |
+| `TimelockNotReady`               | true           | Wait for the timelock delay |
+| `BondNotFound`                   | true           | `create_bond` first |
+| `BondNotActive`                  | true           | Wait or use the right flow |
+| `InsufficientBalance`            | true           | Top up |
+| `SlashExceedsBond`               | true           | Reduce slash amount |
+| `StorageCapReached`              | **false**      | System capacity — only operator prune fixes it |
+| `LockupNotExpired`               | true           | Wait for lock-up to elapse |
+| `NotRollingBond`                 | true           | Operate on a rolling bond instead |
+| `WithdrawalAlreadyRequested`     | true           | Wait for the existing request |
+| `ReentrancyDetected`             | **false**      | Security halt — investigate |
+| `InvalidNonce`                   | true           | Bump nonce and retry |
+| `SignatureExpired`               | true           | Re-sign with a later deadline |
+| `NegativeStake`                  | true           | Reduce the stake amount |
+| `EarlyExitConfigNotSet`          | true           | Configure early exit first |
+| `InvalidPenaltyBps`              | true           | Use 0..=10000 bps |
+| `LeverageExceeded`               | true           | Reduce operation size |
+| `UnsupportedToken`               | true           | Use a fee-on-transfer-safe token |
+| `InvalidBondAmount`              | true           | Supply amount > 0 |
+| `InvalidBondDuration`            | true           | Supply duration > 0 |
+| `InvalidNoticePeriod`            | true           | Supply 0 < notice_period <= duration |
+| `BondAlreadyExists`              | true           | Idempotent |
+| `InvariantViolation`             | **false**      | Post-write drift — halt |
+| `DomainMismatch`                 | **false**      | Payload binding wrong |
+| `OwnerMismatch`                  | **false**      | Payload owner does not match caller |
+| `TargetMismatch`                 | **false**      | Payload target action is wrong |
+| `ContractIdMismatch`             | **false**      | Payload contract id mismatch |
+| `DuplicateAttestation`           | true           | Idempotent |
+| `AttestationNotFound`            | true           | Correct lookup key |
+| `AttestationAlreadyRevoked`      | true           | Idempotent |
+| `InvalidAttestationWeight`       | true           | Supply positive weight |
+| `AttestationWeightExceedsMax`    | true           | Reduce weight below max |
+| `IdentityAlreadyRegistered`      | true           | Idempotent |
+| `BondContractAlreadyRegistered`  | true           | Idempotent |
+| `IdentityNotRegistered`          | true           | `register_identity` first |
+| `BondContractNotRegistered`      | true           | `register_bond_contract` first |
+| `AlreadyDeactivated`             | true           | Idempotent |
+| `AlreadyActive`                  | true           | Idempotent |
+| `InvalidContractAddress`         | true           | Supply a valid contract address |
+| `ExpiryInPast`                   | true           | Supply a future expiry |
+| `DelegationNotFound`             | true           | Create the delegation first |
+| `AlreadyRevoked`                 | true           | Idempotent |
+| `DelegationExpiryTooLong`        | true           | Shorten to MAX_DELEGATION_DURATION |
+| `UnknownScheme`                  | **false**      | Unsupported scheme tag |
+| `VerifierAlreadyRegistered`      | true           | Idempotent |
+| `VerifierNotRegistered`          | true           | Register the verifier first |
+| `VerificationFailed`             | **false**      | Cryptographic failure |
+| `RevocationGraceExpired`         | **false**      | Grace window is admin-controlled; terminal for caller |
+| `AmountMustBePositive`           | true           | Supply amount > 0 |
+| `ThresholdExceedsSigners`        | true           | Lower threshold to <= signer count |
+| `InsufficientTreasuryBalance`    | true           | Top up |
+| `ProposalNotFound`               | true           | Supply a valid proposal id |
+| `ProposalAlreadyExecuted`        | true           | Idempotent |
+| `InsufficientApprovals`          | true           | Collect more approvals |
+| `InvalidFlashLoanCallback`       | **false**      | Bad callback magic value |
+| `FlashLoanRepaymentFailed`       | **false**      | Principal+Fee repayment mismatch |
+| `ProposalExpired`                | true           | Create a new proposal |
+| `Overflow`                       | **false**      | Code-level impossibility |
+| `Underflow`                      | **false**      | Code-level impossibility |

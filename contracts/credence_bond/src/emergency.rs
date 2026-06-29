@@ -120,9 +120,15 @@ pub fn set_enabled(e: &Env, enabled: bool, admin: &Address, governance: &Address
         timestamp: e.ledger().timestamp(),
     };
 
+    let transition_key = EmergencyDataKey::Transition(transition_id);
     e.storage()
         .persistent()
-        .set(&EmergencyDataKey::Transition(transition_id), &transition);
+        .set(&transition_key, &transition);
+    e.storage().persistent().extend_ttl(
+        &transition_key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
 }
 
 /// @notice Calculate emergency fee for a withdrawal amount.
@@ -147,11 +153,20 @@ pub fn latest_record_id(e: &Env) -> u64 {
 
 /// @notice Get withdrawal record by ID.
 pub fn get_record(e: &Env, id: u64) -> EmergencyWithdrawalRecord {
-    e.storage()
+    let key = EmergencyDataKey::Record(id);
+    let record = e
+        .storage()
         .persistent()
-        .get(&EmergencyDataKey::Record(id))
-        .unwrap_or_else(|| panic!("record not found"))
-}/// @notice Get latest transition ID.
+        .get(&key)
+        .unwrap_or_else(|| panic!("record not found"));
+    e.storage().persistent().extend_ttl(
+        &key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
+    record
+}
+/// @notice Get latest transition ID.
 pub fn latest_transition_id(e: &Env) -> u64 {
     e.storage()
         .persistent()
@@ -161,10 +176,18 @@ pub fn latest_transition_id(e: &Env) -> u64 {
 
 /// @notice Get transition record by ID.
 pub fn get_transition(e: &Env, id: u64) -> EmergencyModeTransition {
-    e.storage()
+    let key = EmergencyDataKey::Transition(id);
+    let transition = e
+        .storage()
         .persistent()
-        .get(&EmergencyDataKey::Transition(id))
-        .unwrap_or_else(|| panic!("transition not found"))
+        .get(&key)
+        .unwrap_or_else(|| panic!("transition not found"));
+    e.storage().persistent().extend_ttl(
+        &key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
+    transition
 }
 
 /// @notice Persist immutable emergency withdrawal record.
@@ -195,9 +218,15 @@ pub fn store_record(
         timestamp: e.ledger().timestamp(),
     };
 
+    let record_key = EmergencyDataKey::Record(id);
     e.storage()
         .persistent()
-        .set(&EmergencyDataKey::Record(id), &record);
+        .set(&record_key, &record);
+    e.storage().persistent().extend_ttl(
+        &record_key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
     id
 }
 
@@ -206,6 +235,11 @@ fn increment_seq(e: &Env, key: EmergencyDataKey) -> u64 {
     let seq: u64 = e.storage().persistent().get(&key).unwrap_or(0);
     let next = seq.checked_add(1).expect("sequence overflow");
     e.storage().persistent().set(&key, &next);
+    e.storage().persistent().extend_ttl(
+        &key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
     next
 }
 

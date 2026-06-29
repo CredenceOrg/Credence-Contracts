@@ -9,6 +9,8 @@
 //! - Proxy compatibility safeguards
 //! - Upgrade history tracking
 
+#![allow(dead_code)]
+
 use crate::{events, DataKey, UpgradeKey};
 use soroban_sdk::{contracttype, Address, Bytes, Env, Vec};
 

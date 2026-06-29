@@ -1,4 +1,4 @@
-#![cfg(test)]
+﻿#![cfg(test)]
 //! Arithmetic Security Tests
 //!
 //!
@@ -29,7 +29,7 @@ fn test_i128_bond_amount_at_max() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // FIX: create_bond takes 3 arguments: identity, amount, duration
@@ -51,7 +51,7 @@ fn test_i128_overflow_on_top_up() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64);
@@ -60,7 +60,7 @@ fn test_i128_overflow_on_top_up() {
     client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64);
 
     // FIX: Passes value instead of reference
-    client.top_up(&2000);
+    client.top_up(&identity, &2000);
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn test_i128_overflow_on_max_top_up() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Create bond with max value
@@ -80,7 +80,7 @@ fn test_i128_overflow_on_max_top_up() {
     client.create_bond(&identity, &i128::MAX, &86400_u64);
 
     // Attempt to top up by 1, which should overflow
-    client.top_up(&1);
+    client.top_up(&identity, &1);
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn test_i128_overflow_on_massive_slashing() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &(i128::MAX / 2), &86400_u64);
@@ -120,7 +120,7 @@ fn test_i128_large_bond_operations() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let large_amount = i128::MAX / 2;
@@ -131,7 +131,7 @@ fn test_i128_large_bond_operations() {
     assert_eq!(bond.bonded_amount, large_amount);
 
     // Top up with another large amount (should succeed as sum < i128::MAX)
-    let bond = client.top_up(&(large_amount / 2));
+    let bond = client.top_up(&identity, &(large_amount / 2));
     assert_eq!(bond.bonded_amount, large_amount + (large_amount / 2));
 }
 
@@ -143,7 +143,7 @@ fn test_negative_bond_amount_handling() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     client.slash(&(i128::MAX / 2));
 
@@ -168,7 +168,7 @@ fn test_u64_max_duration() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Test creating bond with maximum allowed duration (365 days)
@@ -187,14 +187,14 @@ fn test_u64_overflow_on_duration_extension() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Create bond with valid duration
     client.create_bond(&identity, &1000, &86400_u64);
 
     // Attempt to extend by u64::MAX, which should overflow
-    client.extend_duration(&u64::MAX);
+    client.extend_duration(&identity, &u64::MAX);
 }
 
 #[test]
@@ -215,7 +215,7 @@ fn test_u64_overflow_on_end_timestamp() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Create bond with valid duration that causes end timestamp to overflow
@@ -231,7 +231,7 @@ fn test_u64_large_duration_extension() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     let duration = 86400_u64;
@@ -242,7 +242,7 @@ fn test_u64_large_duration_extension() {
     assert_eq!(bond.bond_duration, duration);
 
     // Extend with another duration (should succeed as sum doesn't overflow)
-    let bond = client.extend_duration(&86400_u64);
+    let bond = client.extend_duration(&identity, &86400_u64);
     assert_eq!(bond.bond_duration, duration + 86400);
 }
 
@@ -259,7 +259,7 @@ fn test_timestamp_boundary_conditions() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // This should panic inside the contract if you have: bond_start.checked_add(duration)
@@ -284,14 +284,14 @@ fn test_withdrawal_exceeds_available_balance() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
     client.create_bond(&identity, &1000, &86400_u64);
 
     // Attempt to withdraw more than available
-    client.withdraw(&1001);
+    client.withdraw(&identity, &1001);
 }
 
 #[test]
@@ -303,7 +303,7 @@ fn test_withdrawal_after_slashing() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -314,7 +314,7 @@ fn test_withdrawal_after_slashing() {
     client.slash(&admin, &400);
 
     // Available balance is now 600, attempt to withdraw 601
-    client.withdraw(&601);
+    client.withdraw(&identity, &601);
 }
 
 #[test]
@@ -325,14 +325,14 @@ fn test_withdrawal_exact_available_balance() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
     client.create_bond(&identity, &1000, &86400_u64);
 
     // Withdraw exact available amount
-    let bond = client.withdraw(&1000);
+    let bond = client.withdraw(&identity, &1000);
     assert_eq!(bond.bonded_amount, 0);
 }
 
@@ -344,14 +344,14 @@ fn test_withdrawal_zero_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
     client.create_bond(&identity, &1000, &86400_u64);
 
     // Withdraw zero amount (should succeed)
-    let bond = client.withdraw(&0);
+    let bond = client.withdraw(&identity, &0);
     assert_eq!(bond.bonded_amount, 1000);
 }
 
@@ -364,17 +364,17 @@ fn test_multiple_withdrawals_causing_underflow() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
     client.create_bond(&identity, &1000, &86400_u64);
 
     // Multiple withdrawals
-    client.withdraw(&400);
-    client.withdraw(&400);
+    client.withdraw(&identity, &400);
+    client.withdraw(&identity, &400);
     // Available balance is now 200, this should fail
-    client.withdraw(&300);
+    client.withdraw(&identity, &300);
 }
 
 #[test]
@@ -385,14 +385,14 @@ fn test_withdrawal_with_max_i128_bond() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &i128::MAX, &86400_u64);
     client.create_bond(&identity, &i128::MAX, &86400_u64);
 
     // Withdraw large amount
-    let bond = client.withdraw(&(i128::MAX / 2));
+    let bond = client.withdraw(&identity, &(i128::MAX / 2));
     assert_eq!(bond.bonded_amount, i128::MAX - (i128::MAX / 2));
 }
 
@@ -405,7 +405,7 @@ fn test_withdrawal_when_fully_slashed() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -416,7 +416,7 @@ fn test_withdrawal_when_fully_slashed() {
     client.slash(&admin, &1000);
 
     // Attempt to withdraw when fully slashed (available = 0)
-    client.withdraw(&1);
+    client.withdraw(&identity, &1);
 }
 
 // ============================================================================
@@ -431,7 +431,7 @@ fn test_slashing_normal_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -451,7 +451,7 @@ fn test_slashing_exceeds_bonded_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -473,7 +473,7 @@ fn test_multiple_slashing_operations() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -498,7 +498,7 @@ fn test_slashing_zero_amount() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -518,14 +518,14 @@ fn test_slashing_after_withdrawal() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
     client.create_bond(&identity, &1000, &86400_u64);
 
     // Withdraw first
-    client.withdraw(&300);
+    client.withdraw(&identity, &300);
 
     // Then slash (should still reference original bonded amount)
     let bond = client.slash(&admin, &400);
@@ -541,7 +541,7 @@ fn test_slashing_with_max_values() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &i128::MAX, &86400_u64);
@@ -564,7 +564,7 @@ fn test_complex_arithmetic_scenario() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Initial bond
@@ -572,7 +572,7 @@ fn test_complex_arithmetic_scenario() {
     client.create_bond(&identity, &10000, &86400_u64);
 
     // Top up
-    let bond = client.top_up(&5000);
+    let bond = client.top_up(&identity, &5000);
     assert_eq!(bond.bonded_amount, 15000);
 
     // Slash some
@@ -580,7 +580,7 @@ fn test_complex_arithmetic_scenario() {
     assert_eq!(bond.slashed_amount, 3000);
 
     // Withdraw available (15000 - 3000 = 12000 available)
-    let bond = client.withdraw(&8000);
+    let bond = client.withdraw(&identity, &8000);
     assert_eq!(bond.bonded_amount, 7000);
 
     // Verify final state
@@ -597,7 +597,7 @@ fn test_withdrawal_leaves_insufficient_for_slashed() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     client.create_bond(&identity, &1000, &86400_u64);
@@ -609,7 +609,7 @@ fn test_withdrawal_leaves_insufficient_for_slashed() {
 
     // Try to withdraw 600 (but only 500 is available after slashing)
     // This should panic with "insufficient balance for withdrawal"
-    client.withdraw(&600);
+    client.withdraw(&identity, &600);
 }
 
 #[test]
@@ -620,7 +620,7 @@ fn test_boundary_arithmetic_with_zero_values() {
     let client = CredenceBondClient::new(&e, &contract_id);
 
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
     // Create bond with zero amount

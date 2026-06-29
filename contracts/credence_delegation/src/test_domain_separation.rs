@@ -42,6 +42,7 @@ fn make_payload(
         target: target.clone(),
         contract_id: contract_id.clone(),
         nonce,
+        scheme: 0,
     }
 }
 
@@ -89,7 +90,7 @@ fn nonce_increments_after_delegated_delegate() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #225)")] // DomainMismatch
 fn cross_domain_replay_delegate_payload_in_revoke() {
     let (e, client, contract_id) = setup();
     let owner = Address::generate(&e);
@@ -128,7 +129,7 @@ fn cross_domain_replay_delegate_payload_in_revoke() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #225)")] // DomainMismatch
 fn cross_domain_replay_revoke_payload_in_delegate() {
     let (e, client, contract_id) = setup();
     let owner = Address::generate(&e);
@@ -160,7 +161,7 @@ fn cross_domain_replay_revoke_payload_in_delegate() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #225)")] // DomainMismatch
 fn cross_domain_replay_delegate_payload_in_revoke_attestation() {
     let (e, client, contract_id) = setup();
     let attester = Address::generate(&e);
@@ -249,7 +250,7 @@ fn nonce_replay_rejected_cross_domain_stale_nonce() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #221)")] // ContractIdMismatch
 fn cross_contract_replay_rejected() {
     let (e, client, _) = setup();
     let owner = Address::generate(&e);
@@ -281,7 +282,7 @@ fn cross_contract_replay_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #219)")] // OwnerMismatch
 fn wrong_owner_in_payload_rejected() {
     let (e, client, contract_id) = setup();
     let real_owner = Address::generate(&e);
@@ -313,7 +314,7 @@ fn wrong_owner_in_payload_rejected() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "Error(Contract, #208)")]
+#[should_panic(expected = "Error(Contract, #220)")] // TargetMismatch
 fn wrong_target_in_payload_rejected() {
     let (e, client, contract_id) = setup();
     let owner = Address::generate(&e);
@@ -462,6 +463,156 @@ fn happy_path_delegated_delegate_then_revoke() {
     assert!(d2.revoked);
 }
 
+#[test]
+#[should_panic(expected = "Error(Contract, #208)")]
+fn revoke_replay_rejected_by_nonce() {
+    let (e, client, contract_id) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    let create_payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &create_payload,
+    );
+
+    let revoke_payload = make_payload(
+        &e,
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &contract_id,
+        1,
+    );
+    client.execute_delegated_revoke(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &revoke_payload,
+    );
+    assert_eq!(client.get_nonce(&owner), 2);
+
+    // Replaying the same revoke payload must fail with InvalidNonce,
+    // not AlreadyRevoked.
+    client.execute_delegated_revoke(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &revoke_payload,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #502)")]
+fn revoke_with_fresh_nonce_after_revocation_rejected_as_already_revoked() {
+    let (e, client, contract_id) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    let p1 = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &p1,
+    );
+
+    let p2 = make_payload(
+        &e,
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &contract_id,
+        1,
+    );
+    client.execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &p2);
+    assert_eq!(client.get_nonce(&owner), 2);
+
+    let p3 = make_payload(
+        &e,
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &contract_id,
+        2,
+    );
+    client.execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &p3);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #208)")]
+fn revoke_attest_replay_rejected_by_nonce() {
+    let (e, client, contract_id) = setup();
+    let attester = Address::generate(&e);
+    let subject = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    client.delegate(
+        &attester,
+        &subject,
+        &DelegationType::Attestation,
+        &expiry,
+        &0_u64,
+    );
+
+    let revoke_payload = make_payload(
+        &e,
+        DomainTag::RevokeAttestation,
+        &attester,
+        &subject,
+        &contract_id,
+        1,
+    );
+    client.execute_delegated_revoke_attest(&attester, &subject, &revoke_payload);
+    assert_eq!(client.get_nonce(&attester), 2);
+
+    client.execute_delegated_revoke_attest(&attester, &subject, &revoke_payload);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #502)")]
+fn revoke_attest_with_fresh_nonce_after_revocation_rejected_as_already_revoked() {
+    let (e, client, contract_id) = setup();
+    let attester = Address::generate(&e);
+    let subject = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    client.delegate(
+        &attester,
+        &subject,
+        &DelegationType::Attestation,
+        &expiry,
+        &0_u64,
+    );
+
+    let revoke_payload = make_payload(
+        &e,
+        DomainTag::RevokeAttestation,
+        &attester,
+        &subject,
+        &contract_id,
+        1,
+    );
+    client.execute_delegated_revoke_attest(&attester, &subject, &revoke_payload);
+    assert_eq!(client.get_nonce(&attester), 2);
+
+    let next_payload = make_payload(
+        &e,
+        DomainTag::RevokeAttestation,
+        &attester,
+        &subject,
+        &contract_id,
+        2,
+    );
+    client.execute_delegated_revoke_attest(&attester, &subject, &next_payload);
+}
+
 // ---------------------------------------------------------------------------
 // Happy path: delegated revoke_attestation
 // ---------------------------------------------------------------------------
@@ -473,17 +624,23 @@ fn happy_path_delegated_revoke_attestation() {
     let subject = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
 
-    // Create the attestation entry first (direct path, no domain payload needed)
-    client.delegate(&attester, &subject, &DelegationType::Attestation, &expiry);
+    // Create the attestation entry first (direct path consumes nonce 0)
+    client.delegate(
+        &attester,
+        &subject,
+        &DelegationType::Attestation,
+        &expiry,
+        &0_u64,
+    );
 
-    // Revoke via relayer
+    // Revoke via relayer (direct path consumed nonce 0, so delegated path uses nonce 1)
     let payload = make_payload(
         &e,
         DomainTag::RevokeAttestation,
         &attester,
         &subject,
         &contract_id,
-        0,
+        1,
     );
     client.execute_delegated_revoke_attest(&attester, &subject, &payload);
 
@@ -491,7 +648,7 @@ fn happy_path_delegated_revoke_attestation() {
         client.get_attestation_status(&attester, &subject),
         AttestationStatus::Revoked
     ));
-    assert_eq!(client.get_nonce(&attester), 1);
+    assert_eq!(client.get_nonce(&attester), 2);
 }
 
 #[test]
@@ -578,4 +735,223 @@ fn test_mixed_execution_interleaving() {
     client.execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload);
 
     assert_eq!(client.get_nonce(&owner), 2);
+}
+
+// ---------------------------------------------------------------------------
+// Cross-contract namespace replay: Credence Bond ↔ Credence Delegation
+// ---------------------------------------------------------------------------
+
+/// Replay attempt: a payload that is otherwise valid for the bond namespace
+/// carries the bond contract address, so `execute_delegated_delegate` must
+/// reject it and leave the delegation nonce counter untouched.
+#[test]
+fn cross_namespace_bond_payload_rejected_by_delegated_delegate_without_consuming_nonce() {
+    let (e, client, delegation_id) = setup();
+    let bond_id = Address::generate(&e);
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    let replay = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &bond_id, 0);
+    let result = client.try_execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &replay,
+    );
+    assert!(
+        result.is_err(),
+        "bond-domain payload must not execute in delegation"
+    );
+    assert_eq!(client.get_nonce(&owner), 0);
+
+    let valid = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &delegation_id,
+        0,
+    );
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &valid,
+    );
+    assert_eq!(client.get_nonce(&owner), 1);
+}
+
+/// Replay attempt: a bond-namespace payload at the current revoke nonce is
+/// rejected by `execute_delegated_revoke`; the valid delegation revoke payload
+/// can still consume that same numeric nonce afterward.
+#[test]
+fn cross_namespace_bond_payload_rejected_by_delegated_revoke_without_consuming_nonce() {
+    let (e, client, delegation_id) = setup();
+    let bond_id = Address::generate(&e);
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    let create = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &delegation_id,
+        0,
+    );
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &create,
+    );
+    assert_eq!(client.get_nonce(&owner), 1);
+
+    let replay = make_payload(
+        &e,
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &bond_id,
+        1,
+    );
+    let result = client.try_execute_delegated_revoke(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &replay,
+    );
+    assert!(
+        result.is_err(),
+        "bond-domain payload must not revoke delegation"
+    );
+    assert_eq!(client.get_nonce(&owner), 1);
+
+    let valid = make_payload(
+        &e,
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &delegation_id,
+        1,
+    );
+    client.execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &valid);
+    assert_eq!(client.get_nonce(&owner), 2);
+}
+
+/// Replay attempt: a bond-namespace payload at the current revoke-attestation
+/// nonce is rejected by `execute_delegated_revoke_attest`; the matching
+/// delegation-domain payload remains usable with the same numeric nonce.
+#[test]
+fn cross_namespace_bond_payload_rejected_by_delegated_revoke_attest_without_consuming_nonce() {
+    let (e, client, delegation_id) = setup();
+    let bond_id = Address::generate(&e);
+    let attester = Address::generate(&e);
+    let subject = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    client.delegate(
+        &attester,
+        &subject,
+        &DelegationType::Attestation,
+        &expiry,
+        &0_u64,
+    );
+    assert_eq!(client.get_nonce(&attester), 1);
+
+    let replay = make_payload(
+        &e,
+        DomainTag::RevokeAttestation,
+        &attester,
+        &subject,
+        &bond_id,
+        1,
+    );
+    let result = client.try_execute_delegated_revoke_attest(&attester, &subject, &replay);
+    assert!(
+        result.is_err(),
+        "bond-domain payload must not revoke attestation"
+    );
+    assert_eq!(client.get_nonce(&attester), 1);
+
+    let valid = make_payload(
+        &e,
+        DomainTag::RevokeAttestation,
+        &attester,
+        &subject,
+        &delegation_id,
+        1,
+    );
+    client.execute_delegated_revoke_attest(&attester, &subject, &valid);
+    assert_eq!(client.get_nonce(&attester), 2);
+}
+
+/// Replay attempt: invalidating a delegation nonce window burns only the
+/// delegation namespace. It rejects stale delegation payloads while proving the
+/// window does not imply any burn in the separate bond namespace represented by
+/// a distinct contract-bound payload address.
+#[test]
+fn invalidate_nonce_range_burns_delegation_window_without_cross_namespace_leakage() {
+    let (e, client, delegation_id) = setup();
+    let bond_id = Address::generate(&e);
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    client.invalidate_nonce_range(&owner, &5);
+    assert_eq!(client.get_nonce(&owner), 5);
+
+    let stale_delegation = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &delegation_id,
+        0,
+    );
+    let stale_result = client.try_execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &stale_delegation,
+    );
+    assert!(stale_result.is_err(), "delegation nonce 0 was burned");
+    assert_eq!(client.get_nonce(&owner), 5);
+
+    let bond_namespace = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &bond_id, 0);
+    let bond_result = client.try_execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &bond_namespace,
+    );
+    assert!(
+        bond_result.is_err(),
+        "bond namespace remains contract-domain separated, not delegation-burned"
+    );
+    assert_eq!(client.get_nonce(&owner), 5);
+
+    let valid = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &delegation_id,
+        5,
+    );
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expiry,
+        &valid,
+    );
+    assert_eq!(client.get_nonce(&owner), 6);
 }

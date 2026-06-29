@@ -4,7 +4,7 @@
 //! Also tests emergency rescue functionality for stuck native tokens.
 
 use crate::{CredenceTreasury, CredenceTreasuryClient, CumulativeAmount, FundSource};
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
 const CUMULATIVE_SEGMENT: u128 = (i128::MAX as u128) + 1;
@@ -110,69 +110,124 @@ fn test_receive_fee_overflow_panics() {
 #[test]
 fn test_rescue_native_success() {
     let e = Env::default();
-    let (client, admin, _token) = setup(&e);
+    let (client, admin, token_id) = setup(&e);
     let recipient = Address::generate(&e);
+    let contract_id = client.address.clone();
 
-    // Add some treasury balance first
+    // Deposit 1000 into treasury accounting
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
 
-    // Simulate excess native balance (e.g., from accidental transfers)
-    // In a real test environment, you'd need to mock the ledger balance
-    // For now, we test the authorization and basic logic
+    // Mint 300 extra directly to the contract (simulating stuck/airdropped tokens)
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&contract_id, &300);
 
-    // Test rescue with valid parameters
-    client.rescue_native(&admin, &recipient, &500);
+    // Actual balance = 1300, accounted = 1000, excess = 300
+    client.rescue_native(&admin, &recipient, &300);
 
-    // Verify rescue event was emitted (would need to check events in real test)
+    // Recipient received the rescued tokens
+    let token_client = soroban_sdk::token::TokenClient::new(&e, &token_id);
+    assert_eq!(token_client.balance(&recipient), 300);
+    // Accounted balance unchanged
+    assert_eq!(client.get_balance(), 1000);
+}
+
+#[test]
+fn test_rescue_native_partial_excess() {
+    let e = Env::default();
+    let (client, admin, token_id) = setup(&e);
+    let recipient = Address::generate(&e);
+    let contract_id = client.address.clone();
+
+    client.receive_fee(&admin, &500, &FundSource::ProtocolFee);
+
+    // Mint 200 excess directly to contract
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&contract_id, &200);
+
+    // Rescue only part of the excess
+    client.rescue_native(&admin, &recipient, &100);
+
+    let token_client = soroban_sdk::token::TokenClient::new(&e, &token_id);
+    assert_eq!(token_client.balance(&recipient), 100);
+    assert_eq!(client.get_balance(), 500);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #100)")]
 fn test_rescue_native_unauthorized() {
     let e = Env::default();
-    let (client, _admin, _token) = setup(&e);
+    let (client, _admin, token_id) = setup(&e);
     let recipient = Address::generate(&e);
     let unauthorized = Address::generate(&e);
+    let contract_id = client.address.clone();
 
-    // Try rescue with unauthorized caller
+    // Mint excess so the balance check is not the rejecting guard
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&contract_id, &500);
+
     client.rescue_native(&unauthorized, &recipient, &500);
 }
-
-// Skip zero address test for now as it requires proper Stellar address handling
-// #[test]
-// #[should_panic(expected = "Error(Contract, #607)")]
-// fn test_rescue_native_zero_address() {
-//     let e = Env::default();
-//     let (client, admin, _token) = setup(&e);
-//     let zero_address = Address::generate(&e);
-//
-//     // Try rescue with zero address
-//     client.rescue_native(&admin, &zero_address, &500);
-// }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #600)")]
 fn test_rescue_native_zero_amount() {
     let e = Env::default();
-    let (client, admin, _token) = setup(&e);
+    let (client, admin, token_id) = setup(&e);
     let recipient = Address::generate(&e);
+    let contract_id = client.address.clone();
 
-    // Try rescue with zero amount
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&contract_id, &500);
+
     client.rescue_native(&admin, &recipient, &0);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #602)")]
-fn test_rescue_native_exceeds_available() {
+fn test_rescue_native_exceeds_excess() {
+    let e = Env::default();
+    let (client, admin, token_id) = setup(&e);
+    let recipient = Address::generate(&e);
+    let contract_id = client.address.clone();
+
+    // 1000 accounted, 100 excess → total actual = 1100
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&contract_id, &100);
+
+    // Try to rescue 200 — more than 100 excess
+    client.rescue_native(&admin, &recipient, &200);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #602)")]
+fn test_rescue_native_zero_excess_rejected() {
     let e = Env::default();
     let (client, admin, _token) = setup(&e);
     let recipient = Address::generate(&e);
 
-    // Add some treasury balance
+    // 1000 accounted, no extra tokens → excess = 0
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
 
-    // Try to rescue more than available (assuming no excess native balance)
-    client.rescue_native(&admin, &recipient, &2000);
+    // Any rescue amount > 0 must fail
+    client.rescue_native(&admin, &recipient, &1);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #602)")]
+fn test_rescue_native_cannot_drain_accounted_funds() {
+    let e = Env::default();
+    let (client, admin, token_id) = setup(&e);
+    let recipient = Address::generate(&e);
+    let contract_id = client.address.clone();
+
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+    // Only 50 tokens excess
+    let stellar_client = soroban_sdk::token::StellarAssetClient::new(&e, &token_id);
+    stellar_client.mint(&contract_id, &50);
+
+    // Attempt to rescue the full accounted amount — must be rejected
+    client.rescue_native(&admin, &recipient, &1000);
 }
 
 #[test]
@@ -651,4 +706,152 @@ fn test_cumulative_fees_reconcile_after_repeated_high_rate_claims() {
     assert_eq!(counter_to_u128(&cumulative_protocol), expected_cumulative);
     assert_eq!(counter_to_u128(&cumulative_total), expected_cumulative);
     assert!(cumulative_protocol.rollovers >= 1);
+}
+
+// ─── Proposal expiry tests ─────────────────────────────────────────────────
+
+fn advance(e: &Env, secs: u64) {
+    let info = e.ledger().get();
+    e.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        timestamp: info.timestamp + secs,
+        ..info
+    });
+}
+
+#[test]
+fn test_proposal_ttl_default_and_set_get() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+
+    // Default TTL is 7 days
+    assert_eq!(client.get_proposal_ttl(), 7 * 24 * 60 * 60);
+
+    // Admin can update
+    client.set_proposal_ttl(&admin, &3600);
+    assert_eq!(client.get_proposal_ttl(), 3600);
+
+    // TTL=0 means no expiry
+    client.set_proposal_ttl(&admin, &0);
+    assert_eq!(client.get_proposal_ttl(), 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #608)")]
+fn test_approve_withdrawal_after_expiry_rejected() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    let signer = Address::generate(&e);
+    let recipient = Address::generate(&e);
+
+    client.add_signer(&signer);
+    client.set_threshold(&1);
+    client.set_proposal_ttl(&admin, &3600); // 1 hour TTL
+
+    // Fund the treasury
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+
+    let id = client.propose_withdrawal(&signer, &recipient, &500);
+
+    // Advance past the 1 hour TTL
+    advance(&e, 3601);
+
+    client.approve_withdrawal(&signer, &id);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #608)")]
+fn test_execute_withdrawal_after_expiry_rejected() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    let signer = Address::generate(&e);
+    let recipient = Address::generate(&e);
+
+    client.add_signer(&signer);
+    client.set_threshold(&1);
+    client.set_proposal_ttl(&admin, &3600);
+
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+
+    let id = client.propose_withdrawal(&signer, &recipient, &500);
+    client.approve_withdrawal(&signer, &id);
+
+    // Advance past the TTL
+    advance(&e, 3601);
+
+    client.execute_withdrawal(&id, &0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #608)")]
+fn test_execute_exactly_at_expiry_rejected() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    let signer = Address::generate(&e);
+    let recipient = Address::generate(&e);
+
+    client.add_signer(&signer);
+    client.set_threshold(&1);
+    client.set_proposal_ttl(&admin, &3600);
+
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+
+    let id = client.propose_withdrawal(&signer, &recipient, &500);
+    client.approve_withdrawal(&signer, &id);
+
+    // Advance exactly to the expiry timestamp
+    advance(&e, 3600);
+    let proposal = client.get_proposal(&id);
+    assert!(e.ledger().timestamp() >= proposal.expires_at);
+
+    client.execute_withdrawal(&id, &0);
+}
+
+#[test]
+fn test_propose_expire_and_repropose_succeeds() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    let signer = Address::generate(&e);
+    let recipient = Address::generate(&e);
+
+    client.add_signer(&signer);
+    client.set_threshold(&1);
+    client.set_proposal_ttl(&admin, &3600);
+
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+
+    // First proposal — let it expire
+    let id1 = client.propose_withdrawal(&signer, &recipient, &500);
+    advance(&e, 3601);
+
+    // The old proposal is expired; verify by getting it (expired but still stored)
+    let stale = client.get_proposal(&id1);
+    assert!(e.ledger().timestamp() >= stale.expires_at);
+
+    // Re-propose with a fresh proposal and execute successfully
+    let id2 = client.propose_withdrawal(&signer, &recipient, &500);
+    client.approve_withdrawal(&signer, &id2);
+    client.execute_withdrawal(&id2, &0);
+}
+
+#[test]
+fn test_ttl_zero_never_expires() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    let signer = Address::generate(&e);
+    let recipient = Address::generate(&e);
+
+    client.add_signer(&signer);
+    client.set_threshold(&1);
+    client.set_proposal_ttl(&admin, &0); // No expiry
+
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+
+    let id = client.propose_withdrawal(&signer, &recipient, &500);
+
+    // Advance a huge amount of time
+    advance(&e, 365 * 24 * 3600); // 1 year
+
+    // Still executable because TTL=0 means no expiry
+    client.approve_withdrawal(&signer, &id);
+    client.execute_withdrawal(&id, &0);
 }

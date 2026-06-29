@@ -12,6 +12,8 @@ The Credence Bond contract is the foundational security layer for the protocol. 
 2. **Attestation**: Authorized Verifiers sign claims against the bond.
 3. **Slashing**: Multi-sig governance can deduct funds for protocol violations.
 
+For the contributor-facing lifecycle reference, see [Bond State Transitions](bond-state-transitions.md).
+
 ## 1. Entrypoint Reference
 
 ### Bond Management

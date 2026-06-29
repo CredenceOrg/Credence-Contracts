@@ -80,7 +80,7 @@ pub struct DelegatedActionPayload {
     pub nonce: u64,
     /// The signature scheme: Ed25519, Secp256r1, or MLDSA44.
     /// Defaults to Ed25519 for backwards compatibility with legacy payloads.
-    pub scheme: u8,
+    pub scheme: u32,
 }
 
 /// Validates that the fields in `payload` match the parameters supplied at the
@@ -125,7 +125,7 @@ pub fn verify_payload(
 /// For strict validation (rejecting unknown schemes), use
 /// [`verify_scheme_supported`] after calling this function.
 pub fn decode_scheme_safe(payload: &DelegatedActionPayload) -> SchemeTag {
-    match SchemeTag::try_from_u8(payload.scheme) {
+    match SchemeTag::try_from_u32(payload.scheme) {
         Some(scheme) => scheme,
         None => SchemeTag::default_scheme(),
     }
@@ -135,7 +135,7 @@ pub fn decode_scheme_safe(payload: &DelegatedActionPayload) -> SchemeTag {
 ///
 /// Panics with `UnknownScheme` if the scheme is not recognized.
 /// Call this after decoding to enforce strict validation.
-pub fn verify_scheme_supported(e: &Env, scheme: u8) {
+pub fn verify_scheme_supported(e: &Env, scheme: u32) {
     if !SchemeTag::is_known(scheme) {
         panic_with_error!(e, ContractError::UnknownScheme);
     }

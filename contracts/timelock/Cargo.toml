@@ -5,6 +5,11 @@ edition = "2021"
 description = "Credence timelock — enforces delay before protocol parameter changes take effect"
 
 [lib]
-crate-type = ["lib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+soroban-sdk = "22.0"
+credence_errors = { path = "../credence_errors" }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }

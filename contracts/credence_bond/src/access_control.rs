@@ -18,6 +18,7 @@
 //! }
 //! ```
 
+use credence_errors::Role;
 use soroban_sdk::{Address, Env, Symbol};
 
 /// Storage keys for access control roles
@@ -236,14 +237,20 @@ pub fn is_verifier(e: &Env, address: &Address) -> bool {
 /// @param address Address to check.
 ///
 /// # Returns
-/// `true` if the address is the admin, `false` otherwise.
-pub fn is_admin(e: &Env, address: &Address) -> bool {
+/// `Role::Admin` if the address is the admin, `Role::User` otherwise.
+pub fn is_admin(e: &Env, address: &Address) -> Role {
     let admin_key = Symbol::new(e, ADMIN_KEY);
     e.storage()
         .instance()
         .get::<Symbol, Address>(&admin_key)
-        .map(|admin| address == &admin)
-        .unwrap_or(false)
+        .map(|admin| {
+            if address == &admin {
+                Role::Admin
+            } else {
+                Role::User
+            }
+        })
+        .unwrap_or(Role::User)
 }
 
 /// @notice Get the current admin address.

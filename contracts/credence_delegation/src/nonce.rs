@@ -110,6 +110,8 @@ pub fn get_nonce(e: &Env, identity: &Address) -> u64 {
 pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     let key = DataKey::Nonce(identity.clone());
     let current: u64 = e.storage().persistent().get(&key).unwrap_or(0);
+    // Log for debugging
+    // e.logger().info("consume_nonce current nonces");
     if current != expected_nonce {
         panic_with_error!(e, ContractError::InvalidNonce);
     }
@@ -120,14 +122,42 @@ pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     bump_nonce_ttl(e, &key, 0);
 }
 
-/// Advances nonce to `new_nonce`, invalidating the half-open range
+/// Advances nonce to `new_nonce`, permanently invalidating the half-open range
 /// `[current_nonce, new_nonce)`.
 ///
 /// This allows compromised-key recovery by skipping potentially leaked,
 /// pre-signed delegated payloads without submitting each nonce one-by-one.
 ///
+/// ## Replay-Window Proof
+///
+/// **Invariant**: `stored_nonce` is strictly monotone — it only increases.
+///
+/// **Claim**: after `invalidate_nonce_range(identity, new_nonce)` returns
+/// successfully, every payload with `payload.nonce < new_nonce` is permanently
+/// unspendable for `identity`.
+///
+/// **Proof**:
+/// 1. On entry the stored nonce is `current`.  The call panics unless
+///    `new_nonce > current`, so the stored value advances to `new_nonce`.
+/// 2. `consume_nonce` accepts a payload only when
+///    `payload.nonce == stored_nonce`.  After the call the stored nonce is
+///    `new_nonce`.
+/// 3. For any `n < new_nonce`: `n < new_nonce ≤ stored_nonce` (by
+///    monotonicity).  Therefore `n ≠ stored_nonce` for all future states, so
+///    `consume_nonce` will always reject such a payload with `InvalidNonce`.
+/// 4. The argument is independent of when the payload was produced, how many
+///    more invalidations occur, or what the current ledger time is.
+///
+/// **Boundary case**: `new_nonce - 1` is the last invalidated nonce;
+/// `new_nonce` itself is the next spendable nonce.
+///
+/// **Span cap**: `max_span` (= `MAX_NONCE_INVALIDATION_SPAN = 10_000`) limits
+/// each single call to at most 10 000 skipped nonces.  Larger jumps require
+/// multiple calls, each bounded by the same cap, preventing gas exhaustion.
+///
 /// # Panics
-/// Panics if `new_nonce <= current_nonce` or if the span exceeds `max_span`.
+/// - `new_nonce <= current_nonce` — would not advance the nonce.
+/// - `span > max_span` — exceeds the single-call invalidation limit.
 pub fn invalidate_nonce_range(
     e: &Env,
     identity: &Address,

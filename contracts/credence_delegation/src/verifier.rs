@@ -16,9 +16,9 @@
 //! break existing signatures. When adding new schemes, append at the end only.
 
 use credence_errors::ContractError;
-use soroban_sdk::{
-    contracttype, panic_with_error, Address, Bytes, Env, Symbol,
-};
+use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, IntoVal, Symbol, Val, Vec};
+
+use crate::DataKey;
 
 /// Supported signature schemes for delegated action signatures.
 ///
@@ -35,7 +35,7 @@ use soroban_sdk::{
 /// requires corresponding verifier implementations registered in the contract.
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[repr(u8)]
+#[repr(u32)]
 pub enum SchemeTag {
     /// Ed25519 EdDSA signatures (default for backwards compatibility).
     Ed25519 = 0,
@@ -50,7 +50,7 @@ impl SchemeTag {
     ///
     /// This function enforces a strict whitelist of known schemes,
     /// rejecting any unregistered or future scheme tags.
-    pub fn try_from_u8(value: u8) -> Option<SchemeTag> {
+    pub fn try_from_u32(value: u32) -> Option<SchemeTag> {
         match value {
             0 => Some(SchemeTag::Ed25519),
             1 => Some(SchemeTag::Secp256r1),
@@ -60,8 +60,8 @@ impl SchemeTag {
     }
 
     /// Convert SchemeTag to its wire-stable u8 value.
-    pub fn to_u8(self) -> u8 {
-        self as u8
+    pub fn to_u32(self) -> u32 {
+        self as u32
     }
 
     /// Default scheme for backwards compatibility with legacy payloads.
@@ -75,10 +75,10 @@ impl SchemeTag {
 
     /// Check if a scheme is currently known/supported by this implementation.
     ///
-    /// This differs from `try_from_u8` in that it allows for schemes that may
+    /// This differs from `try_from_u32` in that it allows for schemes that may
     /// not yet have registered verifiers. Use this to provide better error
     /// messages when a scheme is recognized but not yet verified.
-    pub fn is_known(value: u8) -> bool {
+    pub fn is_known(value: u32) -> bool {
         value <= 2
     }
 }
@@ -112,13 +112,7 @@ pub trait SignatureVerifier: Send + Sync {
     /// - Success: Returns normally (no panic)
     /// - Verification failure: Panics with an appropriate error
     /// - Invalid format: Panics with scheme-specific error
-    fn verify(
-        &self,
-        e: &Env,
-        owner: &Address,
-        message: &Bytes,
-        signature: &Bytes,
-    );
+    fn verify(&self, e: &Env, owner: &Address, message: &Bytes, signature: &Bytes);
 }
 
 /// Storage of a registered verifier implementation.
@@ -129,7 +123,7 @@ pub trait SignatureVerifier: Send + Sync {
 #[derive(Clone, Debug)]
 pub struct VerifierEntry {
     /// The signature scheme this verifier handles.
-    pub scheme: u8,
+    pub scheme: u32,
     /// A unique identifier or address for this verifier.
     pub verifier_id: Address,
 }
@@ -143,7 +137,7 @@ pub struct VerifierEntry {
 #[derive(Clone, Debug)]
 pub struct VerifierRegisteredEvent {
     /// The signature scheme being registered.
-    pub scheme: u8,
+    pub scheme: u32,
     /// The address of the verifier implementation.
     pub verifier_id: Address,
     /// The admin who performed the registration.
@@ -151,20 +145,14 @@ pub struct VerifierRegisteredEvent {
 }
 
 /// Emit a `verifier_registered` event for audit trail tracking.
-pub fn emit_verifier_registered(
-    e: &Env,
-    scheme: u8,
-    verifier_id: &Address,
-    admin: &Address,
-) {
+pub fn emit_verifier_registered(e: &Env, scheme: u32, verifier_id: &Address, admin: &Address) {
     let event = VerifierRegisteredEvent {
         scheme,
         verifier_id: verifier_id.clone(),
         admin: admin.clone(),
     };
 
-    e.events()
-        .publish(("verifier", "registered"), event);
+    e.events().publish(("verifier", "registered"), event);
 }
 
 /// Validate that a scheme is known and supported.
@@ -172,7 +160,7 @@ pub fn emit_verifier_registered(
 /// This function panics with `UnknownScheme` if the scheme is not recognized
 /// or not currently registered. Use this to provide a consistent error path
 /// for unsupported scheme tags.
-pub fn validate_scheme_registered(e: &Env, scheme: u8) {
+pub fn validate_scheme_registered(e: &Env, scheme: u32) {
     if !SchemeTag::is_known(scheme) {
         panic_with_error!(e, ContractError::UnknownScheme);
     }
@@ -204,9 +192,10 @@ pub fn validate_scheme_registered(e: &Env, scheme: u8) {
 ///   multi-scheme support (which implicitly use Ed25519) continue to verify.
 ///
 /// For **post-quantum schemes** (Secp256r1, MLDSA44):
+/// - Looks up the verifier address stored under `DataKey::Verifier(scheme)`.
 /// - If no verifier is registered for the scheme, panics with `VerifierNotRegistered`.
-/// - If verification fails, panics with `VerificationFailed`.
-/// - The verifier address must be looked up from contract storage by the caller.
+/// - Invokes the verifier via a cross-contract call to `verify(owner, message, signature) -> bool`.
+/// - If the verifier returns `false` (or panics internally), panics with `VerificationFailed`.
 ///
 /// # Wire Stability
 ///
@@ -221,16 +210,16 @@ pub fn validate_scheme_registered(e: &Env, scheme: u8) {
 /// ```text
 /// // In execute_delegated_delegate():
 /// let scheme = domain::decode_scheme_safe(&payload);
-/// verifier::verify_delegated_signature(&e, &owner, &message_hash, &sig, scheme.to_u8());
+/// verifier::verify_delegated_signature(&e, &owner, &message_hash, &sig, scheme.to_u32());
 /// ```
 pub fn verify_delegated_signature(
     e: &Env,
     owner: &Address,
     message: &Bytes,
     signature: &Bytes,
-    scheme: u8,
+    scheme: u32,
 ) {
-    match SchemeTag::try_from_u8(scheme) {
+    match SchemeTag::try_from_u32(scheme) {
         Some(SchemeTag::Ed25519) => {
             // Ed25519 is implicitly verified via Soroban's auth engine.
             // At the call site, owner.require_auth() has already validated
@@ -240,16 +229,26 @@ pub fn verify_delegated_signature(
             // has already authenticated the owner.
         }
         Some(SchemeTag::Secp256r1) | Some(SchemeTag::MLDSA44) => {
-            // Post-quantum schemes require explicit verifier registration.
-            // The contract stores a registered verifier address for each scheme.
-            // To implement this, the caller should:
-            // 1. Look up the verifier address from contract storage
-            // 2. Call the verifier's signature verification function
-            // 3. Handle VerificationFailed if the signature is invalid
-            //
-            // This is a placeholder that documents the expected integration point.
-            // Actual verification would dispatch to a registered verifier contract.
-            panic_with_error!(e, ContractError::VerifierNotRegistered);
+            // 1. Look up the registered verifier address for this scheme.
+            let verifier_addr: Address = e
+                .storage()
+                .instance()
+                .get(&DataKey::Verifier(scheme))
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::VerifierNotRegistered));
+
+            // 2. Dispatch to the verifier contract via cross-contract call.
+            //    The verifier must expose `fn verify(owner, message, signature) -> bool`.
+            //    A `false` return (or a panic inside the verifier) maps to VerificationFailed.
+            let args: Vec<Val> = soroban_sdk::vec![
+                e,
+                owner.clone().into_val(e),
+                message.clone().into_val(e),
+                signature.clone().into_val(e),
+            ];
+            let ok: bool = e.invoke_contract(&verifier_addr, &Symbol::new(e, "verify"), args);
+            if !ok {
+                panic_with_error!(e, ContractError::VerificationFailed);
+            }
         }
         None => {
             panic_with_error!(e, ContractError::UnknownScheme);
@@ -263,18 +262,18 @@ mod test {
 
     #[test]
     fn test_scheme_tag_from_u8() {
-        assert_eq!(SchemeTag::try_from_u8(0), Some(SchemeTag::Ed25519));
-        assert_eq!(SchemeTag::try_from_u8(1), Some(SchemeTag::Secp256r1));
-        assert_eq!(SchemeTag::try_from_u8(2), Some(SchemeTag::MLDSA44));
-        assert_eq!(SchemeTag::try_from_u8(3), None);
-        assert_eq!(SchemeTag::try_from_u8(255), None);
+        assert_eq!(SchemeTag::try_from_u32(0), Some(SchemeTag::Ed25519));
+        assert_eq!(SchemeTag::try_from_u32(1), Some(SchemeTag::Secp256r1));
+        assert_eq!(SchemeTag::try_from_u32(2), Some(SchemeTag::MLDSA44));
+        assert_eq!(SchemeTag::try_from_u32(3), None);
+        assert_eq!(SchemeTag::try_from_u32(255), None);
     }
 
     #[test]
-    fn test_scheme_tag_to_u8() {
-        assert_eq!(SchemeTag::Ed25519.to_u8(), 0);
-        assert_eq!(SchemeTag::Secp256r1.to_u8(), 1);
-        assert_eq!(SchemeTag::MLDSA44.to_u8(), 2);
+    fn test_scheme_tag_to_u32() {
+        assert_eq!(SchemeTag::Ed25519.to_u32(), 0);
+        assert_eq!(SchemeTag::Secp256r1.to_u32(), 1);
+        assert_eq!(SchemeTag::MLDSA44.to_u32(), 2);
     }
 
     #[test]
@@ -296,7 +295,7 @@ mod test {
         // Ed25519 (scheme=0) is the default for backwards compatibility.
         // Existing delegated payloads created before multi-scheme support
         // implicitly use Ed25519 and must continue to verify without modification.
-        assert_eq!(SchemeTag::Ed25519.to_u8(), 0);
+        assert_eq!(SchemeTag::Ed25519.to_u32(), 0);
         assert_eq!(SchemeTag::default_scheme(), SchemeTag::Ed25519);
         assert!(SchemeTag::is_known(0));
     }

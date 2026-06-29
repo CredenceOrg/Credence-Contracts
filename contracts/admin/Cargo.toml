@@ -12,6 +12,7 @@ credence_errors = { path = "../credence_errors" }
 
 [dev-dependencies]
 soroban-sdk = { version = "22.0", features = ["testutils"] }
+testutils = { path = "../../crates/testutils" }
 
 [features]
 testutils = ["soroban-sdk/testutils"]

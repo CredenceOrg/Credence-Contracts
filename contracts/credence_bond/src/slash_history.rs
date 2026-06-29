@@ -25,6 +25,9 @@ pub fn append_slash_history(
     reason: Symbol,
     total_slashed_after: i128,
 ) {
+    let ttl_threshold = crate::PERSISTENT_TTL_MAX / 2;
+    let ttl_max = crate::PERSISTENT_TTL_MAX;
+
     let count_key = SlashStorageKey::SlashCount(identity.clone());
 
     let mut count: u32 = e.storage().persistent().get(&count_key).unwrap_or(0);
@@ -39,16 +42,30 @@ pub fn append_slash_history(
 
     let history_key = SlashStorageKey::SlashRecord(identity.clone(), count);
     e.storage().persistent().set(&history_key, &record);
+    e.storage()
+        .persistent()
+        .extend_ttl(&history_key, ttl_threshold, ttl_max);
 
     count += 1;
     e.storage().persistent().set(&count_key, &count);
+    e.storage()
+        .persistent()
+        .extend_ttl(&count_key, ttl_threshold, ttl_max);
 }
 
 #[allow(dead_code)]
 #[must_use]
 pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
     let key = SlashStorageKey::SlashCount(identity.clone());
-    e.storage().persistent().get(&key).unwrap_or(0)
+    let count: u32 = e.storage().persistent().get(&key).unwrap_or(0);
+    if count > 0 {
+        e.storage().persistent().extend_ttl(
+            &key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
+    }
+    count
 }
 
 #[allow(dead_code)]
@@ -60,6 +77,11 @@ pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
     for i in 0..count {
         let key = SlashStorageKey::SlashRecord(identity.clone(), i);
         if let Some(record) = e.storage().persistent().get(&key) {
+            e.storage().persistent().extend_ttl(
+                &key,
+                crate::PERSISTENT_TTL_MAX / 2,
+                crate::PERSISTENT_TTL_MAX,
+            );
             history.push_back(record);
         }
     }
@@ -71,10 +93,17 @@ pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
 #[must_use]
 pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
     let key = SlashStorageKey::SlashRecord(identity.clone(), index);
-    e.storage()
+    let record = e
+        .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("slash record not found"))
+        .unwrap_or_else(|| panic!("slash record not found"));
+    e.storage().persistent().extend_ttl(
+        &key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
+    record
 }
 
 #[allow(dead_code)]

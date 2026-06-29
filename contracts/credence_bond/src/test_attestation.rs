@@ -19,7 +19,7 @@ fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = Address::generate(e);
     client.register_attester(&attester);
     (client, attester, contract_id)
@@ -70,7 +70,7 @@ fn test_register_attester() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = Address::generate(&e);
     client.register_attester(&attester);
     assert!(client.is_attester(&attester));
@@ -83,7 +83,7 @@ fn test_register_multiple_attesters() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
     let att3 = Address::generate(&e);
@@ -102,7 +102,7 @@ fn test_unregister_attester() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = Address::generate(&e);
     client.register_attester(&attester);
     assert!(client.is_attester(&attester));
@@ -117,7 +117,7 @@ fn test_is_attester_false_for_unregistered() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let random = Address::generate(&e);
     assert!(!client.is_attester(&random));
 }
@@ -167,7 +167,7 @@ fn test_add_attestation_different_attesters() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
     client.register_attester(&att1);
@@ -213,7 +213,7 @@ fn test_unauthorized_attester_rejected() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let unauthorized = Address::generate(&e);
     let subject = Address::generate(&e);
     add(
@@ -268,7 +268,7 @@ fn test_revoke_wrong_attester() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
     client.register_attester(&att1);
@@ -371,7 +371,7 @@ fn test_get_nonexistent_attestation() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.get_attestation(&999);
 }
 
@@ -394,7 +394,7 @@ fn test_get_subject_attestations_empty() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let subject = Address::generate(&e);
     let atts = client.get_subject_attestations(&subject);
     assert_eq!(atts.len(), 0);
@@ -407,7 +407,7 @@ fn test_get_subject_attestations_different_subjects() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let att = Address::generate(&e);
     client.register_attester(&att);
     let sub1 = Address::generate(&e);
@@ -463,7 +463,7 @@ fn test_complex_scenario() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let att1 = Address::generate(&e);
     let att2 = Address::generate(&e);
     let att3 = Address::generate(&e);

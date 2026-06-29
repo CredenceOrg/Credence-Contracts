@@ -1,0 +1,8 @@
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "--cfg=getrandom_windows_legacy",
+    "--cfg=getrandom_backend=\"windows_legacy\"",
+]
+
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"

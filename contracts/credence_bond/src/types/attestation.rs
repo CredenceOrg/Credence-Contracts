@@ -66,7 +66,7 @@ impl Attestation {
     #[inline]
     pub fn validate_data(data: &String) {
         let len = data.len();
-        if len as u32 > MAX_ATTESTATION_DATA_LENGTH {
+        if len > MAX_ATTESTATION_DATA_LENGTH {
             panic!("attestation data exceeds maximum length");
         }
     }

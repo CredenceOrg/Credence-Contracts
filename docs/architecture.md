@@ -2,6 +2,8 @@
 
 This document maps every crate in the workspace to its responsibility, state layout, events, and backend consumption points. It is the canonical reference for anyone integrating with or extending the Credence contracts.
 
+See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
+
 ---
 
 ## Workspace Crates
@@ -375,6 +377,8 @@ This document maps every crate in the workspace to its responsibility, state lay
 ---
 
 ## Cross-Crate Relationships
+
+For a detailed visual mapping of dynamic interactions, callbacks, token custody pathways, and authentication entrypoints, see the [Cross-Contract Call Graph & Authorization Flow](cross-contract-call-graph.md).
 
 ```
 credence_bond

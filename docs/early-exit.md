@@ -5,63 +5,59 @@ Penalty is configurable and attributed to the protocol treasury.
 
 ## Overview
 
-The early exit penalty system ensures that users who exit their bond before the lock-up period ends pay a proportional penalty to the treasury. This maintains protocol economics and prevents users from bypassing lock-up commitments.
+The early-exit penalty system ensures that users who exit their bond before the
+lock-up period ends pay a proportional penalty to the treasury. This maintains
+protocol economics and prevents users from bypassing lock-up commitments.
 
-**CRITICAL SECURITY:** The `withdraw()` function enforces lock-up expiry and will panic with "lock-up not expired; use withdraw_early" if called before lock-up ends. Users attempting early exit MUST use `withdraw_early()`, which applies the penalty. This prevents penalty bypass attacks.
+**Critical security:** `withdraw()` enforces lock-up expiry and panics with
+`"lock-up not expired; use withdraw_early"` if called before lock-up ends. Users
+attempting early exit must use `withdraw_early()`, which applies the penalty.
 
 ## Configuration
 
-| Field | Description |
-|-------|-------------|
-| `treasury` | Address that receives penalty amounts. |
-| `penalty_bps` | Rate in basis points. **Must be in `[0, 10 000]`** (0 % – 100 %). Values above 10 000 are rejected with `ContractError::InvalidPenaltyBps` (211). |
+| Field         | Description                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------- |
+| `treasury`    | Address that receives penalty amounts.                                                        |
+| `penalty_bps` | Rate in basis points. Must be in `[0, 10_000]` (0% - 100%). Values above 10 000 are rejected. |
 
 Set via `set_early_exit_config(admin, treasury, penalty_bps)`. Admin-only.
 
-### Config-changed event
+Every successful call emits `"early_exit_config_set"` with:
 
-Every successful call to `set_early_exit_config` emits `"early_exit_cfg_set"` with:
-
+```rust
+(treasury: Address, penalty_bps: u32)
 ```
-(old_penalty_bps: u32, new_penalty_bps: u32, treasury: Address)
-```
-
-`old_penalty_bps` is `0` when no previous configuration existed.
 
 ## Penalty Formula
 
+```text
+penalty = (amount * penalty_bps / 10_000) * (remaining_time / total_duration)
 ```
-penalty = (amount × penalty_bps / 10_000) × (remaining_time / total_duration)
-```
 
-- **remaining_time**: Time left until lock-up end (`end - now`).
-- **total_duration**: Bond duration at creation.
+- `remaining_time`: time left until lock-up end (`end - now`).
+- `total_duration`: bond duration at creation.
 
-The penalty is proportional to the fraction of the lock period that remains.
+Configured withdrawals cap `penalty_bps` at 10 000 and only run while
+`remaining_time <= total_duration`, so the user's net withdrawal
+`amount - penalty` is non-negative. The raw `calculate_penalty` helper keeps the
+existing floor-division math unchanged.
 
-### Clamping guarantee
+## Validation Rules
 
-The computed penalty is **always clamped to `[0, amount]`**.  
-This means:
-- The user's net withdrawal (`amount - penalty`) is always ≥ 0.
-- An operator cannot accidentally configure a penalty that exceeds 100 % of the
-  withdrawn amount, even if `calculate_penalty` is called directly with a large
-  `penalty_bps` value.
+| Check                                                     | Error                                               |
+| --------------------------------------------------------- | --------------------------------------------------- |
+| `penalty_bps > 10_000`                                    | Panics with `"penalty_bps must be <= 10000"`        |
+| Config not set when `withdraw_early` is called            | `ContractError::EarlyExitConfigNotSet` (210)        |
+| Penalty plus user payout does not sum to gross withdrawal | `ContractError::InvariantViolation` (218)           |
+| Arithmetic underflow/overflow                             | `ContractError::Underflow` (701) / `Overflow` (700) |
 
-## Validation rules
-
-| Check | Error |
-|-------|-------|
-| `penalty_bps > 10_000` | `ContractError::InvalidPenaltyBps` (211) |
-| Config not set when `withdraw_early` is called | `ContractError::EarlyExitConfigNotSet` (210) |
-
-### Example
+## Example
 
 - Bond: 1000 USDC, 365 days duration
 - Penalty rate: 10% (1000 bps)
-- Withdraw 500 USDC after 182 days (halfway through)
+- Withdraw 500 USDC after 182 days
 - Remaining time: 183 days
-- Penalty: (500 * 1000 / 10000) * (183 / 365) = 50 * 0.5 = 25 USDC
+- Penalty: `(500 * 1000 / 10000) * (183 / 365)` ~= 25 USDC
 - User receives: 475 USDC
 - Treasury receives: 25 USDC
 
@@ -70,78 +66,79 @@ This means:
 ### `set_early_exit_config(admin, treasury, penalty_bps)`
 
 Stores the early-exit configuration. Rejects `penalty_bps > 10_000`.
-Emits `"early_exit_cfg_set"`.
+Emits `"early_exit_config_set"`.
 
-**Valid time window:** Only before lock-up expiry (`now < bond_start + bond_duration`)
+### `withdraw_early(amount)`
 
-**Errors:**
-- `LockupNotExpired` (204) - if called at or after lock-up expiry; use `withdraw()` instead
-
-### withdraw(amount)
-
-Withdraws `amount` before lock-up end. Computes and clamps the penalty,
-then emits `"early_exit_penalty"` with `(identity, amount, penalty, treasury)`.
-In a full implementation the token transfer sends `amount - penalty` to the user
-and `penalty` to the treasury.
+Withdraws `amount` before lock-up end. **Reverts** with
+`ContractError::EarlyExitConfigNotSet` if the treasury/penalty configuration is
+not set, so penalty revenue is never silently dropped. Computes the penalty,
+transfers `penalty` to the configured treasury as protocol-fee funds and
+`amount - penalty` to the user, then emits `"early_exit_penalty"` with
+`(identity, amount, penalty, treasury)`.
 
 ### `withdraw(amount)`
 
 Use after lock-up or after the rolling-bond notice period. No penalty.
 
-**Valid time window:** Only at or after lock-up expiry (`now >= bond_start + bond_duration`)
-
-**Errors:**
-- `LockupStillActive` (217) - if called before lock-up expiry; use `withdraw_early()` instead
-
 ## Mutual Exclusivity
 
 The two withdrawal functions have non-overlapping valid time windows:
 
-| Time | withdraw() | withdraw_early() |
-|------|-----------|------------------|
-| Before lock-up end | ❌ Panics: "lock-up not expired" | ✅ Succeeds with penalty |
-| At lock-up end | ✅ Succeeds, no penalty | ❌ Reverts with `LockupNotExpired` |
-| After lock-up end | ✅ Succeeds, no penalty | ❌ Reverts with `LockupNotExpired` |
+| Time               | `withdraw()`                                            | `withdraw_early()`                             |
+| ------------------ | ------------------------------------------------------- | ---------------------------------------------- |
+| Before lock-up end | Panics with `"lock-up not expired; use withdraw_early"` | Succeeds with penalty if configured            |
+| At lock-up end     | Succeeds, no penalty                                    | Reverts with `ContractError::LockupNotExpired` |
+| After lock-up end  | Succeeds, no penalty                                    | Reverts with `ContractError::LockupNotExpired` |
 
 This design ensures:
-1. Early exits always pay the penalty
-2. Post-lock-up withdrawals never pay a penalty
-3. No way to bypass the penalty system
+
+1. Early exits always require configured treasury routing.
+2. Post-lock-up withdrawals never pay a penalty.
+3. There is no way to bypass the penalty system by calling `withdraw()` early.
 
 ## Events
 
-| Event | Payload |
-|-------|---------|
-| `"early_exit_cfg_set"` | `(old_penalty_bps, new_penalty_bps, treasury)` |
-| `"early_exit_penalty"` | `(identity, withdraw_amount, penalty_amount, treasury)` |
+| Event                     | Payload                                                 |
+| ------------------------- | ------------------------------------------------------- |
+| `"early_exit_config_set"` | `(treasury, penalty_bps)`                               |
+| `"early_exit_penalty"`    | `(identity, withdraw_amount, penalty_amount, treasury)` |
+| `"bond_fund_transfer"`    | `(treasury, penalty_amount, FundSource::ProtocolFee)`   |
 
 ## Security
 
-- Penalty capped by amount and rate; no overflow in calculation.
+- Penalty rate is capped by configuration.
 - Config can only be set by admin.
-- **Lock-up gate:** `withdraw()` enforces `now >= bond_start + bond_duration` before allowing withdrawal.
-- **Early exit gate:** `withdraw_early()` enforces `now < bond_start + bond_duration` before applying penalty.
+- Early exits require a configured treasury before any penalty is charged.
+- The penalty amount is transferred to the configured treasury.
+- Penalty plus user payout must sum exactly to the gross withdrawal amount.
+- External token transfers run through the bond reentrancy guard.
 - Withdrawing after lock-up must use `withdraw`, not `withdraw_early`.
 - Withdrawing before lock-up must use `withdraw_early`, not `withdraw`.
 
 ## Attack Prevention
 
-### Penalty Bypass Attack (PREVENTED)
+### Penalty Bypass Attack (Prevented)
 
-**Attack scenario:**
-1. Attacker creates bond with 365-day lock-up
-2. On day 364, attacker calls `withdraw()` to avoid penalty
-3. Attacker receives full amount without paying penalty to treasury
+Attack scenario:
 
-**Prevention:**
-The `withdraw()` function computes `end = bond_start + bond_duration` and requires `now >= end`. If called before lock-up expiry, it panics with "lock-up not expired; use withdraw_early", forcing the attacker to use `withdraw_early()` which applies the penalty.
+1. Attacker creates a bond with a 365-day lock-up.
+2. On day 364, attacker calls `withdraw()` to avoid penalty.
+3. Attacker receives the full amount without paying penalty to treasury.
+
+Prevention:
+
+`withdraw()` computes `end = bond_start + bond_duration` and requires
+`now >= end`. If called before lock-up expiry, it panics with
+`"lock-up not expired; use withdraw_early"`, forcing the caller to use
+`withdraw_early()`.
 
 ```rust
-// In withdraw():
-let end = bond.bond_start.checked_add(bond.bond_duration).expect("overflow");
+let end = bond
+    .bond_start
+    .checked_add(bond.bond_duration)
+    .expect("bond end timestamp overflow");
 if now < end {
     panic!("lock-up not expired; use withdraw_early");
 }
 ```
-
-This ensures the treasury receives penalties from all early exits, maintaining protocol economics.
