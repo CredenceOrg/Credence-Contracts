@@ -299,6 +299,54 @@ mod tests {
     }
 
     #[test]
+    fn execute_rejects_already_executed_operation_with_typed_error() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[7; 32]);
+        let delay = min_delay_seconds();
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
+        client.execute_operation(&op_id);
+
+        let err = client.try_execute_operation(&op_id).unwrap_err().unwrap();
+        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+    }
+
+    #[test]
+    fn cancel_rejects_executed_operation_with_typed_error() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[8; 32]);
+        let delay = min_delay_seconds();
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
+        client.execute_operation(&op_id);
+
+        let err = client
+            .try_cancel_operation(&admin, &op_id)
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+    }
+
+    #[test]
+    fn execute_rejects_cancelled_operation_with_typed_error() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[9; 32]);
+        let delay = min_delay_seconds();
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        client.cancel_operation(&admin, &op_id);
+        let op = client.get_operation(&op_id).unwrap();
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
+
+        let err = client.try_execute_operation(&op_id).unwrap_err().unwrap();
+        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+    }
+
+    #[test]
     fn test_execute_boundaries() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[1; 32]);
