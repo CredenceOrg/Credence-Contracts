@@ -6,6 +6,7 @@ mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
 mod events;
+pub mod fee;
 mod invariants;
 mod leverage;
 mod math;
@@ -70,6 +71,11 @@ mod test_auth;
 /// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
 #[cfg(test)]
 mod test_rolling_notice;
+
+/// Tests for `fee.rs`: get_protocol_fee_bps default, MAX_FEE_BPS accept/reject boundary,
+/// setter round-trip and event payload verification (issue #665).
+#[cfg(test)]
+mod fee_tests;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
