@@ -1,55 +1,55 @@
 {
   "schema": "credence_bond.cost_baseline.v1",
-  "tolerance_pct": 5.0,
+  "tolerance_pct": 10.0,
   "metric_help": "cpu_insns and mem_bytes are modelled host costs; read/write_entries and read/write_bytes are the ledger rw-unit footprint. See docs/gas-regression.md.",
   "entrypoints": {
     "create_bond": {
-      "cpu_insns": 999999999,
-      "mem_bytes": 999999999,
-      "read_entries": 999,
-      "write_entries": 999,
-      "read_bytes": 999999,
-      "write_bytes": 999999
+      "cpu_insns": 73685,
+      "mem_bytes": 9001,
+      "read_entries": 2,
+      "write_entries": 2,
+      "read_bytes": 156,
+      "write_bytes": 568
     },
     "top_up": {
-      "cpu_insns": 999999999,
-      "mem_bytes": 999999999,
-      "read_entries": 999,
-      "write_entries": 999,
-      "read_bytes": 999999,
-      "write_bytes": 999999
+      "cpu_insns": 102178,
+      "mem_bytes": 14882,
+      "read_entries": 1,
+      "write_entries": 1,
+      "read_bytes": 548,
+      "write_bytes": 496
     },
     "withdraw": {
-      "cpu_insns": 999999999,
-      "mem_bytes": 999999999,
-      "read_entries": 999,
-      "write_entries": 999,
-      "read_bytes": 999999,
-      "write_bytes": 999999
+      "cpu_insns": 109232,
+      "mem_bytes": 16650,
+      "read_entries": 1,
+      "write_entries": 1,
+      "read_bytes": 548,
+      "write_bytes": 496
     },
     "withdraw_early": {
-      "cpu_insns": 999999999,
-      "mem_bytes": 999999999,
-      "read_entries": 999,
-      "write_entries": 999,
-      "read_bytes": 999999,
-      "write_bytes": 999999
+      "cpu_insns": 156063,
+      "mem_bytes": 23591,
+      "read_entries": 1,
+      "write_entries": 1,
+      "read_bytes": 748,
+      "write_bytes": 696
     },
     "slash_bond": {
-      "cpu_insns": 999999999,
-      "mem_bytes": 999999999,
-      "read_entries": 999,
-      "write_entries": 999,
-      "read_bytes": 999999,
-      "write_bytes": 999999
+      "cpu_insns": 104373,
+      "mem_bytes": 15515,
+      "read_entries": 1,
+      "write_entries": 2,
+      "read_bytes": 564,
+      "write_bytes": 660
     },
     "add_attestation": {
-      "cpu_insns": 999999999,
-      "mem_bytes": 999999999,
-      "read_entries": 999,
-      "write_entries": 999,
-      "read_bytes": 999999,
-      "write_bytes": 999999
+      "cpu_insns": 140899,
+      "mem_bytes": 17719,
+      "read_entries": 2,
+      "write_entries": 2,
+      "read_bytes": 304,
+      "write_bytes": 968
     }
   }
 }

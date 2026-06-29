@@ -15,8 +15,8 @@
 //! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
 //! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
 
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 use credence_errors::ContractError;
+use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 
 /// Storage key for tracking accumulated slashed funds (for treasury transfer purposes).
 /// Not currently used for fund transfers in this implementation, but reserved for future use.
@@ -157,7 +157,9 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 
     // 6. Add slashing reward claim for the admin (10% of slashed amount)
     if actual_slash_amount > 0 {
-        let reward_amount = actual_slash_amount / 10; // 10% reward
+        let reward_amount = actual_slash_amount
+            .checked_div(10)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow)); // 10% reward
         if reward_amount > 0 {
             let source_id = get_next_slash_id(e);
             crate::claims::add_pending_claim(
@@ -323,9 +325,7 @@ fn transfer_slashed_funds_to_treasury(e: &Env, amount: i128) {
         .storage()
         .instance()
         .get(&crate::DataKey::SlashTreasury)
-        .unwrap_or_else(|| {
-            panic_with_error!(e, ContractError::TreasuryNotConfigured)
-        });
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::TreasuryNotConfigured));
     let token_addr: Address = e
         .storage()
         .instance()

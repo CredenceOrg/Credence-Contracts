@@ -15,8 +15,8 @@ fn test_create_bond() {
 }
 #[cfg(test)]
 mod test_admin_transfer {
-    use soroban_sdk::{testutils::Address as _, Address, Env};
     use crate::CredenceBond;
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     #[test]
     fn test_propose_and_accept_admin() {
@@ -73,7 +73,9 @@ mod test_admin_transfer {
         client.initialize(&admin, &None);
         client.propose_admin(&admin, &new_admin);
 
-        e.ledger().with_mut(|l| { l.timestamp = l.timestamp + 86_401; });
+        e.ledger().with_mut(|l| {
+            l.timestamp = l.timestamp + 86_401;
+        });
 
         client.accept_admin(&rogue); // should panic
     }
@@ -108,4 +110,15 @@ mod test_admin_transfer {
         client.initialize(&admin, &None);
         client.propose_admin(&admin, &admin); // should panic
     }
-}
+    #[test]
+    #[should_panic(expected = "Error(Contract, #2)")]
+    fn test_initialize_panics_when_already_initialized() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register_contract(None, CredenceBond);
+        let client = crate::CredenceBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        client.initialize(&admin, &None);
+        client.initialize(&admin, &None);
+    }}

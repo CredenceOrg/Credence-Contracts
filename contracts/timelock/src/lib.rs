@@ -5,6 +5,14 @@ use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
 };
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 pub const fn min_delay_seconds() -> u64 {
     86_400
 }
@@ -49,6 +57,7 @@ pub struct TimelockContract;
 impl TimelockContract {
     /// Initialize the timelock contract with the admin address.
     pub fn initialize(e: Env, admin: Address) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
@@ -60,6 +69,7 @@ impl TimelockContract {
 
     /// Queue a new administrative operation to be executed after the delay.
     pub fn queue_operation(e: Env, proposer: Address, op_hash: BytesN<32>, delay: u64) -> u64 {
+        bump_instance_ttl(&e);
         proposer.require_auth();
         let admin: Address = e
             .storage()
@@ -124,6 +134,7 @@ impl TimelockContract {
 
     /// Execute a queued operation after its ETA has passed and before its grace period expires.
     pub fn execute_operation(e: Env, op_id: u64) {
+        bump_instance_ttl(&e);
         let mut op: QueuedOperation = e
             .storage()
             .instance()
@@ -166,6 +177,7 @@ impl TimelockContract {
 
     /// Cancel a pending operation in the queue. Only callable by admin.
     pub fn cancel_operation(e: Env, admin: Address, op_id: u64) {
+        bump_instance_ttl(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -196,11 +208,13 @@ impl TimelockContract {
 
     /// Get details of a queued operation.
     pub fn get_operation(e: Env, op_id: u64) -> Option<QueuedOperation> {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::Operation(op_id))
     }
 
     /// Check if an operation hash has already been executed.
     pub fn is_operation_executed(e: Env, op_hash: BytesN<32>) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::ExecutedOp(op_hash))
@@ -209,6 +223,7 @@ impl TimelockContract {
 
     /// Get the current admin address.
     pub fn get_admin(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Admin)
@@ -270,12 +285,12 @@ mod tests {
         assert_eq!(op.status, OperationStatus::Pending);
 
         // Before ETA: must fail
-        env.ledger().set_timestamp(op.eta - 1);
+        env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
 
         // At ETA: must succeed
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
         let op = client.get_operation(&op_id).unwrap();
@@ -293,7 +308,7 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
 
         // At expires_at: must succeed
-        env.ledger().set_timestamp(op.expires_at);
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at);
         client.execute_operation(&op_id);
     }
 
@@ -307,9 +322,27 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
 
         // At expires_at + 1: must fail
-        env.ledger().set_timestamp(op.expires_at + 1);
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_execute_operation_times_out_after_grace_period() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[6; 32]);
+        let delay = 86_400;
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
+
+        let op = client.get_operation(&op_id).unwrap();
+        assert_eq!(op.status, OperationStatus::Pending);
+        assert!(!client.is_operation_executed(&op_hash));
     }
 
     #[test]
@@ -321,7 +354,7 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
         // Try to queue same hash again: must fail
@@ -342,7 +375,7 @@ mod tests {
         assert_eq!(op.status, OperationStatus::Cancelled);
 
         // Try to execute cancelled: must fail
-        env.ledger().set_timestamp(op.eta);
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
         let res = client.try_execute_operation(&op_id);
         assert!(res.is_err());
     }

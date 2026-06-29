@@ -38,6 +38,11 @@ path = "benches/update_cost_baseline.rs"
 test = false
 required-features = ["gas-bench"]
 
+# Storage cost regression test. Runs as part of `cargo test` on every CI matrix.
+[[test]]
+name = "test_cost_regression"
+path = "tests/test_cost_regression.rs"
+
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }

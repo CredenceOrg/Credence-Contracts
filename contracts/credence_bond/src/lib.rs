@@ -3,18 +3,23 @@
 mod batch;
 mod claims;
 mod early_exit_penalty;
+pub mod emergency;
+mod emergency_drain;
 mod events;
 mod invariants;
 mod leverage;
 mod math;
 mod migration;
+mod normalization;
 mod nonce;
 mod parameters;
 mod rolling_bond;
+mod safe_token;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
 mod tiered_bond;
+mod token_integration;
 mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
@@ -23,12 +28,22 @@ mod weighted_attestation;
 #[path = "fuzz/test_weighted_attestation_rounding.rs"]
 mod test_weighted_attestation_rounding;
 
+#[cfg(test)]
+#[path = "fuzz/test_normalization_invariant.rs"]
+mod test_normalization_invariant;
+
 #[path = "types/mod.rs"]
 pub mod types;
 
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
+#[cfg(test)]
+mod test_helpers;
+
+/// Shared test setup utilities (mock token, bond registration).
+#[cfg(test)]
+pub mod test_helpers;
 
 /// Chaos testing suite for simulating host and token failures.
 #[cfg(test)]
@@ -51,6 +66,13 @@ mod test_claim_expiry_sweep;
 /// Tests for paginated reads — attestations, slash history, and pending claims.
 #[cfg(test)]
 mod test_pagination;
+/// Authentication boundary tests — every non-view fn must require an auth'd address.
+#[cfg(test)]
+mod test_auth;
+
+/// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
+#[cfg(test)]
+mod test_rolling_notice;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -80,6 +102,22 @@ pub struct IdentityBond {
     pub is_rolling: bool,
     pub withdrawal_requested_at: u64,
     pub notice_period_duration: u64,
+}
+
+/// Maximum number of attestations allowed in a single batch operation.
+/// Enforces a safe upper bound on CPU/memory resource usage to prevent exceeding Soroban transaction limits.
+pub const MAX_BATCH_ATTESTATION_SIZE: u32 = 64;
+
+/// Input item for a batch attestation operation.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AttestationBatchItem {
+    /// Address of the authorized attester (verifier).
+    pub attester: Address,
+    /// Opaque attestation payload.
+    pub attestation_data: String,
+    /// Nonce for replay prevention for this attester.
+    pub nonce: u64,
 }
 
 // Re-export attestation type for external callers.
@@ -143,6 +181,7 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
+    BorrowFrozen,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -186,6 +225,9 @@ pub struct TierThresholds {
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+/// Maximum persistent entry TTL (~6 months at 5 s/ledger; Soroban network cap).
+pub(crate) const PERSISTENT_TTL_MAX: u32 = 3_110_400;
 
 fn bump_instance_ttl(e: &Env) {
     e.storage()
@@ -264,73 +306,66 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the contract with admin authority.
     ///
     /// Errors:
     /// - `ContractError::AlreadyInitialized` if called more than once.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// client.initialize(&admin, None);  // or Some(registry_address) for trustless binding
-    /// ```
-    pub fn initialize(e: Env, admin: Address, registry_address: Option<Address>) {
+    pub fn initialize(e: Env, admin: Address, registry: Option<Address>) {
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
-
-        // If a registry address is provided, attempt trustless self-registration.
-        // This removes the trust assumption that an admin must manually register the bond.
-        if let Some(registry) = registry_address {
-            // The bond calls the registry's register_trustless function with its identity.
-            // The identity is derived from the admin address for this reference implementation.
-            // In production, this could be a separate identity parameter.
-            let _ = e.invoke_contract::<()>(
+        if let Some(registry) = registry {
+            e.invoke_contract::<()>(
                 &registry,
                 &Symbol::new(&e, "register_trustless"),
                 soroban_sdk::vec![&e, admin.into_val(&e)],
             );
-            // Ignore errors during registration to maintain backward compatibility
-            // and allow bonds to be initialized without a registry.
         }
+    }
+
+    /// Initialize and attempt trustless self-registration with a registry.
+    pub fn initialize_with_registry(e: Env, admin: Address, registry: Address) {
+        Self::initialize(e.clone(), admin, Some(registry));
+    }
+
+    /// Configure the token contract used for bond custody and withdrawals.
+    ///
+    /// Errors:
+    /// - `ContractError::NotInitialized` when admin is not set.
+    /// - `ContractError::NotAdmin` when caller is not the configured admin.
+    pub fn set_token(e: Env, admin: Address, token: Address) {
+        token_integration::set_token(&e, &admin, &token);
     }
 
     /// Return a structured snapshot of all contract configuration.
     ///
-    /// Read-only; no auth required. Panics with `ContractError::NotInitialized`
-    /// when the contract has not been initialized yet.
+    /// Read-only; no auth required. Returns `None` when the contract has not
+    /// been initialized yet, so callers can safely read the entrypoint without
+    /// tripping a panic on a fresh deployment.
     ///
     /// See also: [`docs/bond-introspection.md`](../../../docs/bond-introspection.md)
-    pub fn describe_config(e: Env) -> BondConfigView {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+    pub fn describe_config(e: Env) -> Option<BondConfigView> {
+        let admin: Address = e.storage().instance().get(&DataKey::Admin)?;
 
         let early_exit: Option<early_exit_penalty::EarlyExitConfig> =
             e.storage().instance().get(&DataKey::EarlyExitConfig);
 
         let (weight_multiplier_bps, weight_max) = weighted_attestation::get_weight_config(&e);
 
-        BondConfigView {
+        Some(BondConfigView {
             admin,
             early_exit_treasury: early_exit.as_ref().map(|c| c.treasury.clone()),
             early_exit_penalty_bps: early_exit.as_ref().map(|c| c.penalty_bps),
             weight_multiplier_bps,
             weight_max,
-        }
+        })
     }
 
     /// Return a snapshot of the bond state for `identity`, or `None` if no bond exists.
@@ -537,6 +572,9 @@ impl CredenceBond {
     ) -> IdentityBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
+        if token_integration::has_token(&e) {
+            token_integration::transfer_into_contract(&e, &identity, amount);
+        }
         // chaos: ledger timestamp can be manipulated in tests to verify duration invariants.
         let bond_start = e.ledger().timestamp();
 
@@ -720,6 +758,154 @@ impl CredenceBond {
         attestation
     }
 
+    /// Add multiple weighted attestations for a subject atomically.
+    /// Fans in up to MAX_BATCH_ATTESTATION_SIZE attestations, enforces weight caps inside the batch,
+    /// and emits a single aggregate event.
+    pub fn add_attestation_batch(
+        e: Env,
+        subject: Address,
+        items: Vec<AttestationBatchItem>,
+    ) -> Vec<Attestation> {
+        let n = items.len();
+        if n == 0 {
+            panic_with_error!(e, ContractError::EmptyBatch);
+        }
+        if n > MAX_BATCH_ATTESTATION_SIZE {
+            panic_with_error!(e, ContractError::BatchTooLarge);
+        }
+
+        // Verify all attesters in the batch are unique.
+        for i in 0..n {
+            let item_i = items.get(i).unwrap();
+            for j in (i + 1)..n {
+                let item_j = items.get(j).unwrap();
+                if item_i.attester == item_j.attester {
+                    panic!("duplicate attester in batch");
+                }
+            }
+        }
+
+        // Enforce authorization, registration, and consume nonces
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            item.attester.require_auth();
+
+            let is_authorized = e
+                .storage()
+                .instance()
+                .get(&DataKey::Attester(item.attester.clone()))
+                .unwrap_or(false);
+            if !is_authorized {
+                panic_with_error!(e, ContractError::UnauthorizedAttester);
+            }
+
+            nonce::consume_nonce(&e, &item.attester, item.nonce);
+        }
+
+        // Check duplicate key in storage
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            let dedup_key = types::AttestationDedupKey {
+                verifier: item.attester.clone(),
+                identity: subject.clone(),
+                attestation_data: item.attestation_data.clone(),
+            };
+            if e.storage().instance().has(&dedup_key) {
+                panic_with_error!(e, ContractError::DuplicateAttestation);
+            }
+        }
+
+        // Get weight configuration
+        let (_, max_weight) = weighted_attestation::get_weight_config(&e);
+
+        // Compute weights, validate weight limits, and accumulate total weight.
+        let mut total_weight = 0u64;
+        let mut weights = Vec::new(&e);
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            let weight = weighted_attestation::compute_weight(&e, &item.attester);
+            types::Attestation::validate_weight(weight);
+            total_weight = total_weight
+                .checked_add(weight as u64)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+            weights.push_back(weight);
+        }
+
+        if total_weight > max_weight as u64 {
+            panic_with_error!(e, ContractError::AttestationWeightExceedsMax);
+        }
+
+        // Read SubjectAttestations once
+        let subject_key = DataKey::SubjectAttestations(subject.clone());
+        let mut subject_attestations: Vec<u64> = e
+            .storage()
+            .instance()
+            .get(&subject_key)
+            .unwrap_or(Vec::new(&e));
+
+        let mut added = Vec::new(&e);
+        let counter_key = DataKey::AttestationCounter;
+        let mut next_id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
+
+        for i in 0..n {
+            let item = items.get(i).unwrap();
+            let weight = weights.get(i).unwrap();
+            let id = next_id;
+            next_id = next_id
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+
+            let attestation = types::Attestation {
+                id,
+                verifier: item.attester.clone(),
+                identity: subject.clone(),
+                timestamp: e.ledger().timestamp(),
+                weight,
+                attestation_data: item.attestation_data.clone(),
+                revoked: false,
+            };
+
+            // Set attestation and dedup key
+            e.storage()
+                .instance()
+                .set(&DataKey::Attestation(id), &attestation);
+
+            let dedup_key = types::AttestationDedupKey {
+                verifier: item.attester.clone(),
+                identity: subject.clone(),
+                attestation_data: item.attestation_data.clone(),
+            };
+            e.storage().instance().set(&dedup_key, &true);
+
+            subject_attestations.push_back(id);
+            added.push_back(attestation);
+        }
+
+        // Write updated ID counter and SubjectAttestations once
+        e.storage().instance().set(&counter_key, &next_id);
+        e.storage()
+            .instance()
+            .set(&subject_key, &subject_attestations);
+
+        // Update SubjectAttestationCount
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&count_key, &count.saturating_add(n));
+
+        bump_instance_ttl(&e);
+
+        // Emit aggregate event
+        e.events().publish(
+            (Symbol::new(&e, "attestations_batch_added"), subject.clone()),
+            (added.clone(),),
+        );
+
+        invariants::assert_self_consistent_for_subject(&e, &subject);
+        added
+    }
+
     /// Revoke an attestation (only the original attester can revoke). Requires correct nonce.
     pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
         attester.require_auth();
@@ -749,6 +935,22 @@ impl CredenceBond {
             attestation_data: attestation.attestation_data.clone(),
         };
         e.storage().instance().remove(&dedup_key);
+
+        // Remove the ID from SubjectAttestations so list length stays in sync with count.
+        let subject_list_key = DataKey::SubjectAttestations(attestation.identity.clone());
+        let ids: Vec<u64> = e
+            .storage()
+            .instance()
+            .get(&subject_list_key)
+            .unwrap_or(Vec::new(&e));
+        let mut new_ids = Vec::new(&e);
+        for i in 0..ids.len() {
+            let v = ids.get(i).unwrap();
+            if v != attestation_id {
+                new_ids.push_back(v);
+            }
+        }
+        e.storage().instance().set(&subject_list_key, &new_ids);
 
         let count_key = DataKey::SubjectAttestationCount(attestation.identity.clone());
         let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
@@ -975,10 +1177,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::AdminUnchanged);
         }
 
-        let zero_str = soroban_sdk::String::from_str(
-            &e,
-            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-        );
+        let zero_str =
+            soroban_sdk::String::from_str(&e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
         if new_admin.to_string() == zero_str {
             panic_with_error!(e, ContractError::InvalidAdminAddress);
         }
@@ -996,13 +1196,18 @@ impl CredenceBond {
     }
 
     /// Withdraw from bond after lock-up period has ended.
-    pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
+    pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        // auth: bond owner must authorize withdrawals.
+        identity.require_auth();
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::NotBondOwner);
+        }
         bump_instance_ttl(&e);
 
         let now = e.ledger().timestamp();
@@ -1037,54 +1242,6 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::InsufficientBalance);
         }
 
-        bond.bonded_amount = bond
-            .bonded_amount
-            .checked_sub(amount)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
-        if bond.slashed_amount > bond.bonded_amount {
-            panic_with_error!(e, ContractError::SlashExceedsBond);
-        }
-
-        e.storage().instance().set(&key, &bond);
-        bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e);
-        bond
-    }
-
-    /// Withdraw before lock-up end; applies a time-decayed penalty.
-    pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
-
-        let available = bond
-            .bonded_amount
-            .checked_sub(bond.slashed_amount)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::SlashExceedsBond));
-        if amount > available {
-            panic_with_error!(e, ContractError::InsufficientBalance);
-        }
-
-        let now = e.ledger().timestamp();
-        let end = bond.bond_start.saturating_add(bond.bond_duration);
-        if now >= end {
-            panic_with_error!(e, ContractError::LockupNotExpired);
-        }
-
-        let (treasury, penalty_bps) = early_exit_penalty::get_config(&e);
-        let remaining = end.saturating_sub(now);
-        let penalty = early_exit_penalty::calculate_penalty(
-            amount,
-            remaining,
-            bond.bond_duration,
-            penalty_bps,
-        );
-        early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &treasury);
-
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         bond.bonded_amount = bond
             .bonded_amount
@@ -1102,6 +1259,111 @@ impl CredenceBond {
         bond
     }
 
+    /// Withdraw before lock-up end; applies a time-decayed penalty.
+    ///
+    /// Errors:
+    /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
+    ///   configuration exists. The call will revert instead of silently dropping
+    ///   the penalty amount.
+    /// - `ContractError::Underflow` if arithmetic underflows.
+    /// - `ContractError::Overflow` if arithmetic overflows.
+    /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
+    ///   the gross withdrawal exactly into treasury penalty plus identity payout.
+    pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond;
+
+        Self::acquire_lock(&e);
+
+        let mut bond: IdentityBond = e
+            .storage()
+            .instance()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::NotBondOwner);
+        }
+        bump_instance_ttl(&e);
+
+        let available = bond
+            .bonded_amount
+            .checked_sub(bond.slashed_amount)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::SlashExceedsBond));
+        if amount > available {
+            panic_with_error!(e, ContractError::InsufficientBalance);
+        }
+
+        let now = e.ledger().timestamp();
+        let end = bond.bond_start.saturating_add(bond.bond_duration);
+        if now >= end {
+            panic_with_error!(e, ContractError::LockupNotExpired);
+        }
+
+        let cfg = early_exit_penalty::get_config(&e).unwrap_or_else(|_| {
+            Self::release_lock(&e);
+            panic_with_error!(&e, ContractError::EarlyExitConfigNotSet)
+        });
+        let penalty_bps = cfg.penalty_bps;
+
+        let remaining = end.saturating_sub(now);
+        let penalty = early_exit_penalty::calculate_penalty(
+            amount,
+            remaining,
+            bond.bond_duration,
+            penalty_bps,
+        );
+
+        // Use checked subtraction to ensure arithmetic correctness: penalty + net == amount
+        let net_amount = amount
+            .checked_sub(penalty)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
+        let split_total = net_amount
+            .checked_add(penalty)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+        if penalty < 0 || penalty > amount || split_total != amount {
+            panic_with_error!(e, ContractError::InvariantViolation);
+        }
+
+        // Emit event before transfers for audit trail consistency
+        early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &cfg.treasury);
+
+        // Update bond state before external calls (CEI pattern)
+        let _original_bonded_amount = bond.bonded_amount;
+
+        let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
+        if bond.slashed_amount > bond.bonded_amount {
+            Self::release_lock(&e);
+            panic_with_error!(e, ContractError::SlashExceedsBond);
+        }
+        let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+
+        e.storage().instance().set(&key, &bond);
+
+        // Transfer penalty to treasury
+        if penalty > 0 {
+            crate::token_integration::transfer_from_contract_with_source(
+                &e,
+                &cfg.treasury,
+                penalty,
+                crate::token_integration::FundSource::ProtocolFee,
+            );
+        }
+
+        // Transfer net amount to user
+        if net_amount > 0 {
+            crate::token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
+        }
+
+        Self::release_lock(&e);
+        invariants::assert_self_consistent(&e);
+
+        bond
+    }
+
     /// Request withdrawal for a rolling bond.
     ///
     /// Starts the notice period clock. After `notice_period_duration` seconds,
@@ -1113,13 +1375,18 @@ impl CredenceBond {
     /// - `ContractError::WithdrawalAlreadyRequested` when already requested.
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
-    pub fn request_withdrawal(e: Env) -> IdentityBond {
+    pub fn request_withdrawal(e: Env, identity: Address) -> IdentityBond {
+        // auth: bond owner must authorize the withdrawal request.
+        identity.require_auth();
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::NotBondOwner);
+        }
         bump_instance_ttl(&e);
         if !bond.is_rolling {
             panic_with_error!(e, ContractError::NotRollingBond);
@@ -1142,13 +1409,18 @@ impl CredenceBond {
     /// No-op for non-rolling bonds or when a withdrawal has been requested.
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
-    pub fn renew_if_rolling(e: Env) -> IdentityBond {
+    pub fn renew_if_rolling(e: Env, identity: Address) -> IdentityBond {
+        // auth: bond owner must authorize renewal.
+        identity.require_auth();
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::NotBondOwner);
+        }
         if !bond.is_rolling {
             return bond;
         }
@@ -1195,18 +1467,29 @@ impl CredenceBond {
     /// - `ContractError::Overflow` when the addition would overflow `i128`.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        // auth: bond owner must authorize top-ups.
+        identity.require_auth();
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::NotBondOwner);
+        }
+
+        if token_integration::has_token(&e) {
+            token_integration::transfer_into_contract(&e, &bond.identity, amount);
+        }
 
         let new_bonded_amount = bond
             .bonded_amount
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+        let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
         // Validate the new total amount
         validation::validate_bond_amount(new_bonded_amount);
@@ -1228,13 +1511,18 @@ impl CredenceBond {
     /// - `ContractError::Overflow` when the new duration or end timestamp would overflow `u64`.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-    pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
+    pub fn extend_duration(e: Env, identity: Address, additional_duration: u64) -> IdentityBond {
+        // auth: bond owner must authorize duration extensions.
+        identity.require_auth();
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
             .instance()
             .get(&key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::NotBondOwner);
+        }
         bump_instance_ttl(&e);
 
         bond.bond_duration = bond
@@ -1758,6 +2046,160 @@ impl CredenceBond {
         let key = Symbol::new(e, "locked");
         e.storage().instance().get(&key).unwrap_or(false)
     }
+
+    // -----------------------------------------------------------------------
+    // Pause
+    // -----------------------------------------------------------------------
+
+    /// Pause the contract (single-admin path; no multisig threshold set).
+    ///
+    /// # Preconditions
+    /// - Caller must be the stored admin.
+    ///
+    /// # Errors
+    /// - Panics with `"not initialized"` when admin has not been set.
+    /// - Panics with `"not admin"` when caller is not the admin.
+    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        pausable::pause(&e, &caller)
+    }
+
+    /// Unpause the contract (single-admin path).
+    ///
+    /// # Preconditions
+    /// - Caller must be the stored admin.
+    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        pausable::unpause(&e, &caller)
+    }
+
+    /// Return whether the contract is currently paused.
+    pub fn is_paused(e: Env) -> bool {
+        pausable::is_paused(&e)
+    }
+
+    // -----------------------------------------------------------------------
+    // Emergency Drain
+    // -----------------------------------------------------------------------
+
+    /// Schedule an emergency drain of residual USDC to the treasury.
+    ///
+    /// Stores a drain ETA of `now + delay` (minimum [`emergency_drain::DRAIN_TIMELOCK_SECONDS`]).
+    /// The drain cannot be executed until `now >= eta`.
+    ///
+    /// # Preconditions
+    /// - Contract **must be paused** (call [`pause`](Self::pause) first).
+    /// - `admin` must be the stored administrator and must sign.
+    /// - `delay` must be ≥ 86 400 seconds (24 hours).
+    ///
+    /// # Errors
+    /// - `ContractError::NotInitialized` — contract not initialized.
+    /// - `ContractError::NotAdmin` — caller is not admin.
+    /// - `ContractError::EmergencyDrainNotPermitted` — contract not paused.
+    /// - `ContractError::TimelockNotReady` — delay below minimum.
+    pub fn schedule_emergency_drain(e: Env, admin: Address, delay: u64) {
+        // auth: admin must sign.
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        emergency_drain::schedule_drain(&e, &admin, delay);
+    }
+
+    /// Cancel a pending emergency drain schedule.
+    ///
+    /// Removes the stored ETA so a subsequent drain attempt requires
+    /// re-scheduling via [`schedule_emergency_drain`](Self::schedule_emergency_drain).
+    ///
+    /// # Preconditions
+    /// - `admin` must be the stored administrator and must sign.
+    pub fn cancel_emergency_drain(e: Env, admin: Address) {
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        emergency_drain::cancel_drain(&e, &admin);
+    }
+
+    /// Execute an emergency drain of `amount` USDC to `recipient` (treasury).
+    ///
+    /// This is the catastrophic-incident recovery path.  It is intentionally
+    /// narrow and layered with multiple independent security gates:
+    ///
+    /// 1. **Paused** — contract must be paused; prevents drain while live.
+    /// 2. **Timelock elapsed** — drain must have been scheduled at least
+    ///    [`emergency_drain::DRAIN_TIMELOCK_SECONDS`] seconds ago.
+    /// 3. **Admin auth** — only the configured admin may call this.
+    /// 4. **Treasury recipient** — `recipient` must equal the treasury address
+    ///    stored in the emergency config; any other destination is rejected.
+    ///
+    /// A [`emergency_drain::DrainRecord`] is written to persistent storage
+    /// (immutable, append-only) and an `emergency_drain` event is emitted.
+    ///
+    /// # Parameters
+    /// - `admin` — must be the stored admin and sign the transaction.
+    /// - `amount` — USDC amount to drain; must be > 0.
+    /// - `recipient` — must equal `emergency_config.treasury`.
+    ///
+    /// # Returns
+    /// The assigned drain record id (monotonic, starting at 1).
+    ///
+    /// # Errors
+    /// - `ContractError::NotInitialized` — contract not initialized.
+    /// - `ContractError::NotAdmin` — caller is not admin.
+    /// - `ContractError::EmergencyDrainNotPermitted` — not paused, or no ETA scheduled.
+    /// - `ContractError::TimelockNotReady` — ETA not yet reached.
+    /// - Panics with `"amount must be positive"` — `amount <= 0`.
+    /// - Panics with `"recipient must be treasury"` — wrong recipient.
+    pub fn emergency_drain_to_treasury(
+        e: Env,
+        admin: Address,
+        amount: i128,
+        recipient: Address,
+    ) -> u64 {
+        // auth: admin must sign.
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        // Resolve treasury from emergency config.
+        let cfg = crate::emergency::get_config(&e);
+        let treasury = cfg.treasury;
+
+        emergency_drain::execute_drain(&e, &admin, amount, &recipient, &treasury)
+    }
+
+    /// Return the scheduled drain ETA (ledger timestamp), or `None` when not
+    /// yet scheduled.
+    pub fn get_drain_eta(e: Env) -> Option<u64> {
+        emergency_drain::get_drain_eta(&e)
+    }
+
+    /// Return the latest drain record id (0 = no drain executed yet).
+    pub fn get_latest_drain_id(e: Env) -> u64 {
+        emergency_drain::latest_drain_id(&e)
+    }
+
+    /// Retrieve a drain audit record by id.
+    ///
+    /// Panics when the id has not been assigned yet.
+    pub fn get_drain_record(e: Env, id: u64) -> emergency_drain::DrainRecord {
+        emergency_drain::get_drain_record(&e, id)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1987,12 +2429,41 @@ mod tests {
 }
 
 #[cfg(test)]
+mod test_early_exit_treasury_requirement {
+    use super::*;
+    use crate::test_helpers;
+    use soroban_sdk::testutils::Ledger as _;
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #210)")] // EarlyExitConfigNotSet
+    fn withdraw_early_panics_if_config_not_set() {
+        let e = Env::default();
+        let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+
+        // Create a bond but DO NOT set early exit config
+        client.create_bond(&identity, &10_000, &3600, &false, &0);
+
+        // Advance time slightly, but still within lockup
+        let mut ledger_info = e.ledger().get();
+        ledger_info.timestamp += 100;
+        e.ledger().set(ledger_info);
+
+        // This should panic because the early exit config (and thus treasury) is not set.
+        client.withdraw_early(&identity, &1000);
+    }
+}
+
+#[cfg(test)]
 mod test_bond_drift;
 
 /// Precision-loss regression tests for the early-exit penalty time-decay
 /// formula (dust-amount zero-penalty exploit).
 #[cfg(test)]
 mod test_early_exit_precision;
+
+#[cfg(test)]
+mod test_early_exit_penalty;
+
 
 /// Deliberately-divergent contract used by `test_differential` to verify the
 /// harness detects behavioural divergence.  Never shipped to mainnet.
@@ -2004,3 +2475,10 @@ pub mod test_access_control;
 /// plus a cross-contract divergence-detection smoke test.
 #[cfg(test)]
 mod test_differential;
+
+#[cfg(test)]
+mod test_attestation_batch;
+
+/// Regression tests for storage TTL bumps (issue #570).
+#[cfg(test)]
+mod test_storage_ttl;

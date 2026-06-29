@@ -1,4 +1,4 @@
-//! Chaos testing suite — bond contract host-function failure injection.
+﻿//! Chaos testing suite — bond contract host-function failure injection.
 //!
 //! # Injection catalogue (9 points)
 //!
@@ -336,7 +336,7 @@ mod tests {
         client.create_bond(&identity, &1000_i128, &86400_u64, &true, &3600_u64);
 
         // Request withdrawal at t=1000; earliest_withdraw = 1000 + 3600 = 4600.
-        client.request_withdrawal();
+        client.request_withdrawal(&identity);
 
         // Attempt withdrawal at t=1000 — notice period not elapsed → panic.
         client.withdraw_bond(&identity);

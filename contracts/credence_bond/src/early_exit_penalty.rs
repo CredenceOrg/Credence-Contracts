@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 use crate::DataKey;
 
@@ -31,14 +31,12 @@ pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
     );
 }
 
-pub fn get_config(e: &Env) -> (Address, u32) {
+pub fn get_config(e: &Env) -> Result<EarlyExitConfig, ContractError> {
     let key = DataKey::EarlyExitConfig;
-    let config: EarlyExitConfig = e
-        .storage()
+    e.storage()
         .instance()
         .get(&key)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    (config.treasury, config.penalty_bps)
+        .ok_or(ContractError::EarlyExitConfigNotSet)
 }
 
 pub fn calculate_penalty(amount: i128, remaining: u64, duration: u64, penalty_bps: u32) -> i128 {

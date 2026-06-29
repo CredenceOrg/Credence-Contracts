@@ -15,14 +15,21 @@ The security scanning pipeline runs automatically on every push and pull request
 ### Failure Conditions
 
 The pipeline will **FAIL** on:
-- Critical severity vulnerabilities in dependencies (cargo-audit)
+- Dependency vulnerabilities or audit warnings reported by `cargo audit --deny warnings`
 - Security lint violations (clippy with `-D warnings`)
 
 ### Warning Conditions
 
 The pipeline will **PASS WITH WARNINGS** on:
-- Medium/low severity vulnerabilities in dependencies
 - Unsafe code detected in contracts (informational only)
+
+### Pull Request Comments
+
+On pull requests, the dependency audit job posts or updates a single `cargo audit`
+comment. The comment includes the command that ran, vulnerability and warning
+counts, and a concise list of reported vulnerabilities with advisory IDs,
+affected crates, severity, patched versions, and advisory URLs. The full JSON
+report remains available as the `cargo-audit-report` workflow artifact.
 
 ## Running Scanners Locally
 
@@ -52,7 +59,7 @@ cargo audit
 # Generate JSON report
 cargo audit --json > audit-report.json
 
-# Check only for critical vulnerabilities
+# Match the CI dependency gate
 cargo audit --deny warnings
 ```
 
@@ -134,10 +141,13 @@ cargo geiger --output-format Json > geiger-report.json
 ```
 
 **Severity levels:**
-- `critical` - Immediate action required, pipeline fails
+- `critical` - Immediate action required
 - `high` - Review and plan remediation
 - `medium` - Monitor and update when convenient
 - `low` - Informational
+
+CI treats every vulnerability and audit warning as blocking because the workflow
+runs `cargo audit --deny warnings`.
 
 **Action items:**
 - Update affected dependencies to patched versions
@@ -327,15 +337,16 @@ cargo audit
 
 ### cargo-audit Thresholds
 
-Edit the "Check for critical vulnerabilities" step in `security.yml`:
+The dependency gate is intentionally strict:
 
-```yaml
-# Current: Fail only on critical
-CRITICAL_COUNT=$(jq '[.vulnerabilities.list[] | select(.advisory.severity == "critical")] | length' audit-report.json)
-
-# Option: Fail on critical OR high
-HIGH_CRITICAL_COUNT=$(jq '[.vulnerabilities.list[] | select(.advisory.severity == "critical" or .advisory.severity == "high")] | length' audit-report.json)
+```bash
+cargo audit --deny warnings
 ```
+
+Do not relax this in the workflow to count only selected severities. If a finding
+is not exploitable in this repository, document the rationale in `audit.toml`
+with the narrowest advisory ignore possible so future scans remain blocking for
+new vulnerabilities.
 
 ### Clippy Thresholds
 

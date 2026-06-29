@@ -18,6 +18,7 @@ use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
+use soroban_sdk::String;
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
@@ -26,6 +27,13 @@ pub mod verifier;
 pub use domain::{DelegatedActionPayload, DomainTag};
 pub use pausable::PauseProposalView;
 pub use verifier::SchemeTag;
+
+/// Monotonic counter for intentional on-chain ABI (`contractspecv0`) changes.
+///
+/// Increment this whenever the pinned spec snapshot in
+/// `tests/spec_xdr_regression.rs` is refreshed so CI can distinguish deliberate
+/// interface bumps from accidental drift.
+pub const CONTRACT_SPEC_VERSION: u32 = 1;
 
 // ---------------------------------------------------------------------------
 // Contract types
@@ -176,6 +184,14 @@ pub enum DataKey {
 // Contract implementation
 // ---------------------------------------------------------------------------
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 #[contract]
 pub struct CredenceDelegation;
 
@@ -207,8 +223,14 @@ pub const MAX_DELEGATION_DURATION: u64 = 365 * 24 * 60 * 60;
 
 #[contractimpl]
 impl CredenceDelegation {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the contract with an admin address.
     pub fn initialize(e: Env, admin: Address) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
@@ -250,6 +272,7 @@ impl CredenceDelegation {
         expires_at: u64,
         nonce: u64,
     ) -> Delegation {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
@@ -277,6 +300,7 @@ impl CredenceDelegation {
         delegation_type: DelegationType,
         nonce: u64,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
@@ -288,6 +312,7 @@ impl CredenceDelegation {
 
     /// Revoke an attestation-type delegation. Only the original attester can revoke and must provide the correct current nonce.
     pub fn revoke_attestation(e: Env, attester: Address, subject: Address, nonce: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         attester.require_auth();
 
@@ -336,6 +361,7 @@ impl CredenceDelegation {
         expires_at: u64,
         payload: DelegatedActionPayload,
     ) -> Delegation {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
@@ -388,6 +414,7 @@ impl CredenceDelegation {
         delegation_type: DelegationType,
         payload: DelegatedActionPayload,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
@@ -426,6 +453,7 @@ impl CredenceDelegation {
         subject: Address,
         payload: DelegatedActionPayload,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         attester.require_auth();
 
@@ -474,6 +502,7 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
     ) -> DelegationSummary {
+        bump_instance_ttl(&e);
         let d = Self::get_delegation(e.clone(), owner, delegate, delegation_type);
         let now = e.ledger().timestamp();
         let grace = Self::revocation_grace_period(&e);
@@ -509,6 +538,7 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
 
         let key = DataKey::Delegation(owner.clone(), delegate.clone(), delegation_type.clone());
@@ -535,6 +565,7 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
     ) -> Delegation {
+        bump_instance_ttl(&e);
         let key = DataKey::Delegation(owner, delegate, delegation_type);
         let d: Delegation = Self::load_delegation(&e, &key)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::DelegationNotFound));
@@ -558,6 +589,7 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
     ) -> bool {
+        bump_instance_ttl(&e);
         let key = DataKey::Delegation(owner, delegate, delegation_type);
         match Self::load_delegation(&e, &key) {
             Some(d) => {
@@ -574,6 +606,7 @@ impl CredenceDelegation {
         attester: Address,
         subject: Address,
     ) -> AttestationStatus {
+        bump_instance_ttl(&e);
         let key = DataKey::Delegation(attester, subject, DelegationType::Attestation);
         match Self::load_delegation(&e, &key) {
             Some(d) => {
@@ -595,6 +628,7 @@ impl CredenceDelegation {
     /// status reporting. Only the admin may call. A value of `0` restores the
     /// default hard-cliff expiry with unlimited post-expiry revocation.
     pub fn set_revocation_grace_period(e: Env, admin: Address, grace_seconds: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         admin.require_auth();
         Self::require_admin(&e, &admin);
@@ -605,12 +639,14 @@ impl CredenceDelegation {
 
     /// Return the configured post-expiry grace window in seconds (`0` = default).
     pub fn get_revocation_grace_period(e: Env) -> u64 {
+        bump_instance_ttl(&e);
         Self::revocation_grace_period(&e)
     }
 
     /// Return the current nonce for `identity`.  Relayers query this before
     /// building the off-chain payload.
     pub fn get_nonce(e: Env, identity: Address) -> u64 {
+        bump_instance_ttl(&e);
         nonce::get_nonce(&e, &identity)
     }
 
@@ -624,6 +660,7 @@ impl CredenceDelegation {
     /// - Nonce remains strictly monotonic (`new_nonce` must be greater).
     /// - Range size is capped to keep gas predictable.
     pub fn invalidate_nonce_range(e: Env, identity: Address, new_nonce: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         identity.require_auth();
         let (from_nonce, to_nonce) =
@@ -658,6 +695,7 @@ impl CredenceDelegation {
     /// * `NotAdmin` - if `admin` is not the contract admin
     /// * `UnknownScheme` - if scheme is not a recognized value
     pub fn register_verifier(e: Env, admin: Address, scheme: u32, verifier_id: Address) {
+        bump_instance_ttl(&e);
         admin.require_auth();
 
         // Check that only the admin can register verifiers
@@ -694,6 +732,7 @@ impl CredenceDelegation {
     /// Clients can use this to check scheme support before submitting
     /// delegated payloads.
     pub fn get_verifier(e: Env, scheme: u32) -> Option<Address> {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::Verifier(scheme))
     }
 
@@ -702,30 +741,37 @@ impl CredenceDelegation {
     // -----------------------------------------------------------------------
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
@@ -744,6 +790,7 @@ impl CredenceDelegation {
         proposal_id: u64,
         signers: Vec<Address>,
     ) -> PauseProposalView {
+        bump_instance_ttl(&e);
         pausable::get_pause_proposal_state(&e, proposal_id, &signers)
     }
 
@@ -758,6 +805,7 @@ impl CredenceDelegation {
     /// instead. This entry point exists solely for backward compatibility with
     /// clients that persisted counter-based IDs before the migration.
     pub fn get_proposal_by_legacy_id(e: Env, legacy_id: u64) -> u32 {
+        bump_instance_ttl(&e);
         pausable::get_proposal_by_legacy_id(&e, legacy_id)
             .unwrap_or_else(|err| panic_with_error!(&e, err))
     }
@@ -968,3 +1016,6 @@ mod test_expiry_boundary;
 
 #[cfg(test)]
 mod test_verifier_dispatch;
+
+#[cfg(test)]
+mod test_auth;

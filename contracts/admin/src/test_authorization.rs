@@ -1,4 +1,5 @@
 use crate::*;
+use credence_errors::Role;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 fn setup_env() -> (Env, Address, Address) {
@@ -28,11 +29,12 @@ fn test_super_admin_can_add_admin() {
         );
     });
 
-    assert!(
+    assert_eq!(
         env.as_contract(&contract_address, || AdminContract::is_admin(
             env.clone(),
             new_admin
-        ))
+        )),
+        Role::Admin
     );
 }
 
@@ -87,11 +89,12 @@ fn test_admin_can_add_operator() {
         );
     });
 
-    assert!(
+    assert_eq!(
         env.as_contract(&contract_address, || AdminContract::is_admin(
             env.clone(),
             operator
-        ))
+        )),
+        Role::Admin
     );
 }
 
@@ -140,11 +143,12 @@ fn test_super_admin_can_remove_admin() {
         AdminContract::remove_admin(env.clone(), super_admin.clone(), admin.clone());
     });
 
-    assert!(
-        !env.as_contract(&contract_address, || AdminContract::is_admin(
+    assert_eq!(
+        env.as_contract(&contract_address, || AdminContract::is_admin(
             env.clone(),
             admin
-        ))
+        )),
+        Role::User
     );
 }
 
@@ -205,11 +209,12 @@ fn test_admin_can_remove_operator() {
         AdminContract::remove_admin(env.clone(), admin.clone(), operator.clone());
     });
 
-    assert!(
-        !env.as_contract(&contract_address, || AdminContract::is_admin(
+    assert_eq!(
+        env.as_contract(&contract_address, || AdminContract::is_admin(
             env.clone(),
             operator
-        ))
+        )),
+        Role::User
     );
 }
 

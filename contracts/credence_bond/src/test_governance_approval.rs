@@ -58,7 +58,8 @@ fn test_initialize_governance_unauthorized() {
 fn test_propose_slash() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _identity) = setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     let id = client.propose_slash(&admin, &100_i128);
     assert_eq!(id, 0);
     let prop = client.get_slash_proposal(&id);
@@ -75,7 +76,8 @@ fn test_propose_slash() {
 fn test_vote_approve_and_execute() {
     let e = Env::default();
     let g1 = Address::generate(&e);
-    let (client, admin, _identity) = setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
+    let (client, admin, _identity) =
+        setup_with_bond_and_governance(&e, core::slice::from_ref(&g1), 5100, 1);
     let _id = client.propose_slash(&admin, &100_i128);
     client.governance_vote(&g1, &0_u64, &true);
     let bond = client.execute_slash_with_governance(&admin, &0_u64);
@@ -171,4 +173,59 @@ fn test_only_proposer_executes() {
     client.governance_vote(&g1, &0_u64, &true);
     client.governance_vote(&g2, &0_u64, &true);
     client.execute_slash_with_governance(&g1, &0_u64);
+}
+
+// ============================================================================
+// Regression: checked arithmetic in quorum calculation (issue fix)
+// ============================================================================
+
+/// `is_approved` computes `total * quorum_bps / BPS_DENOMINATOR`.
+/// Before the fix this used bare `*` and `/` operators; the fix uses
+/// `.checked_mul()` / `.checked_div()` surfacing `ContractError::Overflow`.
+///
+/// This test verifies that a 3-of-3 approval with `quorum_bps = 10_000`
+/// (100 %) passes correctly — confirming the refactoring does not change the
+/// gate semantics.
+#[test]
+fn test_quorum_checked_mul_div_exact_100_percent() {
+    let e = Env::default();
+    let g1 = Address::generate(&e);
+    let g2 = Address::generate(&e);
+    let g3 = Address::generate(&e);
+    let (client, admin, _) =
+        setup_with_bond_and_governance(&e, &[g1.clone(), g2.clone(), g3.clone()], 10_000, 3);
+
+    let _id = client.propose_slash(&admin, &100_i128);
+    client.governance_vote(&g1, &0_u64, &true);
+    client.governance_vote(&g2, &0_u64, &true);
+    client.governance_vote(&g3, &0_u64, &true);
+
+    let bond = client.execute_slash_with_governance(&admin, &0_u64);
+    assert_eq!(bond.slashed_amount, 100);
+}
+
+/// With `quorum_bps = 5_001` (~50.01 %) and 3 governors, the quorum threshold
+/// is `ceil(3 * 5_001 / 10_000)` = 2.  Two approvals must suffice; one must not.
+///
+/// Before the fix the bare `*` could wrap silently in release builds if `total`
+/// were large enough; the fix surfaces `ContractError::Overflow` instead.
+/// At small governor counts the arithmetic is well within range, verifying
+/// the happy path is unchanged.
+#[test]
+fn test_quorum_checked_mul_div_majority_threshold() {
+    let e = Env::default();
+    let g1 = Address::generate(&e);
+    let g2 = Address::generate(&e);
+    let g3 = Address::generate(&e);
+    // 5_001 bps ≈ 50.01 % — requires 2 out of 3 governors.
+    let (client, admin, _) =
+        setup_with_bond_and_governance(&e, &[g1.clone(), g2.clone(), g3.clone()], 5_001, 1);
+
+    let _id = client.propose_slash(&admin, &50_i128);
+    client.governance_vote(&g1, &0_u64, &true);
+    client.governance_vote(&g2, &0_u64, &true);
+    // g3 abstains — 2 approve out of 3, majority holds.
+
+    let bond = client.execute_slash_with_governance(&admin, &0_u64);
+    assert_eq!(bond.slashed_amount, 50);
 }

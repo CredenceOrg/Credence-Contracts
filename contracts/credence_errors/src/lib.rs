@@ -15,6 +15,8 @@
 )]
 
 use soroban_sdk::contracterror;
+/// Project-wide version constant.
+pub const VERSION: &str = "0.1.0";
 
 /// @title  ErrorCategory
 /// @notice Groups errors by domain for monitoring, alerting, and dashboards.
@@ -270,6 +272,29 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     TreasuryNotConfigured = 223,
 
+    /// Pagination cursor is out of range (cursor >= registry_slots).
+    /// Triggered by: `scan_liquidation_candidates` when the supplied cursor
+    /// equals or exceeds the current registry slot count. Accepting
+    /// cursor == registry_slots would silently return a done=true result,
+    /// allowing a malicious keeper to synthesize a completed-scan response
+    /// without actually scanning any positions.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CursorOutOfRange = 226,
+
+    /// Batch input exceeds the maximum allowed size constant.
+    /// Prevents a single transaction from exhausting CPU/ledger budgets.
+    /// Replaces: panic!("batch too large")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BatchTooLarge = 227,
+
+    /// Batch input is empty (len == 0) when at least one item is required.
+    /// Replaces: panic!("empty batch")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmptyBatch = 228,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -430,6 +455,11 @@ pub enum ContractError {
     /// Timelock delay has not yet elapsed.
     TimelockNotReady = 112,
 
+    /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmergencyDrainNotPermitted = 113,
+
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -501,26 +531,26 @@ pub enum ContractError {
 ///         ContractError variant.
 /// @dev    Use this for structured logging, monitoring, and off-chain display.
 ///
-///         `is_recoverable()` classifies an error as recoverable when the
-///         caller can fix their input or wait for state to change and retry
-///         the same kind of operation successfully (e.g. `AlreadyInitialized`,
-///         `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
-///         for **fatal** errors that indicate either a code-level fault
-///         (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
-///         (`ReentrancyDetected`), a cryptographic failure
-///         (`VerificationFailed`), or a payload binding mismatch
-///         (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
-///         `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
-///         alerting) should use this signal to decide between
-///         "retry/ignore" vs "alert/halt".
+/// `is_recoverable()` classifies an error as recoverable when the
+/// caller can fix their input or wait for state to change and retry
+/// the same kind of operation successfully (e.g. `AlreadyInitialized`,
+/// `LockupNotExpired`, `InsufficientSignatures`). It returns `false`
+/// for **fatal** errors that indicate either a code-level fault
+/// (`Overflow`, `Underflow`, `InvariantViolation`), a security halt
+/// (`ReentrancyDetected`), a cryptographic failure
+/// (`VerificationFailed`), or a payload binding mismatch
+/// (`DomainMismatch`, `OwnerMismatch`, `TargetMismatch`,
+/// `ContractIdMismatch`). Off-chain clients (indexers, admin CLI,
+/// alerting) should use this signal to decide between
+/// "retry/ignore" vs "alert/halt".
 ///
-///         `is_recoverable()` is metadata only: it does not panic, does not
-///         allocate, and does not touch storage. It does not change any
-///         wire codes, categories, or description strings.
+/// `is_recoverable()` is metadata only: it does not panic, does not
+/// allocate, and does not touch storage. It does not change any
+/// wire codes, categories, or description strings.
 ///
-///         New `ContractError` variants must be added with an explicit
-///         classification — the matching `impl` is exhaustive and the test
-///         suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
+/// New `ContractError` variants must be added with an explicit
+/// classification - the matching `impl` is exhaustive and the test
+/// suite forces a decision for every variant (see `test_is_recoverable_exhaustive`).
 pub trait ErrorExt {
     /// @return The ErrorCategory bucket this error belongs to.
     fn category(&self) -> ErrorCategory;
@@ -574,6 +604,9 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
+            | ContractError::CursorOutOfRange
+            | ContractError::BatchTooLarge
+            | ContractError::EmptyBatch
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -616,13 +649,12 @@ impl ErrorExt for ContractError {
             ContractError::NoPendingAdmin
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
-            | ContractError::TimelockNotReady => ErrorCategory::Authorization,
+            | ContractError::TimelockNotReady
+            | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
-            ContractError::ContractCodeVerificationFailed => ErrorCategory::Registry,
-            ContractError::DelegationNotExpired => ErrorCategory::Delegation,
         }
     }
 
@@ -667,6 +699,7 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
+            ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -747,8 +780,8 @@ impl ErrorExt for ContractError {
             ContractError::InvalidAdminAddress => "Proposed admin is the zero or identity address",
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
+            ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
-            ContractError::ContractCodeVerificationFailed => "Contract code verification failed",
         }
     }
 
@@ -807,11 +840,15 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
-            | ContractError::BondAlreadyExists => true,
+            | ContractError::BondAlreadyExists
+            | ContractError::BatchTooLarge         // reduce batch size
+            | ContractError::EmptyBatch            // supply at least one item
+            => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
@@ -845,13 +882,13 @@ impl ErrorExt for ContractError {
             | ContractError::AlreadyRevoked            // idempotent
             | ContractError::DelegationExpiryTooLong   // shorten to MAX_DURATION
             | ContractError::VerifierAlreadyRegistered // idempotent
-            | ContractError::VerifierNotRegistered => true,
+            | ContractError::VerifierNotRegistered
+            | ContractError::DelegationNotExpired => true,
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationNotExpired => true,   // wait for expiry then retry
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0
@@ -868,8 +905,6 @@ impl ErrorExt for ContractError {
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
-            ContractError::ContractCodeVerificationFailed => false,
-            ContractError::DelegationNotExpired => false,
         }
     }
 }

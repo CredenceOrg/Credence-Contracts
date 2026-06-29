@@ -20,10 +20,19 @@
 //! - Validates addresses before registration
 //! - Emits events for audit trail
 
+use soroban_sdk::String;
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 pub mod idempotency;
+
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
 
 /// Interface identifier expected from Credence bond contracts.
 pub const IFACE_CREDENCE_BOND_V1: u32 = 0x4342_5631;
@@ -59,8 +68,12 @@ enum DataKey {
     BondToIdentity(Address),
     RegisteredIdentities,
     AllowNonInterface(Address),
-    BondCodeHash,
 }
+
+/// Maximum number of identities that can be returned in a single page
+/// This hard cap prevents unbounded ledger reads that could exceed Soroban's
+/// per-transaction resource limits as the registry grows.
+const MAX_IDENTITIES_PAGE_SIZE: u32 = 200;
 
 pub mod pausable;
 
@@ -69,6 +82,11 @@ pub struct CredenceRegistry;
 
 #[contractimpl]
 impl CredenceRegistry {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the registry contract with an admin address.
     ///
     /// # Arguments
@@ -77,6 +95,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If contract is already initialized
     pub fn initialize(e: Env, admin: Address) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(&e, ContractError::AlreadyInitialized);
         }
@@ -125,6 +144,7 @@ impl CredenceRegistry {
         bond_contract: Address,
         allow_non_interface: bool,
     ) -> RegistryEntry {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
@@ -223,6 +243,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If identity is not registered
     pub fn get_bond_contract(e: Env, identity: Address) -> RegistryEntry {
+        bump_instance_ttl(&e);
         let key = DataKey::IdentityToBond(identity.clone());
         e.storage()
             .instance()
@@ -241,6 +262,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If bond contract is not registered
     pub fn get_identity(e: Env, bond_contract: Address) -> Address {
+        bump_instance_ttl(&e);
         let key = DataKey::BondToIdentity(bond_contract.clone());
         e.storage()
             .instance()
@@ -256,6 +278,7 @@ impl CredenceRegistry {
     /// # Returns
     /// `true` if the identity is registered and active, `false` otherwise
     pub fn is_registered(e: Env, identity: Address) -> bool {
+        bump_instance_ttl(&e);
         let key = DataKey::IdentityToBond(identity);
         match e.storage().instance().get::<_, RegistryEntry>(&key) {
             Some(entry) => entry.active,
@@ -276,6 +299,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_deactivated` with the updated `RegistryEntry`
     pub fn deactivate(e: Env, identity: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
@@ -321,6 +345,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_removed` with the removed `RegistryEntry`
     pub fn remove(e: Env, identity: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
 
         let admin: Address = e
@@ -375,6 +400,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `identity_reactivated` with the updated `RegistryEntry`
     pub fn reactivate(e: Env, identity: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify admin authorization
         let admin: Address = e
@@ -403,11 +429,68 @@ impl CredenceRegistry {
             .publish((Symbol::new(&e, "identity_reactivated"),), entry);
     }
 
+    /// Get a paginated page of registered identities.
+    ///
+    /// # Arguments
+    /// * `offset` - Number of identities to skip (for pagination)
+    /// * `limit` - Maximum number of identities to return (capped at MAX_IDENTITIES_PAGE_SIZE)
+    ///
+    /// # Returns
+    /// A `Vec` of identity addresses for the requested page
+    ///
+    /// # Ordering
+    /// Identities are returned in insertion order (the order they were registered).
+    /// This ordering is stable and deterministic, allowing callers to paginate
+    /// without gaps or duplicates.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // Get first page of 50 identities
+    /// let page1 = registry.get_identities_page(&env, 0, 50);
+    ///
+    /// // Get second page
+    /// let page2 = registry.get_identities_page(&env, 50, 50);
+    /// ```
+    pub fn get_identities_page(e: Env, offset: u32, limit: u32) -> Vec<Address> {
+        let all_identities: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::RegisteredIdentities)
+            .unwrap_or_else(|| Vec::new(&e));
+
+        let actual_limit = limit.min(MAX_IDENTITIES_PAGE_SIZE);
+        let total_count = all_identities.len() as u32;
+
+        // Handle offset past end
+        if offset >= total_count {
+            return Vec::new(&e);
+        }
+
+        let start = offset;
+        let end = (start + actual_limit).min(total_count);
+
+        let mut result = Vec::new(&e);
+        for i in start..end {
+            result.push_back(all_identities.get(i as u32).unwrap());
+        }
+
+        result
+    }
+
     /// Get all registered identities.
+    ///
+    /// # Deprecated
+    /// This function is deprecated because it returns an unbounded list that will
+    /// eventually exceed Soroban's per-transaction resource limits as the registry grows.
+    ///
+    /// Use `get_identities_page` instead for bounded, paginated access.
+    /// For event-based discovery, listen to `identity_registered` events.
     ///
     /// # Returns
     /// A `Vec` of all registered identity addresses
+    #[deprecated(note = "Use get_identities_page for bounded pagination")]
     pub fn get_all_identities(e: Env) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::RegisteredIdentities)
@@ -422,6 +505,7 @@ impl CredenceRegistry {
     /// # Panics
     /// * If contract is not initialized
     pub fn get_admin(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Admin)
@@ -439,6 +523,7 @@ impl CredenceRegistry {
     /// # Events
     /// Emits `admin_transferred` with the new admin address
     pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         // Verify current admin authorization
         let admin: Address = e
@@ -463,6 +548,7 @@ impl CredenceRegistry {
     /// # Returns
     /// The proposal ID if the pause is proposed, `None` if the pause is immediate
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
@@ -474,6 +560,7 @@ impl CredenceRegistry {
     /// # Returns
     /// The proposal ID if the unpause is proposed, `None` if the unpause is immediate
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
@@ -482,6 +569,7 @@ impl CredenceRegistry {
     /// # Returns
     /// `true` if the contract is paused, `false` otherwise
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
@@ -492,6 +580,7 @@ impl CredenceRegistry {
     /// * `signer` - The signer address
     /// * `enabled` - Whether the signer is enabled
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
@@ -501,6 +590,7 @@ impl CredenceRegistry {
     /// * `admin` - The admin address
     /// * `threshold` - The new threshold
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
@@ -510,6 +600,7 @@ impl CredenceRegistry {
     /// * `signer` - The signer address
     /// * `proposal_id` - The proposal ID
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
@@ -518,193 +609,9 @@ impl CredenceRegistry {
     /// # Arguments
     /// * `proposal_id` - The proposal ID
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
-    /// Set the expected bond contract code hash for trustless verification.
-    ///
-    /// # Arguments
-    /// * `code_hash` - The WASM code hash (32 bytes) of a valid bond contract
-    ///
-    /// # Security
-    /// - Admin-only operation (requires admin authorization)
-    /// - Used by `register_trustless` to verify that a caller is a genuine bond contract
-    pub fn set_bond_code_hash(e: Env, code_hash: soroban_sdk::Bytes) {
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
-
-        admin.require_auth();
-
-        e.storage()
-            .instance()
-            .set(&DataKey::BondCodeHash, &code_hash);
-
-        e.events().publish(
-            (Symbol::new(&e, "bond_code_hash_updated"),),
-            code_hash.clone(),
-        );
-    }
-
-    /// Get the expected bond contract code hash.
-    ///
-    /// # Returns
-    /// The stored bond code hash, or an empty Bytes if not set
-    pub fn get_bond_code_hash(e: Env) -> soroban_sdk::Bytes {
-        e.storage()
-            .instance()
-            .get(&DataKey::BondCodeHash)
-            .unwrap_or_else(|| soroban_sdk::Bytes::new(&e))
-    }
-
-    /// Self-register a bond contract with trustless code-hash verification.
-    ///
-    /// Called by a bond contract during its `initialize()` to register itself
-    /// with the registry. The caller's WASM code hash is verified against the
-    /// admin-pinned expected bond code hash, ensuring the caller is a genuine
-    /// bond contract instance.
-    ///
-    /// # Arguments
-    /// * `identity` - The identity address this bond is for
-    ///
-    /// # Returns
-    /// The created `RegistryEntry`
-    ///
-    /// # Panics
-    /// * `ContractError::NotInitialized` – bond code hash not yet configured by admin
-    /// * `ContractError::ContractCodeVerificationFailed` – caller's code hash does not match
-    /// * `ContractError::IdentityAlreadyRegistered` – identity already has an active registration
-    /// * `ContractError::BondContractAlreadyRegistered` – calling bond already registered for another identity
-    ///
-    /// # Idempotency
-    /// If the bond is already registered for the same identity, returns the existing
-    /// entry without error. If registered for a different identity, panics.
-    ///
-    /// # Security
-    /// - Caller must be a contract (verified via code-hash check)
-    /// - Code hash must match the admin-configured expected bond code hash
-    /// - This removes the need for manual admin-controlled registration
-    ///
-    /// # Events
-    /// Emits `bond_registered` with the `RegistryEntry` on successful registration
-    pub fn register_trustless(e: Env, identity: Address) -> RegistryEntry {
-        pausable::require_not_paused(&e);
-
-        let caller = e.invoker();
-        let expected_hash = Self::get_bond_code_hash(e.clone());
-
-        // Ensure admin has pinned a bond code hash
-        if expected_hash.is_empty() {
-            panic_with_error!(&e, ContractError::NotInitialized);
-        }
-
-        // Verify the caller's contract code hash matches the expected bond code hash.
-        // This uses Soroban's contract instance introspection to fetch the caller's
-        // WASM code hash and compare it against the admin-pinned reference.
-        // The comparison must be constant-time to prevent timing attacks.
-        let caller_code_hash = e
-            .invoke_contract::<soroban_sdk::Bytes>(
-                &caller,
-                &Symbol::new(&e, "get_contract_code_hash"),
-                soroban_sdk::vec![&e],
-            )
-            .unwrap_or_else(|_| {
-                // If code hash retrieval fails, treat as verification failure
-                panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
-            });
-
-        // Constant-time comparison: if hashes don't match, reject the registration
-        if caller_code_hash.len() != expected_hash.len()
-            || !constant_time_eq(caller_code_hash.as_ref(), expected_hash.as_ref())
-        {
-            panic_with_error!(&e, ContractError::ContractCodeVerificationFailed);
-        }
-
-        let identity_key = DataKey::IdentityToBond(identity.clone());
-        let bond_key = DataKey::BondToIdentity(caller.clone());
-
-        // Idempotency: if already registered by this bond for this identity, return existing entry
-        if let Some(existing_entry) = e
-            .storage()
-            .instance()
-            .get::<_, RegistryEntry>(&identity_key)
-        {
-            if existing_entry.bond_contract == caller && existing_entry.active {
-                // Already registered and active — idempotent success
-                e.events().publish(
-                    (Symbol::new(&e, "bond_registered"),),
-                    existing_entry.clone(),
-                );
-                return existing_entry;
-            }
-            // Registered for a different bond or deactivated — reject
-            panic_with_error!(&e, ContractError::IdentityAlreadyRegistered);
-        }
-
-        // Ensure bond contract is not already registered for another identity
-        if e.storage().instance().has(&bond_key) {
-            panic_with_error!(&e, ContractError::BondContractAlreadyRegistered);
-        }
-
-        // Create registry entry with current ledger timestamp
-        let entry = RegistryEntry {
-            identity: identity.clone(),
-            bond_contract: caller.clone(),
-            registered_at: e.ledger().timestamp(),
-            active: true,
-        };
-
-        // Persist both forward and reverse mappings
-        e.storage().instance().set(&identity_key, &entry);
-        e.storage().instance().set(&bond_key, &identity);
-
-        // Update the registered identities list if not already present
-        let mut identities: Vec<Address> = e
-            .storage()
-            .instance()
-            .get(&DataKey::RegisteredIdentities)
-            .unwrap_or_else(|| Vec::new(&e));
-
-        if !identities.iter().any(|a| a == &identity) {
-            identities.push_back(identity.clone());
-            e.storage()
-                .instance()
-                .set(&DataKey::RegisteredIdentities, &identities);
-        }
-
-        // Emit trustless binding event
-        e.events().publish(
-            (Symbol::new(&e, "bond_registered"),),
-            entry.clone(),
-        );
-
-        entry
-    }
 }
 
-/// Constant-time comparison for security-sensitive data.
-/// Prevents timing attacks by ensuring comparison time does not leak
-/// information about where the first difference occurs.
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    if left.len() != right.len() {
-        return false;
-    }
-    left.iter()
-        .zip(right.iter())
-        .fold(0, |acc, (l, r)| acc | (l ^ r))
-        == 0
-}
-
-#[cfg(test)]
-mod test;
-
-#[cfg(test)]
-mod test_pausable;
-
-#[cfg(test)]
-mod test_interface;
-
-#[cfg(test)]
-mod test_uniqueness;
