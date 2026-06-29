@@ -312,6 +312,12 @@ pub fn process_claims(
 
         let claim = claims.get(i).unwrap();
 
+        // Skip already-processed claims — they have been paid out and must not be re-paid.
+        if claim.processed {
+            remaining_claims.push_back(claim);
+            continue;
+        }
+
         // Skip expired claims
         if claim.expires_at > 0 && now > claim.expires_at {
             continue;
@@ -323,8 +329,22 @@ pub fn process_claims(
             continue;
         }
 
+        // Mark this claim as processed and persist the updated record so
+        // re-invocations and audit queries see the correct lifecycle state
+        // (pending -> processed -> expired-and-pruned).
+        let mut paid_claim = claim.clone();
+        paid_claim.processed = true;
+        let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
+        let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
+        e.storage()
+            .persistent()
+            .set(&claim_by_id_key, &paid_claim);
+        e.storage()
+            .persistent()
+            .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+
         // Process this claim
-        processed_claims.push_back(claim.clone());
+        processed_claims.push_back(paid_claim);
         total_amount = total_amount
             .checked_add(claim.amount)
             .expect("claim total overflow");
