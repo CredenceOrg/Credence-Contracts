@@ -1,6 +1,9 @@
 use crate::*;
 use credence_errors::Role;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, Env, IntoVal,
+};
 
 fn setup_env() -> (Env, Address, Address) {
     let env = Env::default();
@@ -235,4 +238,46 @@ fn test_events_emitted_on_role_assignment() {
     // We can't easily check events in Soroban tests without complex setup,
     // but the presence of the code in lib.rs ensures emission.
     // The test passing proves no panic occurred during emission.
+}
+
+#[test]
+fn add_admin_rejects_authorization_for_different_arguments() {
+    let (env, contract_address, super_admin) = setup_env();
+    let authorized_admin = Address::generate(&env);
+    let unauthorized_admin = Address::generate(&env);
+
+    env.mock_auths(&[MockAuth {
+        address: &super_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_address,
+            fn_name: "add_admin",
+            args: (
+                super_admin.clone(),
+                authorized_admin.clone(),
+                AdminRole::Admin,
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        AdminContractClient::new(&env, &contract_address).add_admin(
+            &super_admin,
+            &unauthorized_admin,
+            &AdminRole::Admin,
+        );
+    }));
+
+    assert!(
+        result.is_err(),
+        "authorization for one target address must not authorize another"
+    );
+    assert_eq!(
+        env.as_contract(&contract_address, || AdminContract::is_admin(
+            env.clone(),
+            unauthorized_admin
+        )),
+        Role::User
+    );
 }

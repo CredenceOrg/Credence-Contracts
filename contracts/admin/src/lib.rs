@@ -21,7 +21,9 @@ mod test_ownership_transfer;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Vec,
+};
 
 /// Admin role hierarchy levels
 #[contracttype]
@@ -140,7 +142,8 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
-        super_admin.require_auth();
+        super_admin
+            .require_auth_for_args((super_admin.clone(), min_admins, max_admins).into_val(&e));
 
         // Set configuration
         e.storage().instance().set(&DataKey::Initialized, &true);
@@ -221,7 +224,7 @@ impl AdminContract {
     pub fn add_admin(e: Env, caller: Address, new_admin: Address, role: AdminRole) -> AdminInfo {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), new_admin.clone(), role).into_val(&e));
 
         Self::require_valid_admin_address(&e, &new_admin);
 
@@ -316,7 +319,7 @@ impl AdminContract {
     pub fn remove_admin(e: Env, caller: Address, admin_to_remove: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_to_remove.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_to_remove);
 
@@ -420,7 +423,8 @@ impl AdminContract {
     ) -> AdminInfo {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller
+            .require_auth_for_args((caller.clone(), admin_address.clone(), new_role).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_address);
 
@@ -511,7 +515,7 @@ impl AdminContract {
     pub fn deactivate_admin(e: Env, caller: Address, admin_address: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_address.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_address);
 
@@ -560,7 +564,7 @@ impl AdminContract {
     pub fn reactivate_admin(e: Env, caller: Address, admin_address: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_address.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_address);
 
@@ -627,7 +631,7 @@ impl AdminContract {
     pub fn suspend_admin(e: Env, caller: Address, admin: Address, until_ts: u64) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin.clone(), until_ts).into_val(&e));
 
         // until_ts must be in the future
         if until_ts <= e.ledger().timestamp() {
@@ -707,7 +711,7 @@ impl AdminContract {
     pub fn transfer_ownership(e: Env, caller: Address, new_owner: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), new_owner.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &new_owner);
 
@@ -772,7 +776,7 @@ impl AdminContract {
     pub fn accept_ownership(e: Env, caller: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(),).into_val(&e));
 
         // Get pending owner
         let pending_owner: Address = e
