@@ -316,6 +316,11 @@ impl CredenceTreasury {
     }
 
     /// Add an address that can deposit funds via receive_fee (e.g. bond contract).
+    ///
+    /// Idempotent: if  is already registered this is a no-op so callers
+    /// cannot accidentally emit duplicate events or corrupt any future accounting that
+    /// keys on the depositor set size.
+    ///
     /// @param e The contract environment
     /// @param depositor Address to allow as depositor
     pub fn add_depositor(e: Env, depositor: Address) {
@@ -327,6 +332,15 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         admin.require_auth();
+        // Duplicate-guard: re-registering an existing depositor is a no-op.
+        let already: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::Depositor(depositor.clone()))
+            .unwrap_or(false);
+        if already {
+            return;
+        }
         e.storage()
             .instance()
             .set(&DataKey::Depositor(depositor.clone()), &true);
@@ -352,6 +366,11 @@ impl CredenceTreasury {
     }
 
     /// Add a signer for multi-sig withdrawals. Threshold must be <= signer count after add.
+    ///
+    /// Idempotent: if  is already in the signer set this is a no-op.
+    /// This invariant keeps  exactly equal to the distinct signer set size,
+    /// which is required for the  gate in 
+    /// and  to remain meaningful.
     pub fn add_signer(e: Env, signer: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -361,6 +380,9 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         admin.require_auth();
+        // Duplicate-guard: SignerCount must stay in lockstep with the distinct signer set.
+        // Re-adding an existing signer would double-increment the count, potentially
+        // making the configured threshold unreachable (DoS) or structurally weaker.
         let already = e
             .storage()
             .instance()
