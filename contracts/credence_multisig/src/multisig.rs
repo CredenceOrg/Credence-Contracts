@@ -693,3 +693,35 @@ impl CredenceMultiSig {
         crate::pausable::execute_pause_proposal(&e, proposal_id)
     }
 }
+
+// --- New Permissionless Sweep Logic ---
+
+const MAX_SWEEP_BATCH_SIZE: u32 = 20;
+
+/// Public entrypoint to expire a single stale proposal.
+pub fn expire_proposal_public(env: Env, proposal_id: u64) -> Result<(), ContractError> {
+    let mut proposal = get_proposal(&env, proposal_id)?;
+    let now = env.ledger().timestamp();
+
+    if proposal.status != ProposalStatus::Pending {
+        return Err(ContractError::InvalidProposalStatus);
+    }
+    if proposal.expires_at == 0 || now < proposal.expires_at {
+        return Err(ContractError::ProposalNotExpired);
+    }
+
+    expire_proposal(&env, &mut proposal);
+    Ok(())
+}
+
+/// Permissionless batch sweep to prune expired proposals.
+pub fn sweep_expired(env: Env, ids: Vec<u64>) -> Result<(), ContractError> {
+    if ids.len() > MAX_SWEEP_BATCH_SIZE {
+        return Err(ContractError::BatchSizeExceeded);
+    }
+
+    for id in ids {
+        let _ = expire_proposal_public(env.clone(), id);
+    }
+    Ok(())
+}
