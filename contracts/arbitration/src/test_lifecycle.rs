@@ -97,13 +97,14 @@ fn test_valid_transition_voting_to_cancelled_by_admin() {
 }
 
 #[test]
-fn test_resolve_with_no_votes_gives_outcome_zero() {
+fn test_resolve_with_no_votes_gives_tied_state() {
     let s = setup();
     let id = open_dispute(&s);
     advance(&s.env, 3601);
     let outcome = s.client.resolve_dispute(&id);
     assert_eq!(outcome, 0);
-    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Resolved);
+    // No votes → implicit tie → Tied status, not Resolved
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Tied);
 }
 
 // ── invalid transition regression tests ──────────────────────────────────────
@@ -318,11 +319,11 @@ fn test_resolve_legacy_quorum_unset_behaviour() {
     // Default (0, 0) — no quorum gate, preserves legacy behaviour
     let s = setup();
     let id = open_dispute(&s);
-    // No quorum configured; resolve with no votes should still work
+    // No quorum configured; resolve with no votes should result in Tied
     advance(&s.env, 3601);
     let outcome = s.client.resolve_dispute(&id);
     assert_eq!(outcome, 0);
-    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Resolved);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Tied);
 }
 
 // ── require_transition unit tests (status module) ────────────────────────────
@@ -335,6 +336,7 @@ fn test_status_machine_all_valid_transitions() {
     assert!(require_transition(DisputeStatus::Voting, DisputeStatus::Resolving).is_ok());
     assert!(require_transition(DisputeStatus::Voting, DisputeStatus::Cancelled).is_ok());
     assert!(require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved).is_ok());
+    assert!(require_transition(DisputeStatus::Resolving, DisputeStatus::Tied).is_ok());
 }
 
 #[test]
@@ -343,8 +345,10 @@ fn test_status_machine_all_invalid_transitions() {
     let invalid = [
         (DisputeStatus::Open, DisputeStatus::Resolving),
         (DisputeStatus::Open, DisputeStatus::Resolved),
+        (DisputeStatus::Open, DisputeStatus::Tied),
         (DisputeStatus::Voting, DisputeStatus::Open),
         (DisputeStatus::Voting, DisputeStatus::Resolved),
+        (DisputeStatus::Voting, DisputeStatus::Tied),
         (DisputeStatus::Resolving, DisputeStatus::Open),
         (DisputeStatus::Resolving, DisputeStatus::Voting),
         (DisputeStatus::Resolving, DisputeStatus::Cancelled),
@@ -352,10 +356,17 @@ fn test_status_machine_all_invalid_transitions() {
         (DisputeStatus::Resolved, DisputeStatus::Voting),
         (DisputeStatus::Resolved, DisputeStatus::Resolving),
         (DisputeStatus::Resolved, DisputeStatus::Cancelled),
+        (DisputeStatus::Resolved, DisputeStatus::Tied),
+        (DisputeStatus::Tied, DisputeStatus::Open),
+        (DisputeStatus::Tied, DisputeStatus::Voting),
+        (DisputeStatus::Tied, DisputeStatus::Resolving),
+        (DisputeStatus::Tied, DisputeStatus::Resolved),
+        (DisputeStatus::Tied, DisputeStatus::Cancelled),
         (DisputeStatus::Cancelled, DisputeStatus::Open),
         (DisputeStatus::Cancelled, DisputeStatus::Voting),
         (DisputeStatus::Cancelled, DisputeStatus::Resolving),
         (DisputeStatus::Cancelled, DisputeStatus::Resolved),
+        (DisputeStatus::Cancelled, DisputeStatus::Tied),
     ];
     for (from, to) in invalid {
         assert_eq!(
@@ -413,4 +424,148 @@ fn test_cancel_reason_too_long() {
         .unwrap_err()
         .unwrap();
     assert_eq!(err, ArbitrationError::ReasonTooLong);
+}
+
+// ── tie scenario tests ────────────────────────────────────────────────────────
+
+#[test]
+fn test_tie_two_outcomes_equal_weight() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &10); // Same weight as arb1
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);      // outcome 1, weight 10
+    s.client.vote(&arb2, &id, &2);        // outcome 2, weight 10 (tie)
+    
+    assert_eq!(s.client.get_tally(&id, &1), 10);
+    assert_eq!(s.client.get_tally(&id, &2), 10);
+    
+    advance(&s.env, 3601);
+    let outcome = s.client.resolve_dispute(&id);
+    
+    assert_eq!(outcome, 0); // Tie returns 0
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Tied);
+    assert_eq!(dispute.outcome, 0); // outcome 0 only valid in Tied state
+}
+
+#[test]
+fn test_tie_three_outcomes_equal_weight() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    let arb3 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &5);
+    s.client.register_arbitrator(&arb3, &5);
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);      // outcome 1, weight 10
+    s.client.vote(&arb2, &id, &2);        // outcome 2, weight 5 → tie
+    s.client.vote(&arb3, &id, &3);        // outcome 3, weight 5 → tie
+    
+    advance(&s.env, 3601);
+    let outcome = s.client.resolve_dispute(&id);
+    
+    assert_eq!(outcome, 0);
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Tied);
+}
+
+#[test]
+fn test_tie_multiple_votes_same_outcome_then_tie() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    let arb3 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &5);
+    s.client.register_arbitrator(&arb3, &10);
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);       // outcome 1, weight 10
+    s.client.vote(&arb2, &id, &1);        // outcome 1, weight 5 (cumulative: 15)
+    s.client.vote(&arb3, &id, &2);        // outcome 2, weight 10 → tie at max_weight=15 then max_weight=10
+    
+    // At this point: outcome 1 = 15, outcome 2 = 10 (clear winner)
+    advance(&s.env, 3601);
+    let outcome = s.client.resolve_dispute(&id);
+    
+    assert_eq!(outcome, 1); // outcome 1 has higher total weight
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Resolved);
+}
+
+#[test]
+fn test_tied_dispute_cannot_be_resolved_twice() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &10);
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);
+    s.client.vote(&arb2, &id, &2);
+    
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    
+    // Tied → further attempts to resolve fail with InvalidTransition
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::InvalidTransition);
+}
+
+#[test]
+fn test_cant_vote_on_tied_dispute() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &10);
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);
+    s.client.vote(&arb2, &id, &2);
+    
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    
+    // Dispute is now Tied; cannot vote
+    let err = s.client.try_vote(&s.arb, &id, &3).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::VotingInactive);
+}
+
+#[test]
+fn test_cant_cancel_tied_dispute() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &10);
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);
+    s.client.vote(&arb2, &id, &2);
+    
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    
+    // Dispute is now Tied; cannot cancel
+    let reason = Some(String::from_str(&s.env, "Cancelling tied dispute"));
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id, &reason)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ArbitrationError::InvalidTransition);
+}
+
+#[test]
+fn test_clear_winner_outcomes_not_tied() {
+    let s = setup();
+    let arb2 = Address::generate(&s.env);
+    s.client.register_arbitrator(&arb2, &5);
+    
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);       // outcome 1, weight 10
+    s.client.vote(&arb2, &id, &2);        // outcome 2, weight 5
+    
+    advance(&s.env, 3601);
+    let outcome = s.client.resolve_dispute(&id);
+    
+    assert_eq!(outcome, 1); // Clear winner
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Resolved); // Not Tied
+    assert_eq!(dispute.outcome, 1); // outcome 1 is valid (non-zero)
 }

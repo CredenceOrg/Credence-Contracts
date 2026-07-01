@@ -35,7 +35,8 @@ pub struct Dispute {
     pub voting_end: u64,
     /// Canonical status — replaces the old `resolved: bool`.
     pub status: DisputeStatus,
-    /// Winning outcome (0 = unresolved/tie, >0 = specific outcome).
+    /// Winning outcome (0 only when status == Tied, >0 = specific outcome).
+    /// The outcome field must never be 0 if status == Resolved, as vote() rejects outcome 0 as InvalidOutcome.
     pub outcome: u32,
     pub cancellation_reason: Option<String>,
     pub cancelled_by_role: Option<Symbol>,
@@ -463,31 +464,56 @@ impl CredenceArbitration {
             }
         }
 
-        if is_tie {
-            winning_outcome = 0;
+        // If no votes cast (max_weight never updated), treat as implicit tie
+        if max_weight < 0 {
+            is_tie = true;
         }
 
-        // Resolving → Resolved
-        require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
-        dispute.status = DisputeStatus::Resolved;
-        dispute.outcome = winning_outcome;
-        e.storage()
-            .instance()
-            .set(&DataKey::Dispute(dispute_id), &dispute);
+        if is_tie {
+            // Resolving → Tied (explicit tie state)
+            require_transition(DisputeStatus::Resolving, DisputeStatus::Tied)?;
+            dispute.status = DisputeStatus::Tied;
+            dispute.outcome = 0; // Reserved sentinel for tie; cannot confuse with a valid outcome
+            e.storage()
+                .instance()
+                .set(&DataKey::Dispute(dispute_id), &dispute);
 
-        e.events().publish(
-            (Symbol::new(&e, "status_transition"), dispute_id),
-            (
-                DisputeStatus::Resolving as u32,
-                DisputeStatus::Resolved as u32,
-            ),
-        );
-        e.events().publish(
-            (Symbol::new(&e, "dispute_resolved"), dispute_id),
-            winning_outcome,
-        );
+            e.events().publish(
+                (Symbol::new(&e, "status_transition"), dispute_id),
+                (
+                    DisputeStatus::Resolving as u32,
+                    DisputeStatus::Tied as u32,
+                ),
+            );
+            e.events().publish(
+                (Symbol::new(&e, "dispute_tied"), dispute_id),
+                (),
+            );
 
-        Ok(winning_outcome)
+            Ok(0)
+        } else {
+            // Resolving → Resolved (with a clear winner)
+            require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
+            dispute.status = DisputeStatus::Resolved;
+            dispute.outcome = winning_outcome;
+            e.storage()
+                .instance()
+                .set(&DataKey::Dispute(dispute_id), &dispute);
+
+            e.events().publish(
+                (Symbol::new(&e, "status_transition"), dispute_id),
+                (
+                    DisputeStatus::Resolving as u32,
+                    DisputeStatus::Resolved as u32,
+                ),
+            );
+            e.events().publish(
+                (Symbol::new(&e, "dispute_resolved"), dispute_id),
+                winning_outcome,
+            );
+
+            Ok(winning_outcome)
+        }
     }
 
     /// Set quorum requirements for dispute resolution.
