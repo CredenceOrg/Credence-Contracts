@@ -15,7 +15,7 @@
 //! | `allowance` | `"fal"` | Allowance-read fails |
 
 #![allow(dead_code)]
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
+use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, Symbol, Val, Vec};
 
 // Toggle storage keys (short to stay within Symbol length limit).
 const KEY_FAIL_TRANSFER: &str = "ft";
@@ -23,6 +23,14 @@ const KEY_FAIL_TRANSFER_FROM: &str = "ftf";
 const KEY_FAIL_BALANCE: &str = "fb";
 const KEY_FAIL_APPROVE: &str = "fa";
 const KEY_FAIL_ALLOWANCE: &str = "fal";
+const KEY_ATTACK_TARGET: &str = "target";
+const KEY_ATTACK_METHOD: &str = "method";
+const KEY_ATTACK_IDENTITY: &str = "identity";
+const KEY_ATTACK_ADMIN: &str = "admin";
+const KEY_ATTACK_AMOUNT: &str = "amount";
+const KEY_ATTACK_ARMED: &str = "armed";
+const KEY_ATTACK_ATTEMPTED: &str = "hit";
+const KEY_ATTACK_REJECTED: &str = "reject";
 
 #[contract]
 pub struct ChaosToken;
@@ -46,6 +54,15 @@ impl ChaosToken {
         e.storage()
             .instance()
             .set(&Symbol::new(&e, KEY_FAIL_ALLOWANCE), &false);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_ARMED), &false);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_ATTEMPTED), &false);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_REJECTED), &false);
     }
 
     // ── Failure toggles ────────────────────────────────────────────────────────
@@ -101,6 +118,60 @@ impl ChaosToken {
             .set(&Symbol::new(&e, KEY_FAIL_ALLOWANCE), &fail);
     }
 
+    /// hostile-token mode: re-enter `target.method(...)` from the next token transfer.
+    ///
+    /// The injected call is made through `try_invoke_contract` so the malicious
+    /// token can observe that the bond rejected re-entry and still allow the
+    /// outer token transfer to complete. `method` must be one of:
+    /// `withdraw`, `withdraw_early`, `slash`, `top_up`, or `collect_fees`.
+    pub fn set_reentry_attack(
+        e: Env,
+        target: Address,
+        method: Symbol,
+        identity: Address,
+        admin: Address,
+        amount: i128,
+    ) {
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_TARGET), &target);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_METHOD), &method);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_IDENTITY), &identity);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_ADMIN), &admin);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_AMOUNT), &amount);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_ARMED), &true);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_ATTEMPTED), &false);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_REJECTED), &false);
+    }
+
+    pub fn attack_attempted(e: Env) -> bool {
+        e.storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_ATTEMPTED))
+            .unwrap_or(false)
+    }
+
+    pub fn attack_rejected(e: Env) -> bool {
+        e.storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_REJECTED))
+            .unwrap_or(false)
+    }
+
     // ── SEP-41 token interface ─────────────────────────────────────────────────
 
     pub fn decimals(_e: Env) -> u32 {
@@ -131,6 +202,7 @@ impl ChaosToken {
         {
             panic!("chaos: transfer panicked");
         }
+        Self::maybe_reenter(e.clone());
         let from_bal = Self::balance(e.clone(), from.clone());
         let to_bal = Self::balance(e.clone(), to.clone());
         e.storage().instance().set(&from, &(from_bal - amount));
@@ -146,6 +218,7 @@ impl ChaosToken {
         {
             panic!("chaos: transfer_from panicked");
         }
+        Self::maybe_reenter(e.clone());
         Self::transfer(e, from, to, amount);
     }
 
@@ -175,5 +248,65 @@ impl ChaosToken {
     pub fn mint(e: Env, to: Address, amount: i128) {
         let current = Self::balance(e.clone(), to.clone());
         e.storage().instance().set(&to, &(current + amount));
+    }
+
+    fn maybe_reenter(e: Env) {
+        let armed_key = Symbol::new(&e, KEY_ATTACK_ARMED);
+        let armed = e.storage().instance().get(&armed_key).unwrap_or(false);
+        if !armed {
+            return;
+        }
+
+        e.storage().instance().set(&armed_key, &false);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_ATTEMPTED), &true);
+
+        let target: Address = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_TARGET))
+            .unwrap();
+        let method: Symbol = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_METHOD))
+            .unwrap();
+        let identity: Address = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_IDENTITY))
+            .unwrap();
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_ADMIN))
+            .unwrap();
+        let amount: i128 = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, KEY_ATTACK_AMOUNT))
+            .unwrap_or(1);
+
+        let args = if method == Symbol::new(&e, "withdraw")
+            || method == Symbol::new(&e, "withdraw_early")
+            || method == Symbol::new(&e, "top_up")
+        {
+            Vec::from_array(&e, [identity.into_val(&e), amount.into_val(&e)])
+        } else if method == Symbol::new(&e, "slash") {
+            Vec::from_array(&e, [admin.into_val(&e), amount.into_val(&e)])
+        } else if method == Symbol::new(&e, "collect_fees") {
+            Vec::from_array(&e, [admin.into_val(&e)])
+        } else {
+            panic!("unsupported hostile-token method");
+        };
+
+        let rejected = !matches!(
+            e.try_invoke_contract::<Val, soroban_sdk::Error>(&target, &method, args),
+            Ok(Ok(_))
+        );
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, KEY_ATTACK_REJECTED), &rejected);
     }
 }

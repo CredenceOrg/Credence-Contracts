@@ -54,6 +54,8 @@ pub mod test_helpers;
 mod chaos_token;
 #[cfg(test)]
 mod test_chaos;
+#[cfg(test)]
+mod test_reentrancy_hostile_token;
 
 /// Tests for describe_config and describe_bond introspection entrypoints.
 #[cfg(test)]
