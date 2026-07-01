@@ -293,6 +293,11 @@ fn validate_and_create_bond_struct(
     e.ledger().timestamp()
         .checked_add(duration)
         .ok_or(ContractError::Overflow)?;
+    let bond_start = e.ledger().timestamp();
+    let bond = create_bond(amount, bond_start, duration, is_rolling, notice_period_duration)?;
+    Ok(bond)
+}
+
 /// Maximum number of attestations allowed in a single batch operation.
 /// Enforces a safe upper bound on CPU/memory resource usage to prevent exceeding Soroban transaction limits.
 pub const MAX_BATCH_ATTESTATION_SIZE: u32 = 64;
@@ -1766,8 +1771,8 @@ impl CredenceBond {
             .bonded_amount
             .checked_add(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
-        let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
-        tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
+        let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+        let old_tier = tiered_bond::get_tier_for_amount(&e, old_available);
 
         // Validate the new total amount
         validation::validate_bond_amount(new_bonded_amount);
