@@ -139,9 +139,6 @@ pub enum ContractError {
     /// Contracts: bond
     SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
-    /// Used by suspend_admin when `until_ts` is not strictly in the future,
-    /// and by callers that detect a suspended admin attempting a privileged
-    /// action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
     AdminSuspended = 113,
@@ -204,10 +201,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InvalidNonce = 208,
-
-    /// Signature/operation deadline has passed (now > deadline + grace).
-    /// Contracts: bond, delegation
-    SignatureExpired = 222,
 
     /// Attester stake would go negative, which is not permitted.
     /// Replaces: panic!("attester stake cannot be negative")
@@ -278,7 +271,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 218,
+    InvariantViolation = 230,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -308,6 +301,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+    /// Idempotency key has already been used for this operation.
+    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 231,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -477,7 +476,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 113,
+    EmergencyDrainNotPermitted = 114,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -635,12 +634,13 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
+            | ContractError::UnauthorizedToken
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -921,7 +921,8 @@ impl ErrorExt for ContractError {
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
             | ContractError::InvalidContractAddress
-            | ContractError::ContractCodeVerificationFailed => true,
+            | ContractError::ContractCodeVerificationFailed
+            | ContractError::UnsupportedInterface => true,
 
             // --- Delegation (500-599): mostly caller-fixable ---
             ContractError::ExpiryInPast                // supply a future expiry
@@ -952,8 +953,6 @@ impl ErrorExt for ContractError {
             ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
 
             // --- Arithmetic (700-799): code-level impossibility. ---
-            ContractError::Overflow | ContractError::Underflow => false,
-            ContractError::UnsupportedInterface => false,
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
