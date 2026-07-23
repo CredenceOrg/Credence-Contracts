@@ -488,7 +488,7 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
-    // --- Admin Transfer (109-112) ---
+    // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 115,
 
@@ -776,8 +776,8 @@ impl ErrorExt for ContractError {
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
-            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size constant",
-            ContractError::EmptyBatch => "Batch input is empty when at least one item is required",
+            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
+            ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -997,6 +997,9 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
+            ContractError::UnsupportedDecimals => false, // token not supported; caller must use a different token
+            ContractError::UnauthorizedToken => true,    // caller can switch to an accepted token
+            ContractError::EmergencyDrainNotPermitted => true, // pause contract and wait for timelock then retry
         }
     }
 }
