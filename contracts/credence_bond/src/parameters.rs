@@ -92,6 +92,25 @@ pub const MAX_SLASH_RECORDS: u32 = 1_000;
 /// collection-read caps stay consistent across the codebase.
 pub const MAX_QUERY_LIMIT: u32 = 200;
 
+// ============================================================================
+// Chunk Iteration Constants
+// ============================================================================
+
+/// Default number of items processed per chunk when iterating a `Vec` in
+/// fixed-size pieces for gas budgeting.
+///
+/// This is the single source of truth for the chunk size used by
+/// [`crate::iter_chunks::vec_chunks`]. Callers that need a different size pass
+/// it explicitly; this constant documents the safe, tested default.
+///
+/// The value 50 is chosen to keep each chunk well inside the Soroban
+/// instruction budget even for moderately expensive per-item work, while
+/// still amortising loop overhead across a non-trivial batch.
+///
+/// **Do not duplicate this constant.** Import it as
+/// `crate::parameters::DEFAULT_CHUNK_SIZE` wherever you need it.
+pub const DEFAULT_CHUNK_SIZE: u32 = 50;
+
 /// Minimum bronze tier threshold (0 = no minimum)
 pub const MIN_BRONZE_THRESHOLD: i128 = 0;
 /// Maximum bronze tier threshold (1 million tokens)
