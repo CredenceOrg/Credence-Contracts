@@ -4,6 +4,10 @@
 #[cfg(any(test, feature = "testutils"))]
 mod batch;
 mod claims;
+/// Fixed-size chunk iteration over [`soroban_sdk::Vec`] for gas budgeting.
+///
+/// See [`iter_chunks::vec_chunks`] and [`crate::parameters::DEFAULT_CHUNK_SIZE`].
+pub mod iter_chunks;
 mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
