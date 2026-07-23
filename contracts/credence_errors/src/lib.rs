@@ -155,9 +155,6 @@ pub enum ContractError {
     /// Contracts: bond, delegation
     SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
-    /// Used by suspend_admin when `until_ts` is not strictly in the future,
-    /// and by callers that detect a suspended admin attempting a privileged
-    /// action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
     AdminSuspended = 113,
@@ -320,6 +317,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+    /// Idempotency key has already been used for this operation.
+    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 231,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -503,15 +506,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 114,
 
-    /// Actor did not hold the required role at the given ledger timestamp.
-    ///
-    /// Raised by `require_role_at_ledger` when the actor's `assigned_at`
-    /// timestamp is later than the ledger timestamp under inspection, meaning
-    /// the role was not yet granted at the time of the delegated action.
-    /// Contracts: admin
-    /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 114,
-
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -670,12 +664,13 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
+            | ContractError::UnauthorizedToken
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
