@@ -1,18 +1,17 @@
-//! # Fixed-Size Vec Chunk Iterator
+//! Fixed-size chunk iteration over a [`soroban_sdk::Vec`] for gas budgeting.
 //!
-//! Provides [`vec_chunks`], a utility for processing a [`soroban_sdk::Vec`] in
-//! fixed-size slices (chunks). Each call returns one contiguous window of
-//! elements and the offset to pass into the next call, making it straightforward
-//! to spread work across multiple transactions without exceeding the Soroban
-//! instruction budget.
+//! Provides [`vec_chunks`], a utility for processing a `Vec` in fixed-size
+//! windows. Each call returns one contiguous slice of elements and the offset
+//! to pass into the next call, making it straightforward to spread work across
+//! multiple transactions without exceeding the Soroban instruction budget.
 //!
 //! ## Why chunks?
 //!
-//! A Soroban transaction has a finite CPU-instruction and memory budget. Naively
-//! iterating an unbounded `Vec` inside a single invocation risks hitting that
-//! budget as the collection grows. The chunk pattern lets callers commit a known
-//! upper bound of work per transaction, resuming from where they left off in the
-//! next call.
+//! A Soroban transaction has a finite CPU-instruction and memory budget.
+//! Naively iterating an unbounded `Vec` inside a single invocation risks
+//! hitting that budget as the collection grows. The chunk pattern lets callers
+//! commit a known upper bound of work per transaction and resume from where
+//! they left off in the next call.
 //!
 //! ## Default chunk size
 //!
@@ -30,32 +29,35 @@
 //!
 //! let e = Env::default();
 //! let mut items: Vec<u64> = Vec::new(&e);
-//! for i in 0..130_u64 { items.push_back(i); }
+//! for i in 0..130_u64 {
+//!     items.push_back(i);
+//! }
 //!
 //! let mut offset = 0u32;
 //! loop {
 //!     let (chunk, next) = vec_chunks(&e, &items, offset, DEFAULT_CHUNK_SIZE);
-//!     if chunk.is_empty() { break; }
-//!     // … process chunk …
+//!     if chunk.is_empty() {
+//!         break;
+//!     }
+//!     // process chunk ...
 //!     match next {
 //!         Some(n) => offset = n,
-//!         None    => break,
+//!         None => break,
 //!     }
 //! }
 //! ```
 
 use soroban_sdk::{Env, Vec};
 
-/// Return a fixed-size chunk of `source` starting at `offset`, plus the offset
-/// to use for the **next** call (or `None` when the end has been reached).
+/// Return a fixed-size chunk of `source` starting at `offset`, plus the
+/// offset to use for the **next** call (or `None` when the end is reached).
 ///
 /// # Arguments
 ///
-/// * `e`          — Soroban [`Env`] (required by `soroban_sdk::Vec`).
-/// * `source`     — The vector to iterate over. Not mutated.
-/// * `offset`     — Zero-based start index of this chunk.
-/// * `chunk_size` — Maximum number of items to include in the returned chunk.
-///   If `0` is passed the function uses
+/// * `e`          - Soroban [`Env`] (required by `soroban_sdk::Vec`).
+/// * `source`     - The vector to iterate over. Not mutated.
+/// * `offset`     - Zero-based start index of this chunk.
+/// * `chunk_size` - Maximum number of items to include. Pass `0` to use
 ///   [`crate::parameters::DEFAULT_CHUNK_SIZE`] so callers never accidentally
 ///   request an empty chunk.
 ///
@@ -63,21 +65,20 @@ use soroban_sdk::{Env, Vec};
 ///
 /// A tuple `(chunk, next_offset)` where:
 ///
-/// * `chunk` — A `Vec<T>` containing at most `chunk_size` elements beginning
-///   at `offset`. An **empty** vec is returned when `offset >= source.len()`.
-/// * `next_offset` — `Some(offset + chunk.len())` when there are more elements
-///   after this chunk; `None` when the chunk reached the end of `source`.
+/// * `chunk` - A `Vec<T>` of at most `chunk_size` elements beginning at
+///   `offset`. An **empty** vec is returned when `offset >= source.len()`.
+/// * `next_offset` - `Some(offset + chunk.len())` when more elements remain;
+///   `None` when the chunk reached the end of `source`.
 ///
 /// # Panics
 ///
-/// Never panics. An out-of-bounds `offset` simply produces an empty chunk.
+/// Never panics. An out-of-bounds `offset` produces an empty chunk.
 ///
 /// # Gas budgeting
 ///
-/// Each invocation of `vec_chunks` performs at most `chunk_size` index
-/// accesses on `source`. Callers can treat `chunk_size` as their per-call
-/// work unit and pick a value that keeps the enclosing transaction inside the
-/// Soroban CPU budget.
+/// Each call performs at most `chunk_size` index accesses on `source`.
+/// Callers can treat `chunk_size` as their per-call work unit and pick a
+/// value that keeps the transaction inside the Soroban CPU budget.
 pub fn vec_chunks<T>(
     e: &Env,
     source: &Vec<T>,
@@ -111,10 +112,6 @@ where
     (chunk, next)
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -123,10 +120,6 @@ mod tests {
     use crate::parameters::DEFAULT_CHUNK_SIZE;
     use soroban_sdk::{Env, Vec};
 
-    // -----------------------------------------------------------------------
-    // Helpers
-    // -----------------------------------------------------------------------
-
     fn make_vec(e: &Env, n: u32) -> Vec<u32> {
         let mut v = Vec::new(e);
         for i in 0..n {
@@ -134,10 +127,6 @@ mod tests {
         }
         v
     }
-
-    // -----------------------------------------------------------------------
-    // Basic correctness
-    // -----------------------------------------------------------------------
 
     #[test]
     fn empty_source_returns_empty_chunk_and_no_next() {
@@ -172,7 +161,6 @@ mod tests {
     #[test]
     fn last_chunk_smaller_than_chunk_size_and_no_next() {
         let e = Env::default();
-        // 10 items, chunk_size = 3: last chunk starts at offset 9 → 1 item
         let source = make_vec(&e, 10);
         let (chunk, next) = vec_chunks(&e, &source, 9, 3);
         assert_eq!(chunk.len(), 1);
@@ -183,16 +171,11 @@ mod tests {
     #[test]
     fn exact_divisor_final_chunk_returns_no_next() {
         let e = Env::default();
-        // 9 items, chunk_size = 3: offsets 0, 3, 6; chunk at 6 has 3 items → done
         let source = make_vec(&e, 9);
         let (chunk, next) = vec_chunks(&e, &source, 6, 3);
         assert_eq!(chunk.len(), 3);
         assert!(next.is_none());
     }
-
-    // -----------------------------------------------------------------------
-    // Full iteration loop — consumes the whole Vec across multiple calls
-    // -----------------------------------------------------------------------
 
     #[test]
     fn full_iteration_visits_all_elements() {
@@ -228,7 +211,6 @@ mod tests {
     fn full_iteration_single_element_vec() {
         let e = Env::default();
         let source = make_vec(&e, 1);
-
         let (chunk, next) = vec_chunks(&e, &source, 0, 10);
         assert_eq!(chunk.len(), 1);
         assert_eq!(chunk.get(0).unwrap(), 0u32);
@@ -239,32 +221,20 @@ mod tests {
     fn full_iteration_chunk_larger_than_source() {
         let e = Env::default();
         let source = make_vec(&e, 3);
-
         let (chunk, next) = vec_chunks(&e, &source, 0, 100);
         assert_eq!(chunk.len(), 3);
         assert!(next.is_none());
     }
 
-    // -----------------------------------------------------------------------
-    // Zero chunk_size falls back to DEFAULT_CHUNK_SIZE
-    // -----------------------------------------------------------------------
-
     #[test]
     fn zero_chunk_size_uses_default() {
         let e = Env::default();
-        // Build a source larger than DEFAULT_CHUNK_SIZE to confirm the default
-        // is honoured rather than returning everything or nothing.
         let n = DEFAULT_CHUNK_SIZE + 10;
         let source = make_vec(&e, n);
-
         let (chunk, next) = vec_chunks(&e, &source, 0, 0);
         assert_eq!(chunk.len(), DEFAULT_CHUNK_SIZE);
         assert_eq!(next, Some(DEFAULT_CHUNK_SIZE));
     }
-
-    // -----------------------------------------------------------------------
-    // Next-offset arithmetic
-    // -----------------------------------------------------------------------
 
     #[test]
     fn next_offset_equals_offset_plus_chunk_len() {
@@ -283,7 +253,7 @@ mod tests {
         let (c0, n0) = vec_chunks(&e, &source, 0, chunk_size);
         let (c1, n1) = vec_chunks(&e, &source, n0.unwrap(), chunk_size);
         let (c2, n2) = vec_chunks(&e, &source, n1.unwrap(), chunk_size);
-        let (c3, n3) = vec_chunks(&e, &source, n2.unwrap(), chunk_size); // last chunk: 3 items
+        let (c3, n3) = vec_chunks(&e, &source, n2.unwrap(), chunk_size);
 
         assert_eq!(c0.len(), 4);
         assert_eq!(c1.len(), 4);
@@ -291,7 +261,6 @@ mod tests {
         assert_eq!(c3.len(), 3);
         assert!(n3.is_none());
 
-        // First element of each chunk must be one past the end of the previous.
         assert_eq!(c1.get(0).unwrap(), c0.get(c0.len() - 1).unwrap() + 1);
         assert_eq!(c2.get(0).unwrap(), c1.get(c1.len() - 1).unwrap() + 1);
         assert_eq!(c3.get(0).unwrap(), c2.get(c2.len() - 1).unwrap() + 1);
