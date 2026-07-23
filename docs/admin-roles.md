@@ -318,7 +318,7 @@ cargo test -p admin
 
 ## Two-Step Admin Transfer
 
-Admin rotation uses a secure two-step flow with a 24-hour timelock:
+For the operator runbook and rationale, see [TWO_STEP_ADMIN.md](TWO_STEP_ADMIN.md). Admin rotation uses a secure two-step flow with a 24-hour timelock:
 
 ### propose_admin(current_admin, proposed)
 - Only the current admin may call this
