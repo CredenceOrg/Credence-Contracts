@@ -96,6 +96,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
 - `contracts/credence_delegation/` — Delegation contract
 - `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`)
+  - Time semantics: [ledger time handbook](docs/LEDGER_TIME_HANDBOOK.md) — timestamp vs sequence, boundary rules, testing time
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths.
 
