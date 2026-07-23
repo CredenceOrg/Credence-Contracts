@@ -96,7 +96,10 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
 - `contracts/credence_delegation/` — Delegation contract
-- `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `TWO_STEP_ADMIN.md`)
+- `docs/` — Full documentation index: [docs/README.md](docs/README.md)
+  - Feature docs: `EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`
+  - Operations: [admin-roles.md](docs/admin-roles.md), [HISTORICAL_ROLES.md](docs/HISTORICAL_ROLES.md), [governance.md](docs/governance.md)
+  - Security: [THREAT_MODEL.md](docs/THREAT_MODEL.md), [reentrancy.md](docs/reentrancy.md)
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.
 
