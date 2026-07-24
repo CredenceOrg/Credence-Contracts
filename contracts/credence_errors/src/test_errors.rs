@@ -89,6 +89,7 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
             ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
@@ -179,6 +180,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientApprovals as u32, 605);
         assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
         assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
+        assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
     }
 
     #[test]
@@ -398,6 +400,10 @@ mod tests {
             ContractError::InsufficientApprovals.category(),
             ErrorCategory::Treasury
         );
+        assert_eq!(
+            ContractError::TreasuryBeneficiaryMismatch.category(),
+            ErrorCategory::Treasury
+        );
     }
 
     #[test]
@@ -437,7 +443,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            88,
+            89,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1268,6 +1274,7 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
             ContractError::SlippageExceeded => true,
+            ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1378,6 +1385,7 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
             ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
             ContractError::CursorOutOfRange,
             ContractError::Overflow,
             ContractError::Underflow,
@@ -1385,7 +1393,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            88,
+            89,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
