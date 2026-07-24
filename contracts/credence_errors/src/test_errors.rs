@@ -96,6 +96,7 @@ mod tests {
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
         ]
     }
 
@@ -144,6 +145,7 @@ mod tests {
         assert_eq!(ContractError::InvalidBondDuration as u32, 216);
         assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
         assert_eq!(ContractError::BondAlreadyExists as u32, 218);
+        assert_eq!(ContractError::InvalidStringifiedBytes as u32, 230);
     }
 
     #[test]
@@ -304,6 +306,10 @@ mod tests {
             ContractError::InvalidNoticePeriod.category(),
             ErrorCategory::Bond
         );
+        assert_eq!(
+            ContractError::InvalidStringifiedBytes.category(),
+            ErrorCategory::Bond
+        );
     }
 
     #[test]
@@ -447,7 +453,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            89,
+            90,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1267,6 +1273,7 @@ mod tests {
             ContractError::DomainMismatch => false,     // payload binding
             ContractError::BatchTooLarge => true,       // reduce batch size
             ContractError::EmptyBatch => true,          // supply at least one item
+            ContractError::InvalidStringifiedBytes => true, // correct the encoded input
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1386,6 +1393,7 @@ mod tests {
             ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1435,7 +1443,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            90,
+            91,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

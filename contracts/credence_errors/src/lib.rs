@@ -346,6 +346,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
 
+    /// A string expected to contain hex or base64 encoded bytes is malformed
+    /// or exceeds the maximum accepted encoded length.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 230,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -724,6 +730,7 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
             | ContractError::InvariantViolation
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
@@ -843,6 +850,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
+            ContractError::InvalidStringifiedBytes => {
+                "String is not valid bounded hex or base64 encoded bytes"
+            }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -1006,6 +1016,7 @@ impl ErrorExt for ContractError {
 | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::AmountExplicitlyZero  // supply a non-zero amount
+            | ContractError::InvalidStringifiedBytes // correct the encoded input
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
