@@ -5,7 +5,6 @@ use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     Address, BytesN, Env, String, Vec,
 };
-
 use proptest::prelude::*;
 
 fn setup(e: &Env) -> (CredenceMultiSigClient, Address, Vec<Address>) {
@@ -1307,15 +1306,18 @@ fn test_prune_expired_proposals_paused() {
 /// strategy shrinks on — exercising the invariant that the output length
 /// never exceeds the input length and every unique element is preserved.
 fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, Vec<Address>)> {
-    (1_usize..20_usize).prop_flat_map(|pool_size| {
-        (1_usize..20_usize).prop_flat_map(move |pick_count| {
-            // Generate `pick_count` indices into a pool of `pool_size` addresses.
-            // Duplicates are possible when pick_count > pool_size or by random
-            // chance — this is what tests the dedup invariant.
-            proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
-                .prop_map(move |indices| (pool_size, indices))
+    (1_usize..20_usize)
+        .prop_flat_map(|pool_size| {
+            (1_usize..20_usize)
+                .prop_flat_map(move |pick_count| {
+                    // Generate `pick_count` indices into a pool of `pool_size` addresses.
+                    // Duplicates are possible when pick_count > pool_size or by random
+                    // chance — this is what tests the dedup invariant.
+                    proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
+                        .prop_map(move |indices| (pool_size, indices))
+                })
         })
-    }).prop_map(|(pool_size, indices)| {
+        .prop_map(|(pool_size, indices)| {
         let e = Env::default();
         e.mock_all_auths();
 
