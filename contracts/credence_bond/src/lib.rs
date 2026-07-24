@@ -112,6 +112,7 @@ pub use soroban_sdk;
 /// The domain is a human-readable string that uniquely identifies this contract
 /// within the Credence system. It should be included in the signed payload hash
 /// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
 const SIGNATURE_DOMAIN: &str = "CredenceBond";
 
 /// Identity tier based on bonded amount.
