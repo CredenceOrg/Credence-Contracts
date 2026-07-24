@@ -14,7 +14,10 @@
 //! an unauthorised caller is rejected.
 
 use crate::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 use testutils::{admin as test_admin, user};
 
 // ---------------------------------------------------------------------------
@@ -127,7 +130,7 @@ fn deactivate_admin_rejected_when_caller_does_not_outrank_target() {
     add_admin(&env, &contract, &super_admin, &admin2, AdminRole::Admin);
 
     env.as_contract(&contract, || {
-        AdminContract::deactivate_admin(env.clone(), operator.clone(), admin.clone());
+        AdminContract::deactivate_admin(env.clone(), admin1.clone(), admin2.clone());
     });
 }
 

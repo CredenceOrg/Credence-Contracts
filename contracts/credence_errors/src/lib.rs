@@ -18,6 +18,16 @@ use soroban_sdk::contracterror;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
+use soroban_sdk::contracttype;
+
+/// Simple role enum for admin checks.
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Role {
+    Admin,
+    User,
+}
+
 /// @title  ErrorCategory
 /// @notice Groups errors by domain for monitoring, alerting, and dashboards.
 /// @dev    Off-chain consumers should switch on this value first, then on the
@@ -136,7 +146,7 @@ pub enum ContractError {
 
     /// Signature deadline has expired (even with grace window).
     /// Replaces: panic!("signature expired")
-    /// Contracts: bond
+    /// Contracts: bond, delegation
     SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
     /// Used by suspend_admin when `until_ts` is not strictly in the future,
@@ -204,10 +214,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InvalidNonce = 208,
-
-    /// Signature/operation deadline has passed (now > deadline + grace).
-    /// Contracts: bond, delegation
-    SignatureExpired = 222,
 
     /// Attester stake would go negative, which is not permitted.
     /// Replaces: panic!("attester stake cannot be negative")
@@ -278,7 +284,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 218,
+    InvariantViolation = 230,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -472,7 +478,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (109-112) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 109,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -486,7 +492,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 113,
+    EmergencyDrainNotPermitted = 114,
 
     /// Actor did not hold the required role at the given ledger timestamp.
     ///
@@ -761,10 +767,11 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
-            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
+            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size constant",
+            ContractError::EmptyBatch => "Batch input is empty when at least one item is required",
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -790,6 +797,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractCodeVerificationFailed => {
                 "Contract code hash verification failed during trustless registration"
             }
+            ContractError::UnsupportedInterface => "Bond contract does not support required interface",
             ContractError::ExpiryInPast => "Delegation expiry must be in the future",
             ContractError::DelegationNotFound => "No delegation found for the given key",
             ContractError::AlreadyRevoked => "Delegation has already been revoked",
@@ -849,7 +857,6 @@ impl ErrorExt for ContractError {
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
-            ContractError::UnsupportedInterface => "Bond contract does not support required interface",
             ContractError::DivisionByZero => "Division by a zero denominator",
         }
     }
@@ -890,8 +897,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted // pause + wait for timelock
-            | ContractError::RoleNotHeldAtLedger => true, // role was not yet assigned at that ledger
+            | ContractError::EmergencyDrainNotPermitted => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -908,10 +914,12 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
             | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+            | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::UnauthorizedToken
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             => true,
@@ -920,7 +928,6 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
-            ContractError::DuplicateIdempotencyKey => true, // idempotent - safe to retry with same key
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
@@ -946,7 +953,8 @@ impl ErrorExt for ContractError {
             | ContractError::AlreadyDeactivated
             | ContractError::AlreadyActive
             | ContractError::InvalidContractAddress
-            | ContractError::ContractCodeVerificationFailed => true,
+            | ContractError::ContractCodeVerificationFailed
+            | ContractError::UnsupportedInterface => true,
 
             // --- Delegation (500-599): mostly caller-fixable ---
             ContractError::ExpiryInPast                // supply a future expiry
@@ -978,8 +986,6 @@ impl ErrorExt for ContractError {
             ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
 
             // --- Arithmetic (700-799): code-level impossibility. ---
-            ContractError::Overflow | ContractError::Underflow => false,
-            ContractError::UnsupportedInterface => false,
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
