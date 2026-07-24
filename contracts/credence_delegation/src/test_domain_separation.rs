@@ -8,6 +8,8 @@
 //! 3. A stale / replayed nonce is rejected after it has been consumed.
 //! 4. The nonce increments correctly after each delegated call.
 //! 5. Cross-method replay: a revoke payload cannot be reused as a delegate payload.
+//! 6. Cross-contract replay is prevented via contract_id validation (SIGNATURE_DOMAIN
+//!    constant is reserved for future payload-level domain binding).
 
 use super::*;
 use soroban_sdk::testutils::Address as _;
