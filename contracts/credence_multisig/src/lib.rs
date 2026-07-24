@@ -14,6 +14,12 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 pub mod multisig;
 pub mod pausable;

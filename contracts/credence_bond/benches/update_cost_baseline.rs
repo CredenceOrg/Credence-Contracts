@@ -1,3 +1,8 @@
+// This is an off-chain measurement binary, not deployed WASM. Issue #713
+// disallows `format!`/etc. in production contract code; benches never run on
+// chain, so we silence the lint locally.
+#![allow(clippy::disallowed_macros)]
+
 //! Refresh the committed gas baseline for the `credence_bond` contract.
 //!
 //! # When to run
