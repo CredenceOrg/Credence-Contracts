@@ -145,6 +145,15 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BorrowFrozen = 114,
 
+    /// Actor did not hold the required role at the given ledger timestamp.
+    ///
+    /// Raised by `require_role_at_ledger` when the actor's `assigned_at`
+    /// timestamp is later than the ledger timestamp under inspection, meaning
+    /// the role was not yet granted at the time of the delegated action.
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    RoleNotHeldAtLedger = 116,
+
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
     /// Contracts: registry, treasury
@@ -215,6 +224,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ReentrancyDetected = 207,
 
+    /// Signature or operation deadline has passed.
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond, delegation
+    /// Wire-stable: do not renumber this error code.
+    SignatureExpired = 222,
+
     /// Nonce is invalid - either replayed or out of order.
     /// Replaces: panic!("invalid nonce: replay or out-of-order")
     /// Contracts: bond
@@ -263,33 +278,40 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidBondAmount = 214,
 
+    /// Amount argument is explicitly set to zero, which is a bug.
+    /// Distinguishes "not set" (None) from "explicitly zero" (Some(0)) via Option<i128>.
+    /// Triggered by: require_no_leading_zero_amount with Some(0)
+    /// Contracts: bond, treasury
+    /// Wire-stable: do not renumber this error code.
+    AmountExplicitlyZero = 215,
+
     /// Bond duration must be strictly positive (> 0).
     /// Triggered by: create_bond called with duration == 0
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvalidBondDuration = 215,
+    InvalidBondDuration = 216,
 
     /// Rolling-bond notice_period_duration must be > 0 and <= duration.
     /// Triggered by: create_bond called with is_rolling=true and notice_period_duration == 0
     ///               or notice_period_duration > duration
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvalidNoticePeriod = 216,
+    InvalidNoticePeriod = 217,
 
     /// Bond already exists for this identity.
     /// Triggered by: create_bond called for an identity that already has an active bond
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    BondAlreadyExists = 217,
+    BondAlreadyExists = 218,
 
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
-    UnauthorizedToken = 230,
+    UnauthorizedToken = 231,
     /// An idempotency key has already been used for this operation.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    DuplicateIdempotencyKey = 231,
+    DuplicateIdempotencyKey = 232,
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
@@ -324,12 +346,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
-
-    /// Currency symbol is invalid (empty or whitespace-only).
-    /// Triggered by: token ingress symbol check
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    InvalidCurrency = 232,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -523,20 +539,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 117,
 
-    /// Actor did not hold the required role at the given ledger timestamp.
-    ///
-    /// Raised by `require_role_at_ledger` when the actor's `assigned_at`
-    /// timestamp is later than the ledger timestamp under inspection, meaning
-    /// the role was not yet granted at the time of the delegated action.
-    /// Contracts: admin
-    /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 116,
-
-    /// Input BytesN<32> argument is all-zero.
-    /// Replaces: panic!("zero bytes32")
-    /// Wire-stable: do not renumber this error code.
-    ZeroBytes32 = 116,
-
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -707,6 +709,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::SignatureExpired
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::DuplicateIdempotencyKey
@@ -715,7 +718,9 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::InvariantViolation => ErrorCategory::Bond,
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvariantViolation
+            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -813,6 +818,9 @@ impl ErrorExt for ContractError {
             ContractError::UnsupportedToken => "Token transfer resulted in different amount than requested (fee-on-transfer tokens not supported)",
             ContractError::UnsupportedDecimals => "Token decimals are outside the supported normalization range",
             ContractError::InvalidBondAmount => "Bond amount must be strictly positive (> 0)",
+            ContractError::AmountExplicitlyZero => {
+                "Amount argument is explicitly set to zero, which is a bug (use Option to distinguish not-set from zero)"
+            }
             ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
@@ -942,7 +950,7 @@ impl ErrorExt for ContractError {
             // --- Initialization: caller fixes setup state. ---
             ContractError::NotInitialized | ContractError::AlreadyInitialized => true,
 
-            // --- Authorization (100-199) + Admin Transfer (109-112):
+            // --- Authorization (100-199) + Admin Transfer (109-117):
             //     switch to the correct signer/role, or wait/correct
             //     payload/state. Caller-fixable in every case. ---
             ContractError::NotAdmin
@@ -960,8 +968,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::ZeroBytes32
-            | ContractError::EmergencyDrainNotPermitted => true,
+            | ContractError::EmergencyDrainNotPermitted
+            | ContractError::RoleNotHeldAtLedger => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -977,16 +985,18 @@ impl ErrorExt for ContractError {
             | ContractError::EarlyExitConfigNotSet      // configure early exit first
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
-            | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+| ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
+            | ContractError::AmountExplicitlyZero  // supply a non-zero amount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
-            | ContractError::InvalidCurrency
-            | ContractError::BatchTooLarge         // reduce batch size
+            | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
+| ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
+            | ContractError::AmountExplicitlyZero  // supply a non-zero amount
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1074,78 +1084,26 @@ macro_rules! contract_address {
     };
 }
 
-/// Rejects non-positive amounts with the typed `AmountMustBePositive` error.
-///
-/// Use this in place of ad-hoc `if amount <= 0 { panic!(...) }` guards so
-/// every call site raises the same wire-stable error code.
-///
-/// # Arguments
-/// * `env` - Soroban environment reference (for `panic_with_error!`)
-/// * `amount` - Any `i128` value that must be strictly positive (> 0)
-///
-/// # Panics
-/// With `ContractError::AmountMustBePositive` when `amount <= 0`.
+/// Requires that an `Option<i128>` amount is not explicitly set to zero.
+/// This distinguishes "not set" (None) from "explicitly zero" (Some(0)),
+/// where the latter indicates a bug in the caller.
+/// Returns `ContractError::AmountExplicitlyZero` if the amount is `Some(0)`.
+#[macro_export]
+macro_rules! require_no_leading_zero_amount {
+    ($env:expr, $amount:expr) => {
+        if let Some(0) = $amount {
+            return Err($crate::ContractError::AmountExplicitlyZero);
+        }
+    };
+}
+
+/// Requires that an i128 amount is strictly positive (> 0), returning
+/// `ContractError::AmountMustBePositive` if not.
 #[macro_export]
 macro_rules! require_positive_amount {
-    ($env:expr, $amount:expr) => {{
-        let amt: i128 = $amount;
-        if amt <= 0 {
-            ::soroban_sdk::panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
+    ($env:expr, $amount:expr) => {
+        if $amount <= 0 {
+            return Err($crate::ContractError::AmountMustBePositive);
         }
-    }};
-}
-
-use soroban_sdk::{Address, BytesN, Env};
-
-/// Defence-in-depth guard: reject payments to any address other than the
-/// configured treasury.
-///
-/// This is a typed replacement for ad-hoc checks such as
-/// `if recipient != treasury { panic!("recipient must be treasury") }`.
-/// It surfaces `ContractError::TreasuryBeneficiaryMismatch` so off-chain
-/// indexers, monitoring dashboards, and callers can distinguish a
-/// treasury-redirection failure from other panics and so the error code
-/// is stable across every call site that enforces the check.
-///
-/// # Threat model
-/// Without this check, a bug that lets an attacker control the `actor`
-/// argument of a treasury-bound transfer (e.g. confused-deputy from a
-/// misconfigured cross-contract call, a stale proposal whose treasury
-/// field has been overwritten in storage, or an incorrectly forwarded
-/// recipient argument in an admin workflow) results in an immediate,
-/// irreversible loss of protocol funds. The guard makes that class of
-/// bug fail closed by verifying the intended beneficiary exactly
-/// matches the treasury address before any tokens move.
-///
-/// # Arguments
-/// * `e`       - Soroban environment (needed for typed error panic)
-/// * `actor`   - The address that would receive the funds (the "from"
-///               perspective of the check: this is the actor whose
-///               identity is being verified as the intended treasury).
-/// * `expected` - The known-good treasury address that `actor` must equal.
-///
-/// # Panics
-/// With `ContractError::TreasuryBeneficiaryMismatch` when
-/// `actor != expected`.
-pub fn require_matching_treasury_beneficiary(e: &Env, actor: &Address, expected: &Address) {
-    if actor != expected {
-        ::soroban_sdk::panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
-    }
-}
-
-/// Defence-in-depth guard: reject any all-zero `BytesN<32>` inputs.
-///
-/// Prevents accidental default-value inputs that could lead to misconfigured state
-/// or authorization bypass.
-///
-/// # Arguments
-/// * `e` - Soroban environment (needed for typed error panic)
-/// * `x` - The `BytesN<32>` input to check
-///
-/// # Panics
-/// With `ContractError::ZeroBytes32` when `x` is all-zero.
-pub fn require_non_zero_bytes32(e: &Env, x: &BytesN<32>) {
-    if x.clone().to_array() == [0u8; 32] {
-        ::soroban_sdk::panic_with_error!(e, ContractError::ZeroBytes32);
-    }
+    };
 }
