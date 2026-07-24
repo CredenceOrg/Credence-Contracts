@@ -289,9 +289,9 @@ pub fn split_bps(
 /// | exact multiple     | every chunk has exactly `chunk_size` elements |
 /// | remainder          | last chunk has `len % chunk_size` elements    |
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics with `"chunked_iter: chunk_size must be > 0"` when `chunk_size == 0`.
+/// Aborts with [`ContractError::DivisionByZero`] when `chunk_size == 0`.
 ///
 /// # Returns
 ///
@@ -310,7 +310,7 @@ where
     F: FnMut(soroban_sdk::Vec<T>, u32),
 {
     if chunk_size == 0 {
-        panic!("chunked_iter: chunk_size must be > 0");
+        soroban_sdk::panic_with_error!(e, ContractError::DivisionByZero);
     }
 
     let len = items.len();
