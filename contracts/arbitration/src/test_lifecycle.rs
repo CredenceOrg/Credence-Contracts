@@ -379,6 +379,49 @@ fn test_status_machine_all_invalid_transitions() {
     }
 }
 
+// ── require_kept_promise unit tests ──────────────────────────────────────────
+
+#[test]
+fn test_require_kept_promise_returns_ok_when_promised_matches_actual() {
+    use status::require_kept_promise;
+    assert!(require_kept_promise(1, 1).is_ok());
+    assert!(require_kept_promise(0, 0).is_ok());
+    assert!(require_kept_promise(42, 42).is_ok());
+}
+
+#[test]
+fn test_require_kept_promise_returns_error_when_promised_differs_from_actual() {
+    use status::{require_kept_promise, ArbitrationError};
+    assert_eq!(
+        require_kept_promise(1, 2),
+        Err(ArbitrationError::PromiseNotKept)
+    );
+    assert_eq!(
+        require_kept_promise(0, 1),
+        Err(ArbitrationError::PromiseNotKept)
+    );
+    assert_eq!(
+        require_kept_promise(42, 0),
+        Err(ArbitrationError::PromiseNotKept)
+    );
+}
+
+#[test]
+fn test_require_kept_promise_returns_error_when_promised_is_zero_and_actual_nonzero() {
+    use status::{require_kept_promise, ArbitrationError};
+    assert_eq!(
+        require_kept_promise(0, 99),
+        Err(ArbitrationError::PromiseNotKept)
+    );
+}
+
+#[test]
+fn test_require_kept_promise_returns_ok_for_identical_boundary_values() {
+    use status::require_kept_promise;
+    assert!(require_kept_promise(u32::MAX, u32::MAX).is_ok());
+    assert!(require_kept_promise(u32::MIN, u32::MIN).is_ok());
+}
+
 #[test]
 fn test_cancel_with_reason_and_role() {
     let s = setup();
