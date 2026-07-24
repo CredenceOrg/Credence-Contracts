@@ -19,6 +19,7 @@ mod migration;
 mod normalization;
 mod nonce;
 mod parameters;
+mod pausable;
 mod rolling_bond;
 mod safe_token;
 mod same_ledger_liquidation_guard;
@@ -154,9 +155,14 @@ impl CredenceBond {
         storage::set_admin(&e, &admin);
     }
 
+    fn require_not_paused(e: &Env) {
+        pausable::require_not_paused(e);
+    }
+
     /// Set the set of accepted token addresses.
     /// Only callable by admin.
     pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         if Some(admin) != storage::get_admin(&e) {
             panic_with_error!(e, ContractError::NotAdmin);
@@ -174,6 +180,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> Result<Bond, ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
 
         if storage::has_bond(&e, &identity) {
@@ -200,6 +207,7 @@ impl CredenceBond {
 
     /// Increases the bonded amount for an existing bond.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         if !is_valid_bond(amount) {
             return Err(ContractError::InvalidBondAmount);
@@ -219,6 +227,7 @@ impl CredenceBond {
 
     /// Extends the duration of an existing bond.
     pub fn extend_duration(e: Env, identity: Address, extra_duration: u64) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         let mut bond = storage::get_bond(&e, &identity)?;
         
@@ -231,6 +240,7 @@ impl CredenceBond {
     }
 
     pub fn request_withdrawal(e: Env, identity: Address) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         let mut bond = storage::get_bond(&e, &identity)?;
         if !bond.is_rolling {
@@ -245,6 +255,7 @@ impl CredenceBond {
     }
 
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         acquire_lock(&e);
         
@@ -274,6 +285,7 @@ impl CredenceBond {
     }
 
     pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         admin.require_auth();
         if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
 
@@ -359,6 +371,14 @@ pub use types::Attestation;
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     Bond,
     Attester(Address),
     Attestation(u64),
@@ -564,6 +584,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn initialize(e: Env, admin: Address, registry: Option<Address>) {
+        Self::require_not_paused(&e);
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
@@ -582,6 +603,7 @@ impl CredenceBond {
 
     /// Initialize and attempt trustless self-registration with a registry.
     pub fn initialize_with_registry(e: Env, admin: Address, registry: Address) {
+        Self::require_not_paused(&e);
         Self::initialize(e.clone(), admin, Some(registry));
     }
 
@@ -591,6 +613,7 @@ impl CredenceBond {
     /// - `ContractError::NotInitialized` when admin is not set.
     /// - `ContractError::NotAdmin` when caller is not the configured admin.
     pub fn set_token(e: Env, admin: Address, token: Address) {
+        Self::require_not_paused(&e);
         token_integration::set_token(&e, &admin, &token);
     }
 
@@ -673,6 +696,7 @@ impl CredenceBond {
     /// client.set_early_exit_config(&admin, &treasury, &500_u32);
     /// ```
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -692,6 +716,7 @@ impl CredenceBond {
 
     /// Set whether borrows are frozen.
     pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -726,6 +751,7 @@ impl CredenceBond {
     /// assert!(client.is_attester(&attester));
     /// ```
     pub fn register_attester(e: Env, attester: Address) {
+        Self::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -763,6 +789,7 @@ impl CredenceBond {
     /// assert!(!client.is_attester(&attester));
     /// ```
     pub fn unregister_attester(e: Env, attester: Address) {
+        Self::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -1420,6 +1447,7 @@ impl CredenceBond {
     /// - `ContractError::NotInitialized` when the admin has not been set.
     /// - `ContractError::NotAdmin` when `admin` is not the configured admin.
     pub fn set_grace_window(e: Env, admin: Address, grace: u64) {
+        Self::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1443,6 +1471,7 @@ impl CredenceBond {
 
     /// Set attester stake (admin only).
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
+        Self::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1458,6 +1487,7 @@ impl CredenceBond {
 
     /// Set weight config: multiplier_bps, max_weight. Admin only.
     pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
+        Self::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1482,6 +1512,7 @@ impl CredenceBond {
     /// - `ContractError::InvalidAdminAddress` when `new_admin` is a zero/unset address.
     /// - `ContractError::AdminUnchanged` when `new_admin` equals `current_admin`.
     pub fn transfer_admin(e: Env, current_admin: Address, new_admin: Address) {
+        Self::require_not_paused(&e);
         current_admin.require_auth();
         new_admin.require_auth();
 
@@ -1511,10 +1542,12 @@ impl CredenceBond {
     }
 
     pub fn transfer_upgrade_admin(e: Env, admin: Address, new_admin: Address) {
+        Self::require_not_paused(&e);
         upgrade_auth::transfer_upgrade_admin(&e, &admin, &new_admin);
     }
 
     pub fn accept_upgrade_admin(e: Env, caller: Address) {
+        Self::require_not_paused(&e);
         upgrade_auth::accept_upgrade_admin(&e, &caller);
     }
 
@@ -1523,6 +1556,7 @@ impl CredenceBond {
     }
 
     pub fn cancel_upgrade_admin_transfer(e: Env, admin: Address) {
+        Self::require_not_paused(&e);
         upgrade_auth::cancel_upgrade_admin_transfer(&e, &admin);
     }
 
@@ -1533,6 +1567,7 @@ impl CredenceBond {
 
     /// Withdraw from bond after lock-up period has ended.
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize withdrawals.
         identity.require_auth();
         credence_errors::require_positive_amount!(&e, amount);
@@ -1608,6 +1643,7 @@ impl CredenceBond {
     /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
     ///   the gross withdrawal exactly into treasury penalty plus identity payout.
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         let key = DataKey::Bond;
 
         Self::acquire_lock(&e);
@@ -1715,6 +1751,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
     pub fn request_withdrawal(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize the withdrawal request.
         identity.require_auth();
         let key = DataKey::Bond;
@@ -1749,6 +1786,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
     pub fn renew_if_rolling(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize renewal.
         identity.require_auth();
         let key = DataKey::Bond;
@@ -1808,6 +1846,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize top-ups.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
@@ -1857,6 +1896,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn extend_duration(e: Env, identity: Address, additional_duration: u64) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize duration extensions.
         identity.require_auth();
         let key = DataKey::Bond;
@@ -1890,6 +1930,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/fees.md`](../../../docs/fees.md)
     pub fn deposit_fees(e: Env, amount: i128) {
+        Self::require_not_paused(&e);
         credence_errors::require_positive_amount!(&e, amount);
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
@@ -1907,6 +1948,7 @@ impl CredenceBond {
     /// See also: [`docs/withdrawal.md`](../../../docs/withdrawal.md),
     /// [`docs/reentrancy.md`](../../../docs/reentrancy.md)
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
+        Self::require_not_paused(&e);
         // auth: tree shape [Identity] -> [Bond::withdraw_bond]; may be delegated.
         identity.require_auth();
         Self::acquire_lock(&e);
@@ -1990,6 +2032,7 @@ impl CredenceBond {
         slash_amount: i128,
         idempotency_salt: Bytes,
     ) -> i128 {
+        Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
 
@@ -2060,6 +2103,7 @@ impl CredenceBond {
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     pub fn collect_fees(e: Env, admin: Address, idempotency_salt: Bytes) -> i128 {
+        Self::require_not_paused(&e);
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
@@ -2107,6 +2151,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md)
     pub fn set_liquidation_treasury(e: Env, admin: Address, treasury: Address) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -2142,6 +2187,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn set_slash_treasury(e: Env, admin: Address, treasury: Address) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -2218,6 +2264,7 @@ impl CredenceBond {
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
     /// [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn liquidate(e: Env, admin: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::liquidate]; usually direct admin call.
         admin.require_auth();
         Self::acquire_lock(&e);
@@ -2339,6 +2386,7 @@ impl CredenceBond {
     /// client.set_callback(&callback);
     /// ```
     pub fn set_callback(e: Env, addr: Address) {
+        Self::require_not_paused(&e);
         e.storage()
             .instance()
             .set(&Symbol::new(&e, "callback"), &addr);
