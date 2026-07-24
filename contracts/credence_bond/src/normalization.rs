@@ -31,12 +31,36 @@ pub const MIN_SUPPORTED_DECIMALS: u32 = 0;
 /// For tokens with decimals < 18: multiply by 10^(18 - decimals)
 /// For tokens with decimals > 18: divide by 10^(decimals - 18)
 /// For tokens with decimals == 18: scale factor is 1 (no-op)
+pub fn require_non_zero_currency(e: &Env, sym: &soroban_sdk::String) {
+    let len = sym.len();
+    if len == 0 {
+        panic_with_error!(e, ContractError::InvalidCurrency);
+    }
+
+    let mut is_whitespace = true;
+    let mut buf = [0u8; 128];
+    let check_len = len.min(128) as usize;
+    sym.copy_into_slice(&mut buf[..check_len]);
+    for i in 0..check_len {
+        if buf[i] != b' ' && buf[i] != b'\t' && buf[i] != b'\n' && buf[i] != b'\r' {
+            is_whitespace = false;
+            break;
+        }
+    }
+    if is_whitespace {
+        panic_with_error!(e, ContractError::InvalidCurrency);
+    }
+}
+
 pub fn validate_supported_decimals(e: &Env, token: &Address) {
     let decimals = TokenClient::new(e, token).decimals();
 
     if decimals < MIN_SUPPORTED_DECIMALS || decimals > MAX_SUPPORTED_DECIMALS {
         panic_with_error!(e, ContractError::UnsupportedDecimals);
     }
+
+    let sym = TokenClient::new(e, token).symbol();
+    require_non_zero_currency(e, &sym);
 }
 
 pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
