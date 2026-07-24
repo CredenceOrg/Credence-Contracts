@@ -39,6 +39,8 @@ pub mod types;
 
 #[cfg(test)]
 mod test_unauthorized_token;
+#[cfg(test)]
+mod test_monotonicity_ordering;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
