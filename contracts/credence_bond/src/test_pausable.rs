@@ -103,3 +103,15 @@ fn test_execute_requires_threshold() {
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 }
+
+#[test]
+fn test_pause_rejects_state_mutating_entrypoints() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let attester = Address::generate(&e);
+
+    client.pause(&admin);
+    assert!(client.is_paused());
+
+    assert!(client.try_register_attester(&attester).is_err());
+}
