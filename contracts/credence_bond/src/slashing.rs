@@ -1,6 +1,5 @@
 use crate::{DataKey, IdentityBond};
-use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
+//! Slashing Module
 //!
 //! Implements the core `slash_bond()` functionality for reducing a bond's value as a penalty
 //! for misconduct. This module manages authorization, state updates, event emission, and
