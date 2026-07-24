@@ -712,9 +712,9 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalExpired
             | ContractError::SlippageExceeded => ErrorCategory::Treasury,
 
-            ContractError::Overflow
-            | ContractError::Underflow
-            | ContractError::DivisionByZero => ErrorCategory::Arithmetic,
+            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero => {
+                ErrorCategory::Arithmetic
+            }
             ContractError::NoPendingAdmin
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged

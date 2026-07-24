@@ -788,5 +788,3 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         .fold(0, |acc, (l, r)| acc | (l ^ r))
         == 0
 }
-}
-
