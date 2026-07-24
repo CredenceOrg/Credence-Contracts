@@ -546,6 +546,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -554,6 +555,7 @@ name = "credence_multisig"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "proptest",
  "soroban-sdk",
 ]
 
