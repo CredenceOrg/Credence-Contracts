@@ -1303,8 +1303,8 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => false,     // delegation revoked/expired; cannot be fixed by caller
-            ContractError::PayloadTooOld => true,           // re-sign with current ledger number
+            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::PayloadTooOld => true,       // re-sign with current ledger number
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
