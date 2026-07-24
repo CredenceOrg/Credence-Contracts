@@ -14,6 +14,8 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::ContractPaused as u32, 106);
     assert_eq!(ContractError::InvalidPauseAction as u32, 107);
     assert_eq!(ContractError::InsufficientSignatures as u32, 108);
+    assert_eq!(ContractError::AdminSuspended as u32, 113);
+    assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 115);
 
     assert_eq!(ContractError::BondNotFound as u32, 200);
     assert_eq!(ContractError::BondNotActive as u32, 201);
@@ -35,7 +37,10 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
     assert_eq!(ContractError::BondAlreadyExists as u32, 217);
     assert_eq!(ContractError::InvariantViolation as u32, 218);
+    assert_eq!(ContractError::SignatureExpired as u32, 222);
     assert_eq!(ContractError::TreasuryNotConfigured as u32, 223);
+    assert_eq!(ContractError::UnauthorizedToken as u32, 230);
+    assert_eq!(ContractError::DuplicateIdempotencyKey as u32, 231);
 
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
     assert_eq!(ContractError::AttestationNotFound as u32, 301);

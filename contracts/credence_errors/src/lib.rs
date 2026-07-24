@@ -134,10 +134,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientSignatures = 108,
 
-    /// Signature deadline has expired (even with grace window).
-    /// Replaces: panic!("signature expired")
-    /// Contracts: bond
-    SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
     /// Used by suspend_admin when `until_ts` is not strictly in the future,
     /// and by callers that detect a suspended admin attempting a privileged
@@ -273,7 +269,11 @@ pub enum ContractError {
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
-    UnauthorizedToken = 218,
+    UnauthorizedToken = 230,
+    /// An idempotency key has already been used for this operation.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 231,
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
@@ -418,7 +418,7 @@ pub enum ContractError {
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
     DelegationExpiryTooLong = 503,
-    // Note: DomainMismatch (218), OwnerMismatch (219), TargetMismatch (220),
+    // Note: DomainMismatch (225), OwnerMismatch (219), TargetMismatch (220),
     // ContractIdMismatch (221), and SignatureExpired (222) are shared Bond/Delegation
     // variants defined in the Bond section above.
     /// Unknown or unsupported signature scheme tag.
@@ -486,7 +486,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 113,
+    EmergencyDrainNotPermitted = 115,
 
     /// Actor did not hold the required role at the given ledger timestamp.
     ///
@@ -654,7 +654,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
+            | ContractError::UnauthorizedToken
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -709,6 +710,7 @@ impl ErrorExt for ContractError {
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
+            ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
@@ -734,6 +736,7 @@ impl ErrorExt for ContractError {
             ContractError::RoleNotHeldAtLedger => {
                 "Actor did not hold the required role at the specified ledger timestamp"
             }
+            ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
             ContractError::SlashExceedsBond => "Slash amount exceeds the bonded amount",
@@ -761,6 +764,8 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
+            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
+            ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
@@ -815,6 +820,7 @@ impl ErrorExt for ContractError {
             ContractError::DelegationInactive => {
                 "Delegation is expired or revoked and cannot authorise actions"
             }
+            ContractError::AmountMustBePositive => "Amount must be strictly positive",
             ContractError::ThresholdExceedsSigners => {
                 "Threshold cannot exceed the current signer count"
             }
@@ -908,10 +914,12 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
             | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+            | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::UnauthorizedToken
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             => true,

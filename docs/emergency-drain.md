@@ -208,7 +208,7 @@ Records are stored in **persistent storage** and survive contract upgrades.
 
 | Error | Meaning | Action |
 |-------|---------|--------|
-| `EmergencyDrainNotPermitted` (113) | Contract not paused, or no ETA scheduled | Call `pause` first; ensure `schedule_emergency_drain` was called |
+| `EmergencyDrainNotPermitted` (115) | Contract not paused, or no ETA scheduled | Call `pause` first; ensure `schedule_emergency_drain` was called |
 | `TimelockNotReady` (112) | ETA not yet reached | Wait until ledger timestamp ≥ ETA |
 | `NotAdmin` (100) | Caller is not the configured admin | Use correct admin keypair |
 | `NotInitialized` (1) | Contract not initialized | Contact protocol team |
