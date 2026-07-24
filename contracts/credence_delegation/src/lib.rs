@@ -175,8 +175,10 @@ pub enum DataKey {
     /// Maps scheme tag (Ed25519=0, Secp256r1=1, MLDSA44=2) to a verifier address.
     Verifier(u32),
     /// Admin-configured post-expiry window (seconds) for late revocation and
-    /// `InGrace` status reporting. Unset/`0` preserves hard-cliff expiry with
-    /// unlimited post-expiry revocation (legacy behaviour).
+    /// `InGrace` status reporting. Unset defaults to
+    /// [DEFAULT_REVOCATION_GRACE_PERIOD] (`300` seconds / 5 minutes).
+    /// Set to `0` for the legacy hard-cliff expiry with unlimited
+    /// post-expiry revocation.
     RevocationGracePeriod,
 }
 
@@ -220,6 +222,16 @@ const MAX_NONCE_INVALIDATION_SPAN: u64 = 10_000;
 /// The default bound is 365 days and prevents effectively never-expiring
 /// delegations such as `u64::MAX`.
 pub const MAX_DELEGATION_DURATION: u64 = 365 * 24 * 60 * 60;
+
+/// Standard post-expiry grace window in seconds (5 minutes).
+///
+/// When `revocation_grace_period` is unset (no stored value), this
+/// default provides a buffer after `expires_at` during which the
+/// delegation remains in `InGrace` status and late revocation is
+/// still permitted.  Explicitly setting the grace period to `0`
+/// restores the legacy hard-cliff behaviour (immediate `Expired`
+/// status at `expires_at`, unlimited post-expiry revocation).
+pub const DEFAULT_REVOCATION_GRACE_PERIOD: u64 = 300;
 
 #[contractimpl]
 impl CredenceDelegation {
@@ -290,8 +302,11 @@ impl CredenceDelegation {
     ///
     /// Active delegations may always be revoked. After `expires_at`, revocation
     /// is allowed while `now <= expires_at + revocation_grace_period` when
-    /// `revocation_grace_period > 0`. When the grace period is `0` (default),
-    /// post-expiry revocation remains permitted at any time (legacy behaviour).
+    /// `revocation_grace_period > 0`. When the grace period is at its default
+    /// ([DEFAULT_REVOCATION_GRACE_PERIOD] = 300 s), post-expiry revocation is
+    /// permitted for up to that window after `expires_at`. When the grace period
+    /// is explicitly set to `0`, post-expiry revocation remains permitted at any
+    /// time (legacy behaviour).
     /// The real `revoked_at` timestamp is persisted on the delegation record.
     pub fn revoke_delegation(
         e: Env,
@@ -626,7 +641,10 @@ impl CredenceDelegation {
 
     /// Configure the post-expiry grace window for late revocation and `InGrace`
     /// status reporting. Only the admin may call. A value of `0` restores the
-    /// default hard-cliff expiry with unlimited post-expiry revocation.
+    /// legacy hard-cliff expiry with unlimited post-expiry revocation.
+    ///
+    /// When unset, the default grace window is [DEFAULT_REVOCATION_GRACE_PERIOD]
+    /// (`300` seconds / 5 minutes).
     pub fn set_revocation_grace_period(e: Env, admin: Address, grace_seconds: u64) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -637,7 +655,10 @@ impl CredenceDelegation {
             .set(&DataKey::RevocationGracePeriod, &grace_seconds);
     }
 
-    /// Return the configured post-expiry grace window in seconds (`0` = default).
+    /// Return the configured post-expiry grace window in seconds.
+    ///
+    /// Returns [DEFAULT_REVOCATION_GRACE_PERIOD] (`300`) when unset.
+    /// Set to `0` to restore the legacy hard-cliff behaviour.
     pub fn get_revocation_grace_period(e: Env) -> u64 {
         bump_instance_ttl(&e);
         Self::revocation_grace_period(&e)
@@ -951,7 +972,7 @@ impl CredenceDelegation {
         e.storage()
             .instance()
             .get(&DataKey::RevocationGracePeriod)
-            .unwrap_or(0)
+            .unwrap_or(DEFAULT_REVOCATION_GRACE_PERIOD)
     }
 
     /// Derive the audit lifecycle status for a delegation at `now`.
