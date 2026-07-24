@@ -94,6 +94,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
+  - Batch entrypoints: [batch atomicity — all-or-nothing vs. partial progress](docs/BATCH_ATOMICITY.md)
 - `contracts/credence_delegation/` — Delegation contract
 - `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`)
 

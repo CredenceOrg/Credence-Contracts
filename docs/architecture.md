@@ -36,7 +36,7 @@ See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
 | Module | Role |
 |---|---|
 | `access_control` | Verifier role add/remove |
-| `batch` | Atomic multi-bond creation |
+| `batch` | Atomic multi-bond creation (test/testutils-only — not compiled into the release wasm; see [docs/BATCH_ATOMICITY.md](BATCH_ATOMICITY.md)) |
 | `claims` | Pending verifier reward claims |
 | `cooldown` | Configurable withdrawal cooldown period |
 | `early_exit_penalty` | Penalty calculation and treasury transfer |
