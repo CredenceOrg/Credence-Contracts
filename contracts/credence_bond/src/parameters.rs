@@ -756,59 +756,57 @@ pub fn set_max_leverage_with_approval(
 // ============================================================================
 // Borrow Freeze (Governance-Controlled)
 // ============================================================================
-// NOTE: The BorrowFrozen variant was removed from DataKey, so these functions
-// are disabled. They remain for reference but should not be called.
 
-// /// Returns `true` when new borrows/increases are frozen.
-// #[must_use]
-// pub fn is_borrow_frozen(e: &Env) -> bool {
-//     e.storage()
-//         .instance()
-//         .get(&crate::DataKey::BorrowFrozen)
-//         .unwrap_or(false)
-// }
+/// Returns `true` when new borrows/increases are frozen.
+#[must_use]
+pub fn is_borrow_frozen(e: &Env) -> bool {
+    e.storage()
+        .instance()
+        .get(&crate::DataKey::BorrowFrozen)
+        .unwrap_or(false)
+}
 
-// /// Panics with `BorrowFrozen` if borrows are currently frozen.
-// pub fn require_not_borrow_frozen(e: &Env) {
-//     if is_borrow_frozen(e) {
-//         panic!("borrow frozen");
-//     }
-// }
+/// Panics with `BorrowFrozen` if borrows are currently frozen.
+pub fn require_not_borrow_frozen(e: &Env) {
+    if is_borrow_frozen(e) {
+        crate::panic_with_error!(e, credence_errors::ContractError::BorrowFrozen);
+    }
+}
 
-// /// Freeze or unfreeze new bond creation and top-ups. Governance-only.
-// ///
-// /// Repayments and withdrawals are unaffected.
-// ///
-// /// # Events
-// /// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
-// pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
-//     let approval = GovernanceApproval {
-//         approver: admin.clone(),
-//         expires_at: 0,
-//         category: symbol_short!("risk"),
-//     };
-//     set_borrow_frozen_with_approval(e, admin, frozen, &approval);
-// }
+/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
+///
+/// Repayments and withdrawals are unaffected.
+///
+/// # Events
+/// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
+pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("risk"),
+    };
+    set_borrow_frozen_with_approval(e, admin, frozen, &approval);
+}
 
-// /// Set borrow freeze with explicit governance approval invariants.
-// pub fn set_borrow_frozen_with_approval(
-//     e: &Env,
-//     admin: &Address,
-//     frozen: bool,
-//     approval: &GovernanceApproval,
-// ) {
-//     validate_admin(e, admin);
-//     validate_governance_approval(e, admin, approval, symbol_short!("risk"));
-//     let old = is_borrow_frozen(e);
-//     e.storage()
-//         .instance()
-//         .set(&crate::DataKey::BorrowFrozen, &frozen);
-//     let timestamp = e.ledger().timestamp();
-//     e.events().publish(
-//         (Symbol::new(e, "borrow_freeze_set"),),
-//         (old, frozen, admin.clone(), timestamp),
-//     );
-// }
+/// Set borrow freeze with explicit governance approval invariants.
+pub fn set_borrow_frozen_with_approval(
+    e: &Env,
+    admin: &Address,
+    frozen: bool,
+    approval: &GovernanceApproval,
+) {
+    validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("risk"));
+    let old = is_borrow_frozen(e);
+    e.storage()
+        .instance()
+        .set(&crate::DataKey::BorrowFrozen, &frozen);
+    let timestamp = e.ledger().timestamp();
+    e.events().publish(
+        (Symbol::new(e, "borrow_freeze_set"),),
+        (old, frozen, admin.clone(), timestamp),
+    );
+}
 
 // ============================================================================
 // Internal Helpers

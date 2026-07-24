@@ -133,6 +133,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractPaused = 106,
 
+    /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BorrowFrozen = 114,
+
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
     /// Contracts: registry, treasury
@@ -636,6 +641,7 @@ impl ErrorExt for ContractError {
             | ContractError::NotSigner
             | ContractError::UnauthorizedDepositor
             | ContractError::ContractPaused
+            | ContractError::BorrowFrozen
             | ContractError::InvalidPauseAction
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
@@ -735,6 +741,7 @@ impl ErrorExt for ContractError {
                 "Caller is neither admin nor an authorized depositor"
             }
             ContractError::ContractPaused => "Contract is paused",
+            ContractError::BorrowFrozen => "Borrows are frozen: new bond creation and top-ups are not allowed",
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
             ContractError::AdminSuspended => "Admin is currently suspended",
@@ -891,6 +898,7 @@ impl ErrorExt for ContractError {
             | ContractError::NotSigner
             | ContractError::UnauthorizedDepositor
             | ContractError::ContractPaused         // wait for unpause
+            | ContractError::BorrowFrozen           // wait for unfreeze
             | ContractError::InvalidPauseAction     // correct action byte
             | ContractError::InsufficientSignatures // gather more approvals
             | ContractError::AdminSuspended         // wait for suspension

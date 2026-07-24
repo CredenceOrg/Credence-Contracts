@@ -174,6 +174,7 @@ impl CredenceBond {
         notice_period_duration: u64,
     ) -> Result<Bond, ContractError> {
         identity.require_auth();
+        parameters::require_not_borrow_frozen(&e);
 
         if storage::has_bond(&e, &identity) {
             return Err(ContractError::BondAlreadyExists);
@@ -200,7 +201,10 @@ impl CredenceBond {
     /// Increases the bonded amount for an existing bond.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
         identity.require_auth();
-        credence_errors::require_positive_amount!(&e, amount);
+        parameters::require_not_borrow_frozen(&e);
+        if !is_valid_bond(amount) {
+            return Err(ContractError::InvalidBondAmount);
+        }
 
         let mut bond = storage::get_bond(&e, &identity)?;
         
@@ -387,7 +391,6 @@ pub enum DataKey {
     ClaimById(u64),
     /// Upgrade-authorization namespace, sub-keyed by [`UpgradeKey`].
     Upgrade(UpgradeKey),
-    BorrowFrozen,
     /// Reentrancy protection flag. Value: `bool`. When `true`, prevents
     /// external token calls from re-entering and double-spending.
     SettlingFlag,
@@ -694,6 +697,25 @@ impl CredenceBond {
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
 
+    /// Returns true if borrows are frozen.
+    pub fn is_borrow_frozen(e: Env) -> bool {
+        parameters::is_borrow_frozen(&e)
+    }
+
+    /// Set whether borrows are frozen.
+    pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        parameters::set_borrow_frozen(&e, frozen);
+    }
+
     /// Register an authorized attester.
     ///
     /// See also: [`docs/attestations.md`](../../../docs/attestations.md)
@@ -831,6 +853,7 @@ impl CredenceBond {
     ) -> IdentityBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
+        parameters::require_not_borrow_frozen(&e);
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &identity, amount);
         }
@@ -1788,7 +1811,7 @@ impl CredenceBond {
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
         // auth: bond owner must authorize top-ups.
         identity.require_auth();
-        credence_errors::require_positive_amount!(&e, amount);
+        parameters::require_not_borrow_frozen(&e);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
