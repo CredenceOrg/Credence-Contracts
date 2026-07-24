@@ -21,7 +21,6 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-
 use soroban_sdk::contracterror;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
@@ -456,6 +455,12 @@ pub enum ContractError {
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
     DelegationExpiryTooLong = 503,
+
+    /// Delegation is not active (revoked or expired).
+    /// Replaces: panic!("delegation inactive")
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    DelegationInactive = 511,
     // Note: DomainMismatch (225), OwnerMismatch (219), TargetMismatch (220),
     // ContractIdMismatch (221), and SignatureExpired (222) are shared Bond/Delegation
     // variants defined in the Bond section above.
@@ -725,6 +730,7 @@ impl ErrorExt for ContractError {
             | ContractError::VerificationFailed
             | ContractError::RevocationGraceExpired
             | ContractError::DelegationNotExpired
+            | ContractError::DelegationInactive
             | ContractError::PayloadTooOld => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
@@ -859,6 +865,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::DelegationNotExpired => {
                 "Cleanup attempted on a delegation that is not expired yet"
+            }
+            ContractError::DelegationInactive => {
+                "Delegation is not active (revoked or expired)"
             }
             ContractError::PayloadTooOld => {
                 "Signed payload ledger_number is older than MAX_PAYLOAD_AGE_LEDGERS ledgers"
@@ -1016,6 +1025,7 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            ContractError::DelegationInactive => false,              // delegation revoked/expired; cannot be fixed by caller
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0
@@ -1044,7 +1054,6 @@ impl ErrorExt for ContractError {
 
 #[cfg(test)]
 mod test_errors;
-
 
 /// Wraps `env.current_contract_address()` with a mock hook for tests.
 #[macro_export]

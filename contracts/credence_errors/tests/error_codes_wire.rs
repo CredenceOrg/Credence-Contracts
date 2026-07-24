@@ -5,7 +5,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::NotInitialized as u32, 1);
     assert_eq!(ContractError::AlreadyInitialized as u32, 2);
 
-assert_eq!(ContractError::NotAdmin as u32, 100);
+    assert_eq!(ContractError::NotAdmin as u32, 100);
     assert_eq!(ContractError::NotBondOwner as u32, 101);
     assert_eq!(ContractError::UnauthorizedAttester as u32, 102);
     assert_eq!(ContractError::NotOriginalAttester as u32, 103);
