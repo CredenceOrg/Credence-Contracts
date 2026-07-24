@@ -1125,4 +1125,4 @@ mod test_verifier_dispatch;
 mod test_auth;
 
 #[cfg(test)]
-mod test_verify_delegation_active;
+mod test_events_schema;

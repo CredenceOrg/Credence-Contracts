@@ -18,6 +18,8 @@ pub mod pausable;
 
 #[cfg(test)]
 mod test_ownership_transfer;
+#[cfg(test)]
+mod test_events_schema;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;

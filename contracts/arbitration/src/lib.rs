@@ -734,3 +734,6 @@ mod test_lifecycle;
 
 #[cfg(test)]
 mod test_auth;
+
+#[cfg(test)]
+mod test_events_schema;

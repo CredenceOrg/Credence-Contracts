@@ -44,3 +44,6 @@ mod test_pause_withdrawal_lifecycle;
 
 #[cfg(test)]
 mod test_per_source_reconciliation;
+
+#[cfg(test)]
+mod test_events_schema;
