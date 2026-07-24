@@ -425,7 +425,7 @@ pub enum UpgradeKey {
     Implementation,
     /// Upgrade admin address. Value: `Address`.
     Admin,
-    /// Pending (two-step) upgrade admin address. Value: `Address`.
+    /// Pending (two-step) upgrade admin address. Value: `upgrade_auth::PendingAdminTransfer`.
     PndgUpgrAdmin,
     /// Upgrade proposal by id. Value: `upgrade_auth::UpgradeProposal`.
     Proposal(u64),
@@ -1506,6 +1506,22 @@ impl CredenceBond {
             (Symbol::new(&e, "admin_transferred"),),
             (current_admin, new_admin),
         );
+    }
+
+    pub fn transfer_upgrade_admin(e: Env, admin: Address, new_admin: Address) {
+        upgrade_auth::transfer_upgrade_admin(&e, &admin, &new_admin);
+    }
+
+    pub fn accept_upgrade_admin(e: Env, caller: Address) {
+        upgrade_auth::accept_upgrade_admin(&e, &caller);
+    }
+
+    pub fn get_pending_upgrade_admin(e: Env) -> Option<Address> {
+        upgrade_auth::get_pending_upgrade_admin(&e)
+    }
+
+    pub fn cancel_upgrade_admin_transfer(e: Env, admin: Address) {
+        upgrade_auth::cancel_upgrade_admin_transfer(&e, &admin);
     }
 
     /// Get weight config (multiplier_bps, max_weight).
@@ -2856,6 +2872,9 @@ mod test_differential;
 
 #[cfg(test)]
 mod test_attestation_batch;
+
+#[cfg(test)]
+mod test_admin_transfer;
 
 /// Regression tests for storage TTL bumps (issue #570).
 #[cfg(test)]
