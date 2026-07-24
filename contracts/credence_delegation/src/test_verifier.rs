@@ -60,7 +60,7 @@ fn test_legacy_payload_decoding() {
         contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 0, // Ed25519
-        signature_domain: String::from_str(&e, "CredenceDelegation"),
+        ledger_number: 0,
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -78,7 +78,7 @@ fn test_payload_with_secp256r1() {
         contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 1, // Secp256r1
-        signature_domain: String::from_str(&e, "CredenceDelegation"),
+        ledger_number: 0,
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -96,7 +96,7 @@ fn test_payload_with_mldsa44() {
         contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 2, // MLDSA44
-        signature_domain: String::from_str(&e, "CredenceDelegation"),
+        ledger_number: 0,
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -114,7 +114,7 @@ fn test_unknown_scheme_defaults_to_ed25519() {
         contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 255, // Unknown scheme
-        signature_domain: String::from_str(&e, "CredenceDelegation"),
+        ledger_number: 0,
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);

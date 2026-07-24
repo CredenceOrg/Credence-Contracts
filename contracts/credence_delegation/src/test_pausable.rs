@@ -230,7 +230,7 @@ fn test_execute_delegated_delegate_paused() {
         owner: owner.clone(),
         target: delegate.clone(),
         scheme: 0,
-        signature_domain: String::from_str(&env, "CredenceDelegation"),
+        ledger_number: 0,
     };
     assert!(client
         .try_execute_delegated_delegate(
@@ -263,7 +263,7 @@ fn test_execute_delegated_revoke_paused() {
         owner: owner.clone(),
         target: delegate.clone(),
         scheme: 0,
-        signature_domain: String::from_str(&env, "CredenceDelegation"),
+        ledger_number: 0,
     };
     assert!(client
         .try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload)
@@ -290,7 +290,7 @@ fn test_execute_delegated_revoke_attest_paused() {
         owner: owner.clone(),
         target: delegate.clone(),
         scheme: 0,
-        signature_domain: String::from_str(&env, "CredenceDelegation"),
+        ledger_number: 0,
     };
     assert!(client
         .try_execute_delegated_revoke_attest(&owner, &delegate, &payload)

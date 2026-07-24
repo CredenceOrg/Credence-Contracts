@@ -71,7 +71,7 @@ fn delegate_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
-        signature_domain: String::from_str(e, "CredenceDelegation"),
+        ledger_number: 0,
     }
 }
 

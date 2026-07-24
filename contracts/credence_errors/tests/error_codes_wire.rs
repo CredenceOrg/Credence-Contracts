@@ -56,6 +56,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::DelegationNotFound as u32, 501);
     assert_eq!(ContractError::AlreadyRevoked as u32, 502);
     assert_eq!(ContractError::DelegationExpiryTooLong as u32, 503);
+    assert_eq!(ContractError::PayloadTooOld as u32, 510);
 
     assert_eq!(ContractError::AmountMustBePositive as u32, 600);
     assert_eq!(ContractError::ThresholdExceedsSigners as u32, 601);

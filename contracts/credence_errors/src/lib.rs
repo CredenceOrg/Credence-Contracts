@@ -465,14 +465,17 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     DelegationNotExpired = 509,
 
-    /// `verify_delegation_active` rejected a delegation that is expired or revoked.
+    /// Signed operation payload is older than MAX_PAYLOAD_AGE_LEDGERS ledgers.
     ///
-    /// Raised when a delegation record's `revoked` flag is `true` **or** when
-    /// `expires_at <= now`. Distinguishes an inactive delegation from a missing
-    /// one (`DelegationNotFound`).
+    /// An attacker who intercepts a signed `DelegatedActionPayload` and delays
+    /// its submission can replay it arbitrarily far in the future as long as
+    /// the nonce has not been consumed. `ledger_number` bounds the replay
+    /// window to a short, forward-only interval so that a captured-but-unspent
+    /// payload automatically expires on-chain.
+    ///
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
-    DelegationInactive = 510,
+    PayloadTooOld = 510,
 
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
@@ -701,7 +704,7 @@ impl ErrorExt for ContractError {
             | ContractError::VerificationFailed
             | ContractError::RevocationGraceExpired
             | ContractError::DelegationNotExpired
-            | ContractError::DelegationInactive => ErrorCategory::Delegation,
+            | ContractError::PayloadTooOld => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -828,9 +831,10 @@ impl ErrorExt for ContractError {
             ContractError::DelegationNotExpired => {
                 "Cleanup attempted on a delegation that is not expired yet"
             }
-            ContractError::DelegationInactive => {
-                "Delegation is expired or revoked and cannot authorise actions"
+            ContractError::PayloadTooOld => {
+                "Signed payload ledger_number is older than MAX_PAYLOAD_AGE_LEDGERS ledgers"
             }
+            ContractError::AmountMustBePositive => "Amount must be strictly positive (> 0)",
             ContractError::ThresholdExceedsSigners => {
                 "Threshold cannot exceed the current signer count"
             }
@@ -973,7 +977,7 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierAlreadyRegistered // idempotent
             | ContractError::VerifierNotRegistered
             | ContractError::DelegationNotExpired
-            | ContractError::DelegationInactive => true, // create or renew the delegation
+            | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build

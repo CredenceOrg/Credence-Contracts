@@ -57,7 +57,7 @@ pub use verifier::SchemeTag;
 /// Increment this whenever the pinned spec snapshot in
 /// `tests/spec_xdr_regression.rs` is refreshed so CI can distinguish deliberate
 /// interface bumps from accidental drift.
-pub const CONTRACT_SPEC_VERSION: u32 = 1;
+pub const CONTRACT_SPEC_VERSION: u32 = 2;
 
 // ---------------------------------------------------------------------------
 // Contract types
@@ -407,6 +407,11 @@ impl CredenceDelegation {
         // Domain-separated payload verification
         domain::verify_payload(&e, &payload, DomainTag::Delegate, &owner, &delegate);
 
+        // Staleness guard: reject payloads signed more than MAX_PAYLOAD_AGE_LEDGERS ago.
+        // Placed after verify_payload (so we know this payload was intended for this call)
+        // but before nonce consumption (so a stale payload does not burn a nonce slot).
+        domain::check_payload_age(&e, &payload);
+
         // Signature scheme dispatch: Ed25519 is covered by owner.require_auth() above;
         // Secp256r1/MLDSA44 dispatch to their registered verifier contracts.
         let scheme = domain::decode_scheme_safe(&payload);
@@ -459,6 +464,9 @@ impl CredenceDelegation {
 
         domain::verify_payload(&e, &payload, DomainTag::RevokeDelegation, &owner, &delegate);
 
+        // Staleness guard: reject payloads signed more than MAX_PAYLOAD_AGE_LEDGERS ago.
+        domain::check_payload_age(&e, &payload);
+
         // Signature scheme dispatch for non-Ed25519 schemes.
         let scheme = domain::decode_scheme_safe(&payload);
         verifier::verify_delegated_signature(
@@ -503,6 +511,9 @@ impl CredenceDelegation {
             &attester,
             &subject,
         );
+
+        // Staleness guard: reject payloads signed more than MAX_PAYLOAD_AGE_LEDGERS ago.
+        domain::check_payload_age(&e, &payload);
 
         // Signature scheme dispatch for non-Ed25519 schemes.
         let scheme = domain::decode_scheme_safe(&payload);
@@ -1126,4 +1137,4 @@ mod test_verifier_dispatch;
 mod test_auth;
 
 #[cfg(test)]
-mod test_events_schema;
+mod test_payload_staleness;
