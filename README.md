@@ -114,3 +114,5 @@ soroban contract deploy \
 See [Stellar Soroban docs](https://developers.stellar.org/docs/smart-contracts) for auth and network setup.
 
 For the full testnet deploy and cross-contract wiring runbook, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+For the one-shot initialisation pattern used by every contract in this workspace (re-init guard, admin auth, storage layout, initialization event), see [docs/CONSTRUCTOR_PATTERNS.md](docs/CONSTRUCTOR_PATTERNS.md).
