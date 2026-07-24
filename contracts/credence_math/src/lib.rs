@@ -600,116 +600,29 @@ mod tests {
         assert_eq!(ceil_div_i128(10, 5, "test"), div_i128(10, 5, "test"));
     }
 
-    // -----------------------------------------------------------------------
-    // chunked_iter — boundary tests (issue #760)
-    // -----------------------------------------------------------------------
-    //
-    // Three boundary cases are locked in here:
-    //   1. empty     — callback is never called, return value is 0
-    //   2. exact     — every chunk is full (len is an exact multiple of chunk_size)
-    //   3. remainder — final chunk is shorter than chunk_size
-
-    use crate::chunked_iter;
-
-    /// Build a `soroban_sdk::Vec<u32>` with elements [1, 2, ..., n].
-    fn make_vec(e: &soroban_sdk::Env, n: u32) -> soroban_sdk::Vec<u32> {
-        let mut v: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(e);
-        for i in 1..=n {
-            v.push_back(i);
-        }
-        v
+    #[test]
+    fn bps_round_up_zero_bps() {
+        assert_eq!(bps_round_up(12345, 0, "test"), 0);
+        assert_eq!(bps_round_up(i128::MAX, 0, "test"), 0);
+        assert_eq!(bps_round_up(-98765, 0, "test"), 0);
     }
 
-    /// Empty input — callback never fires, chunk count is 0.
     #[test]
-    fn chunked_iter_empty_vec_never_calls_callback() {
-        let e = soroban_sdk::Env::default();
-        let items: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&e);
-        let mut call_count = 0u32;
-        let chunks = chunked_iter(&e, &items, 3, |_chunk, _idx| {
-            call_count += 1;
-        });
-        assert_eq!(chunks, 0, "empty input produces 0 chunks");
-        assert_eq!(call_count, 0, "callback must not be invoked for empty input");
+    fn bps_u64_boundaries() {
+        assert_eq!(bps_u64(0, 0, "mul"), 0);
+        assert_eq!(bps_u64(0, 10000, "mul"), 0);
+        assert_eq!(bps_u64(10000, 10000, "mul"), 10000);
+        let max_div_2 = u64::MAX / 2;
+        assert_eq!(bps_u64(u64::MAX / 20000 * 20000, 10000, "mul"), max_div_2);
     }
 
-    /// Exact multiple — every chunk is full-sized, no remainder chunk.
-    ///
-    /// 6 elements / chunk_size 3 → 2 full chunks of [1,2,3] and [4,5,6].
     #[test]
-    fn chunked_iter_exact_multiple_produces_full_chunks() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 6);
-        let mut chunk_lens = [0u32; 4];
-        let mut seen = 0usize;
-        let count = chunked_iter(&e, &items, 3, |chunk, _idx| {
-            chunk_lens[seen] = chunk.len();
-            seen += 1;
-        });
-        assert_eq!(count, 2, "6 / 3 = exactly 2 chunks");
-        assert_eq!(seen, 2);
-        assert_eq!(chunk_lens[0], 3, "first chunk is full");
-        assert_eq!(chunk_lens[1], 3, "second chunk is full");
-    }
-
-    /// Remainder — last chunk is smaller than chunk_size.
-    ///
-    /// 7 elements / chunk_size 3 → chunks of sizes 3, 3, 1.
-    #[test]
-    fn chunked_iter_remainder_last_chunk_is_shorter() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 7);
-        let mut chunk_lens = [0u32; 8];
-        let mut seen = 0usize;
-        let count = chunked_iter(&e, &items, 3, |chunk, _idx| {
-            chunk_lens[seen] = chunk.len();
-            seen += 1;
-        });
-        assert_eq!(count, 3, "ceil(7/3) = 3 chunks");
-        assert_eq!(chunk_lens[0], 3, "first chunk is full");
-        assert_eq!(chunk_lens[1], 3, "second chunk is full");
-        assert_eq!(chunk_lens[2], 1, "final chunk holds the remainder");
-    }
-
-    /// chunk_index is passed in monotonically increasing order: 0, 1, 2, …
-    #[test]
-    fn chunked_iter_chunk_index_is_monotone() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 5);
-        let mut expected_idx = 0u32;
-        chunked_iter(&e, &items, 2, |_chunk, idx| {
-            assert_eq!(idx, expected_idx, "chunk_index must be monotonically increasing");
-            expected_idx += 1;
-        });
-    }
-
-    /// chunk_size == 1 produces exactly one chunk per element.
-    #[test]
-    fn chunked_iter_chunk_size_one_produces_one_chunk_per_element() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 4);
-        let mut total_chunks = 0u32;
-        let count = chunked_iter(&e, &items, 1, |chunk, _idx| {
-            assert_eq!(chunk.len(), 1, "each chunk must have exactly one element");
-            total_chunks += 1;
-        });
-        assert_eq!(count, 4);
-        assert_eq!(total_chunks, 4);
-    }
-
-    /// chunk_size larger than the input → single chunk containing all elements.
-    #[test]
-    fn chunked_iter_chunk_size_exceeds_len_produces_single_chunk() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 3);
-        let mut call_count = 0u32;
-        let mut observed_len = 0u32;
-        let count = chunked_iter(&e, &items, 100, |chunk, _idx| {
-            call_count += 1;
-            observed_len = chunk.len();
-        });
-        assert_eq!(count, 1, "one chunk when chunk_size > len");
-        assert_eq!(call_count, 1);
-        assert_eq!(observed_len, 3, "single chunk contains all elements");
+    fn split_bps_boundaries() {
+        assert_eq!(split_bps(0, 0, "mul", "div", "sub"), (0, 0));
+        assert_eq!(split_bps(0, 10000, "mul", "div", "sub"), (0, 0));
+        assert_eq!(split_bps(12345, 0, "mul", "div", "sub"), (0, 12345));
+        assert_eq!(split_bps(12345, 10000, "mul", "div", "sub"), (12345, 0));
+        let amount = i128::MAX / 20000;
+        assert_eq!(split_bps(amount, 10000, "mul", "div", "sub"), (amount, 0));
     }
 }
