@@ -601,6 +601,32 @@ impl CredenceDelegation {
         }
     }
 
+    /// Assert that the delegation identified by `(owner, delegate, delegation_type)`
+    /// is currently active: not revoked and not expired.
+    ///
+    /// Panics with [`ContractError::DelegationNotFound`] when no delegation
+    /// record exists for the key.
+    /// Panics with [`ContractError::DelegationInactive`] when the delegation is
+    /// revoked or expired.
+    ///
+    /// Use this as a pre-condition guard before executing any delegated action
+    /// to guarantee the delegation is still valid at the time of execution.
+    /// Centralising the check here prevents callers from accidentally skipping
+    /// the revocation/expiry verification.
+    pub fn check_delegation_active(
+        e: Env,
+        owner: Address,
+        delegate: Address,
+        delegation_type: DelegationType,
+    ) {
+        bump_instance_ttl(&e);
+        let key = DataKey::Delegation(owner, delegate, delegation_type);
+        let d: Delegation = Self::load_delegation(&e, &key)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::DelegationNotFound));
+        nonce::bump_delegation_ttl(&e, &key, d.expires_at);
+        Self::verify_delegation_active(&e, &d);
+    }
+
     pub fn get_attestation_status(
         e: Env,
         attester: Address,
@@ -985,6 +1011,37 @@ impl CredenceDelegation {
             panic_with_error!(e, ContractError::RevocationGraceExpired);
         }
     }
+
+    /// Assert that `delegation` is currently active (not revoked, not expired).
+    ///
+    /// # Threat being mitigated
+    ///
+    /// Without this guard a caller could present a delegation that has already
+    /// expired or been explicitly revoked and still have it accepted as valid
+    /// authority. An attacker who obtains a leaked delegation record could:
+    ///
+    /// 1. Use an expired delegation long after the owner intended it to stop
+    ///    being valid.
+    /// 2. Continue using a delegation after the owner revoked it (e.g. after a
+    ///    key compromise).
+    ///
+    /// By calling `verify_delegation_active` at every authorisation point,
+    /// enforcement is centralised in a single place rather than scattered across
+    /// callers, reducing the risk of a missed check.
+    ///
+    /// # Errors
+    /// * [`ContractError::DelegationInactive`] if `delegation.revoked == true`
+    ///   **or** if `delegation.expires_at <= now`.
+    ///
+    /// The caller receives a single typed error regardless of whether the
+    /// delegation is expired or revoked so that error-handling paths remain
+    /// simple while still surfacing a wire-stable code for monitoring.
+    fn verify_delegation_active(e: &Env, delegation: &Delegation) {
+        let now = e.ledger().timestamp();
+        if delegation.revoked || delegation.expires_at <= now {
+            panic_with_error!(e, ContractError::DelegationInactive);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1019,3 +1076,6 @@ mod test_verifier_dispatch;
 
 #[cfg(test)]
 mod test_auth;
+
+#[cfg(test)]
+mod test_verify_delegation_active;

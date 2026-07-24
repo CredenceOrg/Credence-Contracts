@@ -931,6 +931,31 @@ impl AdminContract {
         }
     }
 
+    /// Historical role check: assert that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// Panics with [`ContractError::NotAdmin`] when `actor` is not a registered
+    /// admin or when their role is below the required level.
+    /// Panics with [`ContractError::RoleNotHeldAtLedger`] when the actor's role
+    /// was granted **after** `at_ledger`, meaning they were not authorised at
+    /// the time the signed action was created.
+    ///
+    /// See [`Self::require_role_at_ledger`] (private) for the full threat model.
+    ///
+    /// # Arguments
+    /// * `role`      - Minimum `AdminRole` that must have been held
+    /// * `actor`     - Address whose historical role is checked
+    /// * `at_ledger` - Unix timestamp (seconds) of the signed action
+    pub fn check_role_at_ledger(
+        e: Env,
+        role: AdminRole,
+        actor: Address,
+        at_ledger: u64,
+    ) {
+        bump_instance_ttl(&e);
+        Self::require_role_at_ledger(&e, role, &actor, at_ledger);
+    }
+
     /// Get all admin addresses.
     ///
     /// # Returns
@@ -1073,6 +1098,61 @@ impl AdminContract {
             Err(())
         }
     }
+
+    /// Historical role check: verify that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// This is a **defence-in-depth** guard for delegated actions that carry
+    /// an off-chain signature produced at a past ledger. Without it an attacker
+    /// could:
+    ///
+    /// 1. Obtain a signature from an address that was *not yet* an admin at
+    ///    the time the signature was created.
+    /// 2. Wait until that address is later elevated, then replay the signed
+    ///    payload to authorise a historical action as if the signer had been
+    ///    an admin all along.
+    ///
+    /// By asserting `admin_info.assigned_at <= at_ledger` we ensure the role
+    /// assignment predates (or coincides with) the moment the signature covers.
+    ///
+    /// # Arguments
+    /// * `e`          - Soroban environment
+    /// * `role`       - Minimum `AdminRole` that must have been held
+    /// * `actor`      - Address whose historical role is checked
+    /// * `at_ledger`  - Ledger timestamp of the signed action
+    ///
+    /// # Errors
+    /// * [`ContractError::NotAdmin`] — `actor` is not a known admin at all.
+    /// * [`ContractError::RoleNotHeldAtLedger`] — `actor`'s role was assigned
+    ///   after `at_ledger`, meaning they were not yet authorised at that time.
+    ///
+    /// # Panics
+    /// Panics via [`panic_with_error!`] — compatible with Soroban's error
+    /// propagation model.
+    pub fn require_role_at_ledger(
+        e: &Env,
+        role: AdminRole,
+        actor: &Address,
+        at_ledger: u64,
+    ) {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(actor.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+
+        // The actor must have the required role level.
+        if admin_info.role < role {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        // The role must have been assigned at or before the ledger under review.
+        // If `assigned_at > at_ledger` the actor was not yet an admin when the
+        // action was signed, so the authorisation is invalid.
+        if admin_info.assigned_at > at_ledger {
+            panic_with_error!(e, ContractError::RoleNotHeldAtLedger);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1137,3 +1217,6 @@ mod test_suspension;
 
 #[cfg(test)]
 mod test_auth_entrypoints;
+
+#[cfg(test)]
+mod test_require_role_at_ledger;

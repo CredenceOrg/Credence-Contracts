@@ -453,6 +453,15 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     DelegationNotExpired = 509,
 
+    /// `verify_delegation_active` rejected a delegation that is expired or revoked.
+    ///
+    /// Raised when a delegation record's `revoked` flag is `true` **or** when
+    /// `expires_at <= now`. Distinguishes an inactive delegation from a missing
+    /// one (`DelegationNotFound`).
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    DelegationInactive = 510,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
@@ -478,6 +487,15 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 113,
+
+    /// Actor did not hold the required role at the given ledger timestamp.
+    ///
+    /// Raised by `require_role_at_ledger` when the actor's `assigned_at`
+    /// timestamp is later than the ledger timestamp under inspection, meaning
+    /// the role was not yet granted at the time of the delegated action.
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    RoleNotHeldAtLedger = 114,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -613,7 +631,8 @@ impl ErrorExt for ContractError {
             | ContractError::ContractPaused
             | ContractError::InvalidPauseAction
             | ContractError::InsufficientSignatures
-            | ContractError::AdminSuspended => ErrorCategory::Authorization,
+            | ContractError::AdminSuspended
+            | ContractError::RoleNotHeldAtLedger => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -668,7 +687,8 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierNotRegistered
             | ContractError::VerificationFailed
             | ContractError::RevocationGraceExpired
-            | ContractError::DelegationNotExpired => ErrorCategory::Delegation,
+            | ContractError::DelegationNotExpired
+            | ContractError::DelegationInactive => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -689,7 +709,6 @@ impl ErrorExt for ContractError {
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
-            ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
@@ -712,7 +731,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
             ContractError::AdminSuspended => "Admin is currently suspended",
-            ContractError::BondNotFound => "No bond found for the given key",
+            ContractError::RoleNotHeldAtLedger => {
+                "Actor did not hold the required role at the specified ledger timestamp"
+            }
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
             ContractError::SlashExceedsBond => "Slash amount exceeds the bonded amount",
@@ -791,7 +812,9 @@ impl ErrorExt for ContractError {
             ContractError::DelegationNotExpired => {
                 "Cleanup attempted on a delegation that is not expired yet"
             }
-            ContractError::AmountMustBePositive => "Amount must be strictly positive (> 0)",
+            ContractError::DelegationInactive => {
+                "Delegation is expired or revoked and cannot authorise actions"
+            }
             ContractError::ThresholdExceedsSigners => {
                 "Threshold cannot exceed the current signer count"
             }
@@ -866,7 +889,9 @@ impl ErrorExt for ContractError {
             | ContractError::NoPendingAdmin         // call begin_admin_transfer first
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
-            | ContractError::TimelockNotReady => true,
+            | ContractError::TimelockNotReady
+            | ContractError::EmergencyDrainNotPermitted // pause + wait for timelock
+            | ContractError::RoleNotHeldAtLedger => true, // role was not yet assigned at that ledger
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -930,7 +955,8 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationExpiryTooLong   // shorten to MAX_DURATION
             | ContractError::VerifierAlreadyRegistered // idempotent
             | ContractError::VerifierNotRegistered
-            | ContractError::DelegationNotExpired => true,
+            | ContractError::DelegationNotExpired
+            | ContractError::DelegationInactive => true, // create or renew the delegation
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
