@@ -610,19 +610,35 @@ mod tests {
     #[test]
     fn bps_u64_boundaries() {
         assert_eq!(bps_u64(0, 0, "mul"), 0);
-        assert_eq!(bps_u64(0, 10000, "mul"), 0);
-        assert_eq!(bps_u64(10000, 10000, "mul"), 10000);
+        assert_eq!(bps_u64(0, BPS_DENOMINATOR as u32, "mul"), 0);
+        assert_eq!(bps_u64(10000, BPS_DENOMINATOR as u32, "mul"), 10000);
         let max_div_2 = u64::MAX / 2;
-        assert_eq!(bps_u64(u64::MAX / 20000 * 20000, 10000, "mul"), max_div_2);
+        assert_eq!(
+            bps_u64(
+                (u64::MAX / (BPS_DENOMINATOR as u64 * 2)) * (BPS_DENOMINATOR as u64 * 2),
+                BPS_DENOMINATOR as u32,
+                "mul"
+            ),
+            max_div_2
+        );
     }
 
     #[test]
     fn split_bps_boundaries() {
         assert_eq!(split_bps(0, 0, "mul", "div", "sub"), (0, 0));
-        assert_eq!(split_bps(0, 10000, "mul", "div", "sub"), (0, 0));
+        assert_eq!(
+            split_bps(0, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (0, 0)
+        );
         assert_eq!(split_bps(12345, 0, "mul", "div", "sub"), (0, 12345));
-        assert_eq!(split_bps(12345, 10000, "mul", "div", "sub"), (12345, 0));
+        assert_eq!(
+            split_bps(12345, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (12345, 0)
+        );
         let amount = i128::MAX / 20000;
-        assert_eq!(split_bps(amount, 10000, "mul", "div", "sub"), (amount, 0));
+        assert_eq!(
+            split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (amount, 0)
+        );
     }
 }
