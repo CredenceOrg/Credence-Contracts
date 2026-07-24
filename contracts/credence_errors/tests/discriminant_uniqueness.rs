@@ -30,18 +30,13 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("NotInitialized", ContractError::NotInitialized),
     ("AlreadyInitialized", ContractError::AlreadyInitialized),
     // --- Authorization (100-199) ---
-    // NOTE: lib.rs currently defines `SignatureExpired` twice (at code 109
-    // in the Authorization block and at code 222 in the Bond/Delegation
-    // shared section). Only one row appears here; the duplicate variant
-    // declaration in `lib.rs` is itself a compile-time regression that
-    // these tests fail loudly on `main`.
-    ("SignatureExpired", ContractError::SignatureExpired),
     ("NoPendingAdmin", ContractError::NoPendingAdmin),
     ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
     ("AdminUnchanged", ContractError::AdminUnchanged),
     ("TimelockNotReady", ContractError::TimelockNotReady),
     ("AdminSuspended", ContractError::AdminSuspended),
     ("EmergencyDrainNotPermitted", ContractError::EmergencyDrainNotPermitted),
+    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
     ("NotAdmin", ContractError::NotAdmin),
     ("NotBondOwner", ContractError::NotBondOwner),
     ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
@@ -62,6 +57,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("WithdrawalAlreadyRequested", ContractError::WithdrawalAlreadyRequested),
     ("ReentrancyDetected", ContractError::ReentrancyDetected),
     ("InvalidNonce", ContractError::InvalidNonce),
+    ("SignatureExpired", ContractError::SignatureExpired),
     ("NegativeStake", ContractError::NegativeStake),
     ("EarlyExitConfigNotSet", ContractError::EarlyExitConfigNotSet),
     ("InvalidPenaltyBps", ContractError::InvalidPenaltyBps),
@@ -74,6 +70,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("BondAlreadyExists", ContractError::BondAlreadyExists),
     // Codes 218, 219, 220, 221 — see shared Bond/Delegation block below.
     ("UnauthorizedToken", ContractError::UnauthorizedToken),
+    ("DuplicateIdempotencyKey", ContractError::DuplicateIdempotencyKey),
     ("InvariantViolation", ContractError::InvariantViolation),
     ("TreasuryNotConfigured", ContractError::TreasuryNotConfigured),
     ("CursorOutOfRange", ContractError::CursorOutOfRange),
@@ -112,6 +109,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("VerificationFailed", ContractError::VerificationFailed),
     ("RevocationGraceExpired", ContractError::RevocationGraceExpired),
     ("DelegationNotExpired", ContractError::DelegationNotExpired),
+    ("DelegationInactive", ContractError::DelegationInactive),
     // --- Treasury (600-699) ---
     ("AmountMustBePositive", ContractError::AmountMustBePositive),
     ("ThresholdExceedsSigners", ContractError::ThresholdExceedsSigners),
@@ -133,7 +131,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 85;
+const ALL_VARIANTS_COUNT: usize = 88;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
@@ -195,7 +193,7 @@ fn discriminant_codes_fit_their_documentated_category_range() {
         (1..=99, "Initialization"),
         // Authorization (100-199) is split in `lib.rs` between two
         // logical groups (standard 100-108 and Admin Transfer 109-112,
-        // EmergencyDrainNotPermitted at 113). Both belong to the
+        // with the additional authorization errors following them). Both belong to the
         // Authorization category per `ErrorExt::category()`.
         (100..=199, "Authorization"),
         // `DomainMismatch = 225`, `OwnerMismatch = 219`,

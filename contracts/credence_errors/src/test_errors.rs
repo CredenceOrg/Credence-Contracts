@@ -17,6 +17,13 @@ mod tests {
             ContractError::ContractPaused,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
+            ContractError::AdminSuspended,
+            ContractError::NoPendingAdmin,
+            ContractError::InvalidAdminAddress,
+            ContractError::AdminUnchanged,
+            ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -36,8 +43,12 @@ mod tests {
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
+            ContractError::InvariantViolation,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
+            ContractError::CursorOutOfRange,
             ContractError::DomainMismatch,
             ContractError::OwnerMismatch,
             ContractError::TargetMismatch,
@@ -56,6 +67,7 @@ mod tests {
             ContractError::AlreadyActive,
             ContractError::InvalidContractAddress,
             ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
@@ -66,7 +78,7 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
-            ContractError::PayloadTooOld,
+            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -75,6 +87,8 @@ mod tests {
             ContractError::InsufficientApprovals,
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
+            ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
@@ -423,7 +437,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            73,
+            88,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1174,6 +1188,8 @@ mod tests {
             ContractError::InvalidAdminAddress => true,
             ContractError::AdminUnchanged => true,
             ContractError::TimelockNotReady => true, // wait for delay
+            ContractError::EmergencyDrainNotPermitted => true,
+            ContractError::RoleNotHeldAtLedger => true,
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1197,6 +1213,8 @@ mod tests {
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
+            ContractError::UnauthorizedToken => true,
+            ContractError::DuplicateIdempotencyKey => true,
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
@@ -1237,7 +1255,7 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::PayloadTooOld => true,           // re-sign with current ledger number
+            ContractError::DelegationInactive => true,
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1249,6 +1267,7 @@ mod tests {
             ContractError::InvalidFlashLoanCallback => false, // bad magic
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
+            ContractError::SlippageExceeded => true,
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1291,6 +1310,8 @@ mod tests {
             ContractError::InvalidAdminAddress,
             ContractError::AdminUnchanged,
             ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1311,6 +1332,8 @@ mod tests {
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
             ContractError::StorageCapReached,
@@ -1333,6 +1356,7 @@ mod tests {
             ContractError::AlreadyActive,
             ContractError::InvalidContractAddress,
             ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
@@ -1343,7 +1367,7 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
-            ContractError::PayloadTooOld,
+            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1353,13 +1377,15 @@ mod tests {
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
             ContractError::CursorOutOfRange,
             ContractError::Overflow,
             ContractError::Underflow,
+            ContractError::DivisionByZero,
         ];
         assert_eq!(
             cases.len(),
-            78,
+            88,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

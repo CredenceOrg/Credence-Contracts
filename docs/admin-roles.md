@@ -127,7 +127,7 @@ reactivate_admin(env, caller, admin_address)
 suspend_admin(env, caller, admin, until_ts)
 ```
 - Suspends `admin` until `until_ts` (Unix timestamp, seconds)
-- `until_ts` must be **strictly in the future**; equal or past timestamps are rejected with `AdminSuspended` (109)
+- `until_ts` must be **strictly in the future**; equal or past timestamps are rejected with `AdminSuspended` (113)
 - While suspended, `is_admin` and `has_role_at_least` return `false`
 - **Auto-reactivation**: once `e.ledger().timestamp() >= until_ts` the admin is automatically treated as active again — no second transaction is required
 - Authorization: caller must have a role ≥ target's role (same rule as `deactivate_admin`)
