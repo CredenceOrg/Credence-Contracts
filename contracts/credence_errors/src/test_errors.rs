@@ -80,6 +80,7 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -983,7 +984,7 @@ mod tests {
         // This test verifies the macro compiles and can be called
         // Actual negative testing is done in contract integration tests
         use soroban_sdk::Env;
-        
+
         let e = Env::default();
         // Positive amount should pass
         fn test_positive() -> Result<(), ContractError> {
@@ -998,7 +999,7 @@ mod tests {
     fn test_require_no_leading_zero_amount_macro() {
         // Test that Some(0) returns AmountExplicitlyZero error
         use soroban_sdk::Env;
-        
+
         fn test_zero() -> Result<(), ContractError> {
             let e = Env::default();
             crate::require_no_leading_zero_amount!(&e, Some(0_i128));
@@ -1265,8 +1266,8 @@ mod tests {
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
-            ContractError::BatchTooLarge => true,     // reduce batch size
-            ContractError::EmptyBatch => true,         // supply at least one item
+            ContractError::BatchTooLarge => true,       // reduce batch size
+            ContractError::EmptyBatch => true,          // supply at least one item
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1302,7 +1303,8 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::PayloadTooOld => true,    // re-sign with current ledger number
+            ContractError::DelegationInactive => false,     // delegation revoked/expired; cannot be fixed by caller
+            ContractError::PayloadTooOld => true,           // re-sign with current ledger number
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1417,6 +1419,7 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
