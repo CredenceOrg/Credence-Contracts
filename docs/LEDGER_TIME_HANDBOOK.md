@@ -71,8 +71,10 @@ at exactly `requested_at + period` the withdrawal is executable.
 `suspended_until` is a `timestamp()` deadline. While
 `timestamp() < suspended_until` the admin is treated as suspended; at
 `timestamp() >= suspended_until` the suspension is over
-(`contracts/admin/src/lib.rs:637`, `:899`). Setting `until_ts <= timestamp()`
-clears the suspension instead of scheduling a past deadline.
+(`contracts/admin/src/lib.rs:637`, `:899`). `suspend_admin` requires
+`until_ts > timestamp()` and panics `AdminSuspended` otherwise, so there is no
+way to schedule a past deadline; the suspension simply ends when the deadline
+passes.
 
 ### Timelock operations — `timelock` (timestamp)
 
@@ -80,11 +82,12 @@ Operations carry both an `eta` (earliest execution time) and an `expires_at`
 (latest execution time), both compared against `timestamp()`:
 
 - execution before `eta` is rejected,
-- execution at `timestamp() >= expires_at` is rejected (the operation has
-  lapsed; see the boundary tests setting `li.timestamp = op.expires_at` and
-  `op.expires_at + 1`).
+- execution at `timestamp() > expires_at` is rejected (the operation has
+  lapsed; the boundary tests execute successfully at
+  `li.timestamp = op.expires_at` and reject at `op.expires_at + 1`).
 
-The valid execution window is therefore `eta <= timestamp() < expires_at`.
+The valid execution window is therefore `eta <= timestamp() <= expires_at`
+(`expires_at` is inclusive).
 
 ### Proposal epochs — `credence_delegation/src/pausable.rs` (sequence)
 
@@ -123,7 +126,7 @@ interval, not with wall seconds.
 | Delegation liveness | `timestamp() >= expires_at` | `timestamp() == expires_at - 1` |
 | Cooldown execution | `timestamp() < requested_at + period` | `timestamp() == requested_at + period` |
 | Admin suspension active | — | active while `timestamp() < suspended_until` |
-| Timelock execution | `timestamp() < eta`, `timestamp() >= expires_at` | `timestamp() == eta` |
+| Timelock execution | `timestamp() < eta`, `timestamp() > expires_at` | `timestamp() == eta`, `timestamp() == expires_at` |
 | Multisig proposal expiry | `timestamp() >= expires_at` | `timestamp() == expires_at - 1` |
 
 When adding a new time gate, pick the inclusive/exclusive sides deliberately
