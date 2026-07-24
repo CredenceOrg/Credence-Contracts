@@ -93,6 +93,27 @@ use soroban_sdk::{
 
 pub use soroban_sdk;
 
+/// Signature domain identifier for the CredenceBond contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+const SIGNATURE_DOMAIN: &str = "CredenceBond";
+
 /// Identity tier based on bonded amount.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
