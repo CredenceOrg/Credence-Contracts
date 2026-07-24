@@ -20,10 +20,9 @@
 //! - Validates addresses before registration
 //! - Emits events for audit trail
 
-use soroban_sdk::String;
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 pub mod idempotency;
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
