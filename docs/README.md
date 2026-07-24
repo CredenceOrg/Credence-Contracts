@@ -41,6 +41,7 @@ This directory contains all design docs, API references, and operational guides 
 | [fund-flow.md](fund-flow.md) | Operator | Token flows through the contract |
 | [liquidation.md](liquidation.md) | Operator | Liquidation mechanics |
 | [treasury.md](treasury.md) | Operator | Treasury configuration and sweeping |
+| [TREASURY_INVARIANTS.md](TREASURY_INVARIANTS.md) | Contributor / Auditor | Treasury flow invariants and balance tracking |
 | [weighted-attestations.md](weighted-attestations.md) | Contributor | Attestation weighting system |
 
 ## Delegation Contract (`credence_delegation`)
