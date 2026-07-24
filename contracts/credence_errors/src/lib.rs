@@ -587,6 +587,17 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     SlippageExceeded = 609,
 
+    /// Payment beneficiary does not match the expected treasury address.
+    /// Defence-in-depth guard that rejects treasury-flow payments to any
+    /// recipient other than the configured treasury. Without this check an
+    /// attacker who can influence the `recipient` argument of a treasury-bound
+    /// transfer (e.g. via a misconfigured proposal, a confused-deputy
+    /// cross-contract call, or a bug that overwrites the stored treasury) can
+    /// redirect protocol funds to an attacker-controlled address.
+    /// Contracts: bond, treasury
+    /// Wire-stable: do not renumber this error code.
+    TreasuryBeneficiaryMismatch = 610,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -734,7 +745,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidFlashLoanCallback
             | ContractError::FlashLoanRepaymentFailed
             | ContractError::ProposalExpired
-            | ContractError::SlippageExceeded => ErrorCategory::Treasury,
+            | ContractError::SlippageExceeded
+            | ContractError::TreasuryBeneficiaryMismatch => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero => {
                 ErrorCategory::Arithmetic
@@ -883,6 +895,9 @@ impl ErrorExt for ContractError {
             ContractError::SlippageExceeded => {
                 "Settled withdrawal amount fell below the caller's minimum (slippage)"
             }
+            ContractError::TreasuryBeneficiaryMismatch => {
+                "Payment beneficiary does not match the expected treasury address"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -1018,7 +1033,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalAlreadyExecuted        // idempotent
             | ContractError::InsufficientApprovals          // collect more approvals
             | ContractError::ProposalExpired                // create a new proposal
-            | ContractError::SlippageExceeded => true,      // retry with a looser min_amount_out
+            | ContractError::SlippageExceeded               // retry with a looser min_amount_out
+            | ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
 
             // FATAL Treasury flashloan failures: callback contract misbehaved.
             ContractError::InvalidFlashLoanCallback => false, // bad magic value
@@ -1045,4 +1061,63 @@ macro_rules! contract_address {
     ($env:expr) => {
         $env.current_contract_address()
     };
+}
+
+/// Rejects non-positive amounts with the typed `AmountMustBePositive` error.
+///
+/// Use this in place of ad-hoc `if amount <= 0 { panic!(...) }` guards so
+/// every call site raises the same wire-stable error code.
+///
+/// # Arguments
+/// * `env` - Soroban environment reference (for `panic_with_error!`)
+/// * `amount` - Any `i128` value that must be strictly positive (> 0)
+///
+/// # Panics
+/// With `ContractError::AmountMustBePositive` when `amount <= 0`.
+#[macro_export]
+macro_rules! require_positive_amount {
+    ($env:expr, $amount:expr) => {{
+        let amt: i128 = $amount;
+        if amt <= 0 {
+            ::soroban_sdk::panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
+        }
+    }};
+}
+
+use soroban_sdk::{Address, Env};
+
+/// Defence-in-depth guard: reject payments to any address other than the
+/// configured treasury.
+///
+/// This is a typed replacement for ad-hoc checks such as
+/// `if recipient != treasury { panic!("recipient must be treasury") }`.
+/// It surfaces `ContractError::TreasuryBeneficiaryMismatch` so off-chain
+/// indexers, monitoring dashboards, and callers can distinguish a
+/// treasury-redirection failure from other panics and so the error code
+/// is stable across every call site that enforces the check.
+///
+/// # Threat model
+/// Without this check, a bug that lets an attacker control the `actor`
+/// argument of a treasury-bound transfer (e.g. confused-deputy from a
+/// misconfigured cross-contract call, a stale proposal whose treasury
+/// field has been overwritten in storage, or an incorrectly forwarded
+/// recipient argument in an admin workflow) results in an immediate,
+/// irreversible loss of protocol funds. The guard makes that class of
+/// bug fail closed by verifying the intended beneficiary exactly
+/// matches the treasury address before any tokens move.
+///
+/// # Arguments
+/// * `e`       - Soroban environment (needed for typed error panic)
+/// * `actor`   - The address that would receive the funds (the "from"
+///               perspective of the check: this is the actor whose
+///               identity is being verified as the intended treasury).
+/// * `expected` - The known-good treasury address that `actor` must equal.
+///
+/// # Panics
+/// With `ContractError::TreasuryBeneficiaryMismatch` when
+/// `actor != expected`.
+pub fn require_matching_treasury_beneficiary(e: &Env, actor: &Address, expected: &Address) {
+    if actor != expected {
+        ::soroban_sdk::panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
+    }
 }

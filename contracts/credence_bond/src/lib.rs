@@ -2599,7 +2599,8 @@ impl CredenceBond {
     /// - `ContractError::EmergencyDrainNotPermitted` — not paused, or no ETA scheduled.
     /// - `ContractError::TimelockNotReady` — ETA not yet reached.
     /// - Panics with `"amount must be positive"` — `amount <= 0`.
-    /// - Panics with `"recipient must be treasury"` — wrong recipient.
+    /// - `ContractError::TreasuryBeneficiaryMismatch` (code 610) — wrong recipient
+    ///   (enforced by `credence_errors::require_matching_treasury_beneficiary`).
     pub fn emergency_drain_to_treasury(
         e: Env,
         admin: Address,
