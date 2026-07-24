@@ -17,7 +17,8 @@
 //! Canonical starting point for new Soroban contracts in this workspace.
 //!
 //! ## Patterns demonstrated
-//! - `#![no_std]` + `soroban_sdk` imports
+//! - `#![no_std]
+#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
 //! - `DataKey` enum for typed storage
 //! - `#[contracttype]` structs for on-chain data
 //! - Admin-gated initialisation (panic-on-reinit guard)
@@ -28,6 +29,7 @@
 //! Copy this crate, rename the package and struct, then extend.
 
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 
 use credence_errors::ContractError;
 use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};

@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 
 #[cfg(any(test, feature = "testutils"))]
 mod batch;

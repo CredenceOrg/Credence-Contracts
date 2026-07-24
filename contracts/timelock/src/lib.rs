@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 
 use credence_errors::ContractError;
 use soroban_sdk::{
