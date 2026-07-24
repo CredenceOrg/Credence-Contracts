@@ -238,6 +238,21 @@ pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str)
     div_i128(numerator, BPS_DENOMINATOR, div_msg)
 }
 
+/// Saturated basis-point multiplication: `amount * bps / BPS_DENOMINATOR`.
+///
+/// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
+#[inline]
+#[must_use]
+pub fn sat_mul_bps(amount: i128, bps_value: u32) -> i128 {
+    mul_div_i128(
+        amount,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Down,
+        "sat_mul_bps overflow",
+    )
+}
+
 /// Calculate a basis-point percentage of an `i128` amount, rounded away from zero.
 ///
 /// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
@@ -640,5 +655,18 @@ mod tests {
             split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
             (amount, 0)
         );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn sat_mul_bps_identity(amount in 0..i128::MAX) {
+            prop_assert_eq!(sat_mul_bps(amount, 10_000), amount);
+        }
     }
 }
