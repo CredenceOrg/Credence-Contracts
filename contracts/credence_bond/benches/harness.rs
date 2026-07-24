@@ -8,9 +8,9 @@
 //! The numbers are *modelled* host costs, not wall-clock time, so they are
 //! deterministic across machines — which is exactly what makes them usable as a
 //! committed regression baseline. See `docs/gas-regression.md` for how to read
-//! and triage them.
+//! and triage them.#![allow(dead_code)]
+#![allow(clippy::disallowed_macros)]
 
-#![allow(dead_code)]
 
 use std::collections::BTreeMap;
 

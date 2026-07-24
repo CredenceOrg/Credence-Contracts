@@ -1,5 +1,6 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 //! # Credence Registry Contract
 //!
