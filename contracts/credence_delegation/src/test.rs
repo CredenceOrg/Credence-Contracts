@@ -17,6 +17,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>) {
 }
 
 fn delegate_payload(
+    e: &Env,
     domain: DomainTag,
     owner: &Address,
     target: &Address,
@@ -30,10 +31,12 @@ fn delegate_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0, // Default to Ed25519 for backwards compatibility
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
 fn delegate_payload_with_scheme(
+    e: &Env,
     domain: DomainTag,
     owner: &Address,
     target: &Address,
@@ -48,6 +51,7 @@ fn delegate_payload_with_scheme(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -261,7 +265,7 @@ fn test_execute_delegated_delegate_accepts_exact_max_expiry() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION;
-    let payload = delegate_payload(DomainTag::Delegate, &owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, DomainTag::Delegate, &owner, &delegate, &client.address, 0);
 
     let d = client.execute_delegated_delegate(
         &owner,
@@ -282,7 +286,7 @@ fn test_execute_delegated_delegate_rejects_over_max_without_consuming_nonce() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     let expires_at = e.ledger().timestamp() + MAX_DELEGATION_DURATION + 1;
-    let payload = delegate_payload(DomainTag::Delegate, &owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, DomainTag::Delegate, &owner, &delegate, &client.address, 0);
 
     assert!(client
         .try_execute_delegated_delegate(

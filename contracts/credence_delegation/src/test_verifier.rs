@@ -52,13 +52,15 @@ fn test_default_scheme_ed25519() {
 #[test]
 fn test_legacy_payload_decoding() {
     // Legacy payloads without explicit scheme should default to Ed25519
+    let e = Env::default();
     let payload = DelegatedActionPayload {
         domain: DomainTag::Delegate,
-        owner: soroban_sdk::Address::generate(&Env::default()),
-        target: soroban_sdk::Address::generate(&Env::default()),
-        contract_id: soroban_sdk::Address::generate(&Env::default()),
+        owner: soroban_sdk::Address::generate(&e),
+        target: soroban_sdk::Address::generate(&e),
+        contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 0, // Ed25519
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -68,13 +70,15 @@ fn test_legacy_payload_decoding() {
 #[test]
 fn test_payload_with_secp256r1() {
     // Payload with explicit Secp256r1 scheme
+    let e = Env::default();
     let payload = DelegatedActionPayload {
         domain: DomainTag::Delegate,
-        owner: soroban_sdk::Address::generate(&Env::default()),
-        target: soroban_sdk::Address::generate(&Env::default()),
-        contract_id: soroban_sdk::Address::generate(&Env::default()),
+        owner: soroban_sdk::Address::generate(&e),
+        target: soroban_sdk::Address::generate(&e),
+        contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 1, // Secp256r1
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -84,13 +88,15 @@ fn test_payload_with_secp256r1() {
 #[test]
 fn test_payload_with_mldsa44() {
     // Payload with explicit MLDSA44 scheme
+    let e = Env::default();
     let payload = DelegatedActionPayload {
         domain: DomainTag::Delegate,
-        owner: soroban_sdk::Address::generate(&Env::default()),
-        target: soroban_sdk::Address::generate(&Env::default()),
-        contract_id: soroban_sdk::Address::generate(&Env::default()),
+        owner: soroban_sdk::Address::generate(&e),
+        target: soroban_sdk::Address::generate(&e),
+        contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 2, // MLDSA44
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -100,13 +106,15 @@ fn test_payload_with_mldsa44() {
 #[test]
 fn test_unknown_scheme_defaults_to_ed25519() {
     // For backwards compatibility, unknown schemes should default to Ed25519
+    let e = Env::default();
     let payload = DelegatedActionPayload {
         domain: DomainTag::Delegate,
-        owner: soroban_sdk::Address::generate(&Env::default()),
-        target: soroban_sdk::Address::generate(&Env::default()),
-        contract_id: soroban_sdk::Address::generate(&Env::default()),
+        owner: soroban_sdk::Address::generate(&e),
+        target: soroban_sdk::Address::generate(&e),
+        contract_id: soroban_sdk::Address::generate(&e),
         nonce: 0,
         scheme: 255, // Unknown scheme
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);

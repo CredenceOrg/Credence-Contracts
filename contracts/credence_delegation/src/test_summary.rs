@@ -25,6 +25,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>) {
 }
 
 fn make_payload(
+    e: &Env,
     domain: DomainTag,
     owner: &Address,
     target: &Address,
@@ -39,6 +40,7 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -108,6 +110,7 @@ fn test_revoked_at_set_on_execute_delegated_revoke() {
 
     e.ledger().with_mut(|li| li.timestamp = 3_000);
     let payload = make_payload(
+        &e,
         DomainTag::RevokeDelegation,
         &owner,
         &delegate,
@@ -131,6 +134,7 @@ fn test_revoked_at_set_on_execute_delegated_revoke_attest() {
 
     e.ledger().with_mut(|li| li.timestamp = 7_777);
     let payload = make_payload(
+        &e,
         DomainTag::RevokeAttestation,
         &attester,
         &subject,
@@ -203,7 +207,7 @@ fn test_scheme_stored_from_payload_scheme_field() {
     let delegate = Address::generate(&e);
 
     // Scheme 1 = Secp256r1
-    let payload = make_payload(DomainTag::Delegate, &owner, &delegate, &client.address, 0, 1);
+    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &client.address, 0, 1);
     let d = client.execute_delegated_delegate(
         &owner,
         &delegate,
@@ -224,7 +228,7 @@ fn test_scheme_zero_via_payload() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
 
-    let payload = make_payload(DomainTag::Delegate, &owner, &delegate, &client.address, 0, 0);
+    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &client.address, 0, 0);
     let d = client.execute_delegated_delegate(
         &owner,
         &delegate,

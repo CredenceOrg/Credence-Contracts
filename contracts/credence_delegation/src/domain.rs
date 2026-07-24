@@ -27,9 +27,30 @@
 //! transmitting payloads should always set the scheme explicitly.
 
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String};
 
 pub use crate::verifier::SchemeTag;
+
+/// Signature domain identifier for the CredenceDelegation contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+pub const SIGNATURE_DOMAIN: &str = "CredenceDelegation";
 
 /// Labels each function domain that accepts a delegated (off-chain) signature.
 ///
@@ -81,6 +102,9 @@ pub struct DelegatedActionPayload {
     /// The signature scheme: Ed25519, Secp256r1, or MLDSA44.
     /// Defaults to Ed25519 for backwards compatibility with legacy payloads.
     pub scheme: u32,
+    /// Signature domain identifier to prevent cross-contract replay attacks.
+    /// Must match the contract's SIGNATURE_DOMAIN constant.
+    pub signature_domain: String,
 }
 
 /// Validates that the fields in `payload` match the parameters supplied at the
@@ -94,6 +118,7 @@ pub struct DelegatedActionPayload {
 /// - Owner mismatch  => `OwnerMismatch` (505)
 /// - Target mismatch => `TargetMismatch` (506)
 /// - Contract ID mismatch => `ContractIdMismatch` (507)
+/// - Signature domain mismatch => `DomainMismatch` (504)
 pub fn verify_payload(
     e: &Env,
     payload: &DelegatedActionPayload,
@@ -112,6 +137,11 @@ pub fn verify_payload(
     }
     if payload.contract_id != e.current_contract_address() {
         panic_with_error!(e, ContractError::ContractIdMismatch);
+    }
+    // Validate signature domain to prevent cross-contract replay attacks
+    let expected_domain_str = String::from_str(e, SIGNATURE_DOMAIN);
+    if payload.signature_domain != expected_domain_str {
+        panic_with_error!(e, ContractError::DomainMismatch);
     }
 }
 
