@@ -953,6 +953,17 @@ mod tests {
     }
 
     // treasury
+    #[test]
+    fn test_require_positive_amount_macro_compiles() {
+        // This test verifies the macro compiles and can be called
+        // Actual negative testing is done in contract integration tests
+        use soroban_sdk::Env;
+        
+        let e = Env::default();
+        // Positive amount should pass
+        credence_errors::require_positive_amount!(&e, 100_i128);
+    }
+
     fn mock_receive_fee(amount: i128, authorized: bool) -> Result<(), ContractError> {
         if amount <= 0 {
             return Err(ContractError::AmountMustBePositive);

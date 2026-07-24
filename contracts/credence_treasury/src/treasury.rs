@@ -272,9 +272,7 @@ impl CredenceTreasury {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         from.require_auth();
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let admin: Address = e
             .storage()
             .instance()
@@ -510,9 +508,7 @@ impl CredenceTreasury {
         if !is_signer {
             panic_with_error!(&e, ContractError::NotSigner);
         }
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let total: i128 = e
             .storage()
             .instance()
@@ -1031,9 +1027,7 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
 
         let token_addr = Self::get_token(e.clone());
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);

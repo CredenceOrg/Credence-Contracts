@@ -175,9 +175,7 @@ impl CredenceBond {
     /// Increases the bonded amount for an existing bond.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
         identity.require_auth();
-        if !is_valid_bond(amount) {
-            return Err(ContractError::InvalidBondAmount);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
 
         let mut bond = storage::get_bond(&e, &identity)?;
         
@@ -221,6 +219,7 @@ impl CredenceBond {
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
         identity.require_auth();
         acquire_lock(&e);
+        credence_errors::require_positive_amount!(&e, amount);
         
         let mut bond = storage::get_bond(&e, &identity)?;
         let now = e.ledger().timestamp();
@@ -250,6 +249,7 @@ impl CredenceBond {
     pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
         admin.require_auth();
         if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
+        credence_errors::require_positive_amount!(&e, amount);
 
         let mut bond = storage::get_bond(&e, &identity)?;
         let new_slashed = bond.slashed_amount.checked_add(amount).ok_or(ContractError::Overflow)?;
@@ -1421,6 +1421,7 @@ impl CredenceBond {
         if admin != stored_admin {
             panic_with_error!(e, ContractError::NotAdmin);
         }
+        credence_errors::require_positive_amount!(&e, amount);
         weighted_attestation::set_attester_stake(&e, &attester, amount);
     }
 
@@ -1487,6 +1488,7 @@ impl CredenceBond {
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
         // auth: bond owner must authorize withdrawals.
         identity.require_auth();
+        credence_errors::require_positive_amount!(&e, amount);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
@@ -1562,6 +1564,7 @@ impl CredenceBond {
         let key = DataKey::Bond;
 
         Self::acquire_lock(&e);
+        credence_errors::require_positive_amount!(&e, amount);
 
         let mut bond: IdentityBond = e
             .storage()
@@ -1760,6 +1763,7 @@ impl CredenceBond {
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
         // auth: bond owner must authorize top-ups.
         identity.require_auth();
+        credence_errors::require_positive_amount!(&e, amount);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
@@ -1839,6 +1843,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/fees.md`](../../../docs/fees.md)
     pub fn deposit_fees(e: Env, amount: i128) {
+        credence_errors::require_positive_amount!(&e, amount);
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
         e.storage().instance().set(&key, &(current + amount));

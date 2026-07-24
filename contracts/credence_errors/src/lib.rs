@@ -963,3 +963,25 @@ impl ErrorExt for ContractError {
 
 #[cfg(test)]
 mod test_errors;
+
+/// @title  require_positive_amount
+/// @notice Shared validation macro for i128 amount parameters
+/// @dev    This is a defence-in-depth check to prevent negative or zero amounts
+///         from being processed in entrypoints that handle financial operations.
+///         Without this check, an attacker could potentially:
+///         - Pass negative amounts to bypass balance checks
+///         - Pass zero amounts to cause unexpected behavior in calculations
+///         - Exploit arithmetic operations that assume positive values
+/// @param  e The Soroban environment reference
+/// @param  amount The i128 amount to validate
+/// @return () if amount > 0
+/// @return ContractError::AmountMustBePositive if amount <= 0
+#[macro_export]
+macro_rules! require_positive_amount {
+    ($e:expr, $amount:expr) => {
+        if $amount <= 0 {
+            soroban_sdk::panic_with_error!($e, $crate::ContractError::AmountMustBePositive);
+        }
+    };
+}
+
