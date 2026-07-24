@@ -9,7 +9,7 @@
 //! Field values are fixed, deterministic placeholders: the fingerprint is about
 //! the variant *tag and shape*, not the runtime data stored under it.
 
-use arbitration::DataKey;
+use credence_arbitration::DataKey;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{Address, Bytes, Env};
