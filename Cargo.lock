@@ -544,6 +544,7 @@ dependencies = [
 name = "credence_math"
 version = "0.1.0"
 dependencies = [
+ "credence_errors",
  "ethnum",
 ]
 
