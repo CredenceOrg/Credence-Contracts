@@ -37,6 +37,17 @@ fn grace_zero_preserves_hard_cliff_status_and_unlimited_late_revoke() {
     );
 
     e.ledger().with_mut(|li| {
+        li.timestamp = expires_at - 1;
+    });
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
+    assert_eq!(
+        client
+            .get_delegation_summary(&owner, &delegate, &DelegationType::Attestation)
+            .status,
+        DelegationStatus::Active
+    );
+
+    e.ledger().with_mut(|li| {
         li.timestamp = expires_at;
     });
     assert!(!client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation));
