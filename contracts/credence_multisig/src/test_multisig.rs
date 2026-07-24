@@ -6,6 +6,8 @@ use soroban_sdk::{
     Address, BytesN, Env, String, Vec,
 };
 
+use proptest::prelude::*;
+
 fn setup(e: &Env) -> (CredenceMultiSigClient, Address, Vec<Address>) {
     let contract_id = e.register(CredenceMultiSig, ());
     let client = CredenceMultiSigClient::new(e, &contract_id);
@@ -72,6 +74,49 @@ fn test_initialize_threshold_exceeds_signers() {
     let (client, admin, signers) = setup(&e);
 
     client.initialize(&admin, &signers, &4);
+}
+
+/// Regression: initialize must reject a signer list containing duplicates.
+/// Before the fix, `SignerCount` could be inflated and `SignerList` could
+/// contain duplicates, violating the invariant that every unique signer appears
+/// exactly once.
+#[test]
+#[should_panic(expected = "Error(Contract, #405)")]
+fn test_initialize_rejects_duplicate_signers_back_to_back() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceMultiSig, ());
+    let client = CredenceMultiSigClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let dup = Address::generate(&e);
+
+    let mut signers = Vec::new(&e);
+    signers.push_back(dup.clone());
+    signers.push_back(dup.clone()); // exact duplicate, back-to-back
+
+    client.initialize(&admin, &signers, &1);
+}
+
+/// Separated duplicates: `[A, B, A]` must also be rejected.
+#[test]
+#[should_panic(expected = "Error(Contract, #405)")]
+fn test_initialize_rejects_duplicate_signers_separated() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceMultiSig, ());
+    let client = CredenceMultiSigClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let a = Address::generate(&e);
+    let b = Address::generate(&e);
+
+    let mut signers = Vec::new(&e);
+    signers.push_back(a.clone());
+    signers.push_back(b.clone());
+    signers.push_back(a.clone()); // duplicate, separated by B
+
+    client.initialize(&admin, &signers, &2);
 }
 
 // ==================== Signer Management Tests ====================
@@ -1252,4 +1297,165 @@ fn test_prune_expired_proposals_paused() {
 
     // Calling prune while paused should panic with ContractPaused (#106)
     client.prune_expired_proposals(&0, &10);
+}
+
+// ==================== Property Tests ====================
+
+/// Strategy that builds a `Vec<Address>` by randomly picking from a small
+/// pool of pre-generated addresses (with repetition allowed). The returned
+/// vector is the **deduplicated** set, but the raw multiset is what the
+/// strategy shrinks on — exercising the invariant that the output length
+/// never exceeds the input length and every unique element is preserved.
+fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, Vec<Address>)> {
+    (1_usize..20_usize).prop_flat_map(|pool_size| {
+        (1_usize..20_usize).prop_flat_map(move |pick_count| {
+            // Generate `pick_count` indices into a pool of `pool_size` addresses.
+            // Duplicates are possible when pick_count > pool_size or by random
+            // chance — this is what tests the dedup invariant.
+            proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
+                .prop_map(move |indices| (pool_size, indices))
+        })
+    }).prop_map(|(pool_size, indices)| {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        // Build a small pool of distinct addresses.
+        let mut pool = Vec::new(&e);
+        for _ in 0..pool_size {
+            pool.push_back(Address::generate(&e));
+        }
+
+        // Build the raw input list from the indices (may contain duplicates).
+        let raw_len = indices.len();
+        let mut raw = Vec::new(&e);
+        for &idx in &indices {
+            raw.push_back(pool.get(idx as u32).unwrap());
+        }
+
+        // Deduplicate: scan and keep first occurrence of each address.
+        let mut deduped = Vec::new(&e);
+        for i in 0..raw.len() {
+            let addr = raw.get(i).unwrap();
+            let mut already_seen = false;
+            for j in 0..deduped.len() {
+                if deduped.get(j).unwrap() == addr {
+                    already_seen = true;
+                    break;
+                }
+            }
+            if !already_seen {
+                deduped.push_back(addr);
+            }
+        }
+
+        (e, raw, deduped)
+    })
+}
+
+/// Property: after initializing with a deduplicated signer list:
+///  1. `SignerList` length equals the number of unique signers (≤ raw input length)
+///  2. `SignerCount` == `SignerList` length
+///  3. Every unique element from the raw input is preserved exactly once in `SignerList`
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    #[test]
+    fn prop_signer_list_length_le_input_length_every_unique_preserved_once(
+        (e, raw, deduped) in deduped_signer_list_strategy()
+    ) {
+        let contract_id = e.register(CredenceMultiSig, ());
+        let client = CredenceMultiSigClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+
+        // Initialize with the deduplicated list (duplicates would panic).
+        client.initialize(&admin, &deduped, &1);
+
+        let list = client.get_signers();
+        let count = client.get_signer_count();
+
+        // Invariant 1: output length ≤ raw input length
+        assert!(
+            list.len() <= raw.len(),
+            "SignerList len {} must be ≤ raw input len {}",
+            list.len(),
+            raw.len()
+        );
+
+        // Invariant 2: output length == number of unique elements
+        assert_eq!(
+            list.len(),
+            deduped.len(),
+            "SignerList len must equal the number of unique input elements"
+        );
+
+        // Invariant 3: SignerCount == SignerList.len()
+        assert_eq!(
+            count,
+            list.len(),
+            "SignerCount must equal SignerList length"
+        );
+
+        // Invariant 4: every unique element preserved exactly once
+        for i in 0..deduped.len() {
+            let s = deduped.get(i).unwrap();
+            assert!(client.is_signer(&s), "every unique signer must be recognised");
+        }
+
+        // No element appears more than once in SignerList.
+        for i in 0..list.len() {
+            let si = list.get(i).unwrap();
+            let occurrences = (0..list.len())
+                .filter(|j| list.get(j).unwrap() == si)
+                .count();
+            assert_eq!(occurrences, 1, "SignerList must contain each signer at most once");
+        }
+    }
+
+    #[test]
+    fn prop_signer_list_invariant_across_add_remove(
+        n in 2_usize..10_usize,
+        remove_idx in 0_usize..10_usize,
+    ) {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceMultiSig, ());
+        let client = CredenceMultiSigClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let mut signers = Vec::new(&e);
+        for _ in 0..n {
+            signers.push_back(Address::generate(&e));
+        }
+
+        client.initialize(&admin, &signers, &1);
+
+        // Add a new distinct signer.
+        let new_signer = Address::generate(&e);
+        client.add_signer(&admin, &new_signer);
+
+        let list_after_add = client.get_signers();
+        assert_eq!(list_after_add.len(), (n + 1) as u32);
+        assert_eq!(client.get_signer_count(), (n + 1) as u32);
+        assert!(client.is_signer(&new_signer));
+
+        // Remove a randomly-chosen signer from the original set.
+        let idx = (remove_idx % (n as usize)) as u32;
+        let removed = signers.get(idx).unwrap();
+        client.remove_signer(&admin, &removed);
+
+        let list_after_remove = client.get_signers();
+        assert_eq!(list_after_remove.len(), n as u32);
+        assert_eq!(client.get_signer_count(), n as u32);
+        assert!(!client.is_signer(&removed));
+
+        // Verify no duplicates in the resulting list.
+        let len = list_after_remove.len();
+        for i in 0..len {
+            let si = list_after_remove.get(i).unwrap();
+            let occurrences = (0..len)
+                .filter(|j| list_after_remove.get(j).unwrap() == si)
+                .count();
+            assert_eq!(occurrences, 1, "SignerList must never contain duplicates after add/remove");
+        }
+    }
 }
