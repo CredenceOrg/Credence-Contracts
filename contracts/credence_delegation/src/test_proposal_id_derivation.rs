@@ -240,3 +240,68 @@ fn test_stale_operator_epoch_rejected() {
     assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
 }
 
+/// The operator-epoch guard must pass if the approval occurs within the exact same epoch.
+#[test]
+fn test_operator_epoch_guard_same_epoch_passes() {
+    let (env, admin, client) = setup();
+    let signers = add_signers(&env, &admin, &client, 2, 2);
+    let s1 = signers.get(0).unwrap();
+    let s2 = signers.get(1).unwrap();
+
+    let id = client.pause(&s1).unwrap();
+    
+    // Attempting to approve the proposal in the same epoch should pass without error.
+    client.approve_pause_proposal(&s2, &id);
+    let view = client.get_pause_proposal_state(&id, &vec![&env, s1.clone(), s2.clone()]);
+    assert_eq!(view.approvals, 2);
+}
+
+/// The operator-epoch guard must reject approvals if the epoch is off-by-one (exactly at the start of the next epoch).
+#[test]
+fn test_operator_epoch_guard_off_by_one_epoch_fails() {
+    let (env, admin, client) = setup();
+    let signers = add_signers(&env, &admin, &client, 2, 2);
+    let s1 = signers.get(0).unwrap();
+    let s2 = signers.get(1).unwrap();
+
+    // Set sequence right at the end of epoch 0.
+    let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
+    env.ledger().with_mut(|l| {
+        l.sequence_number = epoch_boundary - 1;
+    });
+
+    let id = client.pause(&s1).unwrap();
+
+    // Advance to exactly the first sequence of epoch 1.
+    env.ledger().with_mut(|l| {
+        l.sequence_number = epoch_boundary;
+    });
+
+    let res_approve = client.try_approve_pause_proposal(&s2, &id);
+    assert!(res_approve.is_err(), "off-by-one epoch approval must fail");
+    let err = res_approve.unwrap_err().unwrap();
+    assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
+}
+
+/// The operator-epoch guard must reject approvals if the proposal is ancient (many epochs in the past).
+#[test]
+fn test_operator_epoch_guard_ancient_epoch_fails() {
+    let (env, admin, client) = setup();
+    let signers = add_signers(&env, &admin, &client, 2, 2);
+    let s1 = signers.get(0).unwrap();
+    let s2 = signers.get(1).unwrap();
+
+    let id = client.pause(&s1).unwrap();
+
+    // Advance exactly 10 epochs into the future (ancient proposal).
+    env.ledger().with_mut(|l| {
+        l.sequence_number += 10 * u32::from(PROPOSAL_EPOCH_SIZE);
+    });
+
+    let res_approve = client.try_approve_pause_proposal(&s2, &id);
+    assert!(res_approve.is_err(), "ancient epoch approval must fail");
+    let err = res_approve.unwrap_err().unwrap();
+    assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
+}
+
+
