@@ -4,9 +4,11 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
-use soroban_sdk::String;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256};
+use soroban_sdk::String;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256,
+};
 
 use crate::pausable;
 
@@ -112,7 +114,7 @@ fn zero_cumulative_amount() -> CumulativeAmount {
 ///
 /// # Formula
 ///
-/// 
+///
 ///
 ///  alone overflows for multi-rollover sums, so rollover-safe storage
 /// splits the value across two fields.  This helper is the single canonical
@@ -391,7 +393,7 @@ impl CredenceTreasury {
     ///
     /// Idempotent: if  is already in the signer set this is a no-op.
     /// This invariant keeps  exactly equal to the distinct signer set size,
-    /// which is required for the  gate in 
+    /// which is required for the  gate in
     /// and  to remain meaningful.
     pub fn add_signer(e: Env, signer: Address) {
         bump_instance_ttl(&e);
@@ -879,7 +881,7 @@ impl CredenceTreasury {
     /// Equivalent to  but flattens the rollover/remainder
     /// accounting into one comparable value using []:
     ///
-    /// 
+    ///
     ///
     /// Use this instead of [] when you need a single value
     /// for comparisons, dashboards, or indexers — it is the canonical on-chain source

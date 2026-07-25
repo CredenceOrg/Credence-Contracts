@@ -8,19 +8,22 @@ pub mod emergency;
 mod emergency_drain;
 mod events;
 pub mod fee;
+mod idempotency;
 mod invariants;
 pub mod iter_chunks;
 mod leverage;
 mod math;
 mod migration;
-mod normalization;
 mod nonce;
+mod normalization;
 mod parameters;
+mod pausable;
 mod rolling_bond;
 mod safe_token;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
+mod storage;
 mod tiered_bond;
 mod token_integration;
 mod upgrade_auth;
@@ -38,14 +41,14 @@ mod test_normalization_invariant;
 #[path = "types/mod.rs"]
 pub mod types;
 
-#[cfg(test)]
-mod test_unauthorized_token;
-/// Reusable bond-invariant assertion library (test-only).
-#[cfg(test)]
-pub mod test_invariants;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 pub mod test_helpers;
+/// Reusable bond-invariant assertion library (test-only).
+#[cfg(test)]
+pub mod test_invariants;
+#[cfg(test)]
+mod test_unauthorized_token;
 
 /// Chaos testing suite for simulating host and token failures.
 #[cfg(test)]
@@ -67,12 +70,12 @@ mod test_liquidate;
 #[cfg(test)]
 mod test_claim_expiry_sweep;
 
-/// Tests for paginated reads — attestations, slash history, and pending claims.
-#[cfg(test)]
-mod test_pagination;
 /// Authentication boundary tests — every non-view fn must require an auth'd address.
 #[cfg(test)]
 mod test_auth;
+/// Tests for paginated reads — attestations, slash history, and pending claims.
+#[cfg(test)]
+mod test_pagination;
 
 /// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
 #[cfg(test)]
@@ -196,6 +199,23 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
+    // --- Pausable functionality variants ---
+    /// Contract pause state. Value: `bool`.
+    Paused,
+    /// Authorized pause signers. Key: `Address`, Value: `bool`.
+    PauseSigner(Address),
+    /// Count of authorized pause signers. Value: `u32`.
+    PauseSignerCount,
+    /// Threshold of signers required to pause. Value: `u32`.
+    PauseThreshold,
+    /// Monotonic pause proposal counter. Value: `u64`.
+    PauseProposalCounter,
+    /// Individual pause approval by signer and proposal. Value: `bool`.
+    PauseApproval(u64, Address),
+    /// Count of approvals for a pause proposal. Value: `u32`.
+    PauseApprovalCount(u64),
+    /// Pause proposal details. Value: `(bool, u64)` - (action, expires_at).
+    PauseProposal(u64),
     /// Idempotency key for externally-triggered admin operations. Value: `bool`.
     /// Used to prevent duplicate submissions from webhook retries. The key is
     /// computed as SHA256(actor_address || operation_name || salt_bytes).
@@ -258,8 +278,7 @@ fn bump_instance_ttl(e: &Env) {
 /// Tiny enum used as the topic value when emitting `bond_liquidated`. Both
 /// variants are encoded as `Symbol`s: `"fully_slashed"` or `"expired_unrenewed"`.
 /// Stored as constants here so test code can refer to the canonical strings
-/// instead of re-deriving them. Excluded from release WASM.
-#[cfg(any(test, feature = "testutils"))]
+/// instead of re-deriving them.
 pub mod liquidation_reason {
     /// Bond has been fully slashed (`slashed_amount >= bonded_amount`).
     pub const FULLY_SLASHED: &str = "fully_slashed";
@@ -1738,18 +1757,18 @@ impl CredenceBond {
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    pub fn slash_bond(
-        e: Env,
-        admin: Address,
-        slash_amount: i128,
-        idempotency_salt: Bytes,
-    ) -> i128 {
+    pub fn slash_bond(e: Env, admin: Address, slash_amount: i128, idempotency_salt: Bytes) -> i128 {
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
         if idempotency_salt.len() > 0 {
-            idempotency::check_and_record(&e, &admin, &Symbol::new(&e, "slash_bond"), &idempotency_salt);
+            idempotency::check_and_record(
+                &e,
+                &admin,
+                &Symbol::new(&e, "slash_bond"),
+                &idempotency_salt,
+            );
         }
 
         Self::acquire_lock(&e);
@@ -1818,7 +1837,12 @@ impl CredenceBond {
 
         // Check idempotency if a salt is provided (non-empty)
         if idempotency_salt.len() > 0 {
-            idempotency::check_and_record(&e, &admin, &Symbol::new(&e, "collect_fees"), &idempotency_salt);
+            idempotency::check_and_record(
+                &e,
+                &admin,
+                &Symbol::new(&e, "collect_fees"),
+                &idempotency_salt,
+            );
         }
 
         Self::acquire_lock(&e);
@@ -2060,9 +2084,9 @@ impl CredenceBond {
         // to perform the actual sweep.
 
         let reason_sym: Symbol = if fully_slashed {
-            Symbol::new(&e, liquidation_reason::FULLY_SLASHED)
+            Symbol::new(&e, self::liquidation_reason::FULLY_SLASHED)
         } else {
-            Symbol::new(&e, liquidation_reason::EXPIRED_UNRENEWED)
+            Symbol::new(&e, self::liquidation_reason::EXPIRED_UNRENEWED)
         };
         events::emit_bond_liquidated(&e, &bond.identity, residual, reason_sym, now, &admin);
 
@@ -2175,19 +2199,6 @@ impl CredenceBond {
     // -----------------------------------------------------------------
     // Internal helpers (lock, treasury config, eligibility predicates)
     // -----------------------------------------------------------------
-    fn acquire_lock(e: &Env) {
-        let key = Symbol::new(e, "locked");
-        let locked: bool = e.storage().instance().get(&key).unwrap_or(false);
-        if locked {
-            panic_with_error!(e, ContractError::ReentrancyDetected);
-        }
-        e.storage().instance().set(&key, &true);
-    }
-
-    fn release_lock(e: &Env) {
-        let key = Symbol::new(e, "locked");
-        e.storage().instance().set(&key, &false);
-    }
 
     fn check_lock(e: &Env) -> bool {
         let key = Symbol::new(e, "locked");
@@ -2354,6 +2365,7 @@ impl CredenceBond {
 // ---------------------------------------------------------------------------
 
 /// Represents a validated, created bond.
+#[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bond {
     pub amount: i128,
@@ -2610,7 +2622,6 @@ mod test_early_exit_precision;
 
 #[cfg(test)]
 mod test_early_exit_penalty;
-
 
 /// Deliberately-divergent contract used by `test_differential` to verify the
 /// harness detects behavioural divergence.  Never shipped to mainnet.

@@ -1,7 +1,6 @@
-use soroban_sdk::{contracttype, Address, Env, Vec};
 use crate::Bond;
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, Address, Env};
+use soroban_sdk::{contracttype, Address, Env, Vec};
 
 #[contracttype]
 pub enum DataKey {
@@ -76,5 +75,5 @@ pub fn set_accepted_tokens(e: &Env, tokens: &Vec<Address>) {
 
 pub fn is_token_accepted(e: &Env, token: &Address) -> bool {
     let accepted = get_accepted_tokens(e);
-    accepted.iter().any(|t| t == token)
+    accepted.iter().any(|t| t == *token)
 }

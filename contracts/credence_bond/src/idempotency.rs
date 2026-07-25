@@ -31,6 +31,7 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Bytes, Env, Symbol};
+use soroban_sdk::xdr::ToXdr;
 
 use crate::DataKey;
 
@@ -52,14 +53,16 @@ use crate::DataKey;
 /// A 32-byte hash representing the unique idempotency key
 #[must_use]
 pub fn compute_key(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> Bytes {
-    // Create a byte vector containing all components
+    // Create a byte vector containing all components by converting to XDR
     let mut hash_input = Bytes::new(e);
-    hash_input.append(&actor.to_contract_id(e));
-    hash_input.append(&operation.to_val().to_bytes());
+    
+    // Use XDR serialization for deterministic byte representation
+    hash_input.append(&actor.to_xdr(e));
+    hash_input.append(&operation.to_xdr(e));
     hash_input.append(salt);
 
-    // Compute SHA-256 hash
-    e.crypto().sha256(&hash_input)
+    // Compute SHA-256 hash and convert to Bytes
+    e.crypto().sha256(&hash_input).into()
 }
 
 /// Checks if an idempotency key has been used before, and if not, records it.

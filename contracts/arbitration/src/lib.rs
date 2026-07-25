@@ -480,15 +480,10 @@ impl CredenceArbitration {
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
-                (
-                    DisputeStatus::Resolving as u32,
-                    DisputeStatus::Tied as u32,
-                ),
+                (DisputeStatus::Resolving as u32, DisputeStatus::Tied as u32),
             );
-            e.events().publish(
-                (Symbol::new(&e, "dispute_tied"), dispute_id),
-                (),
-            );
+            e.events()
+                .publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
 
             Ok(0)
         } else {

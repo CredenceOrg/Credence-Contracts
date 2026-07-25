@@ -117,9 +117,7 @@ pub fn schedule_drain(e: &Env, admin: &Address, delay: u64) {
 
 /// Return the currently scheduled drain ETA, or `None` if not yet scheduled.
 pub fn get_drain_eta(e: &Env) -> Option<u64> {
-    e.storage()
-        .instance()
-        .get(&Symbol::new(e, KEY_DRAIN_ETA))
+    e.storage().instance().get(&Symbol::new(e, KEY_DRAIN_ETA))
 }
 
 /// Cancel a pending drain schedule (admin-only; contract must remain paused).
@@ -219,11 +217,7 @@ pub fn execute_drain(
 
     // Emit event.
     e.events().publish(
-        (
-            Symbol::new(e, "emergency_drain"),
-            drain_id,
-            admin.clone(),
-        ),
+        (Symbol::new(e, "emergency_drain"), drain_id, admin.clone()),
         (amount, recipient.clone(), now),
     );
 
@@ -261,8 +255,6 @@ fn increment_drain_seq(e: &Env) -> u64 {
         .get(&DrainDataKey::DrainSeq)
         .unwrap_or(0);
     let next = seq.checked_add(1).expect("drain sequence overflow");
-    e.storage()
-        .persistent()
-        .set(&DrainDataKey::DrainSeq, &next);
+    e.storage().persistent().set(&DrainDataKey::DrainSeq, &next);
     next
 }

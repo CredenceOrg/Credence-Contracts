@@ -1156,7 +1156,7 @@ mod tests {
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
             ContractError::AdminSuspended => true,         // wait for suspension
-            ContractError::AdminSuspended => true, // wait for suspension
+            ContractError::AdminSuspended => true,         // wait for suspension
 
             // Admin Transfer: state-step fixes.
             ContractError::NoPendingAdmin => true,
@@ -1189,11 +1189,11 @@ mod tests {
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
-            ContractError::BatchTooLarge => true,     // reduce batch size
-            ContractError::EmptyBatch => true,         // supply at least one item
+            ContractError::BatchTooLarge => true,       // reduce batch size
+            ContractError::EmptyBatch => true,          // supply at least one item
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
-            ContractError::DomainMismatch => false, // payload binding
+            ContractError::DomainMismatch => false,     // payload binding
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1227,7 +1227,7 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationNotExpired => true, // wait for expiry then retry
+            ContractError::DelegationNotExpired => true,    // wait for expiry then retry
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
