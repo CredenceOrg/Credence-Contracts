@@ -15,6 +15,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -97,8 +98,10 @@ mod tests {
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
+            ContractError::PromiseNotKept,
             ContractError::TimestampInFuture,
         ]
     }
@@ -141,6 +144,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        assert_eq!(ContractError::NoPendingAdmin as u32, 115);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
@@ -166,6 +170,7 @@ mod tests {
         assert_eq!(ContractError::InvalidBondDuration as u32, 216);
         assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
         assert_eq!(ContractError::BondAlreadyExists as u32, 218);
+        assert_eq!(ContractError::InvalidStringifiedBytes as u32, 230);
         assert_eq!(ContractError::InvalidCurrency as u32, 234);
     }
 
@@ -474,7 +479,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            97,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1297,6 +1302,7 @@ mod tests {
             ContractError::DomainMismatch => false,     // payload binding
             ContractError::BatchTooLarge => true,       // reduce batch size
             ContractError::EmptyBatch => true,          // supply at least one item
+            ContractError::InvalidStringifiedBytes => true, // correct the encoded input
             ContractError::InvalidCurrency => true,     // supply a valid currency
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
@@ -1333,6 +1339,7 @@ mod tests {
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
+            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1354,11 +1361,6 @@ mod tests {
             ContractError::Overflow => false,
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
-
-            // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
         }
     }
 
@@ -1386,6 +1388,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -1454,6 +1457,7 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1475,7 +1479,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            94,
+            97,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

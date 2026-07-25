@@ -21,7 +21,7 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::contracterror;
+use soroban_sdk::{contracterror, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -358,6 +358,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
 
+    /// A string expected to contain hex or base64 encoded bytes is malformed
+    /// or exceeds the maximum accepted encoded length.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 230,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -541,7 +547,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -745,6 +751,8 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
             | ContractError::InvariantViolation
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
@@ -862,6 +870,9 @@ impl ErrorExt for ContractError {
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
+            }
+            ContractError::InvalidStringifiedBytes => {
+                "String is not valid bounded hex or base64 encoded bytes"
             }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
@@ -1036,6 +1047,7 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
+            | ContractError::InvalidStringifiedBytes // correct the encoded input
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1044,7 +1056,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1079,12 +1090,7 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierAlreadyRegistered // idempotent
             | ContractError::VerifierNotRegistered
             | ContractError::DelegationNotExpired
-            | ContractError::DelegationInactive        // wait for activation or use a different delegation
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
-
-            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
-            // the payload must be discarded and re-signed.
-            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
@@ -1149,6 +1155,19 @@ macro_rules! require_positive_amount {
             return Err($crate::ContractError::AmountMustBePositive);
         }
     };
+}
+
+/// Re-init prevention guard for Soroban contract constructors.
+///
+/// Every deployable contract must call this as the first statement in its
+/// `initialize` function, before any auth or storage writes.
+///
+/// # Panics
+/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
+pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
+    if is_initialized {
+        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
 }
 
 /// Rejects a caller-supplied timestamp that is strictly ahead of the

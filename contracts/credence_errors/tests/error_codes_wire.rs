@@ -53,6 +53,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::CursorOutOfRange as u32, 226);
     assert_eq!(ContractError::BatchTooLarge as u32, 227);
     assert_eq!(ContractError::EmptyBatch as u32, 228);
+    assert_eq!(ContractError::InvalidStringifiedBytes as u32, 230);
 
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
     assert_eq!(ContractError::AttestationNotFound as u32, 301);

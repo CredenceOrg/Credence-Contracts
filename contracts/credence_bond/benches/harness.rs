@@ -11,7 +11,6 @@
 //! and triage them.#![allow(dead_code)]
 #![allow(clippy::disallowed_macros)]
 
-
 use std::collections::BTreeMap;
 
 use credence_bond::{CredenceBond, CredenceBondClient};
