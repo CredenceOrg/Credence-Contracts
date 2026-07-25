@@ -20,8 +20,8 @@ name = "proptest_tier"
 path = "tests/proptest_tier.rs"
 
 [[test]]
-name = "test_iter_chunks"
-path = "tests/test_iter_chunks.rs"
+name = "proptest_batch_atomicity"
+path = "tests/proptest_batch_atomicity.rs"
 
 [lib]
 # `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
