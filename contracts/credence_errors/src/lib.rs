@@ -1134,3 +1134,35 @@ macro_rules! require_positive_amount {
         }
     };
 }
+
+/// Re-init prevention guard for Soroban contract constructors.
+///
+/// Every deployable contract must call this as the **first statement** in its
+/// `initialize` function, before any auth or storage writes. The guard panics
+/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
+/// already exists in instance storage, preventing a second caller from
+/// overwriting the admin and stealing the contract.
+///
+/// # Usage
+///
+/// ```ignore
+/// pub fn initialize(e: Env, admin: Address) {
+///     require_contract_uninitialized(&e, e.storage().instance().has(&DataKey::Admin));
+///     admin.require_auth();
+///     e.storage().instance().set(&DataKey::Admin, &admin);
+///     // ...
+/// }
+/// ```
+///
+/// # Arguments
+/// * `e`             - Soroban environment (needed for typed error panic).
+/// * `is_initialized` - `true` when the sentinel key exists, meaning the
+///                      contract has already been initialized.
+///
+/// # Panics
+/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
+pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
+    if is_initialized {
+        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
+}

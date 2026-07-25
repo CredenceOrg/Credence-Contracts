@@ -211,6 +211,10 @@ impl CredenceTreasury {
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
     pub fn initialize(e: Env, admin: Address, token: Address) {
         bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Token, &token);

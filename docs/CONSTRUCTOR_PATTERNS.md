@@ -23,9 +23,10 @@ The canonical form, taken from `contracts/templates/src/lib.rs`, is:
 ```rust
 pub fn initialize(e: Env, admin: Address) {
     // 1. Re-init guard — must come first
-    if e.storage().instance().has(&DataKey::Admin) {
-        panic_with_error!(&e, ContractError::AlreadyInitialized);
-    }
+    credence_errors::require_contract_uninitialized(
+        &e,
+        e.storage().instance().has(&DataKey::Admin),
+    );
     // 2. Admin authorisation
     admin.require_auth();
     // 3. Persist config to instance storage
@@ -49,36 +50,35 @@ handing the contract to an attacker who front-runs the deployer.
 
 ### How
 
-Check for any key that is unconditionally written during the first call.
-`DataKey::Admin` is that key in every contract that has a single admin.
+Use the shared `credence_errors::require_contract_uninitialized` helper. It panics
+with [`ContractError::AlreadyInitialized`] when the supplied boolean is `true`.
 
 ```rust
-if e.storage().instance().has(&DataKey::Admin) {
-    panic_with_error!(&e, ContractError::AlreadyInitialized);
-}
+credence_errors::require_contract_uninitialized(
+    &e,
+    e.storage().instance().has(&DataKey::Admin),
+);
 ```
 
-The admin contract uses a separate sentinel key because it stores the admin inside
-a richer `AdminInfo` struct rather than as a bare `Address`:
+The helper accepts the result of any `instance().has(…)` check — each contract
+chooses the sentinel key appropriate for its storage layout. In most contracts
+that key is `DataKey::Admin`. The admin contract uses `DataKey::Initialized`
+because it stores the admin inside a richer `AdminInfo` struct rather than as
+a bare `Address`:
 
 ```rust
 // contracts/admin/src/lib.rs
-if e.storage().instance().has(&DataKey::Initialized) {
-    panic_with_error!(&e, ContractError::AlreadyInitialized);
-}
+credence_errors::require_contract_uninitialized(
+    &e,
+    e.storage().instance().has(&DataKey::Initialized),
+);
 // ... later ...
 e.storage().instance().set(&DataKey::Initialized, &true);
 ```
 
-Both are acceptable. The important invariant is: **the guard key must be written
-atomically with the rest of initialization, and the guard check must be the first
-statement in the function body.**
-
-### Known gaps
-
-`credence_treasury` and `credence_multisig` currently have no re-init guard.
-This is tracked in [DEPLOYMENT.md — Re-initialization Safety](DEPLOYMENT.md#re-initialization-safety).
-When adding a re-init guard to those contracts, follow the pattern above.
+Both sentinel choices are acceptable. The important invariant is: **the guard key
+must be written atomically with the rest of initialization, and the guard check
+must be the first statement in the function body** (after the TTL bump if present).
 
 ---
 
@@ -209,8 +209,8 @@ single admin, a pause flag, and a per-record persistent store. It uses only
 #![no_std]
 #![deny(clippy::float_arithmetic)]
 
-use credence_errors::ContractError;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
+use credence_errors;
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
 
 // ---------------------------------------------------------------------------
 // Helpers (defined in the workspace shared crate in practice)
@@ -248,9 +248,10 @@ impl MyContract {
         bump_instance_ttl(&e);
 
         // Step 1 — re-init guard
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
 
         // Step 2 — admin authorisation
         admin.require_auth();
@@ -325,7 +326,7 @@ address from the test environment's RNG; never hard-code addresses in tests.
 Copy this list into your PR description and tick each box before requesting review:
 
 - [ ] `initialize` is the only function that sets foundational config (admin, token, etc.)
-- [ ] Re-init guard (`has(&DataKey::Admin)` or equivalent) is the first statement
+- [ ] Re-init guard (`credence_errors::require_contract_uninitialized(&e, …)`) is the first statement
 - [ ] `admin.require_auth()` (or `require_auth_for_args`) is called before any `set`
 - [ ] All counters and flags are written to `instance()` storage during `initialize`
 - [ ] `bump_instance_ttl` is called at the top of `initialize`

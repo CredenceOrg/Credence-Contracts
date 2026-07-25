@@ -82,9 +82,10 @@ impl TimelockContract {
     /// Initialize the timelock contract with the admin address.
     pub fn initialize(e: Env, admin: Address) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage()
             .instance()
