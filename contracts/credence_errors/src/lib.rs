@@ -294,7 +294,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 230,
+    InvariantViolation = 233,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -324,12 +324,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
-
-    /// Idempotency key has already been used for this operation.
-    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    DuplicateIdempotencyKey = 231,
 
     /// Currency symbol is invalid (empty or whitespace-only).
     /// Triggered by: token ingress symbol check
@@ -501,6 +495,16 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
+    /// The deadline on a signature or operation has passed.
+    ///
+    /// Raised when a signed payload carries a `deadline` (or `expires_at`)
+    /// timestamp in the past.  The caller should obtain a fresh signature
+    /// with a later deadline.
+    ///
+    /// Shared across Bond and Delegation contracts.
+    /// Wire-stable: do not renumber this error code.
+    SignatureExpired = 222,
+
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 115,
@@ -517,7 +521,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 115,
+    EmergencyDrainNotPermitted = 117,
 
     /// Actor did not hold the required role at the given ledger timestamp.
     ///
@@ -526,7 +530,7 @@ pub enum ContractError {
     /// the role was not yet granted at the time of the delegated action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 114,
+    RoleNotHeldAtLedger = 116,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -705,7 +709,6 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
