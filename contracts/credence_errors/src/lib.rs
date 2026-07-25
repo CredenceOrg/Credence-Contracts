@@ -170,6 +170,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     AdminSuspended = 113,
 
+    /// Input BytesN<32> argument is all-zero when a non-zero value is required.
+    /// Replaces: panic!("zero bytes32")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ZeroBytes32 = 109,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -316,6 +322,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InvariantViolation = 233,
+
+    /// Empty or whitespace-only currency symbol.
+    /// Replaces: panic!("invalid currency")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidCurrency = 234,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -527,13 +539,6 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
-    /// Signature/operation deadline has passed.
-    /// Used when a time-bounded signature (e.g. with an explicit deadline field)
-    /// is submitted after its expiry timestamp.
-    /// Contracts: bond, delegation
-    /// Wire-stable: do not renumber this error code.
-    SignatureExpired = 222,
-
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 118,
@@ -551,6 +556,16 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 117,
+
+    /// Supplied timestamp or ledger number is ahead of the current ledger.
+    ///
+    /// Raised by `verify_no_future_ledger` when the caller-supplied
+    /// timestamp exceeds the on-chain ledger timestamp, indicating the
+    /// value could not have been produced by the network.
+    ///
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    TimestampInFuture = 118,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -700,7 +715,8 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
             | ContractError::RoleNotHeldAtLedger
-            | ContractError::ZeroBytes32 => ErrorCategory::Authorization,
+            | ContractError::ZeroBytes32
+            | ContractError::TimestampInFuture => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -722,7 +738,6 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::SignatureExpired
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::StorageCapReached
@@ -730,7 +745,6 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
@@ -849,11 +863,6 @@ impl ErrorExt for ContractError {
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
-            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
-            ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
-            ContractError::InvalidStringifiedBytes => {
-                "String is not valid bounded hex or base64 encoded bytes"
-            }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -948,6 +957,9 @@ impl ErrorExt for ContractError {
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
             ContractError::ZeroBytes32 => "Input BytesN<32> argument is all-zero",
+            ContractError::TimestampInFuture => {
+                "Supplied timestamp or ledger number is ahead of the current ledger"
+            }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
@@ -992,7 +1004,11 @@ impl ErrorExt for ContractError {
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
-            | ContractError::RoleNotHeldAtLedger => true,
+            | ContractError::RoleNotHeldAtLedger
+            | ContractError::ZeroBytes32 => true,
+
+            // Caller supplied a future timestamp; correct it and retry.
+            ContractError::TimestampInFuture => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1016,10 +1032,10 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
+            | ContractError::InvalidCurrency
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
-| ContractError::BatchTooLarge         // reduce batch size
+            | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
-            | ContractError::AmountExplicitlyZero  // supply a non-zero amount
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1135,34 +1151,32 @@ macro_rules! require_positive_amount {
     };
 }
 
-/// Re-init prevention guard for Soroban contract constructors.
+/// Rejects a caller-supplied timestamp that is strictly ahead of the
+/// current on-chain ledger timestamp.
 ///
-/// Every deployable contract must call this as the **first statement** in its
-/// `initialize` function, before any auth or storage writes. The guard panics
-/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
-/// already exists in instance storage, preventing a second caller from
-/// overwriting the admin and stealing the contract.
+/// Returns `ContractError::TimestampInFuture` when `$t` exceeds
+/// `env.ledger().timestamp()`, preventing the contract from accepting
+/// values that could only originate from the future.
 ///
-/// # Usage
+/// # Examples
 ///
 /// ```ignore
-/// pub fn initialize(e: Env, admin: Address) {
-///     require_contract_uninitialized(&e, e.storage().instance().has(&DataKey::Admin));
-///     admin.require_auth();
-///     e.storage().instance().set(&DataKey::Admin, &admin);
-///     // ...
-/// }
+/// verify_no_future_ledger!(&env, signed_timestamp);
 /// ```
-///
-/// # Arguments
-/// * `e`             - Soroban environment (needed for typed error panic).
-/// * `is_initialized` - `true` when the sentinel key exists, meaning the
-///                      contract has already been initialized.
-///
-/// # Panics
-/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
-pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
-    if is_initialized {
-        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
-    }
+#[macro_export]
+macro_rules! verify_no_future_ledger {
+    ($env:expr, $t:expr) => {
+        if $t > $env.ledger().timestamp() {
+            return Err($crate::ContractError::TimestampInFuture);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! require_non_zero_bytes32 {
+    ($env:expr, $val:expr) => {
+        if $val == &soroban_sdk::BytesN::<32>::from_array($env, &[0u8; 32]) {
+            return Err($crate::ContractError::ZeroBytes32);
+        }
+    };
 }

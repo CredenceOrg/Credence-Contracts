@@ -80,6 +80,7 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -96,7 +97,9 @@ mod tests {
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
-            ContractError::InvalidStringifiedBytes,
+            ContractError::InvalidCurrency,
+            ContractError::PayloadTooOld,
+            ContractError::TimestampInFuture,
         ]
     }
 
@@ -137,7 +140,8 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
-        assert_eq!(ContractError::ZeroBytes32 as u32, 116);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
     #[test]
@@ -162,6 +166,7 @@ mod tests {
         assert_eq!(ContractError::InvalidBondDuration as u32, 216);
         assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
         assert_eq!(ContractError::BondAlreadyExists as u32, 218);
+        assert_eq!(ContractError::InvalidCurrency as u32, 234);
     }
 
     #[test]
@@ -469,7 +474,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            89,
+            94,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1258,6 +1263,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
+            ContractError::TimestampInFuture => true, // caller can correct timestamp
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1289,6 +1295,7 @@ mod tests {
             ContractError::DomainMismatch => false,     // payload binding
             ContractError::BatchTooLarge => true,       // reduce batch size
             ContractError::EmptyBatch => true,          // supply at least one item
+            ContractError::InvalidCurrency => true,     // supply a valid currency
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1324,7 +1331,6 @@ mod tests {
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
-            ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1446,7 +1452,6 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
-            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1459,17 +1464,16 @@ mod tests {
             ContractError::SlippageExceeded,
             ContractError::TreasuryBeneficiaryMismatch,
             ContractError::CursorOutOfRange,
+            ContractError::InvalidCurrency,
+            ContractError::PayloadTooOld,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
-            ContractError::BorrowFrozen,
-            ContractError::PayloadTooOld,
-            ContractError::InvalidCurrency,
         ];
         assert_eq!(
             cases.len(),
-            90,
+            94,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1557,27 +1561,66 @@ mod tests {
 
     #[test]
     fn test_require_non_zero_bytes32_happy_path() {
-        use soroban_sdk::{Env, BytesN};
-        let e = Env::default();
+        use soroban_sdk::{BytesN, Env};
 
         // Single-bit set at index 0
-        let mut single_bit_arr = [0u8; 32];
-        single_bit_arr[0] = 1;
-        let single_bit = BytesN::from_array(&e, &single_bit_arr);
-        crate::require_non_zero_bytes32(&e, &single_bit);
+        fn test_single_bit() -> Result<(), ContractError> {
+            let e = Env::default();
+            let mut arr = [0u8; 32];
+            arr[0] = 1;
+            let single_bit = BytesN::from_array(&e, &arr);
+            crate::require_non_zero_bytes32!(&e, &single_bit);
+            Ok(())
+        }
+        test_single_bit().unwrap();
 
         // All-ones
-        let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
-        crate::require_non_zero_bytes32(&e, &all_ones);
+        fn test_all_ones() -> Result<(), ContractError> {
+            let e = Env::default();
+            let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
+            crate::require_non_zero_bytes32!(&e, &all_ones);
+            Ok(())
+        }
+        test_all_ones().unwrap();
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #116)")]
-    fn test_require_non_zero_bytes32_sad_path_panics_on_all_zeros() {
-        use soroban_sdk::{Env, BytesN};
-        let e = Env::default();
+    fn test_require_non_zero_bytes32_sad_path_returns_error() {
+        use soroban_sdk::{BytesN, Env};
 
-        let all_zeros = BytesN::from_array(&e, &[0u8; 32]);
-        crate::require_non_zero_bytes32(&e, &all_zeros);
+        fn test_all_zeros() -> Result<(), ContractError> {
+            let e = Env::default();
+            let all_zeros = BytesN::from_array(&e, &[0u8; 32]);
+            crate::require_non_zero_bytes32!(&e, &all_zeros);
+            Ok(())
+        }
+        assert_eq!(test_all_zeros(), Err(ContractError::ZeroBytes32));
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_happy_path() {
+        use soroban_sdk::Env;
+
+        // Timestamp equal to current ledger should pass
+        fn test_equal() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::verify_no_future_ledger!(&e, now);
+            Ok(())
+        }
+        assert!(test_equal().is_ok());
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_rejects_future() {
+        use soroban_sdk::Env;
+
+        fn test_future() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::verify_no_future_ledger!(&e, now + 1);
+            Ok(())
+        }
+        assert_eq!(test_future(), Err(ContractError::TimestampInFuture));
     }
 }
