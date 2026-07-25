@@ -92,6 +92,7 @@ pub enum DataKey {
     ArbitratorRegistry,
     MinTotalWeight,
     MinVoters,
+    ActiveDispute(Address),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
@@ -100,6 +101,20 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), ArbitrationError> {
+    let key = DataKey::ActiveDispute(creator.clone());
+    if e.storage().instance().has(&key) {
+        return Err(ArbitrationError::OngoingDispute);
+    }
+    Ok(())
+}
+
+fn clear_active_dispute(e: &Env, creator: &Address) {
+    e.storage()
+        .instance()
+        .remove(&DataKey::ActiveDispute(creator.clone()));
 }
 
 #[contract]
@@ -225,6 +240,8 @@ impl CredenceArbitration {
         pausable::require_not_paused(&e);
         creator.require_auth();
 
+        require_no_ongoing_dispute(&e, &creator)?;
+
         let counter_key = DataKey::DisputeCounter;
         let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
         let next_id = id
@@ -253,6 +270,9 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        e.storage()
+            .instance()
+            .set(&DataKey::ActiveDispute(creator.clone()), &id);
 
         // Lifecycle events: created + status transition
         e.events()
@@ -312,6 +332,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        clear_active_dispute(&e, &dispute.creator);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -507,6 +528,7 @@ impl CredenceArbitration {
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
+            clear_active_dispute(&e, &dispute.creator);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
@@ -529,6 +551,7 @@ impl CredenceArbitration {
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
+            clear_active_dispute(&e, &dispute.creator);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),

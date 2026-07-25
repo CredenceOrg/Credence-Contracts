@@ -47,6 +47,8 @@ pub enum ArbitrationError {
     QuorumNotMet = 13,
     /// The actual outcome does not match the promised outcome.
     PromiseNotKept = 15,
+    /// A creator already has an unresolved dispute in progress.
+    OngoingDispute = 16,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
