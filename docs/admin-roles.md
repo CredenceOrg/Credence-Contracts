@@ -28,6 +28,8 @@ The system implements three distinct roles with clear privilege separation:
 - Cannot manage other users
 - Cannot assign roles
 
+See [OPERATOR_BALANCES.md](OPERATOR_BALANCES.md) for what each operation costs and how to keep balances healthy.
+
 ## Core Features
 
 ### Multi-Admin Support

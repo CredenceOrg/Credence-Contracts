@@ -40,6 +40,43 @@ fn seed_claims(e: &Env, contract_id: &Address, user: &Address, n: u32) -> std::v
 }
 
 #[test]
+fn single_claim_returns_complete_page_with_no_cursor() {
+    let e = Env::default();
+    let contract_id = setup(&e);
+    let user = Address::generate(&e);
+    let ids = seed_claims(&e, &contract_id, &user, 1);
+
+    e.as_contract(&contract_id, || {
+        // Single claim should return a page with one item and no cursor
+        let (page, cursor) = claims::get_pending_claims_page(&e, &user, 0, 10);
+        assert_eq!(page.len(), 1);
+        assert_eq!(cursor, None);
+        assert_eq!(page.get(0).unwrap().claim_id, ids[0]);
+    });
+}
+
+#[test]
+fn single_claim_with_limit_one_returns_cursor_then_exhausts() {
+    let e = Env::default();
+    let contract_id = setup(&e);
+    let user = Address::generate(&e);
+    let ids = seed_claims(&e, &contract_id, &user, 1);
+
+    e.as_contract(&contract_id, || {
+        // Single claim with limit=1 should return cursor, then exhaust
+        let (page, cursor) = claims::get_pending_claims_page(&e, &user, 0, 1);
+        assert_eq!(page.len(), 1);
+        assert_eq!(cursor, Some(ids[0]));
+        assert_eq!(page.get(0).unwrap().claim_id, ids[0]);
+
+        // Next page should be empty and exhausted
+        let (page2, cursor2) = claims::get_pending_claims_page(&e, &user, ids[0], 1);
+        assert_eq!(page2.len(), 0);
+        assert_eq!(cursor2, None);
+    });
+}
+
+#[test]
 fn empty_set_returns_empty_page_and_none() {
     let e = Env::default();
     let contract_id = setup(&e);
@@ -154,5 +191,122 @@ fn pages_reassemble_into_full_set_in_order() {
         for i in 0..full.len() {
             assert_eq!(reassembled.get(i).unwrap().claim_id, full.get(i).unwrap().claim_id);
         }
+    });
+}
+#[test]
+fn empty_claims_with_various_limits_always_returns_empty() {
+    let e = Env::default();
+    let contract_id = setup(&e);
+    let user = Address::generate(&e);
+
+    e.as_contract(&contract_id, || {
+        // Test various limits with empty claim set
+        for limit in [1, 5, 10, MAX_PAGE_LIMIT, u32::MAX] {
+            let (page, cursor) = claims::get_pending_claims_page(&e, &user, 0, limit);
+            assert_eq!(page.len(), 0, "empty set should return empty page for limit {}", limit);
+            assert_eq!(cursor, None, "empty set should return no cursor for limit {}", limit);
+        }
+    });
+}
+
+#[test]
+fn single_claim_with_various_limits_behaves_correctly() {
+    let e = Env::default();
+    let contract_id = setup(&e);
+    let user = Address::generate(&e);
+    let ids = seed_claims(&e, &contract_id, &user, 1);
+
+    e.as_contract(&contract_id, || {
+        // limit=1: should return cursor then exhaust
+        let (page, cursor) = claims::get_pending_claims_page(&e, &user, 0, 1);
+        assert_eq!(page.len(), 1);
+        assert_eq!(cursor, Some(ids[0]));
+        
+        // limit>1: should return complete page without cursor
+        for limit in [2, 5, 10, MAX_PAGE_LIMIT] {
+            let (page, cursor) = claims::get_pending_claims_page(&e, &user, 0, limit);
+            assert_eq!(page.len(), 1, "single claim should return one item for limit {}", limit);
+            assert_eq!(cursor, None, "single claim should not return cursor for limit {}", limit);
+        }
+    });
+}
+
+#[test]
+fn many_claims_pagination_boundary_conditions() {
+    let e = Env::default();
+    let contract_id = setup(&e);
+    let user = Address::generate(&e);
+    
+    // Test exactly at page boundary
+    let page_size = 5u32;
+    let exact_pages = 3u32;
+    let total_claims = page_size * exact_pages; // 15 claims
+    let ids = seed_claims(&e, &contract_id, &user, total_claims);
+
+    e.as_contract(&contract_id, || {
+        // First page: should have cursor
+        let (page1, cursor1) = claims::get_pending_claims_page(&e, &user, 0, page_size);
+        assert_eq!(page1.len(), page_size as u32);
+        assert!(cursor1.is_some(), "first page of many should have cursor");
+
+        // Middle page: should have cursor  
+        let (page2, cursor2) = claims::get_pending_claims_page(&e, &user, cursor1.unwrap(), page_size);
+        assert_eq!(page2.len(), page_size as u32);
+        assert!(cursor2.is_some(), "middle page should have cursor");
+
+        // Last page: should not have cursor (exact boundary)
+        let (page3, cursor3) = claims::get_pending_claims_page(&e, &user, cursor2.unwrap(), page_size);
+        assert_eq!(page3.len(), page_size as u32);
+        assert_eq!(cursor3, None, "last page at exact boundary should have no cursor");
+
+        // Verify all claims accounted for
+        let total_retrieved = page1.len() + page2.len() + page3.len();
+        assert_eq!(total_retrieved, total_claims);
+    });
+}
+
+#[test]
+fn many_claims_with_remainder_pagination() {
+    let e = Env::default();
+    let contract_id = setup(&e);
+    let user = Address::generate(&e);
+    
+    // Test with remainder: 2 full pages + 1 partial page
+    let page_size = 5u32;
+    let total_claims = page_size * 2 + 2; // 12 claims (5+5+2)
+    seed_claims(&e, &contract_id, &user, total_claims);
+
+    e.as_contract(&contract_id, || {
+        let mut retrieved_count = 0u32;
+        let mut cursor = 0u64;
+        let mut page_count = 0u32;
+        
+        loop {
+            let (page, next_cursor) = claims::get_pending_claims_page(&e, &user, cursor, page_size);
+            page_count += 1;
+            retrieved_count += page.len();
+            
+            match page_count {
+                1 | 2 => {
+                    // First two pages should be full with cursor
+                    assert_eq!(page.len(), page_size as u32, "page {} should be full", page_count);
+                    assert!(next_cursor.is_some(), "page {} should have cursor", page_count);
+                }
+                3 => {
+                    // Last page should be partial without cursor
+                    assert_eq!(page.len(), 2, "last page should have remainder");
+                    assert_eq!(next_cursor, None, "last page should have no cursor");
+                }
+                _ => panic!("unexpected page count: {}", page_count),
+            }
+            
+            match next_cursor {
+                Some(c) => cursor = c,
+                None => break,
+            }
+        }
+        
+        assert_eq!(retrieved_count, total_claims);
+        assert_eq!(page_count, 3);
     });
 }

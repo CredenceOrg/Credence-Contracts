@@ -12,8 +12,8 @@
 
 #![allow(dead_code)]
 
-use crate::{events, DataKey};
 use crate::parameters::MAX_QUERY_LIMIT;
+use crate::{events, DataKey};
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Maximum number of claims that can be processed in a single batch
@@ -415,9 +415,7 @@ pub fn process_claims(
         paid_claim.processed = true;
         let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
         let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
-        e.storage()
-            .persistent()
-            .set(&claim_by_id_key, &paid_claim);
+        e.storage().persistent().set(&claim_by_id_key, &paid_claim);
         e.storage()
             .persistent()
             .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
