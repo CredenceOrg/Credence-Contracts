@@ -149,9 +149,7 @@ pub struct CredenceBond;
 #[contractimpl]
 impl CredenceBond {
     pub fn initialize(e: Env, admin: Address) {
-        if storage::get_admin(&e).is_some() {
-            panic!("already initialized");
-        }
+        credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
         storage::set_admin(&e, &admin);
     }
 
@@ -585,6 +583,10 @@ impl CredenceBond {
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn initialize(e: Env, admin: Address, registry: Option<Address>) {
         Self::require_not_paused(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);

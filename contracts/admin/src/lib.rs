@@ -161,9 +161,10 @@ impl AdminContract {
     /// Emits `admin_initialized` with the super admin address
     pub fn initialize(e: Env, super_admin: Address, min_admins: u32, max_admins: u32) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Initialized) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Initialized),
+        );
 
         if min_admins == 0 {
             panic_with_error!(&e, ContractError::InvalidPauseAction);

@@ -40,7 +40,7 @@ fn test_initialize_sets_admin() {
 }
 
 #[test]
-#[should_panic(expected = "already initialized")]
+#[should_panic(expected = "AlreadyInitialized")]
 fn test_initialize_twice_panics() {
     let e = Env::default();
     e.mock_all_auths();
