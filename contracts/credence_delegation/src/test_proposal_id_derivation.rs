@@ -211,8 +211,32 @@ fn test_legacy_fetch_returns_typed_error_not_panic() {
 
     // The error must be a typed contract error (ProposalNotFound, code 603),
     // not a panic from an unwrap or an unexpected host failure.  The internal
-    // `get_proposal_by_legacy_id` returns `Err(ContractError::ProposalNotFound)`
-    // which the public entrypoint converts to a contract panic; the `try_` client
     // method catches that and surfaces it as `Err`.
     assert!(result.is_err(), "must return Err, not a value");
 }
+
+/// An operator attempting to approve a proposal from a previous epoch
+/// must fail with `StaleOperatorEpoch`.
+#[test]
+fn test_stale_operator_epoch_rejected() {
+    let (env, admin, client) = setup();
+    let signers = add_signers(&env, &admin, &client, 2, 2);
+    let s1 = signers.get(0).unwrap();
+    let s2 = signers.get(1).unwrap();
+
+    // Create a proposal in epoch 0.
+    let id_epoch0 = client.pause(&s1).unwrap();
+
+    // Advance to epoch 1.
+    env.ledger().with_mut(|l| {
+        l.sequence_number += u32::from(PROPOSAL_EPOCH_SIZE);
+    });
+
+    // Attempting to approve the stale proposal should fail.
+    let res_approve = client.try_approve_pause_proposal(&s2, &id_epoch0);
+    assert!(res_approve.is_err(), "stale approval must fail");
+    
+    let err = res_approve.unwrap_err().unwrap();
+    assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
+}
+
