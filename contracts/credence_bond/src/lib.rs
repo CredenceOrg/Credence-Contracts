@@ -357,6 +357,17 @@ pub struct AttestationBatchItem {
     pub nonce: u64,
 }
 
+/// Maximum number of transfers allowed in a single batch operation.
+pub const MAX_BATCH_TRANSFER_SIZE: u32 = 50;
+
+/// Input item for a batch transfer operation.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct BatchTransferItem {
+    pub recipient: Address,
+    pub amount: i128,
+}
+
 // Re-export attestation type for external callers.
 pub use types::Attestation;
 
@@ -2669,6 +2680,76 @@ impl CredenceBond {
     pub fn get_drain_record(e: Env, id: u64) -> emergency_drain::DrainRecord {
         emergency_drain::get_drain_record(&e, id)
     }
+
+    /// Transfer tokens to multiple recipients in a single atomic operation.
+    ///
+    /// All transfers are validated before any are executed. If any validation
+    /// fails, the entire batch is rejected.
+    ///
+    /// # Arguments
+    /// * `admin` - Must be the stored admin
+    /// * `items` - Vector of `BatchTransferItem` (recipient, amount) pairs
+    ///
+    /// # Returns
+    /// Number of successful transfers
+    ///
+    /// # Events
+    /// Emits `batch_transfer` with topics `(batch_transfer, admin)` and data `(count, total_amount)`
+    ///
+    /// # Errors
+    /// - `ContractError::NotInitialized` when admin has not been set
+    /// - `ContractError::NotAdmin` when `admin` is not the configured admin
+    /// - `ContractError::EmptyBatch` when `items` is empty
+    /// - `ContractError::BatchTooLarge` when `items.len() > MAX_BATCH_TRANSFER_SIZE`
+    /// - Panics with `"amount must be positive"` for any item with `amount <= 0`
+    /// - Panics with `"recipient cannot be the contract itself"` for any self-transfer
+    pub fn batch_transfer(e: Env, admin: Address, items: Vec<BatchTransferItem>) -> u32 {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        crate::validation::verify_batch_size(&e, items.len(), MAX_BATCH_TRANSFER_SIZE);
+
+        let contract = e.current_contract_address();
+        let mut total_amount: i128 = 0;
+
+        // Validate all items before any transfer (atomic: all or nothing)
+        for i in 0..items.len() {
+            let item = items.get(i).unwrap();
+            if item.amount <= 0 {
+                panic!("amount must be positive");
+            }
+            if item.recipient == contract {
+                panic!("recipient cannot be the contract itself");
+            }
+            total_amount = total_amount
+                .checked_add(item.amount)
+                .expect("total amount overflow");
+        }
+
+        // Execute all transfers
+        for i in 0..items.len() {
+            let item = items.get(i).unwrap();
+            safe_token::safe_transfer(&e, &item.recipient, item.amount);
+        }
+
+        let count = items.len();
+
+        e.events().publish(
+            (Symbol::new(&e, "batch_transfer"), admin),
+            (count, total_amount),
+        );
+
+        count
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2961,3 +3042,7 @@ mod test_storage_ttl;
 /// Tests for the grace-window read view and admin-gated setter (issue #655).
 #[cfg(test)]
 mod test_grace_window;
+
+/// Tests for the batch_transfer entrypoint (issue #917).
+#[cfg(test)]
+mod test_batch_transfer;
