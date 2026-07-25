@@ -1,8 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, String, testutils::Address as _};
 
 fn setup() -> (Env, Address, CredenceDelegationClient<'static>) {
     let env = Env::default();
@@ -231,6 +230,7 @@ fn test_execute_delegated_delegate_paused() {
         target: delegate.clone(),
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&env, "CredenceDelegation"),
     };
     assert!(client
         .try_execute_delegated_delegate(
@@ -264,6 +264,7 @@ fn test_execute_delegated_revoke_paused() {
         target: delegate.clone(),
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&env, "CredenceDelegation"),
     };
     assert!(client
         .try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload)
@@ -291,6 +292,7 @@ fn test_execute_delegated_revoke_attest_paused() {
         target: delegate.clone(),
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&env, "CredenceDelegation"),
     };
     assert!(client
         .try_execute_delegated_revoke_attest(&owner, &delegate, &payload)

@@ -523,7 +523,6 @@ dependencies = [
 name = "credence_delegation"
 version = "0.1.0"
 dependencies = [
- "credence_bond",
  "credence_errors",
  "insta",
  "proptest",
