@@ -31,7 +31,7 @@
 use super::*;
 use credence_errors::ContractError;
 use domain::MAX_PAYLOAD_AGE_LEDGERS;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{String, testutils::{Address as _, Ledger as _}};
 use soroban_sdk::Env;
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,7 @@ fn delegate_payload(
         nonce,
         scheme: 0,
         ledger_number: signed_at_sequence,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -200,6 +201,7 @@ fn stale_revoke_is_rejected() {
         nonce: 1, // nonce was consumed by delegate() above
         scheme: 0,
         ledger_number: signed_at,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let result = client.try_execute_delegated_revoke(
@@ -248,6 +250,7 @@ fn stale_revoke_attest_is_rejected() {
         nonce: 1,
         scheme: 0,
         ledger_number: signed_at,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let result = client.try_execute_delegated_revoke_attest(&attester, &subject, &payload);

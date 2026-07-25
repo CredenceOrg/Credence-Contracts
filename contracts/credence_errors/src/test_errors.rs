@@ -24,6 +24,7 @@ mod tests {
             ContractError::TimelockNotReady,
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -40,6 +41,7 @@ mod tests {
             ContractError::UnsupportedToken,
             ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
@@ -78,7 +80,6 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
-            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -122,6 +123,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 116);
     }
 
     #[test]
@@ -142,8 +144,10 @@ mod tests {
         assert_eq!(ContractError::UnsupportedToken as u32, 213);
         assert_eq!(ContractError::UnsupportedDecimals as u32, 229);
         assert_eq!(ContractError::InvalidBondAmount as u32, 214);
-        assert_eq!(ContractError::InvalidBondDuration as u32, 215);
-        assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
+        assert_eq!(ContractError::AmountExplicitlyZero as u32, 215);
+        assert_eq!(ContractError::InvalidBondDuration as u32, 216);
+        assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
+        assert_eq!(ContractError::BondAlreadyExists as u32, 218);
     }
 
     #[test]
@@ -983,7 +987,7 @@ mod tests {
         // This test verifies the macro compiles and can be called
         // Actual negative testing is done in contract integration tests
         use soroban_sdk::Env;
-        
+
         let e = Env::default();
         // Positive amount should pass
         crate::require_positive_amount!(&e, 100_i128);
@@ -1189,6 +1193,7 @@ mod tests {
             ContractError::NotSigner => true,
             ContractError::UnauthorizedDepositor => true,
             ContractError::ContractPaused => true, // wait for unpause
+            ContractError::BorrowFrozen => true,   // wait for unfreeze
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
             ContractError::AdminSuspended => true,         // wait for suspension
@@ -1200,6 +1205,7 @@ mod tests {
             ContractError::TimelockNotReady => true, // wait for delay
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
+            ContractError::ZeroBytes32 => true,
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1220,6 +1226,7 @@ mod tests {
             ContractError::UnsupportedToken => true,
             ContractError::UnsupportedDecimals => true,
             ContractError::InvalidBondAmount => true,
+            ContractError::AmountExplicitlyZero => true, // supply a non-zero amount
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
@@ -1228,8 +1235,8 @@ mod tests {
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
-            ContractError::BatchTooLarge => true,     // reduce batch size
-            ContractError::EmptyBatch => true,         // supply at least one item
+            ContractError::BatchTooLarge => true,       // reduce batch size
+            ContractError::EmptyBatch => true,          // supply at least one item
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1327,6 +1334,7 @@ mod tests {
             ContractError::TimelockNotReady,
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1344,6 +1352,7 @@ mod tests {
             ContractError::UnsupportedToken,
             ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
@@ -1383,6 +1392,7 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1489,5 +1499,31 @@ mod tests {
             !ContractError::Overflow.is_recoverable(),
             "Overflow (700) must be fatal per issue #519"
         );
+    }
+
+    #[test]
+    fn test_require_non_zero_bytes32_happy_path() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        // Single-bit set at index 0
+        let mut single_bit_arr = [0u8; 32];
+        single_bit_arr[0] = 1;
+        let single_bit = BytesN::from_array(&e, &single_bit_arr);
+        crate::require_non_zero_bytes32(&e, &single_bit);
+
+        // All-ones
+        let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_ones);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #116)")]
+    fn test_require_non_zero_bytes32_sad_path_panics_on_all_zeros() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        let all_zeros = BytesN::from_array(&e, &[0u8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_zeros);
     }
 }

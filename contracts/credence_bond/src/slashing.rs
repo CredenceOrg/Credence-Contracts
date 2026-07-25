@@ -9,11 +9,11 @@
 //! "not admin" error message.
 //!
 //! ## Design
-//! - **Partial Slashing**: Can slash any amount up to bonded_amount
-//! - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
-//! - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
-//! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
-//! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
+/// - **Partial Slashing**: Can slash any amount up to bonded_amount
+/// - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
+/// - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
+/// - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
+/// - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
 
 use crate::{DataKey, IdentityBond};
 

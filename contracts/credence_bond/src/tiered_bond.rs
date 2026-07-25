@@ -2,8 +2,9 @@
 //!
 //! Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
 
-use crate::BondTier;
-use soroban_sdk::Env;
+/// Tiered Bond System
+///
+/// Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
 
 pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000;
 pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000;
