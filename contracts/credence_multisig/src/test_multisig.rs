@@ -5,7 +5,6 @@ use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     Address, BytesN, Env, String, Vec,
 };
-use testutils::deduplicate_stable;
 use proptest::prelude::*;
 
 fn setup(e: &Env) -> (CredenceMultiSigClient, Address, Vec<Address>) {
@@ -1336,7 +1335,20 @@ fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, V
         }
 
         // Deduplicate: scan and keep first occurrence of each address.
-        let deduped = deduplicate_stable(&e, &raw);
+        let mut deduped = Vec::new(&e);
+        for i in 0..raw.len() {
+            let addr = raw.get(i).unwrap();
+            let mut already_seen = false;
+            for j in 0..deduped.len() {
+                if deduped.get(j).unwrap() == addr {
+                    already_seen = true;
+                    break;
+                }
+            }
+            if !already_seen {
+                deduped.push_back(addr);
+            }
+        }
 
         (e, raw, deduped)
     })
