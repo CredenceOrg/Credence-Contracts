@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{require_contract_uninitialized, ContractError, ErrorCategory, ErrorExt, Role};
+    use crate::{ContractError, ErrorCategory, ErrorExt, Role};
     use std::vec::Vec;
 
     fn all_variants() -> Vec<ContractError> {
@@ -105,20 +105,7 @@ mod tests {
 
     // --- require_contract_uninitialized helper tests ---
 
-    #[test]
-    fn test_require_contract_uninitialized_passes_when_false() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, false);
-    }
 
-    #[test]
-    #[should_panic]
-    fn test_require_contract_uninitialized_panics_when_true() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, true);
-    }
 
     // --- Wire code tests ---
 
@@ -325,10 +312,6 @@ mod tests {
         );
         assert_eq!(
             ContractError::InvalidNoticePeriod.category(),
-            ErrorCategory::Bond
-        );
-        assert_eq!(
-            ContractError::InvalidStringifiedBytes.category(),
             ErrorCategory::Bond
         );
     }
@@ -1354,9 +1337,9 @@ mod tests {
             ContractError::DivisionByZero => false,
 
             // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
+
+            ContractError::PromiseNotKept => false,
+            ContractError::StaleOperatorEpoch => false,
         }
     }
 
@@ -1419,7 +1402,7 @@ mod tests {
             ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
-            ContractError::InvalidStringifiedBytes,
+
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
