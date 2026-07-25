@@ -1325,7 +1325,7 @@ mod tests {
             ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
             ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
-
+            ContractError::StaleEpoch => false,         // proposal ID contains a stale epoch reference; caller must re-propose
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
             ContractError::ThresholdExceedsSigners => true,
@@ -1466,10 +1466,11 @@ mod tests {
             ContractError::BorrowFrozen,
             ContractError::PayloadTooOld,
             ContractError::InvalidCurrency,
+            ContractError::StaleEpoch,
         ];
         assert_eq!(
             cases.len(),
-            90,
+            91,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

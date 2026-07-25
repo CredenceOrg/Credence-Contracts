@@ -216,3 +216,27 @@ fn test_legacy_fetch_returns_typed_error_not_panic() {
     // method catches that and surfaces it as `Err`.
     assert!(result.is_err(), "must return Err, not a value");
 }
+
+/// A proposal ID must be rejected during approval and execution if it carries
+/// a stale governance epoch reference (meaning it does not match the expected
+/// ID for the current epoch).
+#[test]
+#[should_panic(expected = "Error(Contract, #513)")]
+fn test_stale_epoch_rejected() {
+    let (env, admin, client) = setup();
+    let signers = add_signers(&env, &admin, &client, 2, 2);
+    let s1 = signers.get(0).unwrap();
+    let s2 = signers.get(1).unwrap();
+
+    // Submit a pause proposal in epoch 0.
+    let id_epoch0 = client.pause(&s1).unwrap();
+
+    // Advance to epoch 1 before approving.
+    env.ledger().with_mut(|l| {
+        l.sequence_number += u32::from(PROPOSAL_EPOCH_SIZE);
+    });
+
+    // This should panic with StaleEpoch (513) because the proposal ID
+    // encodes a stale epoch reference.
+    client.approve_pause_proposal(&s2, &id_epoch0);
+}
