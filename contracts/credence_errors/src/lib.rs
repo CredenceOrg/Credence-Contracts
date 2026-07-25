@@ -343,11 +343,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
 
-    /// A string expected to contain hex or base64 encoded bytes is malformed
-    /// or exceeds the maximum accepted encoded length.
+    /// Idempotency key has already been used for this operation.
+    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvalidStringifiedBytes = 230,
+    DuplicateIdempotencyKey = 231,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.

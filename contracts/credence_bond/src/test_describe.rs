@@ -32,7 +32,6 @@ fn test_version() {
     assert_eq!(client.version(), String::from_str(&e, "0.1.0"));
 }
 
-
 // ── describe_config ──────────────────────────────────────────────────────────
 
 #[test]

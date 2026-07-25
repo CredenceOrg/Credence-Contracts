@@ -3,8 +3,7 @@
 //! Rejects fee-on-transfer tokens where balance verification fails.
 
 use crate::safe_token;
-use crate::storage;
-use crate::DataKey;
+use crate::{storage, DataKey};
 use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};

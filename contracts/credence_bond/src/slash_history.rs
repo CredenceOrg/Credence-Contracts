@@ -1,7 +1,5 @@
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
-use crate::parameters::MAX_QUERY_LIMIT;
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SlashRecord {
@@ -202,4 +200,3 @@ pub mod testutils {
         total
     }
 }
-
