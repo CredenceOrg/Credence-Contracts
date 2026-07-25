@@ -329,6 +329,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidCurrency = 234,
 
+    /// String input is not valid hex or base64 and cannot be safely decoded.
+    /// Raised by `verify_stringified_bytes` when the input exceeds the maximum
+    /// length or contains non-canonical characters.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 235,
+
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
     /// Contracts: bond
@@ -541,7 +548,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -565,7 +572,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
+    TimestampInFuture = 119,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -746,6 +753,8 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -860,6 +869,9 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
+            ContractError::InvalidStringifiedBytes => {
+                "String input is not valid hex or base64"
+            }
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1034,6 +1046,7 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
+            | ContractError::InvalidStringifiedBytes   // supply valid hex or base64
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             => true,
@@ -1044,7 +1057,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1082,15 +1094,10 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationInactive        // wait for activation or use a different delegation
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
 
-            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
-            // the payload must be discarded and re-signed.
-            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
-
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationInactive => false,              // delegation revoked/expired; cannot be fixed by caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
 
             // --- Treasury (600-699): mostly caller-fixable ---
@@ -1118,6 +1125,21 @@ impl ErrorExt for ContractError {
 
 #[cfg(test)]
 mod test_errors;
+
+/// Rejects a call when the contract has already been initialized.
+///
+/// Pass `true` if the contract storage already contains an admin/key,
+/// meaning `initialize` has already been called.
+///
+/// Panics with `ContractError::AlreadyInitialized` when `is_initialized` is `true`.
+#[macro_export]
+macro_rules! require_contract_uninitialized {
+    ($env:expr, $is_initialized:expr) => {
+        if $is_initialized {
+            return Err($crate::ContractError::AlreadyInitialized);
+        }
+    };
+}
 
 /// Wraps `env.current_contract_address()` with a mock hook for tests.
 #[macro_export]

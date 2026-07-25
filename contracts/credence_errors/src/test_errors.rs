@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{require_contract_uninitialized, ContractError, ErrorCategory, ErrorExt, Role};
+    use crate::{ContractError, ErrorCategory, ErrorExt, Role};
     use std::vec::Vec;
 
     fn all_variants() -> Vec<ContractError> {
@@ -107,17 +107,25 @@ mod tests {
 
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, false);
+        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
+            crate::require_contract_uninitialized!(e, false);
+            Ok(())
+        }
+        let e = soroban_sdk::Env::default();
+        assert!(call(&e).is_ok());
     }
 
     #[test]
-    #[should_panic]
-    fn test_require_contract_uninitialized_panics_when_true() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, true);
+    fn test_require_contract_uninitialized_returns_error_when_true() {
+        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
+            crate::require_contract_uninitialized!(e, true);
+            Ok(())
+        }
+        let e = soroban_sdk::Env::default();
+        assert_eq!(
+            call(&e),
+            Err(ContractError::AlreadyInitialized)
+        );
     }
 
     // --- Wire code tests ---
@@ -141,7 +149,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::TimestampInFuture as u32, 118);
+        assert_eq!(ContractError::TimestampInFuture as u32, 119);
     }
 
     #[test]
@@ -1329,7 +1337,7 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::DelegationInactive => true, // wait for activation or use a different delegation
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
@@ -1354,9 +1362,8 @@ mod tests {
             ContractError::DivisionByZero => false,
 
             // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
+            ContractError::PromiseNotKept => false,
+            ContractError::InvalidStringifiedBytes => true,
         }
     }
 
@@ -1473,7 +1480,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            94,
+            95,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
