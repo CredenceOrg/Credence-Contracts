@@ -97,6 +97,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("CursorOutOfRange", ContractError::CursorOutOfRange),
     ("BatchTooLarge", ContractError::BatchTooLarge),
     ("EmptyBatch", ContractError::EmptyBatch),
+    ("InvalidStringifiedBytes", ContractError::InvalidStringifiedBytes),
     // --- Shared Bond/Delegation payload mismatches ---
     // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
     ("DomainMismatch", ContractError::DomainMismatch),

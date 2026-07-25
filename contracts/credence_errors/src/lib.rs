@@ -508,6 +508,17 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PayloadTooOld = 510,
 
+    /// Off-chain promise hash does not match on-chain execution.
+    ///
+    /// Raised by `require_kept_promise` when the hash of the off-chain signed
+    /// payload (the "promise") does not match the hash of the actual on-chain
+    /// execution parameters. This detects cases where a relayer or attacker
+    /// submits a payload that differs from what the signer authorized.
+    ///
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    PromiseNotKept = 512,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
@@ -516,19 +527,16 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
-    /// The deadline on a signature or operation has passed.
-    ///
-    /// Raised when a signed payload carries a `deadline` (or `expires_at`)
-    /// timestamp in the past.  The caller should obtain a fresh signature
-    /// with a later deadline.
-    ///
-    /// Shared across Bond and Delegation contracts.
+    /// Signature/operation deadline has passed.
+    /// Used when a time-bounded signature (e.g. with an explicit deadline field)
+    /// is submitted after its expiry timestamp.
+    /// Contracts: bond, delegation
     /// Wire-stable: do not renumber this error code.
     SignatureExpired = 222,
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 115,
+    NoPendingAdmin = 118,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -717,7 +725,6 @@ impl ErrorExt for ContractError {
             | ContractError::SignatureExpired
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
-            | ContractError::DuplicateIdempotencyKey
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -754,7 +761,8 @@ impl ErrorExt for ContractError {
             | ContractError::RevocationGraceExpired
             | ContractError::DelegationNotExpired
             | ContractError::DelegationInactive
-            | ContractError::PayloadTooOld => ErrorCategory::Delegation,
+            | ContractError::PayloadTooOld
+            | ContractError::PromiseNotKept => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -843,6 +851,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input is empty; at least one item is required",
+            ContractError::InvalidStringifiedBytes => {
+                "String is not valid bounded hex or base64 encoded bytes"
+            }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -896,6 +907,9 @@ impl ErrorExt for ContractError {
             }
             ContractError::PayloadTooOld => {
                 "Signed payload ledger_number is older than MAX_PAYLOAD_AGE_LEDGERS ledgers"
+            }
+            ContractError::PromiseNotKept => {
+                "Off-chain promise hash does not match on-chain execution"
             }
             ContractError::AmountMustBePositive => "Amount must be strictly positive",
             ContractError::ThresholdExceedsSigners => {
@@ -1014,6 +1028,7 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
+            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1048,13 +1063,19 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierAlreadyRegistered // idempotent
             | ContractError::VerifierNotRegistered
             | ContractError::DelegationNotExpired
+            | ContractError::DelegationInactive        // wait for activation or use a different delegation
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
+
+            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
+            // the payload must be discarded and re-signed.
+            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
             ContractError::DelegationInactive => false,              // delegation revoked/expired; cannot be fixed by caller
+            ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0
@@ -1075,9 +1096,6 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
-            ContractError::UnsupportedDecimals => false, // token not supported; caller must use a different token
-            ContractError::UnauthorizedToken => true,    // caller can switch to an accepted token
-            ContractError::EmergencyDrainNotPermitted => true, // pause contract and wait for timelock then retry
         }
     }
 }
