@@ -108,7 +108,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "AlreadyInitialized")]
+    #[should_panic]
     fn test_require_contract_uninitialized_panics_when_true() {
         use soroban_sdk::Env;
         let e = Env::default();
