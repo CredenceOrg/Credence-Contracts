@@ -15,6 +15,7 @@ This directory contains all design docs, API references, and operational guides 
 | [governance.md](governance.md) | Operator | Multi-sig pause, emergency mode, upgrade flow |
 | [upgrade.md](UPGRADE.md) | Operator | Contract upgrade procedure, data migration, verification |
 | [BYTES32_CANONICALISATION.md](BYTES32_CANONICALISATION.md) | Contributor / Integrator | Canonicalisation rules for BytesN<32> and zero value rejection |
+| [TIME_UNITS.md](TIME_UNITS.md) | Contributor | Time representation (seconds, days, epochs) and mocking time in tests |
 
 ## Bond Contract (`credence_bond`)
 
