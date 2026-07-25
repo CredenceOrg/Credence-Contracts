@@ -103,6 +103,7 @@ pub fn require_not_expired(e: &Env, deadline: u64) {
 /// # Panics
 /// Panics with "domain mismatch" if `expected_contract` does not match the
 /// current contract address.
+#[allow(dead_code)]
 pub fn require_domain_match(e: &Env, expected_contract: &Address) {
     let current = e.current_contract_address();
     if current != *expected_contract {
@@ -123,6 +124,7 @@ fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
 /// Grace-window helpers and composite validators are only needed for off-chain
 /// tooling, integration harnesses, and tests — not in the release WASM binary.
 #[cfg(any(test, feature = "testutils"))]
+#[allow(dead_code)]
 mod testutils_helpers {
     use super::*;
 
@@ -200,6 +202,7 @@ mod testutils_helpers {
 }
 
 #[cfg(any(test, feature = "testutils"))]
+#[allow(unused_imports)]
 pub use testutils_helpers::*;
 
 #[cfg(test)]

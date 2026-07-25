@@ -1,4 +1,5 @@
 #![cfg(test)]
+#![allow(clippy::disallowed_macros)]
 
 //! # Proptest: Batch Atomicity (Issue #747)
 //!

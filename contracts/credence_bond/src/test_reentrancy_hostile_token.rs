@@ -40,7 +40,7 @@ fn setup_hostile_token_bond(e: &Env) -> HostileSetup<'_> {
     client.set_accepted_tokens(&admin, &accepted);
     client.set_token(&admin, &token_id);
 
-    client.create_bond(&identity, &INITIAL_BOND, &DURATION);
+    client.create_bond(&identity, &INITIAL_BOND, &DURATION, &false, &0);
     assert_invariants(e, &contract_id);
 
     HostileSetup {

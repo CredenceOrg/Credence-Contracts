@@ -18,12 +18,14 @@ use soroban_sdk::token::TokenClient;
 use soroban_sdk::{panic_with_error, Address, Env};
 
 /// Target decimals for all internal accounting.
+#[allow(dead_code)]
 pub const NORMALIZED_DECIMALS: u32 = 18;
 
 /// Maximum supported token decimals. Hardened to 18 to prevent overflow in 128-bit accounting.
 pub const MAX_SUPPORTED_DECIMALS: u32 = 18;
 
 /// Minimum supported token decimals.
+#[allow(dead_code)]
 pub const MIN_SUPPORTED_DECIMALS: u32 = 0;
 
 /// Returns the scale factor and whether it's a multiplier (true) or divisor (false).
@@ -41,8 +43,8 @@ pub fn require_non_zero_currency(e: &Env, sym: &soroban_sdk::String) {
     let mut buf = [0u8; 128];
     let check_len = len.min(128) as usize;
     sym.copy_into_slice(&mut buf[..check_len]);
-    for i in 0..check_len {
-        if buf[i] != b' ' && buf[i] != b'\t' && buf[i] != b'\n' && buf[i] != b'\r' {
+    for byte in buf.iter().take(check_len) {
+        if *byte != b' ' && *byte != b'\t' && *byte != b'\n' && *byte != b'\r' {
             is_whitespace = false;
             break;
         }
@@ -55,7 +57,7 @@ pub fn require_non_zero_currency(e: &Env, sym: &soroban_sdk::String) {
 pub fn validate_supported_decimals(e: &Env, token: &Address) {
     let decimals = TokenClient::new(e, token).decimals();
 
-    if decimals < MIN_SUPPORTED_DECIMALS || decimals > MAX_SUPPORTED_DECIMALS {
+    if decimals > MAX_SUPPORTED_DECIMALS {
         panic_with_error!(e, ContractError::UnsupportedDecimals);
     }
 
@@ -63,6 +65,7 @@ pub fn validate_supported_decimals(e: &Env, token: &Address) {
     require_non_zero_currency(e, &sym);
 }
 
+#[allow(dead_code)]
 pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
     let decimals = TokenClient::new(e, token).decimals();
     validate_supported_decimals(e, token);
@@ -89,6 +92,7 @@ pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
 /// # Panics
 /// * If token decimals are outside supported range
 /// * If normalization causes overflow
+#[allow(dead_code)]
 pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if amount < 0 {
         panic!("bond amount cannot be negative");
@@ -119,6 +123,7 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
 /// # Panics
 /// * If token decimals are outside supported range
 /// * If denormalization causes overflow
+#[allow(dead_code)]
 pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if amount < 0 {
         panic!("cannot denormalize negative amount");
@@ -146,6 +151,7 @@ pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
 ///
 /// # Returns
 /// true if the amount can be safely normalized
+#[allow(dead_code)]
 pub fn can_normalize_safely(e: &Env, token: &Address, amount: i128) -> bool {
     if amount < 0 {
         return false;

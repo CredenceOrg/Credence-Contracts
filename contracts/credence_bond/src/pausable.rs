@@ -35,6 +35,7 @@ pub fn require_not_paused(e: &Env) {
     }
 }
 
+#[allow(dead_code)]
 pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: bool) {
     require_admin_auth(e, admin);
 
@@ -88,6 +89,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
     );
 }
 
+#[allow(dead_code)]
 pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
     require_admin_auth(e, admin);
     let count: u32 = e
@@ -205,6 +207,7 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
     Some(id)
 }
 
+#[allow(dead_code)]
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     require_pause_signer(e, signer);
 
@@ -222,6 +225,7 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     );
 }
 
+#[allow(dead_code)]
 pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     let action: u32 = e
         .storage()

@@ -132,7 +132,7 @@ fn scenario_full_bond_lifecycle() {
         },
     );
 
-    c.slash_bond(&admin, &200_i128, &Bytes::new(e));
+    c.slash_bond(&admin, &200_i128, &Bytes::new(&env));
     assert_pinned(
         "after_slash_bond",
         &c.get_identity_state(),

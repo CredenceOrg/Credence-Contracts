@@ -4,7 +4,6 @@ use soroban_sdk::{Address, Env, Symbol};
 /// Tiered Bond System
 ///
 /// Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
-
 pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000;
 pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000;
 pub const TIER_GOLD_MAX: i128 = 20_000_000_000_000_000_000_000;
@@ -36,6 +35,7 @@ pub fn get_tier_for_amount(e: &Env, amount: i128) -> BondTier {
 /// Gold=2, Platinum=3). Used by the boundary/fuzz test suite to compare tier
 /// transitions in a single integer cell.
 #[must_use]
+#[allow(dead_code)]
 pub(crate) fn tier_rank(t: &BondTier) -> u8 {
     match t {
         BondTier::Bronze => 0,

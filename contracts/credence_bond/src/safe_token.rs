@@ -82,6 +82,7 @@ pub fn safe_transfer(e: &Env, recipient: &Address, amount: i128) {
 /// * If amount is negative
 /// * If allowance is insufficient
 /// * If transfer fails
+#[allow(dead_code)]
 pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
     validate_amount(amount);
     if amount == 0 {
@@ -115,6 +116,7 @@ pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
 /// * If token is not configured
 /// * If allowance check fails
 /// * If allowance is insufficient
+#[allow(dead_code)]
 pub fn safe_require_allowance(e: &Env, owner: &Address, amount: i128) {
     validate_amount(amount);
     if amount == 0 {

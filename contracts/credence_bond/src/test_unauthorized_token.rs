@@ -16,7 +16,7 @@ fn test_set_token_with_unauthorized_token_rejects() {
 
     // Initialize contract
     e.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Set accepted tokens
     let mut accepted_tokens = Vec::new(&e);
@@ -29,7 +29,7 @@ fn test_set_token_with_unauthorized_token_rejects() {
 
     // Verify the error is UnauthorizedToken
     let err = result.unwrap_err();
-    assert_eq!(err, ContractError::UnauthorizedToken);
+    assert_eq!(err, Ok(ContractError::UnauthorizedToken.into()));
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn test_set_token_with_accepted_token_succeeds() {
 
     // Initialize contract
     e.mock_all_auths();
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     // Set accepted tokens
     let mut accepted_tokens = Vec::new(&e);
@@ -54,6 +54,6 @@ fn test_set_token_with_accepted_token_succeeds() {
     client.set_token(&admin, &accepted_token);
 
     // Verify token was set
-    let stored_token = client.get_token();
+    let stored_token = e.as_contract(&contract_id, || crate::token_integration::get_token(&e));
     assert_eq!(stored_token, accepted_token);
 }

@@ -442,14 +442,20 @@ fn threats_markdown_wellformed() {
     // Count table rows and look for incomplete rows
     let table_rows: Vec<&str> = threats_content
         .lines()
-        .filter(|l| l.trim_start().starts_with('|'))
+        .filter(|line| {
+            line.trim_start()
+                .strip_prefix('|')
+                .and_then(|row| row.split('|').next())
+                .and_then(parse_threat_id)
+                .is_some()
+        })
         .collect();
 
     let mut malformed = 0;
 
     for row in &table_rows {
         let pipes = row.matches('|').count();
-        // Threat table should have consistent pipe count (9 columns = 10 pipes including edges)
+        // Threat registry rows have 8 columns and 9 pipes including edges.
         if pipes < 9 {
             println!("⚠ Incomplete row (pipe count: {}): {}", pipes, row);
             malformed += 1;

@@ -108,6 +108,7 @@ pub fn check_and_record(e: &Env, actor: &Address, operation: &Symbol, salt: &Byt
 /// # Returns
 /// `true` if the idempotency key has been used, `false` otherwise
 #[must_use]
+#[allow(dead_code)]
 pub fn is_used(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> bool {
     let key = compute_key(e, actor, operation, salt);
     let storage_key = DataKey::IdempotencyKey(key);

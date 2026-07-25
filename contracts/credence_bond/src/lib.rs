@@ -1876,7 +1876,7 @@ impl CredenceBond {
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
-        if idempotency_salt.len() > 0 {
+        if !idempotency_salt.is_empty() {
             idempotency::check_and_record(
                 &e,
                 &admin,
@@ -1951,7 +1951,7 @@ impl CredenceBond {
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
-        if idempotency_salt.len() > 0 {
+        if !idempotency_salt.is_empty() {
             idempotency::check_and_record(
                 &e,
                 &admin,

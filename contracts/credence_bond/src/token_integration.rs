@@ -91,6 +91,7 @@ pub fn get_usdc_network(e: &Env) -> Option<String> {
 
 /// @notice Checks if owner has enough allowance for the contract to spend amount.
 /// @dev Uses safe allowance checking with proper error handling.
+#[allow(dead_code)]
 pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
     crate::safe_token::safe_require_allowance(e, owner, amount);
 }

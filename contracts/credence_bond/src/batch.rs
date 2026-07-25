@@ -14,8 +14,7 @@
 #![allow(dead_code)]
 
 use crate::{tiered_bond, BondTier, DataKey, IdentityBond};
-use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 /// Conservative upper bound to keep batch execution below Soroban budget limits.
 pub const MAX_BATCH_BOND_SIZE: u32 = 20;
