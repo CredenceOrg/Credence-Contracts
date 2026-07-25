@@ -31,7 +31,7 @@ fn delegate_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0, // Default to Ed25519 for backwards compatibility
-        signature_domain: String::from_str(e, "CredenceDelegation"),
+        ledger_number: 0,
     }
 }
 
@@ -51,7 +51,7 @@ fn delegate_payload_with_scheme(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
-        signature_domain: String::from_str(e, "CredenceDelegation"),
+        ledger_number: 0,
     }
 }
 

@@ -37,7 +37,7 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{String, testutils::{Address as _, Ledger as _}};
 use soroban_sdk::Env;
 use std::vec::Vec as StdVec;
 
@@ -71,6 +71,7 @@ fn delegate_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
+        ledger_number: 0,
         signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }

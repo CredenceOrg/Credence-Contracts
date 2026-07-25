@@ -55,6 +55,10 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the same checks.
 
+## Helpers
+
+- **`testutils::deduplicate_stable`**: a small stable dedup helper that removes duplicates while preserving first-seen order for Soroban `Vec` and `alloc::vec::Vec` (available from the `testutils` crate).
+
 ## Security scanning
 
 Pull requests run `cargo audit --deny warnings`; dependency vulnerabilities are surfaced in a sticky PR comment and the full JSON report is uploaded as a workflow artifact. See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for the local command and triage flow.
@@ -94,6 +98,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
+  - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
   - Batch entrypoints: [batch atomicity — all-or-nothing vs. partial progress](docs/BATCH_ATOMICITY.md)
 - `contracts/credence_delegation/` — Delegation contract; off-chain signed payloads ([docs/OFF_CHAIN_PROMISES.md](docs/OFF_CHAIN_PROMISES.md))
 - `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `OFF_CHAIN_PROMISES.md`, `emergency.md`, `UPGRADE.md`, `crates.md`)
@@ -114,3 +119,5 @@ soroban contract deploy \
 See [Stellar Soroban docs](https://developers.stellar.org/docs/smart-contracts) for auth and network setup.
 
 For the full testnet deploy and cross-contract wiring runbook, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+For the one-shot initialisation pattern used by every contract in this workspace (re-init guard, admin auth, storage layout, initialization event), see [docs/CONSTRUCTOR_PATTERNS.md](docs/CONSTRUCTOR_PATTERNS.md).

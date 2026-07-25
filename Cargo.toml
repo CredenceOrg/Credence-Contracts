@@ -1,3 +1,8 @@
+[package]
+name = "credence-contracts"
+version.workspace = true
+edition.workspace = true
+
 [workspace]
 resolver = "2"
 members = ["contracts/credence_bond", "contracts/credence_delegation", "contracts/credence_registry", "contracts/credence_treasury", "contracts/timelock", "contracts/arbitration", "contracts/credence_multisig", "contracts/admin", "contracts/credence_errors", "contracts/credence_math", "contracts/templates", "crates/credence_admin_cli", "crates/testutils"]

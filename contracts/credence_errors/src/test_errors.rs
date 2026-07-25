@@ -17,6 +17,14 @@ mod tests {
             ContractError::ContractPaused,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
+            ContractError::AdminSuspended,
+            ContractError::NoPendingAdmin,
+            ContractError::InvalidAdminAddress,
+            ContractError::AdminUnchanged,
+            ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -33,11 +41,16 @@ mod tests {
             ContractError::UnsupportedToken,
             ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
+            ContractError::InvariantViolation,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
+            ContractError::CursorOutOfRange,
             ContractError::DomainMismatch,
             ContractError::OwnerMismatch,
             ContractError::TargetMismatch,
@@ -56,6 +69,7 @@ mod tests {
             ContractError::AlreadyActive,
             ContractError::InvalidContractAddress,
             ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
@@ -74,11 +88,15 @@ mod tests {
             ContractError::InsufficientApprovals,
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
+            ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
         ]
     }
 
@@ -102,6 +120,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 116);
     }
 
     #[test]
@@ -122,8 +141,11 @@ mod tests {
         assert_eq!(ContractError::UnsupportedToken as u32, 213);
         assert_eq!(ContractError::UnsupportedDecimals as u32, 229);
         assert_eq!(ContractError::InvalidBondAmount as u32, 214);
-        assert_eq!(ContractError::InvalidBondDuration as u32, 215);
-        assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
+        assert_eq!(ContractError::AmountExplicitlyZero as u32, 215);
+        assert_eq!(ContractError::InvalidBondDuration as u32, 216);
+        assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
+        assert_eq!(ContractError::BondAlreadyExists as u32, 218);
+        assert_eq!(ContractError::InvalidStringifiedBytes as u32, 230);
     }
 
     #[test]
@@ -164,6 +186,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientApprovals as u32, 605);
         assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
         assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
+        assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
     }
 
     #[test]
@@ -283,6 +306,10 @@ mod tests {
             ContractError::InvalidNoticePeriod.category(),
             ErrorCategory::Bond
         );
+        assert_eq!(
+            ContractError::InvalidStringifiedBytes.category(),
+            ErrorCategory::Bond
+        );
     }
 
     #[test]
@@ -383,6 +410,10 @@ mod tests {
             ContractError::InsufficientApprovals.category(),
             ErrorCategory::Treasury
         );
+        assert_eq!(
+            ContractError::TreasuryBeneficiaryMismatch.category(),
+            ErrorCategory::Treasury
+        );
     }
 
     #[test]
@@ -422,7 +453,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            73,
+            90,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -958,10 +989,10 @@ mod tests {
         // This test verifies the macro compiles and can be called
         // Actual negative testing is done in contract integration tests
         use soroban_sdk::Env;
-        
+
         let e = Env::default();
         // Positive amount should pass
-        credence_errors::require_positive_amount!(&e, 100_i128);
+        crate::require_positive_amount!(&e, 100_i128);
     }
 
     fn mock_receive_fee(amount: i128, authorized: bool) -> Result<(), ContractError> {
@@ -1164,16 +1195,19 @@ mod tests {
             ContractError::NotSigner => true,
             ContractError::UnauthorizedDepositor => true,
             ContractError::ContractPaused => true, // wait for unpause
+            ContractError::BorrowFrozen => true,   // wait for unfreeze
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
             ContractError::AdminSuspended => true,         // wait for suspension
-            ContractError::AdminSuspended => true, // wait for suspension
 
             // Admin Transfer: state-step fixes.
             ContractError::NoPendingAdmin => true,
             ContractError::InvalidAdminAddress => true,
             ContractError::AdminUnchanged => true,
             ContractError::TimelockNotReady => true, // wait for delay
+            ContractError::EmergencyDrainNotPermitted => true,
+            ContractError::RoleNotHeldAtLedger => true,
+            ContractError::ZeroBytes32 => true,
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1194,17 +1228,18 @@ mod tests {
             ContractError::UnsupportedToken => true,
             ContractError::UnsupportedDecimals => true,
             ContractError::InvalidBondAmount => true,
+            ContractError::AmountExplicitlyZero => true, // supply a non-zero amount
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
+            ContractError::UnauthorizedToken => true,
+            ContractError::DuplicateIdempotencyKey => true,
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
-            ContractError::BatchTooLarge => true,     // reduce batch size
-            ContractError::EmptyBatch => true,         // supply at least one item
-            ContractError::InvariantViolation => false, // post-write drift
-            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
-            ContractError::DomainMismatch => false, // payload binding
+            ContractError::BatchTooLarge => true,       // reduce batch size
+            ContractError::EmptyBatch => true,          // supply at least one item
+            ContractError::InvalidStringifiedBytes => true, // correct the encoded input
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1225,7 +1260,7 @@ mod tests {
             ContractError::AlreadyActive => true,
             ContractError::InvalidContractAddress => true,
             ContractError::ContractCodeVerificationFailed => true,
-            ContractError::UnsupportedInterface => false,
+            ContractError::UnsupportedInterface => true,
 
             // Delegation: state/caller fixes; fatal cases are scheme/crypto.
             ContractError::ExpiryInPast => true,
@@ -1238,7 +1273,8 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationNotExpired => true, // wait for expiry then retry
+            ContractError::DelegationInactive => true,
+            ContractError::TimestampInFuture => false, // impossible ledger_number; payload must be discarded
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1250,6 +1286,8 @@ mod tests {
             ContractError::InvalidFlashLoanCallback => false, // bad magic
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
+            ContractError::SlippageExceeded => true,
+            ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1258,6 +1296,11 @@ mod tests {
             ContractError::Overflow => false,
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
+
+            // Missing variants added to match the enum and ensure completeness
+            ContractError::BorrowFrozen => true,
+            ContractError::PayloadTooOld => true,
+            ContractError::InvalidCurrency => true,
         }
     }
 
@@ -1292,6 +1335,9 @@ mod tests {
             ContractError::InvalidAdminAddress,
             ContractError::AdminUnchanged,
             ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1309,11 +1355,15 @@ mod tests {
             ContractError::UnsupportedToken,
             ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1334,6 +1384,7 @@ mod tests {
             ContractError::AlreadyActive,
             ContractError::InvalidContractAddress,
             ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
             ContractError::ExpiryInPast,
             ContractError::DelegationNotFound,
             ContractError::AlreadyRevoked,
@@ -1344,6 +1395,8 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1353,13 +1406,20 @@ mod tests {
             ContractError::InvalidFlashLoanCallback,
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
             ContractError::CursorOutOfRange,
             ContractError::Overflow,
             ContractError::Underflow,
+            ContractError::DivisionByZero,
+            ContractError::TimestampInFuture,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
         ];
         assert_eq!(
             cases.len(),
-            78,
+            91,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1443,5 +1503,31 @@ mod tests {
             !ContractError::Overflow.is_recoverable(),
             "Overflow (700) must be fatal per issue #519"
         );
+    }
+
+    #[test]
+    fn test_require_non_zero_bytes32_happy_path() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        // Single-bit set at index 0
+        let mut single_bit_arr = [0u8; 32];
+        single_bit_arr[0] = 1;
+        let single_bit = BytesN::from_array(&e, &single_bit_arr);
+        crate::require_non_zero_bytes32(&e, &single_bit);
+
+        // All-ones
+        let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_ones);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #116)")]
+    fn test_require_non_zero_bytes32_sad_path_panics_on_all_zeros() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        let all_zeros = BytesN::from_array(&e, &[0u8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_zeros);
     }
 }

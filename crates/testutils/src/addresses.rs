@@ -1,4 +1,4 @@
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 /// Generates an admin address for tests.
 pub fn admin(e: &Env) -> Address {

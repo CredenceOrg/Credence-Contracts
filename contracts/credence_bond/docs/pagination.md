@@ -139,3 +139,5 @@ The same pattern applies to `get_slash_history_page`.
 - `contracts/credence_bond/src/parameters.rs` — `MAX_QUERY_LIMIT` definition
 - `contracts/credence_bond/src/liquidation_scanner.rs` — `MAX_ITER_HARD_CAP` (matching cap for scanner)
 - `contracts/credence_bond/src/test_pagination.rs` — test suite for all paginated reads
+- `contracts/credence_bond/docs/iter-chunks.md` — `vec_chunks` utility for iterating any `Vec`
+  in fixed-size chunks for gas budgeting (uses `DEFAULT_CHUNK_SIZE = 50`)

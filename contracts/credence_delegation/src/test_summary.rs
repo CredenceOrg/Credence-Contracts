@@ -11,7 +11,7 @@
 //! - legacy-default: `revoked_at = 0`, `scheme = 0` when fields absent (v1 entry)
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{String, testutils::{Address as _, Ledger as _}};
 use soroban_sdk::Env;
 
 fn setup() -> (Env, CredenceDelegationClient<'static>) {
@@ -40,6 +40,7 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
+        ledger_number: 0,
         signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }

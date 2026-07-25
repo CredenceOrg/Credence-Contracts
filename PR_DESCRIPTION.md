@@ -124,32 +124,22 @@ cargo test -p credence_bond
 ### Integration Testing
 1. Deploy to testnet
 2. Test with various token types (compliant and non-compliant)
-3. Verify error handling for edge cases
-4. Monitor for any token compatibility issues
+3. Verify error handling for## Objective
+Reject empty vectors with a typed error rather than downstream panics.
 
-## 🔍 Code Review Checklist
+Closes #757
 
-### Security
-- [ ] Input validation is comprehensive
-- [ ] Overflow protection is implemented
-- [ ] Zero address checks are in place
-- [ ] Allowance validation is proper
+## Threat Model / Defense-in-Depth
+What does an attacker get if this check is missing?
+If the empty vector check is missing, an attacker could:
+1. Submit empty batches to `create_batch_bonds` or similar batch functions. This avoids loop-based panics and effectively wastes node computation/storage resources (gas) and pollutes the event stream with empty `batch_bonds_created` events without providing economic value.
+2. In administrative functions like `set_accepted_tokens`, passing an empty vector unintentionally clears all accepted tokens without error, which causes unexpected and difficult-to-debug "Unauthorized Token" failures downstream for all users trying to create bonds. 
+3. In functions processing items without pre-validation, empty vectors could cause "index out of bounds" or `.unwrap()` panics.
 
-### Functionality  
-- [ ] All token flows are covered
-- [ ] Backward compatibility is maintained
-- [ ] Error messages are descriptive
-- [ ] Test coverage is comprehensive
+By checking `.is_empty()` centrally via `require_non_empty_vec(v)` and returning `ContractError::EmptyBatch`, we surface a strongly-typed error that off-chain indexers and user interfaces can handle safely without hitting generic Soroban `500` or `HostError` downstream.
 
-### Performance
-- [ ] No unnecessary gas overhead
-- [ ] Efficient validation patterns
-- [ ] Minimal impact on existing operations
-
-## 🚀 Deployment
-
-### Testnet Deployment
-1. **Deploy contracts** with safe token implementation
+## Cost Measurement
+The added check (`v.is_empty()`) is an O(1) operation inside the Soroban WASM runtime, consisting of a single length comparison. The cost impact on the hot path (like `create_batch_bonds`) is negligible and entirely offset by preventing execution of an empty loop and emitting an empty batch event.
 2. **Run integration tests** with various token types
 3. **Monitor for issues** with non-compliant tokens
 4. **Validate error handling** in production scenarios

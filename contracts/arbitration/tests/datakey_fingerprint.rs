@@ -1,3 +1,8 @@
+// This is an off-chain integration test binary, not deployed WASM. Issue #713
+// disallows `format!`/`write!`/`writeln!`/`format_args!` in production contract
+// code; integration tests aren't on chain, so we silence the lint locally.
+#![allow(clippy::disallowed_macros)]
+
 //! Storage-key fingerprint snapshot for `arbitration::DataKey`.
 //!
 //! Every `DataKey` variant encodes to a specific byte sequence that becomes the

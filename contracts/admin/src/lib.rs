@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,11 +14,19 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 pub mod pausable;
 
 #[cfg(test)]
 mod test_ownership_transfer;
+#[cfg(test)]
+mod test_events_schema;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
@@ -1241,4 +1250,4 @@ mod test_suspension;
 mod test_auth_entrypoints;
 
 #[cfg(test)]
-mod test_require_role_at_ledger;
+mod test_require_role_at_least;

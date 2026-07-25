@@ -30,27 +30,31 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("NotInitialized", ContractError::NotInitialized),
     ("AlreadyInitialized", ContractError::AlreadyInitialized),
     // --- Authorization (100-199) ---
-    // NOTE: lib.rs currently defines `SignatureExpired` twice (at code 109
-    // in the Authorization block and at code 222 in the Bond/Delegation
-    // shared section). Only one row appears here; the duplicate variant
-    // declaration in `lib.rs` is itself a compile-time regression that
-    // these tests fail loudly on `main`.
-    ("SignatureExpired", ContractError::SignatureExpired),
     ("NoPendingAdmin", ContractError::NoPendingAdmin),
     ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
     ("AdminUnchanged", ContractError::AdminUnchanged),
     ("TimelockNotReady", ContractError::TimelockNotReady),
     ("AdminSuspended", ContractError::AdminSuspended),
-    ("EmergencyDrainNotPermitted", ContractError::EmergencyDrainNotPermitted),
+    (
+        "EmergencyDrainNotPermitted",
+        ContractError::EmergencyDrainNotPermitted,
+    ),
+    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
     ("NotAdmin", ContractError::NotAdmin),
     ("NotBondOwner", ContractError::NotBondOwner),
     ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
     ("NotOriginalAttester", ContractError::NotOriginalAttester),
     ("NotSigner", ContractError::NotSigner),
-    ("UnauthorizedDepositor", ContractError::UnauthorizedDepositor),
+    (
+        "UnauthorizedDepositor",
+        ContractError::UnauthorizedDepositor,
+    ),
     ("ContractPaused", ContractError::ContractPaused),
     ("InvalidPauseAction", ContractError::InvalidPauseAction),
-    ("InsufficientSignatures", ContractError::InsufficientSignatures),
+    (
+        "InsufficientSignatures",
+        ContractError::InsufficientSignatures,
+    ),
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound),
     ("BondNotActive", ContractError::BondNotActive),
@@ -59,11 +63,18 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("StorageCapReached", ContractError::StorageCapReached),
     ("LockupNotExpired", ContractError::LockupNotExpired),
     ("NotRollingBond", ContractError::NotRollingBond),
-    ("WithdrawalAlreadyRequested", ContractError::WithdrawalAlreadyRequested),
+    (
+        "WithdrawalAlreadyRequested",
+        ContractError::WithdrawalAlreadyRequested,
+    ),
     ("ReentrancyDetected", ContractError::ReentrancyDetected),
     ("InvalidNonce", ContractError::InvalidNonce),
+    ("SignatureExpired", ContractError::SignatureExpired),
     ("NegativeStake", ContractError::NegativeStake),
-    ("EarlyExitConfigNotSet", ContractError::EarlyExitConfigNotSet),
+    (
+        "EarlyExitConfigNotSet",
+        ContractError::EarlyExitConfigNotSet,
+    ),
     ("InvalidPenaltyBps", ContractError::InvalidPenaltyBps),
     ("LeverageExceeded", ContractError::LeverageExceeded),
     ("UnsupportedToken", ContractError::UnsupportedToken),
@@ -74,11 +85,19 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("BondAlreadyExists", ContractError::BondAlreadyExists),
     // Codes 218, 219, 220, 221 — see shared Bond/Delegation block below.
     ("UnauthorizedToken", ContractError::UnauthorizedToken),
+    (
+        "DuplicateIdempotencyKey",
+        ContractError::DuplicateIdempotencyKey,
+    ),
     ("InvariantViolation", ContractError::InvariantViolation),
-    ("TreasuryNotConfigured", ContractError::TreasuryNotConfigured),
+    (
+        "TreasuryNotConfigured",
+        ContractError::TreasuryNotConfigured,
+    ),
     ("CursorOutOfRange", ContractError::CursorOutOfRange),
     ("BatchTooLarge", ContractError::BatchTooLarge),
     ("EmptyBatch", ContractError::EmptyBatch),
+    ("InvalidStringifiedBytes", ContractError::InvalidStringifiedBytes),
     // --- Shared Bond/Delegation payload mismatches ---
     // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
     ("DomainMismatch", ContractError::DomainMismatch),
@@ -88,41 +107,99 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation),
     ("AttestationNotFound", ContractError::AttestationNotFound),
-    ("AttestationAlreadyRevoked", ContractError::AttestationAlreadyRevoked),
-    ("InvalidAttestationWeight", ContractError::InvalidAttestationWeight),
-    ("AttestationWeightExceedsMax", ContractError::AttestationWeightExceedsMax),
+    (
+        "AttestationAlreadyRevoked",
+        ContractError::AttestationAlreadyRevoked,
+    ),
+    (
+        "InvalidAttestationWeight",
+        ContractError::InvalidAttestationWeight,
+    ),
+    (
+        "AttestationWeightExceedsMax",
+        ContractError::AttestationWeightExceedsMax,
+    ),
     // --- Registry (400-499) ---
-    ("IdentityAlreadyRegistered", ContractError::IdentityAlreadyRegistered),
-    ("BondContractAlreadyRegistered", ContractError::BondContractAlreadyRegistered),
-    ("IdentityNotRegistered", ContractError::IdentityNotRegistered),
-    ("BondContractNotRegistered", ContractError::BondContractNotRegistered),
+    (
+        "IdentityAlreadyRegistered",
+        ContractError::IdentityAlreadyRegistered,
+    ),
+    (
+        "BondContractAlreadyRegistered",
+        ContractError::BondContractAlreadyRegistered,
+    ),
+    (
+        "IdentityNotRegistered",
+        ContractError::IdentityNotRegistered,
+    ),
+    (
+        "BondContractNotRegistered",
+        ContractError::BondContractNotRegistered,
+    ),
     ("AlreadyDeactivated", ContractError::AlreadyDeactivated),
     ("AlreadyActive", ContractError::AlreadyActive),
-    ("InvalidContractAddress", ContractError::InvalidContractAddress),
-    ("ContractCodeVerificationFailed", ContractError::ContractCodeVerificationFailed),
+    (
+        "InvalidContractAddress",
+        ContractError::InvalidContractAddress,
+    ),
+    (
+        "ContractCodeVerificationFailed",
+        ContractError::ContractCodeVerificationFailed,
+    ),
     ("UnsupportedInterface", ContractError::UnsupportedInterface),
     // --- Delegation (500-599) ---
     ("ExpiryInPast", ContractError::ExpiryInPast),
     ("DelegationNotFound", ContractError::DelegationNotFound),
     ("AlreadyRevoked", ContractError::AlreadyRevoked),
-    ("DelegationExpiryTooLong", ContractError::DelegationExpiryTooLong),
+    (
+        "DelegationExpiryTooLong",
+        ContractError::DelegationExpiryTooLong,
+    ),
     ("UnknownScheme", ContractError::UnknownScheme),
-    ("VerifierAlreadyRegistered", ContractError::VerifierAlreadyRegistered),
-    ("VerifierNotRegistered", ContractError::VerifierNotRegistered),
+    (
+        "VerifierAlreadyRegistered",
+        ContractError::VerifierAlreadyRegistered,
+    ),
+    (
+        "VerifierNotRegistered",
+        ContractError::VerifierNotRegistered,
+    ),
     ("VerificationFailed", ContractError::VerificationFailed),
-    ("RevocationGraceExpired", ContractError::RevocationGraceExpired),
+    (
+        "RevocationGraceExpired",
+        ContractError::RevocationGraceExpired,
+    ),
     ("DelegationNotExpired", ContractError::DelegationNotExpired),
     // --- Treasury (600-699) ---
     ("AmountMustBePositive", ContractError::AmountMustBePositive),
-    ("ThresholdExceedsSigners", ContractError::ThresholdExceedsSigners),
-    ("InsufficientTreasuryBalance", ContractError::InsufficientTreasuryBalance),
+    (
+        "ThresholdExceedsSigners",
+        ContractError::ThresholdExceedsSigners,
+    ),
+    (
+        "InsufficientTreasuryBalance",
+        ContractError::InsufficientTreasuryBalance,
+    ),
     ("ProposalNotFound", ContractError::ProposalNotFound),
-    ("ProposalAlreadyExecuted", ContractError::ProposalAlreadyExecuted),
-    ("InsufficientApprovals", ContractError::InsufficientApprovals),
-    ("InvalidFlashLoanCallback", ContractError::InvalidFlashLoanCallback),
-    ("FlashLoanRepaymentFailed", ContractError::FlashLoanRepaymentFailed),
+    (
+        "ProposalAlreadyExecuted",
+        ContractError::ProposalAlreadyExecuted,
+    ),
+    (
+        "InsufficientApprovals",
+        ContractError::InsufficientApprovals,
+    ),
+    (
+        "InvalidFlashLoanCallback",
+        ContractError::InvalidFlashLoanCallback,
+    ),
+    (
+        "FlashLoanRepaymentFailed",
+        ContractError::FlashLoanRepaymentFailed,
+    ),
     ("ProposalExpired", ContractError::ProposalExpired),
     ("SlippageExceeded", ContractError::SlippageExceeded),
+    ("TreasuryBeneficiaryMismatch", ContractError::TreasuryBeneficiaryMismatch),
     // --- Arithmetic (700-799) ---
     ("Overflow", ContractError::Overflow),
     ("Underflow", ContractError::Underflow),
@@ -133,7 +210,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 85;
+const ALL_VARIANTS_COUNT: usize = 88;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
@@ -164,8 +241,7 @@ fn variant_names_are_unique_in_the_coverage_list() {
     // variant twice (or two PRs add near-identical names) and the
     // contributor's `ALL_VARIANTS` table accidentally lists the same
     // name twice — masking a real bug behind a single passed row.
-    let mut seen: std::vec::Vec<&'static str> =
-        std::vec::Vec::with_capacity(ALL_VARIANTS.len());
+    let mut seen: std::vec::Vec<&'static str> = std::vec::Vec::with_capacity(ALL_VARIANTS.len());
     for (name, _) in ALL_VARIANTS {
         assert!(
             !seen.contains(name),
@@ -195,7 +271,7 @@ fn discriminant_codes_fit_their_documentated_category_range() {
         (1..=99, "Initialization"),
         // Authorization (100-199) is split in `lib.rs` between two
         // logical groups (standard 100-108 and Admin Transfer 109-112,
-        // EmergencyDrainNotPermitted at 113). Both belong to the
+        // with the additional authorization errors following them). Both belong to the
         // Authorization category per `ErrorExt::category()`.
         (100..=199, "Authorization"),
         // `DomainMismatch = 225`, `OwnerMismatch = 219`,
@@ -251,10 +327,8 @@ fn discriminant_collision_panic_message_mentions_diagnostic() {
     // test outputs. We construct the collision INLINE — independent of
     // any particular state of `lib.rs` — so this test stays useful both
     // before and after the discriminant-collision fix PR lands.
-    let synthetic: std::vec::Vec<(&'static str, u32)> = std::vec![
-        ("SyntheticA", 999_001_u32),
-        ("SyntheticB", 999_001_u32),
-    ];
+    let synthetic: std::vec::Vec<(&'static str, u32)> =
+        std::vec![("SyntheticA", 999_001_u32), ("SyntheticB", 999_001_u32),];
     let mut seen: std::vec::Vec<u32> = std::vec::Vec::with_capacity(synthetic.len());
     for (name, code) in synthetic {
         if seen.contains(&code) {

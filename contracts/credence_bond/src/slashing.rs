@@ -1,62 +1,3 @@
-use crate::{DataKey, IdentityBond};
-use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, IntoVal, Symbol, Val, Vec};
-
-pub fn slash_bond(e: &Env, admin: &Address, slash_amount: i128) -> IdentityBond {
-    admin.require_auth();
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored_admin != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
-
-    let bond_key = DataKey::Bond;
-    let bond: IdentityBond = e
-        .storage()
-        .instance()
-        .get(&bond_key)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-
-    if !bond.active {
-        panic_with_error!(e, ContractError::BondNotActive);
-    }
-
-    let new_slashed = bond.slashed_amount + slash_amount;
-    if new_slashed > bond.bonded_amount {
-        panic_with_error!(e, ContractError::SlashExceedsBond);
-    }
-
-    let updated = IdentityBond {
-        identity: bond.identity.clone(),
-        bonded_amount: bond.bonded_amount,
-        bond_start: bond.bond_start,
-        bond_duration: bond.bond_duration,
-        slashed_amount: new_slashed,
-        active: bond.active,
-        is_rolling: bond.is_rolling,
-        withdrawal_requested_at: bond.withdrawal_requested_at,
-        notice_period_duration: bond.notice_period_duration,
-    };
-    e.storage().instance().set(&bond_key, &updated);
-    e.events().publish(
-        (Symbol::new(e, "bond_slashed"),),
-        (bond.identity.clone(), slash_amount, new_slashed),
-    );
-
-    if let Some(cb_addr) = e
-        .storage()
-        .instance()
-        .get::<_, Address>(&Symbol::new(e, "callback"))
-    {
-        let fn_name = Symbol::new(e, "on_slash");
-        let args: Vec<Val> = Vec::from_array(e, [slash_amount.into_val(e)]);
-        e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
-    }
-
-    updated
 //! Slashing Module
 //!
 //! Implements the core `slash_bond()` functionality for reducing a bond's value as a penalty
@@ -68,11 +9,13 @@ pub fn slash_bond(e: &Env, admin: &Address, slash_amount: i128) -> IdentityBond 
 //! "not admin" error message.
 //!
 //! ## Design
-//! - **Partial Slashing**: Can slash any amount up to bonded_amount
-//! - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
-//! - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
-//! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
-//! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
+/// - **Partial Slashing**: Can slash any amount up to bonded_amount
+/// - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
+/// - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
+/// - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
+/// - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
+
+use crate::{DataKey, IdentityBond};
 
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
@@ -127,7 +70,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 ///
 /// Executes the slash with full validation:
 /// 1. Validates caller is admin (panics if not)
-/// 2. Computes available balance (bonded − already_slashed)
+/// 2. Computes available balance (bonded âˆ’ already_slashed)
 /// 3. Caps slash at available balance (prevents over-slash)
 /// 4. Updates bond state
 /// 5. Appends a normalized SlashRecord to persistent history
@@ -150,7 +93,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// - If arithmetic overflows (checked_add protection)
 ///
 /// # Security Notes
-/// - Slash is bounded by available balance (bonded − slashed), not just bonded
+/// - Slash is bounded by available balance (bonded âˆ’ slashed), not just bonded
 /// - Slashing is monotonic (always increases or stays same, never decreases)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 /// - Slasher receives 10% of slashed amount as reward (pull-payment)
@@ -171,7 +114,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         .get::<_, crate::IdentityBond>(&key)
         .unwrap_or_else(|| panic!("no bond"));
 
-    // 3. Available balance = bonded − already_slashed
+    // 3. Available balance = bonded âˆ’ already_slashed
     let available = bond
         .bonded_amount
         .checked_sub(bond.slashed_amount)
@@ -377,7 +320,7 @@ pub fn is_partial_slash(slash_amount: i128, bonded_amount: i128) -> bool {
 /// Transfers `amount` tokens from this bond contract to the configured slash treasury.
 ///
 /// Reads the treasury address from `DataKey::SlashTreasury`. If the key is absent,
-/// reverts with [`ContractError::TreasuryNotConfigured`] — the protocol must never
+/// reverts with [`ContractError::TreasuryNotConfigured`] â€” the protocol must never
 /// silently drop slashed capital.
 ///
 /// The transfer is classified as `FundSource::SlashedFunds` at the treasury level.

@@ -523,7 +523,6 @@ dependencies = [
 name = "credence_delegation"
 version = "0.1.0"
 dependencies = [
- "credence_bond",
  "credence_errors",
  "insta",
  "proptest",
@@ -546,6 +545,8 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "proptest",
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -553,6 +554,7 @@ name = "credence_multisig"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "proptest",
  "soroban-sdk",
 ]
 

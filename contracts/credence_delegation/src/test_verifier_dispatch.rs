@@ -7,13 +7,13 @@
 use soroban_sdk::{
     contract, contractimpl,
     testutils::{Address as _, Ledger as _},
-    Address, Bytes, Env,
+    Address, Bytes, Env, String,
 };
 
 use crate::{
     domain::{DelegatedActionPayload, DomainTag},
     verifier::SchemeTag,
-    CredenceDelegation, CredenceDelegationClient, DelegationType,
+    CredenceDelegation, CredenceDelegationClient, DelegationType, SIGNATURE_DOMAIN,
 };
 
 // ---------------------------------------------------------------------------
@@ -81,7 +81,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
-        signature_domain: String::from_str(e, "CredenceDelegation"),
+        ledger_number: 0,
+        signature_domain: String::from_str(e, SIGNATURE_DOMAIN),
     }
 }
 
