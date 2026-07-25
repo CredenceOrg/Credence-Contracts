@@ -1545,6 +1545,17 @@ mod tests {
         assert!(!ContractError::ContractIdMismatch.is_recoverable());
     }
 
+    /// Regression test: `DelegationInactive` was previously shadowed by an
+    /// earlier, wrongly-classified match arm in `is_recoverable()`, so it
+    /// silently evaluated to `true` (recoverable) instead of `false`
+    /// (fatal). A revoked/expired delegation is a terminal *state* the
+    /// caller cannot retry past, unlike genuine *permission* errors (e.g.
+    /// `NotSigner`) which are fixed by switching signer/role.
+    #[test]
+    fn test_delegation_inactive_is_fatal_not_recoverable() {
+        assert!(!ContractError::DelegationInactive.is_recoverable());
+    }
+
     /// Verify the documented proposal-lifecycle example from the issue
     /// body: `ProposalAlreadyExecuted` is recoverable, `Overflow` is fatal.
     #[test]
