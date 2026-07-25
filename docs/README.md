@@ -72,6 +72,8 @@ This directory contains all design docs, API references, and operational guides 
 | [security.md](security.md) | Contributor / Auditor | Security model, trust assumptions |
 | [THREAT_MODEL.md](THREAT_MODEL.md) | Auditor | STRIDE analysis, mitigations |
 | [auth-tree-threats.md](auth-tree-threats.md) | Auditor | Auth tree specific threats |
+| [credence_bond ATTACK_TREE](../contracts/credence_bond/docs/ATTACK_TREE.md) | Contributor / Auditor | Per-entrypoint STRIDE attack tree for the bond contract |
+| [credence_delegation ATTACK_TREE](../contracts/credence_delegation/docs/ATTACK_TREE.md) | Contributor / Auditor | Per-entrypoint STRIDE attack tree for the delegation contract |
 | [reentrancy.md](reentrancy.md) | Contributor | Reentrancy guards, patterns |
 | [arbitration.md](arbitration.md) | Contributor | Dispute resolution flow |
 | [dispute-resolution.md](dispute-resolution.md) | Integrator | Arbitration API |

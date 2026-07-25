@@ -63,6 +63,15 @@ The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the sa
 
 Pull requests run `cargo audit --deny warnings`; dependency vulnerabilities are surfaced in a sticky PR comment and the full JSON report is uploaded as a workflow artifact. See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for the local command and triage flow.
 
+## Threat modelling
+
+Per-contract STRIDE attack trees document every entrypoint, the concrete attack goal, and the exact code that blocks it:
+
+- [`contracts/credence_bond/docs/ATTACK_TREE.md`](contracts/credence_bond/docs/ATTACK_TREE.md) — bond contract
+- [`contracts/credence_delegation/docs/ATTACK_TREE.md`](contracts/credence_delegation/docs/ATTACK_TREE.md) — delegation contract
+
+The workspace-level threat model and Soroban auth-tree analysis live in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/auth-tree-threats.md`](docs/auth-tree-threats.md).
+
 ## Release profile — WASM size
 
 The workspace release profile is tuned to minimize WASM binary size:
