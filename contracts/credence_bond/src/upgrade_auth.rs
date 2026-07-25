@@ -161,12 +161,12 @@ pub struct UpgradeRecord {
 /// # Panics
 /// * If contract is already initialized
 pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
-    if e.storage()
-        .instance()
-        .has(&DataKey::Upgrade(UpgradeKey::Admin))
-    {
-        panic!("upgrade authorization already initialized");
-    }
+    credence_errors::require_contract_uninitialized(
+        e,
+        e.storage()
+            .instance()
+            .has(&DataKey::Upgrade(UpgradeKey::Admin)),
+    );
 
     // Set upgrade admin
     e.storage()
