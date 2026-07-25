@@ -100,6 +100,8 @@ const MAX_IDENTITIES_PAGE_SIZE: u32 = 200;
 
 pub mod pausable;
 
+mod test_pausable;
+
 #[contract]
 pub struct CredenceRegistry;
 
@@ -595,6 +597,21 @@ impl CredenceRegistry {
     pub fn is_paused(e: Env) -> bool {
         bump_instance_ttl(&e);
         pausable::is_paused(&e)
+    }
+
+    /// Return a structured view of the current pause state.
+    ///
+    /// Aggregates the pause flag, threshold, and signer count into a single
+    /// [`PauseState`] struct for off-chain monitoring and operator dashboards.
+    ///
+    /// # Returns
+    /// A [`PauseState`] containing:
+    /// * `is_paused` — whether the contract is currently paused
+    /// * `threshold` — minimum approvals required to execute a proposal
+    /// * `signer_count` — total number of authorised pause signers
+    pub fn get_pause_state(e: Env) -> pausable::PauseState {
+        bump_instance_ttl(&e);
+        pausable::get_pause_state(&e)
     }
 
     /// Set a pause signer.

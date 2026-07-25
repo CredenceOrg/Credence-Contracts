@@ -1,7 +1,24 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 
 use crate::DataKey;
+
+/// Read-only snapshot of the contract's current pause state, for
+/// off-chain monitoring and operator dashboards.
+///
+/// Returned by [`get_pause_state`].  Exposes the core pause configuration
+/// without leaking internal identifiers.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct PauseState {
+    /// `true` when the contract is paused (state-mutating operations blocked).
+    pub is_paused: bool,
+    /// Minimum number of signer approvals required to execute a pause
+    /// or unpause proposal. `0` means the admin can pause/unpause directly.
+    pub threshold: u32,
+    /// Total number of authorised pause signers.
+    pub signer_count: u32,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -258,4 +275,30 @@ fn do_unpause(e: &Env, proposal_id: Option<u64>) {
     e.storage().instance().set(&DataKey::Paused, &false);
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);
+}
+
+/// Return a structured view of the contract's current pause state.
+///
+/// This is a **read-only** entrypoint: it performs no authorisation checks
+/// and never mutates storage, so it is safe to expose publicly.
+///
+/// Aggregates the three core pause-control values into a single
+/// [`PauseState`] struct:
+/// * `is_paused` — whether state-mutating operations are currently blocked.
+/// * `threshold`  — minimum approvals required to execute a proposal.
+/// * `signer_count` — total number of authorised pause signers.
+pub fn get_pause_state(e: &Env) -> PauseState {
+    PauseState {
+        is_paused: is_paused(e),
+        threshold: e
+            .storage()
+            .instance()
+            .get(&DataKey::PauseThreshold)
+            .unwrap_or(0),
+        signer_count: e
+            .storage()
+            .instance()
+            .get(&DataKey::PauseSignerCount)
+            .unwrap_or(0),
+    }
 }
