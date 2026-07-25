@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as TestAddress, testutils::Events, Env, Symbol};
+    use soroban_sdk::{testutils::Address as TestAddress, testutils::Events, Env, String, Symbol};
 
     fn verify_event_structure(
         events: &soroban_sdk::Vec<soroban_sdk::ContractEvent>,
@@ -106,11 +106,13 @@ mod tests {
     fn paused_schema_matches() {
         let e = Env::default();
         let proposal_id: Option<u64> = Some(42u64);
-        e.events().publish((Symbol::new(&e, "paused"),), proposal_id);
+        let reason = String::from_str(&e, "test_reason");
+        e.events()
+            .publish((Symbol::new(&e, "paused"),), (proposal_id, reason));
         let events = e.events().get_all();
         // Topics: paused (1)
-        // Data: Option<u64> (1)
-        verify_event_structure(&events, 1, 1);
+        // Data: (Option<u64>, String) (2)
+        verify_event_structure(&events, 1, 2);
     }
 
     #[test]
