@@ -527,6 +527,16 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
+    /// The deadline on a signature or operation has passed.
+    ///
+    /// Raised when a signed payload carries a `deadline` (or `expires_at`)
+    /// timestamp in the past.  The caller should obtain a fresh signature
+    /// with a later deadline.
+    ///
+    /// Shared across Bond and Delegation contracts.
+    /// Wire-stable: do not renumber this error code.
+    SignatureExpired = 222,
+
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 115,
@@ -603,6 +613,17 @@ pub enum ContractError {
     /// Contracts: treasury
     /// Wire-stable: do not renumber this error code.
     SlippageExceeded = 609,
+
+    /// Payment beneficiary does not match the expected treasury address.
+    /// Defence-in-depth guard that rejects treasury-flow payments to any
+    /// recipient other than the configured treasury. Without this check an
+    /// attacker who can influence the `recipient` argument of a treasury-bound
+    /// transfer (e.g. via a misconfigured proposal, a confused-deputy
+    /// cross-contract call, or a bug that overwrites the stored treasury) can
+    /// redirect protocol funds to an attacker-controlled address.
+    /// Contracts: bond, treasury
+    /// Wire-stable: do not renumber this error code.
+    TreasuryBeneficiaryMismatch = 610,
 
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
@@ -681,7 +702,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPauseAction
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
-            | ContractError::RoleNotHeldAtLedger => ErrorCategory::Authorization,
+            | ContractError::RoleNotHeldAtLedger
+            | ContractError::ZeroBytes32 => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -705,6 +727,7 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::SignatureExpired
             | ContractError::UnauthorizedToken
+            | ContractError::InvalidCurrency
             | ContractError::DuplicateIdempotencyKey
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
@@ -754,7 +777,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidFlashLoanCallback
             | ContractError::FlashLoanRepaymentFailed
             | ContractError::ProposalExpired
-            | ContractError::SlippageExceeded => ErrorCategory::Treasury,
+            | ContractError::SlippageExceeded
+            | ContractError::TreasuryBeneficiaryMismatch => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero => {
                 ErrorCategory::Arithmetic
@@ -819,6 +843,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
+            ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -911,6 +936,9 @@ impl ErrorExt for ContractError {
             ContractError::SlippageExceeded => {
                 "Settled withdrawal amount fell below the caller's minimum (slippage)"
             }
+            ContractError::TreasuryBeneficiaryMismatch => {
+                "Payment beneficiary does not match the expected treasury address"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -920,6 +948,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidAdminAddress => "Proposed admin is the zero or identity address",
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
+            ContractError::ZeroBytes32 => "Input BytesN<32> argument is all-zero",
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
@@ -1051,7 +1080,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalAlreadyExecuted        // idempotent
             | ContractError::InsufficientApprovals          // collect more approvals
             | ContractError::ProposalExpired                // create a new proposal
-            | ContractError::SlippageExceeded => true,      // retry with a looser min_amount_out
+            | ContractError::SlippageExceeded               // retry with a looser min_amount_out
+            | ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
 
             // FATAL Treasury flashloan failures: callback contract misbehaved.
             ContractError::InvalidFlashLoanCallback => false, // bad magic value

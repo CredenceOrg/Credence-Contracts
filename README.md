@@ -55,6 +55,10 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the same checks.
 
+## Helpers
+
+- **`testutils::deduplicate_stable`**: a small stable dedup helper that removes duplicates while preserving first-seen order for Soroban `Vec` and `alloc::vec::Vec` (available from the `testutils` crate).
+
 ## Security scanning
 
 Pull requests run `cargo audit --deny warnings`; dependency vulnerabilities are surfaced in a sticky PR comment and the full JSON report is uploaded as a workflow artifact. See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for the local command and triage flow.
@@ -96,7 +100,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
 - `contracts/credence_delegation/` — Delegation contract
-- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`)
+- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`)
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.
 

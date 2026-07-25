@@ -16,7 +16,8 @@
 //!    transaction.
 //! 4. **Treasury recipient** — the `recipient` argument must equal the treasury
 //!    address stored in the emergency config; any other recipient is rejected
-//!    with a descriptive panic.
+//!    with the typed `ContractError::TreasuryBeneficiaryMismatch` (code 610)
+//!    via `credence_errors::require_matching_treasury_beneficiary`.
 //!
 //! ## Immutable audit record
 //!
@@ -158,7 +159,9 @@ pub fn cancel_drain(e: &Env, admin: &Address) {
 /// - `ContractError::EmergencyDrainNotPermitted` — not paused or no ETA scheduled.
 /// - `ContractError::TimelockNotReady` — ETA has not yet been reached.
 /// - Panics with "not admin" — caller is not the stored admin.
-/// - Panics with "recipient must be treasury" — `recipient != treasury`.
+/// - Panics with `ContractError::TreasuryBeneficiaryMismatch` (code 610) —
+///   `recipient != treasury` (enforced by
+///   `credence_errors::require_matching_treasury_beneficiary`).
 /// - Panics with "amount must be positive" — `amount <= 0`.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_drain(
@@ -191,9 +194,10 @@ pub fn execute_drain(
     }
 
     // Gate 4: recipient must be treasury.
-    if recipient != treasury {
-        panic!("recipient must be treasury");
-    }
+    // Typed defence-in-depth guard: any attempt to drain to a non-treasury recipient
+    // raises the stable error code TreasuryBeneficiaryMismatch so indexers and
+    // dashboards can distinguish treasury-redirection attempts from generic panics.
+    credence_errors::require_matching_treasury_beneficiary(e, recipient, treasury);
 
     // Execute token transfer.
     safe_token::safe_transfer(e, recipient, amount);

@@ -198,6 +198,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ),
     ("ProposalExpired", ContractError::ProposalExpired),
     ("SlippageExceeded", ContractError::SlippageExceeded),
+    ("TreasuryBeneficiaryMismatch", ContractError::TreasuryBeneficiaryMismatch),
     // --- Arithmetic (700-799) ---
     ("Overflow", ContractError::Overflow),
     ("Underflow", ContractError::Underflow),
