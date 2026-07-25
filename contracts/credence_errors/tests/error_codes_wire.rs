@@ -5,7 +5,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::NotInitialized as u32, 1);
     assert_eq!(ContractError::AlreadyInitialized as u32, 2);
 
-assert_eq!(ContractError::NotAdmin as u32, 100);
+    assert_eq!(ContractError::NotAdmin as u32, 100);
     assert_eq!(ContractError::NotBondOwner as u32, 101);
     assert_eq!(ContractError::UnauthorizedAttester as u32, 102);
     assert_eq!(ContractError::NotOriginalAttester as u32, 103);
@@ -22,6 +22,7 @@ assert_eq!(ContractError::NotAdmin as u32, 100);
     assert_eq!(ContractError::AdminUnchanged as u32, 111);
     assert_eq!(ContractError::TimelockNotReady as u32, 112);
     assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 117);
+    assert_eq!(ContractError::TimestampInFuture as u32, 118);
     assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
     assert_eq!(ContractError::BondNotActive as u32, 201);
     assert_eq!(ContractError::InsufficientBalance as u32, 202);
@@ -42,6 +43,7 @@ assert_eq!(ContractError::NotAdmin as u32, 100);
     assert_eq!(ContractError::InvalidBondDuration as u32, 216);
     assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
     assert_eq!(ContractError::BondAlreadyExists as u32, 218);
+    assert_eq!(ContractError::InvalidCurrency as u32, 234);
     assert_eq!(ContractError::SignatureExpired as u32, 222);
     assert_eq!(ContractError::TreasuryNotConfigured as u32, 223);
     assert_eq!(ContractError::UnauthorizedToken as u32, 231);
