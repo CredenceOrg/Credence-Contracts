@@ -306,13 +306,16 @@ pub enum ContractError {
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
+    UnauthorizedToken = 231,
+    /// An idempotency key has already been used for this operation.
+    /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    UnauthorizedToken = 230,
+    DuplicateIdempotencyKey = 232,
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 218,
+    InvariantViolation = 233,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -342,12 +345,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
-
-    /// Idempotency key has already been used for this operation.
-    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    DuplicateIdempotencyKey = 231,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -511,30 +508,16 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PayloadTooOld = 510,
 
-    /// Payload `ledger_number` is strictly greater than the current ledger
-    /// sequence, meaning it claims to have been signed in the future.
+    /// Off-chain promise hash does not match on-chain execution.
     ///
-    /// ## Threat mitigated
-    ///
-    /// An attacker (or misconfigured client) who submits a `DelegatedActionPayload`
-    /// with `ledger_number > e.ledger().sequence()` would silently bypass the
-    /// staleness check in `check_payload_age`, because the saturating subtraction
-    /// `current.saturating_sub(signed_at)` yields 0, which is never greater than
-    /// `MAX_PAYLOAD_AGE_LEDGERS`. The payload would therefore appear "fresh" even
-    /// though it carries an impossible future ledger number.
-    ///
-    /// By explicitly rejecting any `ledger_number > current_sequence` we close
-    /// that gap: the staleness window is strictly bounded to a
-    /// **forward-only** interval `[current − MAX_PAYLOAD_AGE_LEDGERS, current]`.
+    /// Raised by `require_kept_promise` when the hash of the off-chain signed
+    /// payload (the "promise") does not match the hash of the actual on-chain
+    /// execution parameters. This detects cases where a relayer or attacker
+    /// submits a payload that differs from what the signer authorized.
     ///
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 511,
-
-    /// Delegation entry is inactive and cannot be used for delegation actions.
-    /// Contracts: delegation
-    /// Wire-stable: do not renumber this error code.
-    DelegationInactive = 512,
+    PromiseNotKept = 512,
 
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
@@ -567,16 +550,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 115,
-
-    /// Actor did not hold the required role at the given ledger timestamp.
-    ///
-    /// Raised by `require_role_at_ledger` when the actor's `assigned_at`
-    /// timestamp is later than the ledger timestamp under inspection, meaning
-    /// the role was not yet granted at the time of the delegated action.
-    /// Contracts: admin
-    /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 116,
+    EmergencyDrainNotPermitted = 117,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -757,7 +731,6 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::DuplicateIdempotencyKey
-            | ContractError::InvalidStringifiedBytes
             | ContractError::InvariantViolation
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
@@ -787,9 +760,9 @@ impl ErrorExt for ContractError {
             | ContractError::VerificationFailed
             | ContractError::RevocationGraceExpired
             | ContractError::DelegationNotExpired
+            | ContractError::DelegationInactive
             | ContractError::PayloadTooOld
-            | ContractError::TimestampInFuture
-            | ContractError::DelegationInactive => ErrorCategory::Delegation,
+            | ContractError::PromiseNotKept => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -935,10 +908,9 @@ impl ErrorExt for ContractError {
             ContractError::PayloadTooOld => {
                 "Signed payload ledger_number is older than MAX_PAYLOAD_AGE_LEDGERS ledgers"
             }
-            ContractError::TimestampInFuture => {
-                "Payload ledger_number exceeds the current ledger sequence (future timestamp)"
+            ContractError::PromiseNotKept => {
+                "Off-chain promise hash does not match on-chain execution"
             }
-            ContractError::DelegationInactive => "Delegation entry is inactive and cannot be used for delegation actions",
             ContractError::AmountMustBePositive => "Amount must be strictly positive",
             ContractError::ThresholdExceedsSigners => {
                 "Threshold cannot exceed the current signer count"
@@ -1048,7 +1020,6 @@ impl ErrorExt for ContractError {
 | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::AmountExplicitlyZero  // supply a non-zero amount
-            | ContractError::InvalidStringifiedBytes // correct the encoded input
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1162,38 +1133,4 @@ macro_rules! require_positive_amount {
             return Err($crate::ContractError::AmountMustBePositive);
         }
     };
-}
-
-/// Defence-in-depth guard: reject a ledger sequence number that claims to be
-/// in the future.
-///
-/// This is a typed replacement for the ad-hoc saturating-subtraction pattern
-/// that silently allowed future `ledger_number` values to bypass the staleness
-/// check in `domain::check_payload_age`.
-///
-/// ## Threat model
-///
-/// An attacker (or a misconfigured relayer) who submits a `DelegatedActionPayload`
-/// whose `ledger_number` exceeds the current on-chain sequence would slip past the
-/// `current.saturating_sub(signed_at) > MAX_PAYLOAD_AGE_LEDGERS` guard because
-/// saturating subtraction yields 0 for any future value.  The payload therefore
-/// appears perpetually "fresh" and can be held and replayed indefinitely — until
-/// the owner consumes the nonce by other means.
-///
-/// By calling `verify_no_future_ledger` **before** `check_payload_age`, every
-/// call site ensures that `signed_at <= current` holds, making the subsequent
-/// subtraction semantically safe and the staleness window strictly
-/// `[current − MAX_PAYLOAD_AGE_LEDGERS, current]`.
-///
-/// ## Arguments
-/// * `e`         - Soroban environment (for `panic_with_error!` and sequence query)
-/// * `signed_at` - The `ledger_number` from the submitted `DelegatedActionPayload`
-///
-/// ## Panics
-/// With [`ContractError::TimestampInFuture`] when `signed_at > e.ledger().sequence()`.
-#[inline]
-pub fn verify_no_future_ledger(e: &Env, signed_at: u32) {
-    if signed_at > e.ledger().sequence() {
-        ::soroban_sdk::panic_with_error!(e, ContractError::TimestampInFuture);
-    }
 }

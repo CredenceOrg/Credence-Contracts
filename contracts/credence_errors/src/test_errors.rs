@@ -145,7 +145,6 @@ mod tests {
         assert_eq!(ContractError::InvalidBondDuration as u32, 216);
         assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
         assert_eq!(ContractError::BondAlreadyExists as u32, 218);
-        assert_eq!(ContractError::InvalidStringifiedBytes as u32, 230);
     }
 
     #[test]
@@ -453,7 +452,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            90,
+            89,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -992,7 +991,41 @@ mod tests {
 
         let e = Env::default();
         // Positive amount should pass
-        crate::require_positive_amount!(&e, 100_i128);
+        fn test_positive() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_positive_amount!(&e, 100_i128);
+            Ok(())
+        }
+        test_positive().unwrap();
+    }
+
+    #[test]
+    fn test_require_no_leading_zero_amount_macro() {
+        // Test that Some(0) returns AmountExplicitlyZero error
+        use soroban_sdk::Env;
+
+        fn test_zero() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_no_leading_zero_amount!(&e, Some(0_i128));
+            Ok(())
+        }
+        assert_eq!(test_zero(), Err(ContractError::AmountExplicitlyZero));
+
+        // Test that Some(positive) passes
+        fn test_positive() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_no_leading_zero_amount!(&e, Some(100_i128));
+            Ok(())
+        }
+        test_positive().unwrap();
+
+        // Test that None passes (not set)
+        fn test_none() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_no_leading_zero_amount!(&e, None::<i128>);
+            Ok(())
+        }
+        test_none().unwrap();
     }
 
     fn mock_receive_fee(amount: i128, authorized: bool) -> Result<(), ContractError> {
@@ -1239,7 +1272,6 @@ mod tests {
             ContractError::DomainMismatch => false,     // payload binding
             ContractError::BatchTooLarge => true,       // reduce batch size
             ContractError::EmptyBatch => true,          // supply at least one item
-            ContractError::InvalidStringifiedBytes => true, // correct the encoded input
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1273,8 +1305,9 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => true,
-            ContractError::TimestampInFuture => false, // impossible ledger_number; payload must be discarded
+            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::PayloadTooOld => true,       // re-sign with current ledger number
+            ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1419,7 +1452,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            91,
+            90,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
