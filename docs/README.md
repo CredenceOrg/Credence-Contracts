@@ -9,6 +9,7 @@ This directory contains all design docs, API references, and operational guides 
 | [architecture.md](architecture.md) | Contributor / Operator | System-wide component diagram, data flows, trust boundaries |
 | [access-control.md](access-control.md) | Contributor / Integrator | RBAC modifiers, entrypoint authority matrix, event schemas |
 | [CONSTRUCTOR_PATTERNS.md](CONSTRUCTOR_PATTERNS.md) | Contributor | One-shot `initialize` pattern: re-init guard, auth, storage, event |
+| [DEDUP_POLICY.md](DEDUP_POLICY.md) | Contributor | When we dedupe input, when we reject on duplicate, and why |
 | [admin-roles.md](admin-roles.md) | Operator / Integrator | Hierarchical admin system (SuperAdmin / Admin / Operator), assignment, suspension, rotation |
 | [HISTORICAL_ROLES.md](HISTORICAL_ROLES.md) | Operator / Auditor | How role assignments are tracked over time, event stream for indexing, audit queries |
 | [governance.md](governance.md) | Operator | Multi-sig pause, emergency mode, upgrade flow |
