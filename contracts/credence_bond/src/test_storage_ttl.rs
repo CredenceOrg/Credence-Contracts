@@ -57,7 +57,7 @@ fn test_slash_record_survives_ledger_advancement() {
         let count = slash_history::get_slash_count(&e, &identity);
         assert_eq!(count, 1, "SlashCount must survive ledger advancement");
 
-        let history = slash_history::get_slash_history(&e, &identity);
+        let history = slash_history::testutils::get_slash_history(&e, &identity);
         assert_eq!(history.len(), 1);
         let record = history.get(0).unwrap();
         assert_eq!(record.slash_amount, 500);

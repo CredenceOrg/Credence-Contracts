@@ -7,6 +7,9 @@ description = "Credence treasury — protocol fees, slashed funds, multi-sig wit
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = "22.0"
 credence_errors = { path = "../credence_errors" }

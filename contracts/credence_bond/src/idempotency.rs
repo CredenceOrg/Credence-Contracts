@@ -116,6 +116,8 @@ pub fn is_used(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> bo
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
     use soroban_sdk::testutils::Address as _;
 

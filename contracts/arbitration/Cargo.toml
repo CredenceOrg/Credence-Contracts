@@ -7,6 +7,9 @@ description = "Credence arbitration voting system — weighted voting for disput
 [lib]
 crate-type = ["cdylib", "lib"]
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = "22.0"
 credence_errors = { path = "../credence_errors" }

@@ -4,21 +4,30 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as TestAddress, testutils::Events, Env, Symbol};
+    use soroban_sdk::{
+        testutils::Address as TestAddress, testutils::Events, Address, Env, Symbol, TryFromVal,
+        Val, Vec,
+    };
+
+    type ContractEvent = (Address, Vec<Val>, Val);
 
     fn verify_event_structure(
-        events: &soroban_sdk::Vec<soroban_sdk::ContractEvent>,
+        e: &Env,
+        events: &Vec<ContractEvent>,
         expected_topics_len: u32,
         expected_data_len: u32,
     ) {
         assert_eq!(events.len(), 1, "Expected exactly one event");
-        let ev = &events[0];
-        assert_eq!(
-            ev.topics.len(),
-            expected_topics_len,
-            "Topics length mismatch"
-        );
-        assert_eq!(ev.data.len(), expected_data_len, "Data length mismatch");
+        let (_, topics, data) = events.get(0).unwrap();
+        assert_eq!(topics.len(), expected_topics_len, "Topics length mismatch");
+        let actual_data_len = if let Ok(values) = Vec::<Val>::try_from_val(e, &data) {
+            values.len()
+        } else if data.is_void() {
+            0
+        } else {
+            1
+        };
+        assert_eq!(actual_data_len, expected_data_len, "Data length mismatch");
     }
 
     #[test]
@@ -35,10 +44,10 @@ mod tests {
             ),
             ledger_seq,
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: admin_rotated, Address, Address (3)
         // Data: u32 (ledger sequence) (1)
-        verify_event_structure(&events, 3, 1);
+        verify_event_structure(&e, &events, 3, 1);
     }
 
     #[test]
@@ -50,10 +59,10 @@ mod tests {
             (Symbol::new(&e, "ownership_transfer_initiated"),),
             (current_owner.clone(), new_owner.clone()),
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: ownership_transfer_initiated (1)
         // Data: Address, Address (2)
-        verify_event_structure(&events, 1, 2);
+        verify_event_structure(&e, &events, 1, 2);
     }
 
     #[test]
@@ -65,10 +74,10 @@ mod tests {
             (Symbol::new(&e, "ownership_transfer_accepted"),),
             (previous_owner.clone(), pending_owner.clone()),
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: ownership_transfer_accepted (1)
         // Data: Address, Address (2)
-        verify_event_structure(&events, 1, 2);
+        verify_event_structure(&e, &events, 1, 2);
     }
 
     #[test]
@@ -81,10 +90,10 @@ mod tests {
             (Symbol::new(&e, "ROLE_ASSIGNED"), admin.clone()),
             (role, caller.clone()),
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: ROLE_ASSIGNED, Address (2)
         // Data: AdminRole, Address (2)
-        verify_event_structure(&events, 2, 2);
+        verify_event_structure(&e, &events, 2, 2);
     }
 
     #[test]
@@ -96,10 +105,10 @@ mod tests {
             (Symbol::new(&e, "ROLE_REVOKED"), admin.clone()),
             (caller.clone(),),
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: ROLE_REVOKED, Address (2)
         // Data: Address (1)
-        verify_event_structure(&events, 2, 1);
+        verify_event_structure(&e, &events, 2, 1);
     }
 
     #[test]
@@ -108,10 +117,10 @@ mod tests {
         let proposal_id: Option<u64> = Some(42u64);
         e.events()
             .publish((Symbol::new(&e, "paused"),), proposal_id);
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: paused (1)
         // Data: Option<u64> (1)
-        verify_event_structure(&events, 1, 1);
+        verify_event_structure(&e, &events, 1, 1);
     }
 
     #[test]
@@ -120,10 +129,10 @@ mod tests {
         let proposal_id: Option<u64> = Some(42u64);
         e.events()
             .publish((Symbol::new(&e, "unpaused"),), proposal_id);
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: unpaused (1)
         // Data: Option<u64> (1)
-        verify_event_structure(&events, 1, 1);
+        verify_event_structure(&e, &events, 1, 1);
     }
 
     #[test]
@@ -135,10 +144,10 @@ mod tests {
             (Symbol::new(&e, "pause_approved"), proposal_id),
             signer.clone(),
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: pause_approved, u64 (2)
         // Data: Address (1)
-        verify_event_structure(&events, 2, 1);
+        verify_event_structure(&e, &events, 2, 1);
     }
 
     #[test]
@@ -150,9 +159,9 @@ mod tests {
             (Symbol::new(&e, "pause_signer_set"), signer.clone()),
             enabled,
         );
-        let events = e.events().get_all();
+        let events = e.events().all();
         // Topics: pause_signer_set, Address (2)
         // Data: bool (1)
-        verify_event_structure(&events, 2, 1);
+        verify_event_structure(&e, &events, 2, 1);
     }
 }

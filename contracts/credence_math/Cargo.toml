@@ -7,6 +7,9 @@ description = "Shared overflow-safe arithmetic helpers for Credence contracts."
 [lib]
 crate-type = ["rlib"]
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 ethnum = { version = "1.5.2", default-features = false }
 credence_errors = { path = "../credence_errors" }

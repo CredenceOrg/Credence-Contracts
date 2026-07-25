@@ -31,7 +31,13 @@ fn setup() -> (Env, CredenceBondClient<'static>, Address, Address, Address) {
     (e, client, admin, identity, contract_id)
 }
 
-fn event_name(e: &Env, event: &soroban_sdk::ContractEvent) -> Symbol {
+type ContractEvent = (
+    Address,
+    soroban_sdk::Vec<soroban_sdk::Val>,
+    soroban_sdk::Val,
+);
+
+fn event_name(e: &Env, event: &ContractEvent) -> Symbol {
     Symbol::from_val(e, &event.1.get(0).unwrap())
 }
 

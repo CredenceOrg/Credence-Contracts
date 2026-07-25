@@ -6,7 +6,7 @@
 
 use crate::*;
 use soroban_sdk::testutils::{Address as _, Events};
-use soroban_sdk::{Address, Env, IntoVal, Symbol};
+use soroban_sdk::{Address, Env, Symbol, TryFromVal};
 
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     e.mock_all_auths();
@@ -50,13 +50,16 @@ fn setter_emits_param_updated_with_old_and_new() {
     let found = events.iter().any(|(_id, topics, data)| {
         let is_param = topics
             .get(0)
-            .map(|t| t == Symbol::new(&e, "param_updated").into_val(&e))
+            .and_then(|t| Symbol::try_from_val(&e, &t).ok())
+            .map(|t| t == Symbol::new(&e, "param_updated"))
             .unwrap_or(false);
         let is_grace = topics
             .get(1)
-            .map(|t| t == Symbol::new(&e, "grace_window").into_val(&e))
+            .and_then(|t| Symbol::try_from_val(&e, &t).ok())
+            .map(|t| t == Symbol::new(&e, "grace_window"))
             .unwrap_or(false);
-        is_param && is_grace && data == (0i128, 120i128).into_val(&e)
+        let payload = <(i128, i128)>::try_from_val(&e, &data).ok();
+        is_param && is_grace && payload == Some((0, 120))
     });
     assert!(found, "expected param_updated(grace_window) with (0, 120)");
 }
@@ -73,7 +76,7 @@ fn setter_event_carries_previous_value() {
     let events = e.events().all();
     let last = events.last().expect("an event was emitted");
     let (_id, _topics, data) = last;
-    assert_eq!(data, (50i128, 75i128).into_val(&e));
+    assert_eq!(<(i128, i128)>::try_from_val(&e, &data).unwrap(), (50, 75));
 }
 
 #[test]

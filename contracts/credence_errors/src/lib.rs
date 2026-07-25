@@ -21,7 +21,7 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contracterror, Env};
+use soroban_sdk::{contracterror, Address, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -1146,13 +1146,14 @@ macro_rules! require_no_leading_zero_amount {
     };
 }
 
-/// Requires that an i128 amount is strictly positive (> 0), returning
-/// `ContractError::AmountMustBePositive` if not.
+/// Requires that an i128 amount is strictly positive (> 0).
+///
+/// Panics with `ContractError::AmountMustBePositive` if not.
 #[macro_export]
 macro_rules! require_positive_amount {
     ($env:expr, $amount:expr) => {
         if $amount <= 0 {
-            return Err($crate::ContractError::AmountMustBePositive);
+            ::soroban_sdk::panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
         }
     };
 }
@@ -1170,25 +1171,36 @@ pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
     }
 }
 
-/// Rejects a caller-supplied timestamp that is strictly ahead of the
-/// current on-chain ledger timestamp.
+/// Rejects a caller-supplied ledger sequence that is strictly ahead of the
+/// current on-chain ledger sequence.
 ///
 /// Returns `ContractError::TimestampInFuture` when `$t` exceeds
-/// `env.ledger().timestamp()`, preventing the contract from accepting
+/// `env.ledger().sequence()`, preventing the contract from accepting
 /// values that could only originate from the future.
 ///
 /// # Examples
 ///
 /// ```ignore
-/// verify_no_future_ledger!(&env, signed_timestamp);
+/// verify_no_future_ledger!(&env, signed_ledger_sequence);
 /// ```
 #[macro_export]
 macro_rules! verify_no_future_ledger {
     ($env:expr, $t:expr) => {
-        if $t > $env.ledger().timestamp() {
+        if $t > $env.ledger().sequence() {
             return Err($crate::ContractError::TimestampInFuture);
         }
     };
+}
+
+/// Reject payments to any address other than the configured treasury.
+///
+/// # Panics
+/// With [`ContractError::TreasuryBeneficiaryMismatch`] when `actor` does not
+/// match `expected`.
+pub fn require_matching_treasury_beneficiary(e: &Env, actor: &Address, expected: &Address) {
+    if actor != expected {
+        ::soroban_sdk::panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
+    }
 }
 
 #[macro_export]

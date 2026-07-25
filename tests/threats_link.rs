@@ -10,9 +10,33 @@
 // 3. Test annotations (/// THREAT: T-NNN) are encouraged but optional during rollout
 // 4. No malformed threat IDs
 
-use regex::Regex;
 use std::fs;
 use std::path::Path;
+
+fn parse_threat_id(cell: &str) -> Option<&str> {
+    let value = cell.trim().trim_matches('*').trim();
+    let digits = value.strip_prefix("T-")?;
+    (digits.len() == 3 && digits.bytes().all(|byte| byte.is_ascii_digit())).then_some(digits)
+}
+
+fn parse_test_reference(value: &str) -> Option<(&str, &str)> {
+    let value = value.trim().trim_matches('`').trim();
+    let (test_path, test_name) = value.split_once("::")?;
+    let test_path = test_path.trim();
+    let test_name = test_name.trim();
+    (!test_path.is_empty() && !test_name.is_empty()).then_some((test_path, test_name))
+}
+
+fn line_declares_function(line: &str, test_name: &str) -> bool {
+    let marker = format!("fn {test_name}");
+    line.find(&marker)
+        .map(|position| {
+            line[position + marker.len()..]
+                .trim_start()
+                .starts_with('(')
+        })
+        .unwrap_or(false)
+}
 
 /// Negative test for issue #713: the dynamic-string (format! / write! /
 /// writeln! / format_args!) lint must be wired up in production-mode on
@@ -268,30 +292,29 @@ fn threats_link_validation() {
 
     println!("\n=== THREATS.md Validation ===\n");
 
-    // Parse threat rows from markdown table
-    // Table format: | T-NNN | ... | test_path::test_name | Status |
-    let threat_pattern =
-        Regex::new(r"\|\s*(\*\*)?T-\d{3}(\*\*)?\s*\|.*\|\s*`?([^|`\n]+?)::([^|`\n]+?)`?\s*\|")
-            .expect("Failed to compile regex");
-
     let mut threat_count = 0;
     let mut passed = 0;
     let mut failed = 0;
 
-    for cap in threat_pattern.captures_iter(&threats_content) {
+    for line in threats_content.lines() {
+        let columns: Vec<&str> = line
+            .trim()
+            .trim_matches('|')
+            .split('|')
+            .map(str::trim)
+            .collect();
+        if columns.len() < 8 {
+            continue;
+        }
+        let Some(id) = parse_threat_id(columns[0]) else {
+            continue;
+        };
+        let Some((test_path, test_name)) = parse_test_reference(columns[6]) else {
+            continue;
+        };
+
         threat_count += 1;
-        let threat_id = cap.get(0).unwrap().as_str();
-        let test_path = cap.get(3).unwrap().as_str().trim();
-        let test_name = cap.get(4).unwrap().as_str().trim();
-
-        println!("Checking {}", threat_id);
-
-        // Extract threat ID
-        let id_pattern = Regex::new(r"T-(\d{3})").unwrap();
-        let id_cap = id_pattern
-            .captures(threat_id)
-            .expect("Invalid threat ID format");
-        let id = id_cap.get(1).unwrap().as_str();
+        println!("Checking T-{id}");
 
         // Verify test file exists
         match verify_test_file(test_path, test_name, id) {
@@ -377,46 +400,29 @@ fn verify_test_file(test_path: &str, test_name: &str, threat_id: &str) -> Result
     let content =
         fs::read_to_string(&full_path).map_err(|e| format!("Failed to read test file: {}", e))?;
 
-    // Search for test function (flexible matching for different test styles)
-    let test_patterns = vec![
-        format!(r"fn\s+{}\s*\(", test_name),
-        format!(r"#\[test\].*?fn\s+{}\s*\(", test_name),
-    ];
-
-    let mut test_found = false;
-    for pattern in test_patterns {
-        if let Ok(regex) = Regex::new(&pattern) {
-            if regex.is_match(&content) {
-                test_found = true;
-                break;
-            }
-        }
-    }
-
-    if !test_found {
+    if !content
+        .lines()
+        .any(|line| line_declares_function(line, test_name))
+    {
         return Err(format!(
             "Test function '{}' not found in {}",
             test_name, full_path
         ));
     }
 
-    // Search for threat annotation near test function
-    // Pattern: /// THREAT: T-XXX (allowing for multiple threat IDs)
-    let threat_pattern_str = format!(r"///\s*THREAT:(?:[^\n]*T-\d{{3}})*[^\n]*T-{}", threat_id);
-    let threat_regex = Regex::new(&threat_pattern_str)
-        .map_err(|_| "Failed to compile threat pattern".to_string())?;
-
     // Check within 15 lines before and 5 lines after test function to find annotation
     let lines: Vec<&str> = content.lines().collect();
     if let Some(pos) = lines
         .iter()
-        .position(|l| l.contains(&format!("fn {}", test_name)))
+        .position(|line| line_declares_function(line, test_name))
     {
-        let search_start = if pos > 15 { pos - 15 } else { 0 };
+        let search_start = pos.saturating_sub(15);
         let search_end = (pos + 5).min(lines.len());
-        let search_context = lines[search_start..search_end].join("\n");
-
-        if threat_regex.is_match(&search_context) {
+        let annotation = format!("T-{threat_id}");
+        if lines[search_start..search_end].iter().any(|line| {
+            let line = line.trim_start();
+            line.starts_with("///") && line.contains("THREAT:") && line.contains(&annotation)
+        }) {
             return Ok(true); // Found threat annotation
         }
     }
@@ -470,10 +476,11 @@ fn threat_ids_sequential() {
 
     println!("\n=== Threat ID Sequencing ===\n");
 
-    let id_pattern = Regex::new(r"\*\*T-(\d{3})\*\*").expect("Failed to compile regex");
-    let mut ids: Vec<u16> = id_pattern
-        .captures_iter(&threats_content)
-        .filter_map(|cap| cap.get(1).and_then(|m| m.as_str().parse::<u16>().ok()))
+    let mut ids: Vec<u16> = threats_content
+        .lines()
+        .filter_map(|line| line.trim().trim_matches('|').split('|').next())
+        .filter_map(parse_threat_id)
+        .filter_map(|digits| digits.parse::<u16>().ok())
         .collect();
 
     ids.sort_unstable();
@@ -513,31 +520,25 @@ fn stale_threat_detection() {
 
     println!("\n=== Stale Test Detection ===\n");
 
-    let test_pattern = Regex::new(r"`([^`:]+)::([^`:]+)`").expect("Failed to compile regex");
-
     let mut stale_count = 0;
 
-    for cap in test_pattern.captures_iter(&threats_content) {
-        let test_file = cap.get(1).unwrap().as_str();
-        let test_name = cap.get(2).unwrap().as_str();
-
-        // Use grep to check if test exists
-        let output = Command::new("grep")
-            .arg("-r")
-            .arg(&format!("fn {}", test_name))
-            .arg(test_file)
-            .output();
-
-        match output {
-            Ok(out) if !out.status.success() => {
-                println!("⚠ Could not verify test: {}::{}", test_file, test_name);
-                stale_count += 1;
-            }
-            Err(_) => {
-                println!("⚠ Could not verify test: {}::{}", test_file, test_name);
-                stale_count += 1;
-            }
-            _ => {}
+    for (index, code_span) in threats_content.split('`').enumerate() {
+        if index % 2 == 0 {
+            continue;
+        }
+        let Some((test_file, test_name)) = parse_test_reference(code_span) else {
+            continue;
+        };
+        let verified = fs::read_to_string(test_file)
+            .map(|content| {
+                content
+                    .lines()
+                    .any(|line| line_declares_function(line, test_name))
+            })
+            .unwrap_or(false);
+        if !verified {
+            println!("⚠ Could not verify test: {}::{}", test_file, test_name);
+            stale_count += 1;
         }
     }
 

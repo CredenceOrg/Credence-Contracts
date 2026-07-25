@@ -204,8 +204,11 @@ pub use testutils_helpers::*;
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
     use proptest::prelude::*;
+    use soroban_sdk::testutils::Ledger as _;
     use std::panic::{catch_unwind, AssertUnwindSafe};
 
     proptest! {

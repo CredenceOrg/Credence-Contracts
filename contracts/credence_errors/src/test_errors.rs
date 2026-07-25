@@ -1607,10 +1607,10 @@ mod tests {
     fn test_verify_no_future_ledger_happy_path() {
         use soroban_sdk::Env;
 
-        // Timestamp equal to current ledger should pass
+        // Sequence equal to current ledger should pass.
         fn test_equal() -> Result<(), ContractError> {
             let e = Env::default();
-            let now = e.ledger().timestamp();
+            let now = e.ledger().sequence();
             crate::verify_no_future_ledger!(&e, now);
             Ok(())
         }
@@ -1623,7 +1623,7 @@ mod tests {
 
         fn test_future() -> Result<(), ContractError> {
             let e = Env::default();
-            let now = e.ledger().timestamp();
+            let now = e.ledger().sequence();
             crate::verify_no_future_ledger!(&e, now + 1);
             Ok(())
         }

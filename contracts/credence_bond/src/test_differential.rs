@@ -20,7 +20,7 @@
 
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
-    Address, Env,
+    Address, Bytes, Env,
 };
 
 use crate::test_helpers::{self, advance_ledger_sequence};
@@ -132,7 +132,7 @@ fn scenario_full_bond_lifecycle() {
         },
     );
 
-    c.slash_bond(&admin, &200_i128);
+    c.slash_bond(&admin, &200_i128, &Bytes::new(e));
     assert_pinned(
         "after_slash_bond",
         &c.get_identity_state(),

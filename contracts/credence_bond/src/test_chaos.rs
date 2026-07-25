@@ -75,7 +75,7 @@ mod tests {
     use crate::chaos_token::{ChaosToken, ChaosTokenClient};
     use crate::{CredenceBond, CredenceBondClient, DataKey};
     use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{Address, Env, Symbol};
+    use soroban_sdk::{Address, Bytes, Env, Symbol};
 
     // ─── Setup helper ────────────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ mod tests {
         assert!(!client.is_locked());
 
         // slash_bond: writes slashed_amount=50, then calls on_slash → panic.
-        let result = client.try_slash_bond(&admin, &50_i128);
+        let result = client.try_slash_bond(&admin, &50_i128, &Bytes::new(&e));
         assert!(result.is_err(), "slash_bond must fail when callback panics");
 
         // INVARIANT: no state mutation may persist when an inner call panics.
@@ -181,7 +181,7 @@ mod tests {
         client.set_callback(&cb);
 
         // collect_fees: zeros fee storage, calls on_collect → panic → rollback.
-        let result = client.try_collect_fees(&admin);
+        let result = client.try_collect_fees(&admin, &Bytes::new(&e));
         assert!(
             result.is_err(),
             "collect_fees must fail when callback panics"
@@ -190,7 +190,7 @@ mod tests {
         // INVARIANT: fees must be intact. Verify via a clean second call.
         let noop = e.register(NoOpCallback, ());
         client.set_callback(&noop);
-        let recovered = client.collect_fees(&admin);
+        let recovered = client.collect_fees(&admin, &Bytes::new(&e));
         assert_eq!(
             recovered, 500,
             "fees must equal pre-call value after atomic revert"
@@ -214,7 +214,7 @@ mod tests {
             e.storage().instance().remove(&DataKey::Admin);
         });
 
-        client.slash_bond(&admin, &50_i128);
+        client.slash_bond(&admin, &50_i128, &Bytes::new(&e));
     }
 
     /// Companion: bond state is unchanged because the panic occurs before the
@@ -228,7 +228,7 @@ mod tests {
             e.storage().instance().remove(&DataKey::Admin);
         });
 
-        let result = client.try_slash_bond(&admin, &50_i128);
+        let result = client.try_slash_bond(&admin, &50_i128, &Bytes::new(&e));
         assert!(result.is_err());
 
         // Restore admin so we can read state.
@@ -275,7 +275,7 @@ mod tests {
 
         assert_eq!(client.get_identity_state().slashed_amount, 0);
 
-        let result = client.try_slash_bond(&admin, &2000_i128);
+        let result = client.try_slash_bond(&admin, &2000_i128, &Bytes::new(&e));
         assert!(result.is_err(), "slash exceeding bond must be rejected");
 
         let bond = client.get_identity_state();
@@ -305,7 +305,7 @@ mod tests {
 
         assert!(client.is_locked(), "precondition: lock must be held");
 
-        let result = client.try_slash_bond(&admin, &50_i128);
+        let result = client.try_slash_bond(&admin, &50_i128, &Bytes::new(&e));
         assert!(
             result.is_err(),
             "slash_bond must be rejected while the reentrancy lock is held"
@@ -436,11 +436,11 @@ mod tests {
         assert!(!client.is_locked());
 
         // First slash: no lock held, should succeed.
-        let r1 = client.slash_bond(&admin, &50_i128);
+        let r1 = client.slash_bond(&admin, &50_i128, &Bytes::new(&e));
         assert_eq!(r1, 50_i128);
 
         // Second slash: still no guard pre-set externally, succeeds for 50 more.
-        let r2 = client.slash_bond(&admin, &50_i128);
+        let r2 = client.slash_bond(&admin, &50_i128, &Bytes::new(&e));
         assert_eq!(r2, 100_i128);
 
         // This demonstrates that injection #7 is verifying the lock guard:

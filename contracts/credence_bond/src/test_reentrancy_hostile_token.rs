@@ -8,7 +8,7 @@ use crate::chaos_token::{ChaosToken, ChaosTokenClient};
 use crate::test_helpers;
 use crate::CredenceBondClient;
 use soroban_sdk::testutils::Ledger;
-use soroban_sdk::{Address, Env, Symbol, Vec};
+use soroban_sdk::{Address, Bytes, Env, Symbol, Vec};
 
 const INITIAL_BOND: i128 = 10_000;
 const OUTER_AMOUNT: i128 = 1_000;
@@ -207,5 +207,8 @@ fn hostile_token_reentry_into_collect_fees_is_rejected() {
         setup.token.balance(&setup.contract_id),
         before_contract - OUTER_AMOUNT
     );
-    assert_eq!(setup.client.collect_fees(&setup.admin), 500_i128);
+    assert_eq!(
+        setup.client.collect_fees(&setup.admin, &Bytes::new(&e)),
+        500_i128
+    );
 }
