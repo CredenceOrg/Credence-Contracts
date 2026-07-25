@@ -306,6 +306,52 @@ pub fn split_bps(
     (fee, net)
 }
 
+/// Check that the absolute difference between `requested` and `actual` does not
+/// exceed `max_slippage_bps` basis points.
+///
+/// Returns `Ok(())` when the actual amount is within the slippage tolerance of
+/// the requested amount. Returns [`ContractError::SlippageExceeded`] when the
+/// slippage exceeds the bound.
+///
+/// # Arguments
+///
+/// * `requested` - The expected/requested amount.
+/// * `actual` - The realized amount.
+/// * `max_slippage_bps` - Maximum allowed slippage in basis points.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::slippage_bps_check;
+/// use credence_errors::ContractError;
+///
+/// assert_eq!(slippage_bps_check(1000, 1000, 100), Ok(()));
+/// assert_eq!(slippage_bps_check(1000, 990, 100), Ok(()));
+/// assert_eq!(slippage_bps_check(1000, 900, 100), Err(ContractError::SlippageExceeded));
+/// ```
+#[inline]
+pub fn slippage_bps_check(
+    requested: i128,
+    actual: i128,
+    max_slippage_bps: u32,
+) -> Result<(), ContractError> {
+    if requested == actual {
+        return Ok(());
+    }
+    if max_slippage_bps == 0 || requested == 0 {
+        return Err(ContractError::SlippageExceeded);
+    }
+    let diff = requested.abs_diff(actual);
+    let requested_abs = requested.unsigned_abs();
+    if U256::new(diff) * U256::new(BPS_DENOMINATOR as u128)
+        <= U256::new(requested_abs) * U256::new(max_slippage_bps as u128)
+    {
+        Ok(())
+    } else {
+        Err(ContractError::SlippageExceeded)
+    }
+}
+
 /// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
 ///
 /// The callback `f` receives a (`Vec<T>`, `chunk_index`) pair for every
@@ -369,7 +415,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps, Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, slippage_bps_check,
+        split_bps, Rounding,
     };
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
@@ -657,6 +704,92 @@ mod tests {
         assert_eq!(
             split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
             (amount, 0)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_exact_match() {
+        assert_eq!(slippage_bps_check(1000, 1000, 100), Ok(()));
+        assert_eq!(slippage_bps_check(0, 0, 100), Ok(()));
+        assert_eq!(slippage_bps_check(-1000, -1000, 100), Ok(()));
+    }
+
+    #[test]
+    fn slippage_bps_check_zero_slippage_tolerance() {
+        assert_eq!(slippage_bps_check(1000, 1000, 0), Ok(()));
+        assert_eq!(
+            slippage_bps_check(1000, 1001, 0),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_within_tolerance() {
+        assert_eq!(slippage_bps_check(1000, 995, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 1005, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 990, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 1010, 100), Ok(()));
+    }
+
+    #[test]
+    fn slippage_bps_check_at_boundary() {
+        assert_eq!(slippage_bps_check(10000, 9900, 100), Ok(()));
+        assert_eq!(slippage_bps_check(10000, 10100, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(10000, 9899, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(10000, 10101, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_beyond_tolerance() {
+        assert_eq!(
+            slippage_bps_check(1000, 900, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(1000, 1100, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_zero_requested() {
+        assert_eq!(
+            slippage_bps_check(0, 1, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(0, 100, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_negative_values() {
+        assert_eq!(slippage_bps_check(-1000, -1000, 100), Ok(()));
+        assert_eq!(slippage_bps_check(-1000, -990, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(-1000, -900, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_large_values() {
+        assert_eq!(slippage_bps_check(i128::MAX, i128::MAX, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(i128::MAX, i128::MAX - 1, 0),
+            Err(ContractError::SlippageExceeded)
+        );
+        let tiny_diff = i128::MAX / 10000;
+        assert_eq!(
+            slippage_bps_check(i128::MAX, i128::MAX - tiny_diff, 100),
+            Ok(())
         );
     }
 }
