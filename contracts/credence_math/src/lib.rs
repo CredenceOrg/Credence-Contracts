@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,9 +14,16 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use ethnum::U256;
+use soroban_sdk;
 
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
@@ -171,6 +179,15 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
 /// ```
 #[inline]
 #[must_use]
+
+/// Checked `i128` addition returning a typed error instead of panicking.
+#[inline]
+pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
+#[inline]
+#[must_use]
 pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static str) -> i128 {
     if denom == 0 {
         Option::<()>::None.expect(msg);
@@ -227,6 +244,21 @@ pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str)
     div_i128(numerator, BPS_DENOMINATOR, div_msg)
 }
 
+/// Saturated basis-point multiplication: `amount * bps / BPS_DENOMINATOR`.
+///
+/// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
+#[inline]
+#[must_use]
+pub fn sat_mul_bps(amount: i128, bps_value: u32) -> i128 {
+    mul_div_i128(
+        amount,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Down,
+        "sat_mul_bps overflow",
+    )
+}
+
 /// Calculate a basis-point percentage of an `i128` amount, rounded away from zero.
 ///
 /// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
@@ -274,6 +306,66 @@ pub fn split_bps(
     (fee, net)
 }
 
+/// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
+///
+/// The callback `f` receives a (`Vec<T>`, `chunk_index`) pair for every
+/// chunk in order. The final chunk may contain fewer than `chunk_size`
+/// elements when the input length is not an exact multiple.
+///
+/// # Boundary behaviour
+///
+/// | Case               | Behaviour                                     |
+/// |--------------------|-----------------------------------------------|
+/// | `items` is empty   | `f` is never called; returns `0`.             |
+/// | exact multiple     | every chunk has exactly `chunk_size` elements |
+/// | remainder          | last chunk has `len % chunk_size` elements    |
+///
+/// # Errors
+///
+/// Aborts with [`ContractError::DivisionByZero`] when `chunk_size == 0`.
+///
+/// # Returns
+///
+/// The number of chunks produced (i.e. `ceil(items.len() / chunk_size)`).
+#[inline]
+pub fn chunked_iter<T, F>(
+    e: &soroban_sdk::Env,
+    items: &soroban_sdk::Vec<T>,
+    chunk_size: u32,
+    mut f: F,
+) -> u32
+where
+    T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>
+        + soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>
+        + Clone,
+    F: FnMut(soroban_sdk::Vec<T>, u32),
+{
+    if chunk_size == 0 {
+        soroban_sdk::panic_with_error!(e, ContractError::DivisionByZero);
+    }
+
+    let len = items.len();
+    if len == 0 {
+        return 0;
+    }
+
+    let mut chunk_index: u32 = 0;
+    let mut start: u32 = 0;
+
+    while start < len {
+        let end = (start + chunk_size).min(len);
+        let mut chunk: soroban_sdk::Vec<T> = soroban_sdk::Vec::new(e);
+        for i in start..end {
+            chunk.push_back(items.get(i).unwrap());
+        }
+        f(chunk, chunk_index);
+        chunk_index += 1;
+        start = end;
+    }
+
+    chunk_index
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -295,6 +387,14 @@ mod tests {
         let fee = legacy_bps_i128(amount, bps);
         let net = amount.checked_sub(fee).expect("legacy i128 underflow");
         (fee, net)
+    }
+
+    #[test]
+    
+    #[test]
+    fn test_checked_add_or_error() {
+        assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
+        assert_eq!(super::checked_add_or_error(i128::MAX, 1), Err(crate::ContractError::Overflow));
     }
 
     #[test]
@@ -516,5 +616,60 @@ mod tests {
         assert_eq!(ceil_div_i128(11, 5, "test"), div_i128(11, 5, "test") + 1);
         // exact division: ceil(10/5) == floor(10/5)
         assert_eq!(ceil_div_i128(10, 5, "test"), div_i128(10, 5, "test"));
+    }
+
+    #[test]
+    fn bps_round_up_zero_bps() {
+        assert_eq!(bps_round_up(12345, 0, "test"), 0);
+        assert_eq!(bps_round_up(i128::MAX, 0, "test"), 0);
+        assert_eq!(bps_round_up(-98765, 0, "test"), 0);
+    }
+
+    #[test]
+    fn bps_u64_boundaries() {
+        assert_eq!(bps_u64(0, 0, "mul"), 0);
+        assert_eq!(bps_u64(0, BPS_DENOMINATOR as u32, "mul"), 0);
+        assert_eq!(bps_u64(10000, BPS_DENOMINATOR as u32, "mul"), 10000);
+        let max_div_2 = u64::MAX / 2;
+        assert_eq!(
+            bps_u64(
+                (u64::MAX / (BPS_DENOMINATOR as u64 * 2)) * (BPS_DENOMINATOR as u64 * 2),
+                BPS_DENOMINATOR as u32,
+                "mul"
+            ),
+            max_div_2
+        );
+    }
+
+    #[test]
+    fn split_bps_boundaries() {
+        assert_eq!(split_bps(0, 0, "mul", "div", "sub"), (0, 0));
+        assert_eq!(
+            split_bps(0, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (0, 0)
+        );
+        assert_eq!(split_bps(12345, 0, "mul", "div", "sub"), (0, 12345));
+        assert_eq!(
+            split_bps(12345, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (12345, 0)
+        );
+        let amount = i128::MAX / 20000;
+        assert_eq!(
+            split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (amount, 0)
+        );
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn sat_mul_bps_identity(amount in 0..i128::MAX) {
+            prop_assert_eq!(sat_mul_bps(amount, 10_000), amount);
+        }
     }
 }

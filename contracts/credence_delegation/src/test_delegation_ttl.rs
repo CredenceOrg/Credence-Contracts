@@ -188,6 +188,7 @@ fn test_nonce_ttl_set_on_consume() {
         contract_id: contract_id.clone(),
         nonce: 0,
         scheme: 0,
+        ledger_number: 0,
     };
     client.execute_delegated_delegate(
         &owner,
@@ -229,6 +230,7 @@ fn test_nonce_ttl_covers_delegation_lifetime() {
         contract_id: contract_id.clone(),
         nonce: 0,
         scheme: 0,
+        ledger_number: 0,
     };
     client.execute_delegated_delegate(
         &owner,
@@ -271,6 +273,7 @@ fn test_nonce_ttl_refreshed_on_get_nonce() {
         contract_id: contract_id.clone(),
         nonce: 0,
         scheme: 0,
+        ledger_number: 0,
     };
     client.execute_delegated_delegate(
         &owner,

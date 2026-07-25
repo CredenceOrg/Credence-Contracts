@@ -1,0 +1,16 @@
+---
+source: contracts/credence_delegation/src/test_pause_snapshots.rs
+expression: dump_pause_storage(e, contract_id, signers, proposal_ids)
+---
+{
+  "initialized": true,
+  "paused": false,
+  "pause_signer_count": 0,
+  "pause_threshold": 0,
+  "signers": {
+    "signer_1": false,
+    "signer_2": false,
+    "signer_3": false
+  },
+  "proposals": {}
+}

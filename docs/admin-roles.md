@@ -127,7 +127,7 @@ reactivate_admin(env, caller, admin_address)
 suspend_admin(env, caller, admin, until_ts)
 ```
 - Suspends `admin` until `until_ts` (Unix timestamp, seconds)
-- `until_ts` must be **strictly in the future**; equal or past timestamps are rejected with `AdminSuspended` (109)
+- `until_ts` must be **strictly in the future**; equal or past timestamps are rejected with `AdminSuspended` (113)
 - While suspended, `is_admin` and `has_role_at_least` return `false`
 - **Auto-reactivation**: once `e.ledger().timestamp() >= until_ts` the admin is automatically treated as active again — no second transaction is required
 - Authorization: caller must have a role ≥ target's role (same rule as `deactivate_admin`)
@@ -318,7 +318,7 @@ cargo test -p admin
 
 ## Two-Step Admin Transfer
 
-Admin rotation uses a secure two-step flow with a 24-hour timelock:
+For the operator runbook and rationale, see [TWO_STEP_ADMIN.md](TWO_STEP_ADMIN.md). Admin rotation uses a secure two-step flow with a 24-hour timelock:
 
 ### propose_admin(current_admin, proposed)
 - Only the current admin may call this

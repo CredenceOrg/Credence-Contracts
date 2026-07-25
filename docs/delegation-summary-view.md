@@ -26,14 +26,14 @@ pub fn get_delegation_summary(
 
 ## Grace window and authority semantics
 
-The admin-configurable `revocation_grace_period` (default `0`) controls:
+The admin-configurable `revocation_grace_period` (default `300` seconds / 5 minutes) controls:
 
 1. **Audit status** — when `grace > 0`, delegations report `InGrace` for `expires_at <= now <= expires_at + grace`.
 2. **Late revocation** — owners may revoke within that same window after expiry when `grace > 0`.
 
 `is_valid` and `is_valid_delegate` remain a **hard cliff** at `expires_at`. `InGrace` is informational only and does **not** re-grant delegate authority.
 
-When `grace = 0` (default), status jumps directly to `Expired` at `expires_at`, and post-expiry revocation remains permitted at any time (legacy behaviour).
+When `grace` is at its default of `300` seconds, delegations enter `InGrace` for 5 minutes after `expires_at`, and late revocation is permitted within that window. Set the grace period explicitly to `0` to restore the legacy hard-cliff behaviour (immediate `Expired` status at `expires_at`, unlimited post-expiry revocation).
 
 ## Revocation timestamp semantics
 

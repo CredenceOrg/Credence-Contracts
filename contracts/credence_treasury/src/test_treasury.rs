@@ -855,3 +855,48 @@ fn test_ttl_zero_never_expires() {
     client.approve_withdrawal(&signer, &id);
     client.execute_withdrawal(&id, &0);
 }
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_receive_fee_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    
+    client.receive_fee(&admin, &0, &FundSource::ProtocolFee);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_receive_fee_rejects_negative_amount() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    
+    client.receive_fee(&admin, &-100, &FundSource::ProtocolFee);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_propose_withdrawal_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, _token) = setup(&e);
+    let signer = Address::generate(&e);
+    let recipient = Address::generate(&e);
+
+    client.add_signer(&signer);
+    client.set_threshold(&1);
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+
+    client.propose_withdrawal(&signer, &recipient, &0);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_rescue_native_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, token) = setup(&e);
+    let to = Address::generate(&e);
+
+    client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
+    
+    client.rescue_native(&admin, &to, &0);
+}

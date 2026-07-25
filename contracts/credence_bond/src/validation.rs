@@ -10,7 +10,8 @@
 
 #![allow(dead_code)]
 
-use soroban_sdk::Address;
+use credence_errors::ContractError;
+use soroban_sdk::{panic_with_error, Address, Env, Vec};
 
 // ─── Address Validation ─────────────────────────────────────────────────────
 
@@ -126,6 +127,14 @@ pub fn validate_bond_duration(duration: u64) {
     }
     if duration > MAX_BOND_DURATION {
         panic!("bond duration too long: maximum is 31536000 seconds (365 days)");
+    }
+}
+
+/// Require a vector to be non-empty, rejecting empty vectors with a typed error
+/// rather than downstream panics.
+pub fn require_non_empty_vec<T>(e: &Env, v: &Vec<T>) {
+    if v.is_empty() {
+        panic_with_error!(e, ContractError::EmptyBatch);
     }
 }
 

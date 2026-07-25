@@ -1,4 +1,7 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
+
 
 #[cfg(any(test, feature = "testutils"))]
 mod batch;
@@ -43,12 +46,15 @@ pub mod types;
 
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
-pub mod test_helpers;
+mod test_unauthorized_token;
+#[cfg(test)]
+mod test_events_schema;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
+/// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
-mod test_unauthorized_token;
+pub mod test_helpers;
 
 /// Chaos testing suite for simulating host and token failures.
 #[cfg(test)]
@@ -94,6 +100,28 @@ use soroban_sdk::{
 
 pub use soroban_sdk;
 
+/// Signature domain identifier for the CredenceBond contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "CredenceBond";
+
 /// Identity tier based on bonded amount.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -116,6 +144,201 @@ pub struct IdentityBond {
     pub is_rolling: bool,
     pub withdrawal_requested_at: u64,
     pub notice_period_duration: u64,
+}
+
+#[contract]
+pub struct CredenceBond;
+
+#[contractimpl]
+impl CredenceBond {
+    pub fn initialize(e: Env, admin: Address) {
+        if storage::get_admin(&e).is_some() {
+            panic!("already initialized");
+        }
+        storage::set_admin(&e, &admin);
+    }
+
+    fn require_not_paused(e: &Env) {
+        pausable::require_not_paused(e);
+    }
+
+    /// Set the set of accepted token addresses.
+    /// Only callable by admin.
+    pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        if Some(admin) != storage::get_admin(&e) {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        crate::validation::require_non_empty_vec(&e, &accepted_tokens);
+        storage::set_accepted_tokens(&e, &accepted_tokens);
+    }
+
+    /// Creates and persists a new bond for an identity.
+    pub fn create_bond(
+        e: Env,
+        identity: Address,
+        amount: i128,
+        duration: u64,
+        is_rolling: bool,
+        notice_period_duration: u64,
+    ) -> Result<Bond, ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+
+        if storage::has_bond(&e, &identity) {
+            return Err(ContractError::BondAlreadyExists);
+        }
+
+        let bond = validate_and_create_bond_struct(
+            &e,
+            identity.clone(),
+            amount,
+            duration,
+            is_rolling,
+            notice_period_duration,
+        )?;
+
+        // Safe token transfer in from the user
+        safe_token::transfer_in(&e, &identity, amount);
+
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_bond_created_v2(&e, &identity, amount, duration, is_rolling, e.ledger().timestamp());
+
+        Ok(bond)
+    }
+
+    /// Increases the bonded amount for an existing bond.
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        if !is_valid_bond(amount) {
+            return Err(ContractError::InvalidBondAmount);
+        }
+
+        let mut bond = storage::get_bond(&e, &identity)?;
+        
+        safe_token::transfer_in(&e, &identity, amount);
+
+        bond.amount = bond.amount.checked_add(amount)
+            .ok_or(ContractError::Overflow)?;
+        
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_bond_increased_v2(&e, &identity, amount, bond.amount, e.ledger().timestamp());
+        Ok(())
+    }
+
+    /// Extends the duration of an existing bond.
+    pub fn extend_duration(e: Env, identity: Address, extra_duration: u64) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let mut bond = storage::get_bond(&e, &identity)?;
+        
+        bond.duration = bond.duration.checked_add(extra_duration)
+            .ok_or(ContractError::Overflow)?;
+            
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_duration_extended_v2(&e, &identity, bond.duration, e.ledger().timestamp());
+        Ok(())
+    }
+
+    pub fn request_withdrawal(e: Env, identity: Address) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let mut bond = storage::get_bond(&e, &identity)?;
+        if !bond.is_rolling {
+            return Err(ContractError::NotRollingBond);
+        }
+        if bond.withdrawal_requested_at != 0 {
+            return Err(ContractError::WithdrawalAlreadyRequested);
+        }
+        bond.withdrawal_requested_at = e.ledger().timestamp();
+        storage::set_bond(&e, &identity, &bond);
+        Ok(())
+    }
+
+    pub fn withdraw(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        acquire_lock(&e);
+        
+        let mut bond = storage::get_bond(&e, &identity)?;
+        let now = e.ledger().timestamp();
+
+        if bond.is_rolling {
+            if bond.withdrawal_requested_at == 0 { panic!("notice not started"); }
+            if now < bond.withdrawal_requested_at + bond.notice_period_duration {
+                panic!("notice period not elapsed");
+            }
+        } else if now < bond.bond_start + bond.duration {
+            return Err(ContractError::LockupNotExpired);
+        }
+
+        let available = bond.amount - bond.slashed_amount;
+        if amount > available { return Err(ContractError::InsufficientBalance); }
+
+        bond.amount = bond.amount.checked_sub(amount).ok_or(ContractError::Underflow)?;
+        storage::set_bond(&e, &identity, &bond);
+        
+        safe_token::transfer_out(&e, &identity, amount);
+        events::emit_withdrawal_v2(&e, &identity, amount, bond.amount, now);
+        
+        release_lock(&e);
+        Ok(())
+    }
+
+    pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
+
+        let mut bond = storage::get_bond(&e, &identity)?;
+        let new_slashed = bond.slashed_amount.checked_add(amount).ok_or(ContractError::Overflow)?;
+        
+        bond.slashed_amount = if new_slashed > bond.amount { bond.amount } else { new_slashed };
+        storage::set_bond(&e, &identity, &bond);
+        
+        events::emit_bond_slashed_v2(&e, &identity, amount, bond.slashed_amount, e.ledger().timestamp());
+        Ok(())
+    }
+}
+
+fn acquire_lock(e: &Env) {
+    if storage::is_locked(e) { panic_with_error!(e, ContractError::ReentrancyDetected); }
+    storage::set_lock(e, true);
+}
+
+fn release_lock(e: &Env) {
+    storage::set_lock(e, false);
+}
+
+/// Internal validator for bond construction.
+fn validate_and_create_bond_struct(
+    e: &Env,
+    identity: Address,
+    amount: i128,
+    duration: u64,
+    is_rolling: bool,
+    notice_period_duration: u64,
+) -> Result<Bond, ContractError> {
+    if !is_valid_bond(amount) {
+        return Err(ContractError::InvalidBondAmount);
+    }
+
+    if duration == 0 {
+        return Err(ContractError::InvalidBondDuration);
+    }
+
+    if is_rolling && (notice_period_duration == 0 || notice_period_duration > duration) {
+        return Err(ContractError::InvalidNoticePeriod);
+    }
+
+    e.ledger().timestamp()
+        .checked_add(duration)
+        .ok_or(ContractError::Overflow)?;
+    let bond_start = e.ledger().timestamp();
+    let bond = create_bond(amount, bond_start, duration, is_rolling, notice_period_duration)?;
+    Ok(bond)
 }
 
 /// Maximum number of attestations allowed in a single batch operation.
@@ -151,6 +374,14 @@ pub use types::Attestation;
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     Bond,
     Attester(Address),
     Attestation(u64),
@@ -180,7 +411,6 @@ pub enum DataKey {
     ClaimById(u64),
     /// Upgrade-authorization namespace, sub-keyed by [`UpgradeKey`].
     Upgrade(UpgradeKey),
-    BorrowFrozen,
     /// Reentrancy protection flag. Value: `bool`. When `true`, prevents
     /// external token calls from re-entering and double-spending.
     SettlingFlag,
@@ -237,7 +467,7 @@ pub enum UpgradeKey {
     Implementation,
     /// Upgrade admin address. Value: `Address`.
     Admin,
-    /// Pending (two-step) upgrade admin address. Value: `Address`.
+    /// Pending (two-step) upgrade admin address. Value: `upgrade_auth::PendingAdminTransfer`.
     PndgUpgrAdmin,
     /// Upgrade proposal by id. Value: `upgrade_auth::UpgradeProposal`.
     Proposal(u64),
@@ -373,6 +603,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn initialize(e: Env, admin: Address, registry: Option<Address>) {
+        Self::require_not_paused(&e);
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
@@ -391,6 +622,7 @@ impl CredenceBond {
 
     /// Initialize and attempt trustless self-registration with a registry.
     pub fn initialize_with_registry(e: Env, admin: Address, registry: Address) {
+        Self::require_not_paused(&e);
         Self::initialize(e.clone(), admin, Some(registry));
     }
 
@@ -400,6 +632,7 @@ impl CredenceBond {
     /// - `ContractError::NotInitialized` when admin is not set.
     /// - `ContractError::NotAdmin` when caller is not the configured admin.
     pub fn set_token(e: Env, admin: Address, token: Address) {
+        Self::require_not_paused(&e);
         token_integration::set_token(&e, &admin, &token);
     }
 
@@ -482,6 +715,7 @@ impl CredenceBond {
     /// client.set_early_exit_config(&admin, &treasury, &500_u32);
     /// ```
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -492,6 +726,26 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::NotAdmin);
         }
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
+    }
+
+    /// Returns true if borrows are frozen.
+    pub fn is_borrow_frozen(e: Env) -> bool {
+        parameters::is_borrow_frozen(&e)
+    }
+
+    /// Set whether borrows are frozen.
+    pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        parameters::set_borrow_frozen(&e, frozen);
     }
 
     /// Register an authorized attester.
@@ -516,6 +770,7 @@ impl CredenceBond {
     /// assert!(client.is_attester(&attester));
     /// ```
     pub fn register_attester(e: Env, attester: Address) {
+        Self::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -553,6 +808,7 @@ impl CredenceBond {
     /// assert!(!client.is_attester(&attester));
     /// ```
     pub fn unregister_attester(e: Env, attester: Address) {
+        Self::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -631,6 +887,7 @@ impl CredenceBond {
     ) -> IdentityBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
+        parameters::require_not_borrow_frozen(&e);
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &identity, amount);
         }
@@ -826,12 +1083,7 @@ impl CredenceBond {
         items: Vec<AttestationBatchItem>,
     ) -> Vec<Attestation> {
         let n = items.len();
-        if n == 0 {
-            panic_with_error!(e, ContractError::EmptyBatch);
-        }
-        if n > MAX_BATCH_ATTESTATION_SIZE {
-            panic_with_error!(e, ContractError::BatchTooLarge);
-        }
+        crate::validation::verify_batch_size(&e, n, MAX_BATCH_ATTESTATION_SIZE);
 
         // Verify all attesters in the batch are unique.
         for i in 0..n {
@@ -1214,6 +1466,7 @@ impl CredenceBond {
     /// - `ContractError::NotInitialized` when the admin has not been set.
     /// - `ContractError::NotAdmin` when `admin` is not the configured admin.
     pub fn set_grace_window(e: Env, admin: Address, grace: u64) {
+        Self::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1237,6 +1490,7 @@ impl CredenceBond {
 
     /// Set attester stake (admin only).
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
+        Self::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1246,11 +1500,13 @@ impl CredenceBond {
         if admin != stored_admin {
             panic_with_error!(e, ContractError::NotAdmin);
         }
+        credence_errors::require_positive_amount!(&e, amount);
         weighted_attestation::set_attester_stake(&e, &attester, amount);
     }
 
     /// Set weight config: multiplier_bps, max_weight. Admin only.
     pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
+        Self::require_not_paused(&e);
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1275,6 +1531,7 @@ impl CredenceBond {
     /// - `ContractError::InvalidAdminAddress` when `new_admin` is a zero/unset address.
     /// - `ContractError::AdminUnchanged` when `new_admin` equals `current_admin`.
     pub fn transfer_admin(e: Env, current_admin: Address, new_admin: Address) {
+        Self::require_not_paused(&e);
         current_admin.require_auth();
         new_admin.require_auth();
 
@@ -1303,6 +1560,25 @@ impl CredenceBond {
         );
     }
 
+    pub fn transfer_upgrade_admin(e: Env, admin: Address, new_admin: Address) {
+        Self::require_not_paused(&e);
+        upgrade_auth::transfer_upgrade_admin(&e, &admin, &new_admin);
+    }
+
+    pub fn accept_upgrade_admin(e: Env, caller: Address) {
+        Self::require_not_paused(&e);
+        upgrade_auth::accept_upgrade_admin(&e, &caller);
+    }
+
+    pub fn get_pending_upgrade_admin(e: Env) -> Option<Address> {
+        upgrade_auth::get_pending_upgrade_admin(&e)
+    }
+
+    pub fn cancel_upgrade_admin_transfer(e: Env, admin: Address) {
+        Self::require_not_paused(&e);
+        upgrade_auth::cancel_upgrade_admin_transfer(&e, &admin);
+    }
+
     /// Get weight config (multiplier_bps, max_weight).
     pub fn get_weight_config(e: Env) -> (u32, u32) {
         weighted_attestation::get_weight_config(&e)
@@ -1310,8 +1586,10 @@ impl CredenceBond {
 
     /// Withdraw from bond after lock-up period has ended.
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize withdrawals.
         identity.require_auth();
+        credence_errors::require_positive_amount!(&e, amount);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
@@ -1384,9 +1662,11 @@ impl CredenceBond {
     /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
     ///   the gross withdrawal exactly into treasury penalty plus identity payout.
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         let key = DataKey::Bond;
 
         Self::acquire_lock(&e);
+        credence_errors::require_positive_amount!(&e, amount);
 
         let mut bond: IdentityBond = e
             .storage()
@@ -1490,6 +1770,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
     pub fn request_withdrawal(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize the withdrawal request.
         identity.require_auth();
         let key = DataKey::Bond;
@@ -1524,6 +1805,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
     pub fn renew_if_rolling(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize renewal.
         identity.require_auth();
         let key = DataKey::Bond;
@@ -1583,8 +1865,10 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize top-ups.
         identity.require_auth();
+        parameters::require_not_borrow_frozen(&e);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = e
             .storage()
@@ -1631,6 +1915,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn extend_duration(e: Env, identity: Address, additional_duration: u64) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize duration extensions.
         identity.require_auth();
         let key = DataKey::Bond;
@@ -1664,6 +1949,8 @@ impl CredenceBond {
     ///
     /// See also: [`docs/fees.md`](../../../docs/fees.md)
     pub fn deposit_fees(e: Env, amount: i128) {
+        Self::require_not_paused(&e);
+        credence_errors::require_positive_amount!(&e, amount);
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
         e.storage().instance().set(&key, &(current + amount));
@@ -1680,6 +1967,7 @@ impl CredenceBond {
     /// See also: [`docs/withdrawal.md`](../../../docs/withdrawal.md),
     /// [`docs/reentrancy.md`](../../../docs/reentrancy.md)
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
+        Self::require_not_paused(&e);
         // auth: tree shape [Identity] -> [Bond::withdraw_bond]; may be delegated.
         identity.require_auth();
         Self::acquire_lock(&e);
@@ -1757,7 +2045,13 @@ impl CredenceBond {
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    pub fn slash_bond(e: Env, admin: Address, slash_amount: i128, idempotency_salt: Bytes) -> i128 {
+    pub fn slash_bond(
+        e: Env,
+        admin: Address,
+        slash_amount: i128,
+        idempotency_salt: Bytes,
+    ) -> i128 {
+        Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
 
@@ -1833,6 +2127,7 @@ impl CredenceBond {
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     pub fn collect_fees(e: Env, admin: Address, idempotency_salt: Bytes) -> i128 {
+        Self::require_not_paused(&e);
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
@@ -1885,6 +2180,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md)
     pub fn set_liquidation_treasury(e: Env, admin: Address, treasury: Address) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -1920,6 +2216,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn set_slash_treasury(e: Env, admin: Address, treasury: Address) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -1996,6 +2293,7 @@ impl CredenceBond {
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
     /// [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn liquidate(e: Env, admin: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::liquidate]; usually direct admin call.
         admin.require_auth();
         Self::acquire_lock(&e);
@@ -2117,6 +2415,7 @@ impl CredenceBond {
     /// client.set_callback(&callback);
     /// ```
     pub fn set_callback(e: Env, addr: Address) {
+        Self::require_not_paused(&e);
         e.storage()
             .instance()
             .set(&Symbol::new(&e, "callback"), &addr);
@@ -2316,7 +2615,8 @@ impl CredenceBond {
     /// - `ContractError::EmergencyDrainNotPermitted` — not paused, or no ETA scheduled.
     /// - `ContractError::TimelockNotReady` — ETA not yet reached.
     /// - Panics with `"amount must be positive"` — `amount <= 0`.
-    /// - Panics with `"recipient must be treasury"` — wrong recipient.
+    /// - `ContractError::TreasuryBeneficiaryMismatch` (code 610) — wrong recipient
+    ///   (enforced by `credence_errors::require_matching_treasury_beneficiary`).
     pub fn emergency_drain_to_treasury(
         e: Env,
         admin: Address,
@@ -2639,6 +2939,9 @@ mod test_differential;
 
 #[cfg(test)]
 mod test_attestation_batch;
+
+#[cfg(test)]
+mod test_admin_transfer;
 
 /// Regression tests for storage TTL bumps (issue #570).
 #[cfg(test)]

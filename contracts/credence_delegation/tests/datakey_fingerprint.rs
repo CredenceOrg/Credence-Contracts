@@ -1,3 +1,8 @@
+// This is an off-chain integration test binary, not deployed WASM. Issue #713
+// disallows `format!`/`write!`/`writeln!`/`format_args!` in production contract
+// code; integration tests aren't on chain, so we silence the lint locally.
+#![allow(clippy::disallowed_macros)]
+
 //! Storage-key fingerprint snapshot for `credence_delegation::DataKey`.
 //!
 //! Every `DataKey` variant encodes to a specific byte sequence that becomes the
@@ -11,7 +16,7 @@
 
 use credence_delegation::{DataKey, DelegationType};
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::xdr::{FromXdr, ToXdr};
 use soroban_sdk::{Address, Bytes, Env};
 
 fn hex(bytes: &Bytes) -> String {
@@ -112,5 +117,28 @@ fn datakey_fingerprints_are_unique() {
                 fps[i].0, fps[j].0
             );
         }
+    }
+}
+
+#[test]
+fn previous_snapshot_deserialises_with_new_spec() {
+    let env = Env::default();
+    for line in EXPECTED.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split(" = ").collect();
+        if parts.len() != 2 {
+            continue;
+        }
+        let hex_str = parts[1];
+
+        let bytes_vec: Vec<u8> = (0..hex_str.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16).unwrap())
+            .collect();
+
+        let bytes = Bytes::from_slice(&env, &bytes_vec);
+        let _ = DataKey::from_xdr(&env, &bytes).expect("Failed to deserialize DataKey from snapshot hex");
     }
 }

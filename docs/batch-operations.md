@@ -2,6 +2,15 @@
 
 Atomic batch operations for creating multiple bonds in a single transaction within the Credence protocol.
 
+> **Note:** `create_batch_bonds`, `validate_batch_bonds`, and `get_batch_total_amount`
+> (below) live in `contracts/credence_bond/src/batch.rs`, which is compiled only
+> under `cfg(any(test, feature = "testutils"))` — the `testutils` feature is not
+> part of any default release build, so these functions are **not present in the
+> deployed contract's callable surface**. The all-or-nothing design described
+> below is accurate for how the code behaves under `cargo test`; it just doesn't
+> ship yet. See [docs/BATCH_ATOMICITY.md](BATCH_ATOMICITY.md) for the project's
+> full stance on batch atomicity and an inventory of what's actually deployed.
+
 ## Overview
 
 The batch operations module provides gas-optimized, atomic bond creation for multiple identities. All operations follow an all-or-nothing pattern - if any bond fails validation, the entire batch is rejected without creating any bonds.

@@ -701,6 +701,13 @@ pub fn get_upgrade_history(e: &Env) -> Vec<UpgradeRecord> {
         .get(&DataKey::Upgrade(UpgradeKey::History))
         .unwrap_or(Vec::new(e))
 }
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAdminTransfer {
+    pub new_admin: Address,
+    pub proposed_at: u64,
+}
+
 /// Propose a new upgrade admin (two-step transfer)
 pub fn transfer_upgrade_admin(e: &Env, admin: &Address, new_admin: &Address) {
     admin.require_auth();
@@ -716,9 +723,14 @@ pub fn transfer_upgrade_admin(e: &Env, admin: &Address, new_admin: &Address) {
         panic!("ZeroAddress");
     }
 
+    let pending = PendingAdminTransfer {
+        new_admin: new_admin.clone(),
+        proposed_at: e.ledger().timestamp(),
+    };
+
     e.storage()
         .instance()
-        .set(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin), new_admin);
+        .set(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin), &pending);
 
     events::emit_upgrade_admin_transfer_started(e, admin, new_admin);
 }
@@ -726,14 +738,26 @@ pub fn transfer_upgrade_admin(e: &Env, admin: &Address, new_admin: &Address) {
 /// Accept the upgrade admin role (second step of transfer)
 pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
     caller.require_auth();
-    let pending_admin: Address = e
+    let pending: PendingAdminTransfer = e
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
         .unwrap_or_else(|| panic!("no pending upgrade admin"));
 
-    if *caller != pending_admin {
+    if *caller != pending.new_admin {
         panic!("not pending upgrade admin");
+    }
+
+    let now = e.ledger().timestamp();
+    let timelock: u64 = 86_400; // 24 hours
+    let expiry: u64 = 604_800; // 7 days
+
+    if now < pending.proposed_at + timelock {
+        panic!("timelock not elapsed");
+    }
+
+    if now > pending.proposed_at + expiry {
+        panic!("admin transfer proposal expired");
     }
 
     let old_admin: Address = e
@@ -795,5 +819,24 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
 pub fn get_pending_upgrade_admin(e: &Env) -> Option<Address> {
     e.storage()
         .instance()
+        .get::<_, PendingAdminTransfer>(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
+        .map(|p| p.new_admin)
+}
+
+/// Cancel a pending upgrade admin transfer
+pub fn cancel_upgrade_admin_transfer(e: &Env, admin: &Address) {
+    admin.require_auth();
+    require_upgrade_admin(e, admin);
+
+    let pending: PendingAdminTransfer = e
+        .storage()
+        .instance()
         .get(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
+        .unwrap_or_else(|| panic!("no pending upgrade admin"));
+
+    e.storage()
+        .instance()
+        .remove(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin));
+
+    events::emit_upgrade_admin_transfer_cancelled(e, admin, &pending.new_admin);
 }

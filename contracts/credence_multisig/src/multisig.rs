@@ -161,9 +161,11 @@ impl CredenceMultiSig {
         e.storage().instance().set(&DataKey::SignerList, &signers);
 
         for signer in signers.iter() {
-            e.storage()
-                .instance()
-                .set(&DataKey::Signer(signer.clone()), &true);
+            let key = DataKey::Signer(signer.clone());
+            if e.storage().instance().has(&key) {
+                panic_with_error!(&e, ContractError::AlreadyActive);
+            }
+            e.storage().instance().set(&key, &true);
         }
 
         e.events().publish(

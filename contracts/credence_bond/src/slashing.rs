@@ -1,3 +1,4 @@
+use crate::{DataKey, IdentityBond};
 //! Slashing Module
 //!
 //! Implements the core `slash_bond()` functionality for reducing a bond's value as a penalty
