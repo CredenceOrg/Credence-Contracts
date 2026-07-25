@@ -134,10 +134,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientSignatures = 108,
 
-    /// Signature deadline has expired (even with grace window).
-    /// Replaces: panic!("signature expired")
-    /// Contracts: bond
-    SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
     /// Used by suspend_admin when `until_ts` is not strictly in the future,
     /// and by callers that detect a suspended admin attempting a privileged
@@ -145,6 +141,22 @@ pub enum ContractError {
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
     AdminSuspended = 113,
+
+    // ============================================================
+    // TODO(#follow-up): When `ContractError::DuplicateIdempotencyKey` is
+    // formally DECLARED (with its own wire-stable code), re-add the THREE
+    // arms it implicates so the variant does not become a non-exhaustive
+    // match failure anywhere:
+    //   1. `category()` -> ErrorCategory::Bond,
+    //   2. `description()` -> "Idempotency key has already been used for this operation".
+    //   3. `is_recoverable()` -> true (idempotent - safe to retry with same key).
+    // These arms were removed in `feat/saturating-percentage-helpers` to
+    // satisfy `cargo build -p credence_math` while the variant itself
+    // was still undeclared (the original `ContractError::DuplicateIdempotencyKey`
+    // references were dead code pointing at a phantom variant). Keep this
+    // breadcrumb visible at the enum anchor so all three match-block editors
+    // see it before they re-declare the variant.
+    // ============================================================
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -277,8 +289,10 @@ pub enum ContractError {
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 218,
+    /// Wire-stable: re-numbered from a duplicate `218` (collided with
+    /// `UnauthorizedToken = 218`) to the lowest free Bond slot.
+    /// Post-repair value is `230`; locked-in by `feat/saturating-percentage-helpers`.
+    InvariantViolation = 230,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -476,8 +490,11 @@ pub enum ContractError {
 
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 113,
+    /// Wire-stable: re-numbered from a duplicate `113` (collided with
+    /// `AdminSuspended = 113`) to the next free Auth slot.
+    /// Post-repair value is `114`; locked-in by `feat/saturating-percentage-helpers`.
+    /// `AdminSuspended` retains its original wire code (`113`).
+    EmergencyDrainNotPermitted = 114,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -635,7 +652,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
+            | ContractError::UnauthorizedToken
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -740,7 +757,8 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
-            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
+            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size constant",
+            ContractError::EmptyBatch => "Batch input is empty when at least one item is required",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -866,7 +884,8 @@ impl ErrorExt for ContractError {
             | ContractError::NoPendingAdmin         // call begin_admin_transfer first
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
-            | ContractError::TimelockNotReady => true,
+            | ContractError::TimelockNotReady
+            | ContractError::EmergencyDrainNotPermitted => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -883,6 +902,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
             | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+            | ContractError::UnsupportedDecimals        // supply a token with supported decimals
+            | ContractError::UnauthorizedToken          // use an accepted token
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
@@ -895,7 +916,6 @@ impl ErrorExt for ContractError {
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
-            ContractError::DuplicateIdempotencyKey => true, // idempotent - safe to retry with same key
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
 
@@ -953,10 +973,8 @@ impl ErrorExt for ContractError {
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
+            ContractError::DivisionByZero => false,
             ContractError::UnsupportedInterface => false,
-            ContractError::Overflow
-            | ContractError::Underflow
-            | ContractError::DivisionByZero => false,
         }
     }
 }
