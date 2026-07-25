@@ -129,6 +129,7 @@ This directory contains all design docs, API references, and operational guides 
 
 | Document | Audience | Summary |
 |---|---|---|
+| [GAS_BUDGET_BREAKDOWN.md](GAS_BUDGET_BREAKDOWN.md) | Contributor | Per-contract gas cost tables for every entrypoint |
 | [bond_gas_benchmarks.md](bond_gas_benchmarks.md) | Contributor | Bond contract gas costs |
 | [dispute_resolution_gas_benchmarks.md](dispute_resolution_gas_benchmarks.md) | Contributor | Arbitration gas costs |
 
