@@ -41,6 +41,7 @@ mod tests {
             ContractError::UnsupportedToken,
             ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,
@@ -140,8 +141,10 @@ mod tests {
         assert_eq!(ContractError::UnsupportedToken as u32, 213);
         assert_eq!(ContractError::UnsupportedDecimals as u32, 229);
         assert_eq!(ContractError::InvalidBondAmount as u32, 214);
-        assert_eq!(ContractError::InvalidBondDuration as u32, 215);
-        assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
+        assert_eq!(ContractError::AmountExplicitlyZero as u32, 215);
+        assert_eq!(ContractError::InvalidBondDuration as u32, 216);
+        assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
+        assert_eq!(ContractError::BondAlreadyExists as u32, 218);
     }
 
     #[test]
@@ -981,10 +984,44 @@ mod tests {
         // This test verifies the macro compiles and can be called
         // Actual negative testing is done in contract integration tests
         use soroban_sdk::Env;
-        
+
         let e = Env::default();
         // Positive amount should pass
-        credence_errors::require_positive_amount!(&e, 100_i128);
+        fn test_positive() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_positive_amount!(&e, 100_i128);
+            Ok(())
+        }
+        test_positive().unwrap();
+    }
+
+    #[test]
+    fn test_require_no_leading_zero_amount_macro() {
+        // Test that Some(0) returns AmountExplicitlyZero error
+        use soroban_sdk::Env;
+
+        fn test_zero() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_no_leading_zero_amount!(&e, Some(0_i128));
+            Ok(())
+        }
+        assert_eq!(test_zero(), Err(ContractError::AmountExplicitlyZero));
+
+        // Test that Some(positive) passes
+        fn test_positive() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_no_leading_zero_amount!(&e, Some(100_i128));
+            Ok(())
+        }
+        test_positive().unwrap();
+
+        // Test that None passes (not set)
+        fn test_none() -> Result<(), ContractError> {
+            let e = Env::default();
+            crate::require_no_leading_zero_amount!(&e, None::<i128>);
+            Ok(())
+        }
+        test_none().unwrap();
     }
 
     fn mock_receive_fee(amount: i128, authorized: bool) -> Result<(), ContractError> {
@@ -1187,6 +1224,7 @@ mod tests {
             ContractError::NotSigner => true,
             ContractError::UnauthorizedDepositor => true,
             ContractError::ContractPaused => true, // wait for unpause
+            ContractError::BorrowFrozen => true,   // wait for unfreeze
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
             ContractError::AdminSuspended => true,         // wait for suspension
@@ -1219,6 +1257,7 @@ mod tests {
             ContractError::UnsupportedToken => true,
             ContractError::UnsupportedDecimals => true,
             ContractError::InvalidBondAmount => true,
+            ContractError::AmountExplicitlyZero => true, // supply a non-zero amount
             ContractError::InvalidBondDuration => true,
             ContractError::InvalidNoticePeriod => true,
             ContractError::BondAlreadyExists => true,
@@ -1227,8 +1266,8 @@ mod tests {
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
-            ContractError::BatchTooLarge => true,     // reduce batch size
-            ContractError::EmptyBatch => true,         // supply at least one item
+            ContractError::BatchTooLarge => true,       // reduce batch size
+            ContractError::EmptyBatch => true,          // supply at least one item
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1251,7 +1290,7 @@ mod tests {
             ContractError::AlreadyActive => true,
             ContractError::InvalidContractAddress => true,
             ContractError::ContractCodeVerificationFailed => true,
-            ContractError::UnsupportedInterface => false,
+            ContractError::UnsupportedInterface => true,
 
             // Delegation: state/caller fixes; fatal cases are scheme/crypto.
             ContractError::ExpiryInPast => true,
@@ -1264,7 +1303,8 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => true,
+            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::PayloadTooOld => true,       // re-sign with current ledger number
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1340,6 +1380,7 @@ mod tests {
             ContractError::UnsupportedToken,
             ContractError::UnsupportedDecimals,
             ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
             ContractError::InvalidBondDuration,
             ContractError::InvalidNoticePeriod,
             ContractError::BondAlreadyExists,

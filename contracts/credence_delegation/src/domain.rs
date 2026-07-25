@@ -123,6 +123,9 @@ pub struct DelegatedActionPayload {
     /// sequence returned by the Horizon `/ledgers/latest` endpoint) at the
     /// moment the payload is constructed and signed.
     pub ledger_number: u32,
+    /// Signature domain string (e.g. "CredenceDelegation").
+    /// Bound into the signed hash to prevent cross-contract replay.
+    pub signature_domain: String,
 }
 
 /// Validates that the fields in `payload` match the parameters supplied at the
