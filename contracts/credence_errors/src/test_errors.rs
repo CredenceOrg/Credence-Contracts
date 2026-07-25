@@ -24,6 +24,7 @@ mod tests {
             ContractError::TimelockNotReady,
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -79,7 +80,6 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
-            ContractError::DelegationInactive,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -90,11 +90,13 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
             ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
         ]
     }
 
@@ -118,6 +120,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 116);
     }
 
     #[test]
@@ -182,6 +185,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientApprovals as u32, 605);
         assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
         assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
+        assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
     }
 
     #[test]
@@ -301,6 +305,10 @@ mod tests {
             ContractError::InvalidNoticePeriod.category(),
             ErrorCategory::Bond
         );
+        assert_eq!(
+            ContractError::InvalidStringifiedBytes.category(),
+            ErrorCategory::Bond
+        );
     }
 
     #[test]
@@ -399,6 +407,10 @@ mod tests {
         );
         assert_eq!(
             ContractError::InsufficientApprovals.category(),
+            ErrorCategory::Treasury
+        );
+        assert_eq!(
+            ContractError::TreasuryBeneficiaryMismatch.category(),
             ErrorCategory::Treasury
         );
     }
@@ -1228,6 +1240,7 @@ mod tests {
             ContractError::TimelockNotReady => true, // wait for delay
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
+            ContractError::ZeroBytes32 => true,
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1262,8 +1275,6 @@ mod tests {
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
-            ContractError::UnauthorizedToken => true,
-            ContractError::UnsupportedDecimals => true,
 
             // Attestation: state/caller fixes.
             ContractError::DuplicateAttestation => true,
@@ -1309,6 +1320,7 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed => false, // bad repayment
             ContractError::ProposalExpired => true,
             ContractError::SlippageExceeded => true,
+            ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1317,6 +1329,11 @@ mod tests {
             ContractError::Overflow => false,
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
+
+            // Missing variants added to match the enum and ensure completeness
+            ContractError::BorrowFrozen => true,
+            ContractError::PayloadTooOld => true,
+            ContractError::InvalidCurrency => true,
         }
     }
 
@@ -1353,6 +1370,7 @@ mod tests {
             ContractError::TimelockNotReady,
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1378,6 +1396,7 @@ mod tests {
             ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1421,10 +1440,15 @@ mod tests {
             ContractError::FlashLoanRepaymentFailed,
             ContractError::ProposalExpired,
             ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
             ContractError::CursorOutOfRange,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
+            ContractError::TimestampInFuture,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
         ];
         assert_eq!(
             cases.len(),
@@ -1512,5 +1536,31 @@ mod tests {
             !ContractError::Overflow.is_recoverable(),
             "Overflow (700) must be fatal per issue #519"
         );
+    }
+
+    #[test]
+    fn test_require_non_zero_bytes32_happy_path() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        // Single-bit set at index 0
+        let mut single_bit_arr = [0u8; 32];
+        single_bit_arr[0] = 1;
+        let single_bit = BytesN::from_array(&e, &single_bit_arr);
+        crate::require_non_zero_bytes32(&e, &single_bit);
+
+        // All-ones
+        let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_ones);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #116)")]
+    fn test_require_non_zero_bytes32_sad_path_panics_on_all_zeros() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        let all_zeros = BytesN::from_array(&e, &[0u8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_zeros);
     }
 }

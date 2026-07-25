@@ -67,9 +67,7 @@ pub fn get_grace_window(e: &Env) -> u64 {
 /// directly widens the replay/expiry attack surface.
 pub fn set_grace_window(e: &Env, grace: u64) -> u64 {
     let old = get_grace_window(e);
-    e.storage()
-        .instance()
-        .set(&DataKey::GraceWindow, &grace);
+    e.storage().instance().set(&DataKey::GraceWindow, &grace);
     bump_nonce_ttl(e, &DataKey::GraceWindow, 0);
     old
 }

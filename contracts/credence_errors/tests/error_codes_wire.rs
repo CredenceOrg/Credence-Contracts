@@ -5,7 +5,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::NotInitialized as u32, 1);
     assert_eq!(ContractError::AlreadyInitialized as u32, 2);
 
-    assert_eq!(ContractError::NotAdmin as u32, 100);
+assert_eq!(ContractError::NotAdmin as u32, 100);
     assert_eq!(ContractError::NotBondOwner as u32, 101);
     assert_eq!(ContractError::UnauthorizedAttester as u32, 102);
     assert_eq!(ContractError::NotOriginalAttester as u32, 103);
@@ -82,6 +82,8 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
     assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
     assert_eq!(ContractError::ProposalExpired as u32, 608);
+    assert_eq!(ContractError::SlippageExceeded as u32, 609);
+    assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
 
     assert_eq!(ContractError::Overflow as u32, 700);
     assert_eq!(ContractError::Underflow as u32, 701);

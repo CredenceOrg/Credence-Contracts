@@ -9,10 +9,13 @@ This directory contains all design docs, API references, and operational guides 
 | [architecture.md](architecture.md) | Contributor / Operator | System-wide component diagram, data flows, trust boundaries |
 | [access-control.md](access-control.md) | Contributor / Integrator | RBAC modifiers, entrypoint authority matrix, event schemas |
 | [CONSTRUCTOR_PATTERNS.md](CONSTRUCTOR_PATTERNS.md) | Contributor | One-shot `initialize` pattern: re-init guard, auth, storage, event |
+| [DEDUP_POLICY.md](DEDUP_POLICY.md) | Contributor | When we dedupe input, when we reject on duplicate, and why |
 | [admin-roles.md](admin-roles.md) | Operator / Integrator | Hierarchical admin system (SuperAdmin / Admin / Operator), assignment, suspension, rotation |
 | [HISTORICAL_ROLES.md](HISTORICAL_ROLES.md) | Operator / Auditor | How role assignments are tracked over time, event stream for indexing, audit queries |
 | [governance.md](governance.md) | Operator | Multi-sig pause, emergency mode, upgrade flow |
 | [upgrade.md](UPGRADE.md) | Operator | Contract upgrade procedure, data migration, verification |
+| [BYTES32_CANONICALISATION.md](BYTES32_CANONICALISATION.md) | Contributor / Integrator | Canonicalisation rules for BytesN<32> and zero value rejection |
+| [TIME_UNITS.md](TIME_UNITS.md) | Contributor | Time representation (seconds, days, epochs) and mocking time in tests |
 
 ## Bond Contract (`credence_bond`)
 
@@ -41,6 +44,7 @@ This directory contains all design docs, API references, and operational guides 
 | [fund-flow.md](fund-flow.md) | Operator | Token flows through the contract |
 | [liquidation.md](liquidation.md) | Operator | Liquidation mechanics |
 | [treasury.md](treasury.md) | Operator | Treasury configuration and sweeping |
+| [TREASURY_INVARIANTS.md](TREASURY_INVARIANTS.md) | Contributor / Auditor | Treasury flow invariants and balance tracking |
 | [weighted-attestations.md](weighted-attestations.md) | Contributor | Attestation weighting system |
 
 ## Delegation Contract (`credence_delegation`)

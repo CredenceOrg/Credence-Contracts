@@ -81,7 +81,10 @@ fn arm_attack(
 }
 
 fn assert_attack_rejected(setup: &HostileSetup<'_>) {
-    assert!(setup.token.attack_attempted(), "hostile token did not re-enter");
+    assert!(
+        setup.token.attack_attempted(),
+        "hostile token did not re-enter"
+    );
     assert!(
         setup.token.attack_rejected(),
         "reentrant bond call was not rejected"
@@ -100,8 +103,7 @@ fn hostile_token_reentry_into_withdraw_is_rejected() {
     });
     test_helpers::advance_ledger_sequence(&e);
 
-    let (before_identity, before_contract, _) =
-        arm_attack(&e, &setup, "withdraw", REENTER_AMOUNT);
+    let (before_identity, before_contract, _) = arm_attack(&e, &setup, "withdraw", REENTER_AMOUNT);
     setup.client.slash(&setup.admin, &OUTER_AMOUNT);
 
     assert_attack_rejected(&setup);
@@ -146,8 +148,7 @@ fn hostile_token_reentry_into_slash_is_rejected() {
     setup.client.set_slash_treasury(&setup.admin, &setup.admin);
     test_helpers::advance_ledger_sequence(&e);
 
-    let (_, before_contract, before_treasury) =
-        arm_attack(&e, &setup, "slash", REENTER_AMOUNT);
+    let (_, before_contract, before_treasury) = arm_attack(&e, &setup, "slash", REENTER_AMOUNT);
     setup.client.slash(&setup.admin, &OUTER_AMOUNT);
 
     assert_attack_rejected(&setup);
@@ -170,8 +171,7 @@ fn hostile_token_reentry_into_top_up_is_rejected() {
     let e = Env::default();
     let setup = setup_hostile_token_bond(&e);
 
-    let (before_identity, before_contract, _) =
-        arm_attack(&e, &setup, "top_up", REENTER_AMOUNT);
+    let (before_identity, before_contract, _) = arm_attack(&e, &setup, "top_up", REENTER_AMOUNT);
     setup.client.top_up(&setup.identity, &OUTER_AMOUNT);
 
     assert_attack_rejected(&setup);

@@ -741,9 +741,6 @@ fn test_mixed_execution_interleaving() {
     assert_eq!(client.get_nonce(&owner), 2);
 }
 
-// ---------------------------------------------------------------------------
-// Signature domain mismatch: cross-contract replay protection
-// ---------------------------------------------------------------------------
 
 #[test]
 #[should_panic(expected = "Error(Contract, #225)")] // DomainMismatch
