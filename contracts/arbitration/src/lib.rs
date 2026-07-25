@@ -104,6 +104,8 @@ fn bump_instance_ttl(e: &Env) {
 }
 
 fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), ArbitrationError> {
+    // Prevent a creator from re-entering the dispute lifecycle while an
+    // unresolved dispute remains active for the same address.
     let key = DataKey::ActiveDispute(creator.clone());
     if e.storage().instance().has(&key) {
         return Err(ArbitrationError::OngoingDispute);

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Arbitration dispute guard**: Added a typed `ArbitrationError::OngoingDispute` guard to reject new disputes while a creator already has an unresolved dispute in progress, closing a defense-in-depth re-entry gap in the arbitration lifecycle. (Closes #850.)
+
 - **No-dynamic-strings in production contract code** (closes #713). New workspace
   `clippy.toml` declares `disallowed-macros` for `format`, `format_args`, `write`,
   `writeln` (and their `std::` / `alloc::` / `core::` qualified forms); every
