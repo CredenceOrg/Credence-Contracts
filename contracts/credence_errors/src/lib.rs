@@ -532,6 +532,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RoleNotHeldAtLedger = 116,
 
+    /// Input BytesN<32> argument is all-zero.
+    /// Replaces: panic!("zero bytes32")
+    /// Wire-stable: do not renumber this error code.
+    ZeroBytes32 = 116,
+
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -679,7 +684,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPauseAction
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
-            | ContractError::RoleNotHeldAtLedger => ErrorCategory::Authorization,
+            | ContractError::RoleNotHeldAtLedger
+            | ContractError::ZeroBytes32 => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -910,6 +916,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidAdminAddress => "Proposed admin is the zero or identity address",
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
+            ContractError::ZeroBytes32 => "Input BytesN<32> argument is all-zero",
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
@@ -953,6 +960,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
+            | ContractError::ZeroBytes32
             | ContractError::EmergencyDrainNotPermitted => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
@@ -1087,7 +1095,7 @@ macro_rules! require_positive_amount {
     }};
 }
 
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, BytesN, Env};
 
 /// Defence-in-depth guard: reject payments to any address other than the
 /// configured treasury.
@@ -1122,5 +1130,22 @@ use soroban_sdk::{Address, Env};
 pub fn require_matching_treasury_beneficiary(e: &Env, actor: &Address, expected: &Address) {
     if actor != expected {
         ::soroban_sdk::panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
+    }
+}
+
+/// Defence-in-depth guard: reject any all-zero `BytesN<32>` inputs.
+///
+/// Prevents accidental default-value inputs that could lead to misconfigured state
+/// or authorization bypass.
+///
+/// # Arguments
+/// * `e` - Soroban environment (needed for typed error panic)
+/// * `x` - The `BytesN<32>` input to check
+///
+/// # Panics
+/// With `ContractError::ZeroBytes32` when `x` is all-zero.
+pub fn require_non_zero_bytes32(e: &Env, x: &BytesN<32>) {
+    if x.clone().to_array() == [0u8; 32] {
+        ::soroban_sdk::panic_with_error!(e, ContractError::ZeroBytes32);
     }
 }

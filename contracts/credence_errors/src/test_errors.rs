@@ -24,6 +24,7 @@ mod tests {
             ContractError::TimelockNotReady,
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -118,6 +119,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 116);
     }
 
     #[test]
@@ -1196,6 +1198,7 @@ mod tests {
             ContractError::TimelockNotReady => true, // wait for delay
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
+            ContractError::ZeroBytes32 => true,
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1319,6 +1322,7 @@ mod tests {
             ContractError::TimelockNotReady,
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1393,7 +1397,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            89,
+            90,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1477,5 +1481,31 @@ mod tests {
             !ContractError::Overflow.is_recoverable(),
             "Overflow (700) must be fatal per issue #519"
         );
+    }
+
+    #[test]
+    fn test_require_non_zero_bytes32_happy_path() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        // Single-bit set at index 0
+        let mut single_bit_arr = [0u8; 32];
+        single_bit_arr[0] = 1;
+        let single_bit = BytesN::from_array(&e, &single_bit_arr);
+        crate::require_non_zero_bytes32(&e, &single_bit);
+
+        // All-ones
+        let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_ones);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #116)")]
+    fn test_require_non_zero_bytes32_sad_path_panics_on_all_zeros() {
+        use soroban_sdk::{Env, BytesN};
+        let e = Env::default();
+
+        let all_zeros = BytesN::from_array(&e, &[0u8; 32]);
+        crate::require_non_zero_bytes32(&e, &all_zeros);
     }
 }
