@@ -25,6 +25,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::CrossContractCallerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1622,5 +1623,33 @@ mod tests {
             Ok(())
         }
         assert_eq!(test_future(), Err(ContractError::TimestampInFuture));
+    }
+
+    #[test]
+    fn test_require_matching_contract_id_happy_path() {
+        use soroban_sdk::{Address, Env};
+
+        fn test_match() -> Result<(), ContractError> {
+            let e = Env::default();
+            let caller = Address::generate(&e);
+            let expected = caller.clone();
+            crate::require_matching_contract_id(&e, &caller, &expected);
+            Ok(())
+        }
+        assert!(test_match().is_ok());
+    }
+
+    #[test]
+    fn test_require_matching_contract_id_mismatch_returns_error() {
+        use soroban_sdk::{Address, Env};
+
+        fn test_mismatch() -> Result<(), ContractError> {
+            let e = Env::default();
+            let caller = Address::generate(&e);
+            let expected = Address::generate(&e);
+            crate::require_matching_contract_id(&e, &caller, &expected);
+            Ok(())
+        }
+        assert_eq!(test_mismatch(), Err(ContractError::CrossContractCallerMismatch));
     }
 }

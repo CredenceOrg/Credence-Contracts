@@ -42,6 +42,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
     ("TimestampInFuture", ContractError::TimestampInFuture),
     ("ZeroBytes32", ContractError::ZeroBytes32),
+    ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch),
     ("NotAdmin", ContractError::NotAdmin),
     ("NotBondOwner", ContractError::NotBondOwner),
     ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
@@ -217,7 +218,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 92;
+const ALL_VARIANTS_COUNT: usize = 93;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
