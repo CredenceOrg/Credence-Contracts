@@ -998,7 +998,7 @@ mod tests {
     fn test_require_no_leading_zero_amount_macro() {
         // Test that Some(0) returns AmountExplicitlyZero error
         use soroban_sdk::Env;
-        
+
         fn test_zero() -> Result<(), ContractError> {
             let e = Env::default();
             crate::require_no_leading_zero_amount!(&e, Some(0_i128));
@@ -1302,7 +1302,9 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::PayloadTooOld => true,    // re-sign with current ledger number
+            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::PayloadTooOld => true,       // re-sign with current ledger number
+            ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1417,6 +1419,8 @@ mod tests {
             ContractError::VerificationFailed,
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,

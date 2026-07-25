@@ -53,6 +53,7 @@ pub mod domain;
 pub mod nonce;
 pub mod pausable;
 pub mod verifier;
+pub mod audit;
 
 pub use domain::{DelegatedActionPayload, DomainTag};
 pub use pausable::PauseProposalView;
