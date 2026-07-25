@@ -12,7 +12,7 @@
 //!    constant is reserved for future payload-level domain binding).
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{String, testutils::Address as _};
 use soroban_sdk::Env;
 
 // ---------------------------------------------------------------------------
@@ -46,6 +46,7 @@ fn make_payload(
         nonce,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&Env::default(), "CredenceDelegation"),
     }
 }
 
@@ -760,7 +761,8 @@ fn signature_domain_mismatch_rejected() {
         contract_id: contract_id.clone(),
         nonce: 0,
         scheme: 0,
-        signature_domain: String::from_str(e, "CredenceBond"), // Wrong domain
+        ledger_number: e.ledger().sequence(),
+        signature_domain: String::from_str(&e, "CredenceBond"), // Wrong domain
     };
 
     client.execute_delegated_delegate(

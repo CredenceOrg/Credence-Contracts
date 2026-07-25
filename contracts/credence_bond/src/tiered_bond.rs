@@ -12,12 +12,12 @@ pub fn get_tier_for_amount(amount: i128) -> BondTier {
         x if x < TIER_SILVER_MAX => BondTier::Silver,
         x if x < TIER_GOLD_MAX => BondTier::Gold,
         _ => BondTier::Platinum,
-//! Tiered Bond System
-//!
-//! Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
+    }
+}
 
-use crate::BondTier;
-use soroban_sdk::Env;
+/// Tiered Bond System
+///
+/// Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
 
 pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000;
 pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000;
@@ -98,8 +98,9 @@ pub fn emit_tier_change_if_needed(
     if old_tier != new_tier {
         e.events().publish(
             (Symbol::new(e, "tier_changed"),),
-            (identity.clone(), new_tier),
+            (identity.clone(), new_tier.clone()),
         );
+    }
     if core::mem::discriminant(&old_tier) == core::mem::discriminant(&new_tier) {
         return;
     }
