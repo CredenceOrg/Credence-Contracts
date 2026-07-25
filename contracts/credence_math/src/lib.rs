@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,9 +14,16 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use ethnum::U256;
+use soroban_sdk;
 
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
@@ -175,6 +183,15 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
 /// ```
 #[inline]
 #[must_use]
+
+/// Checked `i128` addition returning a typed error instead of panicking.
+#[inline]
+pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
+#[inline]
+#[must_use]
 pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static str) -> i128 {
     if denom == 0 {
         Option::<()>::None.expect(msg);
@@ -307,6 +324,21 @@ pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str)
     div_i128(numerator, BPS_DENOMINATOR, div_msg)
 }
 
+/// Saturated basis-point multiplication: `amount * bps / BPS_DENOMINATOR`.
+///
+/// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
+#[inline]
+#[must_use]
+pub fn sat_mul_bps(amount: i128, bps_value: u32) -> i128 {
+    mul_div_i128(
+        amount,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Down,
+        "sat_mul_bps overflow",
+    )
+}
+
 /// Calculate a basis-point percentage of an `i128` amount, rounded away from zero.
 ///
 /// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
@@ -361,188 +393,64 @@ pub fn split_bps(
     (fee, net)
 }
 
-/// Calculate a percentage of an `i128` amount: `amount * percentage / PERCENT_DENOMINATOR`.
+/// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
 ///
-/// # Panics
-/// Panics with `mul_msg` if the rounded result does not fit in `i128`. Use
-/// [`sat_percent`] on paths that must never panic.
+/// The callback `f` receives a (`Vec<T>`, `chunk_index`) pair for every
+/// chunk in order. The final chunk may contain fewer than `chunk_size`
+/// elements when the input length is not an exact multiple.
 ///
-/// `_div_msg` is retained for backwards compatibility with earlier callers
-/// that expected a follow-on division-marker; it is intentionally unused.
-#[inline]
-#[must_use]
-pub fn percent(
-    amount: i128,
-    percentage: u32,
-    mul_msg: &'static str,
-    _div_msg: &'static str,
-) -> i128 {
-    mul_div_i128(
-        amount,
-        percentage as i128,
-        PERCENT_DENOMINATOR,
-        Rounding::Down,
-        mul_msg,
-    )
-}
-
-/// Calculate a percentage of a `u64` amount: `amount * percentage / PERCENT_DENOMINATOR`.
+/// # Boundary behaviour
 ///
-/// # Panics
-/// Panics with `mul_msg` on u64 multiplication overflow.
-#[inline]
-#[must_use]
-pub fn percent_u64(amount: u64, percentage: u32, mul_msg: &'static str) -> u64 {
-    mul_u64(amount, percentage as u64, mul_msg) / (PERCENT_DENOMINATOR as u64)
-}
-
-/// Calculate a percentage of an `i128` amount, rounded away from zero.
+/// | Case               | Behaviour                                     |
+/// |--------------------|-----------------------------------------------|
+/// | `items` is empty   | `f` is never called; returns `0`.             |
+/// | exact multiple     | every chunk has exactly `chunk_size` elements |
+/// | remainder          | last chunk has `len % chunk_size` elements    |
 ///
-/// # Panics
-/// Panics with `msg` if the rounded result does not fit in `i128`. Use
-/// [`sat_percent_round_up`] on paths that must never panic.
-#[inline]
-#[must_use]
-pub fn percent_round_up(amount: i128, percentage: u32, msg: &'static str) -> i128 {
-    mul_div_i128(
-        amount,
-        percentage as i128,
-        PERCENT_DENOMINATOR,
-        Rounding::Up,
-        msg,
-    )
-}
-
-/// Split an amount into `(fee, net)` using percentage math.
+/// # Errors
 ///
-/// `div_msg` is forwarded into [`percent`] for API symmetry with the bps
-/// family but is not actively used today (see the deprecation note on
-/// `percent`).
+/// Aborts with [`ContractError::DivisionByZero`] when `chunk_size == 0`.
 ///
-/// # Panics
-/// Panics with `mul_msg` on i128 multiplication overflow, with `sub_msg` if
-/// `fee > amount`.
+/// # Returns
+///
+/// The number of chunks produced (i.e. `ceil(items.len() / chunk_size)`).
 #[inline]
-#[must_use]
-pub fn split_percent(
-    amount: i128,
-    percentage: u32,
-    mul_msg: &'static str,
-    div_msg: &'static str,
-    sub_msg: &'static str,
-) -> (i128, i128) {
-    let fee = percent(amount, percentage, mul_msg, div_msg);
-    let net = sub_i128(amount, fee, sub_msg);
-    (fee, net)
-}
+pub fn chunked_iter<T, F>(
+    e: &soroban_sdk::Env,
+    items: &soroban_sdk::Vec<T>,
+    chunk_size: u32,
+    mut f: F,
+) -> u32
+where
+    T: soroban_sdk::TryFromVal<soroban_sdk::Env, soroban_sdk::Val>
+        + soroban_sdk::IntoVal<soroban_sdk::Env, soroban_sdk::Val>
+        + Clone,
+    F: FnMut(soroban_sdk::Vec<T>, u32),
+{
+    if chunk_size == 0 {
+        soroban_sdk::panic_with_error!(e, ContractError::DivisionByZero);
+    }
 
-// -----------------------------------------------------------------------
-// Saturating helpers
-// -----------------------------------------------------------------------
+    let len = items.len();
+    if len == 0 {
+        return 0;
+    }
 
-/// Calculate `(amount * bps_value) / BPS_DENOMINATOR` with saturating math.
-/// Saturates to `i128::MAX` / `i128::MIN`; never panics on overflow.
-#[inline]
-#[must_use]
-pub fn sat_mul_bps(amount: i128, bps_value: u32) -> i128 {
-    sat_mul_div_i128(amount, bps_value as i128, BPS_DENOMINATOR, Rounding::Down)
-}
+    let mut chunk_index: u32 = 0;
+    let mut start: u32 = 0;
 
-/// Alias for [`sat_mul_bps`].
-#[inline]
-#[must_use]
-pub fn sat_bps(amount: i128, bps_value: u32) -> i128 {
-    sat_mul_bps(amount, bps_value)
-}
+    while start < len {
+        let end = (start + chunk_size).min(len);
+        let mut chunk: soroban_sdk::Vec<T> = soroban_sdk::Vec::new(e);
+        for i in start..end {
+            chunk.push_back(items.get(i).unwrap());
+        }
+        f(chunk, chunk_index);
+        chunk_index += 1;
+        start = end;
+    }
 
-/// Calculate `(amount * bps_value) / BPS_DENOMINATOR` for `u64` with saturating
-/// arithmetic; saturates to `u64::MAX`.
-#[inline]
-#[must_use]
-pub fn sat_mul_bps_u64(amount: u64, bps_value: u32) -> u64 {
-    let numerator = (amount as u128) * (bps_value as u128);
-    let res = numerator / (BPS_DENOMINATOR as u128);
-    res.try_into().unwrap_or(u64::MAX)
-}
-
-/// Alias for [`sat_mul_bps_u64`].
-#[inline]
-#[must_use]
-pub fn sat_bps_u64(amount: u64, bps_value: u32) -> u64 {
-    sat_mul_bps_u64(amount, bps_value)
-}
-
-/// Calculate `(amount * bps_value) / BPS_DENOMINATOR` rounding away from zero,
-/// with saturating math.
-#[inline]
-#[must_use]
-pub fn sat_bps_round_up(amount: i128, bps_value: u32) -> i128 {
-    sat_mul_div_i128(amount, bps_value as i128, BPS_DENOMINATOR, Rounding::Up)
-}
-
-/// Splits an amount into `(fee, net)` where `fee = sat_mul_bps(amount, bps_value)`
-/// and `net = amount.saturating_sub(fee)`.
-#[inline]
-#[must_use]
-pub fn sat_split_bps(amount: i128, bps_value: u32) -> (i128, i128) {
-    let fee = sat_mul_bps(amount, bps_value);
-    let net = amount.saturating_sub(fee);
-    (fee, net)
-}
-
-/// Calculate `(amount * percentage) / PERCENT_DENOMINATOR` with saturating math.
-/// Saturates to `i128::MAX` / `i128::MIN`.
-#[inline]
-#[must_use]
-pub fn sat_percent(amount: i128, percentage: u32) -> i128 {
-    sat_mul_div_i128(
-        amount,
-        percentage as i128,
-        PERCENT_DENOMINATOR,
-        Rounding::Down,
-    )
-}
-
-/// Alias for [`sat_percent`].
-#[inline]
-#[must_use]
-pub fn sat_mul_percent(amount: i128, percentage: u32) -> i128 {
-    sat_percent(amount, percentage)
-}
-
-/// Calculate `(amount * percentage) / PERCENT_DENOMINATOR` for `u64` with
-/// saturating arithmetic; saturates to `u64::MAX`.
-#[inline]
-#[must_use]
-pub fn sat_percent_u64(amount: u64, percentage: u32) -> u64 {
-    let numerator = (amount as u128) * (percentage as u128);
-    let res = numerator / (PERCENT_DENOMINATOR as u128);
-    res.try_into().unwrap_or(u64::MAX)
-}
-
-/// Alias for [`sat_percent_u64`].
-#[inline]
-#[must_use]
-pub fn sat_mul_percent_u64(amount: u64, percentage: u32) -> u64 {
-    sat_percent_u64(amount, percentage)
-}
-
-/// Calculate `(amount * percentage) / PERCENT_DENOMINATOR` rounding away from
-/// zero, with saturating math.
-#[inline]
-#[must_use]
-pub fn sat_percent_round_up(amount: i128, percentage: u32) -> i128 {
-    sat_mul_div_i128(amount, percentage as i128, PERCENT_DENOMINATOR, Rounding::Up)
-}
-
-/// Splits an amount into `(fee, net)` where `fee = sat_percent(amount, percentage)`
-/// and `net = amount.saturating_sub(fee)`.
-#[inline]
-#[must_use]
-pub fn sat_split_percent(amount: i128, percentage: u32) -> (i128, i128) {
-    let fee = sat_percent(amount, percentage);
-    let net = amount.saturating_sub(fee);
-    (fee, net)
+    chunk_index
 }
 
 #[cfg(test)]
@@ -567,6 +475,14 @@ mod tests {
         let fee = legacy_bps_i128(amount, bps);
         let net = amount.checked_sub(fee).expect("legacy i128 underflow");
         (fee, net)
+    }
+
+    #[test]
+    
+    #[test]
+    fn test_checked_add_or_error() {
+        assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
+        assert_eq!(super::checked_add_or_error(i128::MAX, 1), Err(crate::ContractError::Overflow));
     }
 
     #[test]
@@ -781,102 +697,63 @@ mod tests {
     #[test]
     fn ceil_div_i128_differs_from_floor_by_one_on_remainder() {
         // remainder present: ceil(11/5) = 3, floor(11/5) = 2
-        assert_eq!(
-            ceil_div_i128(11, 5, "test"),
-            div_i128(11, 5, "test") + 1
-        );
+        assert_eq!(ceil_div_i128(11, 5, "test"), div_i128(11, 5, "test") + 1);
         // exact division: ceil(10/5) == floor(10/5)
         assert_eq!(ceil_div_i128(10, 5, "test"), div_i128(10, 5, "test"));
     }
 
-    // -----------------------------------------------------------------------
-    // Saturating helpers (this PR's headline additions)
-    // -----------------------------------------------------------------------
-
-    /// Lock in `sat_mul_div_i128(denom == 0) == 0` (no panic, no overflow risk).
     #[test]
-    fn sat_mul_div_returns_zero_on_zero_denom() {
-        assert_eq!(super::sat_mul_div_i128(100, 100, 0, Rounding::Down), 0);
-        assert_eq!(super::sat_mul_div_i128(100, 100, 0, Rounding::Up), 0);
-        assert_eq!(super::sat_mul_div_i128(-100, 100, 0, Rounding::Nearest), 0);
+    fn bps_round_up_zero_bps() {
+        assert_eq!(bps_round_up(12345, 0, "test"), 0);
+        assert_eq!(bps_round_up(i128::MAX, 0, "test"), 0);
+        assert_eq!(bps_round_up(-98765, 0, "test"), 0);
     }
 
-    /// Saturates to `i128::MAX` on positive overflow and `i128::MIN` on
-    /// negative overflow — for both the bps and percent families. Locks in the
-    /// `mag >= max_neg` branch in `sat_mul_div_i128`.
     #[test]
-    fn sat_helper_saturates_to_both_bounds() {
-        // i128::MAX overflow → i128::MAX
-        assert_eq!(super::sat_mul_bps(i128::MAX, 20_000), i128::MAX);
-        assert_eq!(super::sat_bps(i128::MAX, 20_000), i128::MAX);
-        assert_eq!(super::sat_percent(i128::MAX, 200), i128::MAX);
-        assert_eq!(super::sat_mul_percent(i128::MAX, 200), i128::MAX);
-        // i128::MIN overflow → i128::MIN
-        assert_eq!(super::sat_mul_bps(i128::MIN, 20_000), i128::MIN);
-        assert_eq!(super::sat_bps(i128::MIN, 20_000), i128::MIN);
-        assert_eq!(super::sat_percent(i128::MIN, 200), i128::MIN);
-        assert_eq!(super::sat_mul_percent(i128::MIN, 200), i128::MIN);
+    fn bps_u64_boundaries() {
+        assert_eq!(bps_u64(0, 0, "mul"), 0);
+        assert_eq!(bps_u64(0, BPS_DENOMINATOR as u32, "mul"), 0);
+        assert_eq!(bps_u64(10000, BPS_DENOMINATOR as u32, "mul"), 10000);
+        let max_div_2 = u64::MAX / 2;
+        assert_eq!(
+            bps_u64(
+                (u64::MAX / (BPS_DENOMINATOR as u64 * 2)) * (BPS_DENOMINATOR as u64 * 2),
+                BPS_DENOMINATOR as u32,
+                "mul"
+            ),
+            max_div_2
+        );
     }
 
-    /// u64 family saturates to `u64::MAX` when the wide u128 quotient does not
-    /// fit in `u64`.
     #[test]
-    fn sat_helper_u64_saturates() {
-        assert_eq!(super::sat_mul_bps_u64(u64::MAX, 20_000), u64::MAX);
-        assert_eq!(super::sat_bps_u64(u64::MAX, 20_000), u64::MAX);
-        assert_eq!(super::sat_percent_u64(u64::MAX, 200), u64::MAX);
-        assert_eq!(super::sat_mul_percent_u64(u64::MAX, 200), u64::MAX);
+    fn split_bps_boundaries() {
+        assert_eq!(split_bps(0, 0, "mul", "div", "sub"), (0, 0));
+        assert_eq!(
+            split_bps(0, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (0, 0)
+        );
+        assert_eq!(split_bps(12345, 0, "mul", "div", "sub"), (0, 12345));
+        assert_eq!(
+            split_bps(12345, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (12345, 0)
+        );
+        let amount = i128::MAX / 20000;
+        assert_eq!(
+            split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (amount, 0)
+        );
     }
+}
 
-    /// Round-up behaviour matches `bps_round_up` on a happy-path input,
-    /// saturates on overflow, and is the same for `sat_bps_round_up` /
-    /// `sat_percent_round_up`.
-    #[test]
-    fn sat_helper_round_up_matches_panicking_family_for_in_range_values() {
-        assert_eq!(super::sat_bps_round_up(10_001, 1), 2);
-        assert_eq!(super::sat_percent_round_up(101, 1), 2);
-        // saturation on overflow
-        assert_eq!(super::sat_bps_round_up(i128::MAX, 20_000), i128::MAX);
-        assert_eq!(super::sat_percent_round_up(i128::MAX, 200), i128::MAX);
-    }
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
 
-    /// Splitting yields sensible `(fee, net)` on the happy path and clamps
-    /// to `(i128::MAX/i128::MIN, 0)` at the extremes (saturating_sub prevents
-    /// negative roll-overs at the bound).
-    #[test]
-    fn sat_split_bps_and_percent() {
-        // 1% on 10_000 → (100, 9_900).
-        let (fee, net) = super::sat_split_bps(10_000, 100);
-        assert_eq!(fee, 100);
-        assert_eq!(net, 9_900);
-
-        // 1% on 10_000 → (100, 9_900).
-        let (fee, net) = super::sat_split_percent(10_000, 1);
-        assert_eq!(fee, 100);
-        assert_eq!(net, 9_900);
-
-        // ext`percent` retains the 4-arg signature for backwards compatibility.
-        let (fee, net) = split_percent(10_000, 10, "m", "d", "s");
-        assert_eq!(fee, 1_000);
-        assert_eq!(net, 9_000);
-
-        // saturation ext`split` extremes
-        let (fee, net) = super::sat_split_bps(i128::MAX, 20_000);
-        assert_eq!(fee, i128::MAX);
-        assert_eq!(net, 0);
-        let (fee, net) = super::sat_split_bps(i128::MIN, 20_000);
-        assert_eq!(fee, i128::MIN);
-        assert_eq!(net, 0);
-        let (fee, net) = super::sat_split_percent(i128::MAX, 200);
-        assert_eq!(fee, i128::MAX);
-        assert_eq!(net, 0);
-    }
-
-    /// Sanity check the existing call shape: `percent` is still 4-arg
-    /// (the trailing `_div_msg` is accepted but unused for backwards compat).
-    #[test]
-    fn percent_signature_remains_four_args() {
-        assert_eq!(super::percent(1_000, 10, "m", "d"), 100);
-        assert_eq!(super::percent_u64(1_000, 10, "m"), 100);
+    proptest! {
+        #[test]
+        fn sat_mul_bps_identity(amount in 0..i128::MAX) {
+            prop_assert_eq!(sat_mul_bps(amount, 10_000), amount);
+        }
     }
 }

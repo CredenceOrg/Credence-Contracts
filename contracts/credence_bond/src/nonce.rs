@@ -67,9 +67,7 @@ pub fn get_grace_window(e: &Env) -> u64 {
 /// directly widens the replay/expiry attack surface.
 pub fn set_grace_window(e: &Env, grace: u64) -> u64 {
     let old = get_grace_window(e);
-    e.storage()
-        .instance()
-        .set(&DataKey::GraceWindow, &grace);
+    e.storage().instance().set(&DataKey::GraceWindow, &grace);
     bump_nonce_ttl(e, &DataKey::GraceWindow, 0);
     old
 }
@@ -203,3 +201,32 @@ mod testutils_helpers {
 
 #[cfg(any(test, feature = "testutils"))]
 pub use testutils_helpers::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    proptest! {
+        #[test]
+        fn prop_require_within_ttl_boundaries_enforce_strict_expiry(expires_at in 1u64..100_000_000_000u64) {
+            let e = Env::default();
+            
+            // At expires_at - 1 (valid)
+            e.ledger().with_mut(|l| l.timestamp = expires_at - 1);
+            require_not_expired(&e, expires_at);
+
+            // At expires_at (valid, boundary)
+            e.ledger().with_mut(|l| l.timestamp = expires_at);
+            require_not_expired(&e, expires_at);
+
+            // At expires_at + 1 (invalid)
+            e.ledger().with_mut(|l| l.timestamp = expires_at + 1);
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                require_not_expired(&e, expires_at);
+            }));
+            assert!(result.is_err(), "Expected panic at expires_at + 1");
+        }
+    }
+}

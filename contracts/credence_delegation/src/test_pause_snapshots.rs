@@ -1,76 +1,84 @@
 extern crate std;
-use std::format;
-use std::string::String;
-use std::collections::BTreeMap;
-use std::vec;
+
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
+use serde::Serialize;
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
-use serde::{Serialize, Deserialize};
+use std::collections::BTreeMap;
 
-#[derive(Serialize, Deserialize, Debug, Ord, PartialOrd, Eq, PartialEq)]
-enum SnapshotKey {
-    Admin,
-    Paused,
-    PauseSignerCount,
-    PauseThreshold,
-    PauseProposalCounter,
-    PauseProposal(u64),
-    PauseApprovalCount(u64),
-    PauseSigner(String),
+#[derive(Serialize)]
+struct ProposalSnapshot {
+    action: Option<u32>,
+    approval_count: Option<u32>,
+    approvals: BTreeMap<std::string::String, bool>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize)]
 struct StorageSnapshot {
-    instance: BTreeMap<String, serde_json::Value>,
+    initialized: bool,
+    paused: bool,
+    pause_signer_count: u32,
+    pause_threshold: u32,
+    signers: BTreeMap<std::string::String, bool>,
+    proposals: BTreeMap<std::string::String, ProposalSnapshot>,
 }
 
-fn dump_pause_storage(e: &Env, contract_id: &Address, signers: &[Address]) -> StorageSnapshot {
+fn dump_pause_storage(
+    e: &Env,
+    contract_id: &Address,
+    signers: &[Address],
+    proposal_ids: &[u64],
+) -> StorageSnapshot {
     e.as_contract(contract_id, || {
-        let mut instance = BTreeMap::new();
-        
-        // Helper to insert with stringified key
-        let mut insert = |key: SnapshotKey, val: serde_json::Value| {
-            instance.insert(format!("{:?}", key), val);
-        };
-
-        // 1. Fixed keys
-        if let Some(admin) = e.storage().instance().get::<_, Address>(&DataKey::Admin) {
-            insert(SnapshotKey::Admin, serde_json::to_value(format!("{:?}", admin)).unwrap());
-        }
-        if let Some(paused) = e.storage().instance().get::<_, bool>(&DataKey::Paused) {
-            insert(SnapshotKey::Paused, serde_json::to_value(paused).unwrap());
-        }
-        if let Some(count) = e.storage().instance().get::<_, u32>(&DataKey::PauseSignerCount) {
-            insert(SnapshotKey::PauseSignerCount, serde_json::to_value(count).unwrap());
-        }
-        if let Some(threshold) = e.storage().instance().get::<_, u32>(&DataKey::PauseThreshold) {
-            insert(SnapshotKey::PauseThreshold, serde_json::to_value(threshold).unwrap());
-        }
-        if let Some(counter) = e.storage().instance().get::<_, u64>(&DataKey::PauseProposalCounter) {
-            insert(SnapshotKey::PauseProposalCounter, serde_json::to_value(counter).unwrap());
+        let storage = e.storage().instance();
+        let mut snapshot_signers = BTreeMap::new();
+        for (index, signer) in signers.iter().enumerate() {
+            let enabled = storage
+                .get::<_, bool>(&DataKey::PauseSigner(signer.clone()))
+                .unwrap_or(false);
+            snapshot_signers.insert(std::format!("signer_{}", index + 1), enabled);
         }
 
-        // 2. Signer-specific keys
-        for signer in signers {
-            if let Some(enabled) = e.storage().instance().get::<_, bool>(&DataKey::PauseSigner(signer.clone())) {
-                insert(SnapshotKey::PauseSigner(format!("{:?}", signer)), serde_json::to_value(enabled).unwrap());
+        let mut proposals = BTreeMap::new();
+        for (index, proposal_id) in proposal_ids.iter().enumerate() {
+            let mut approvals = BTreeMap::new();
+            for (signer_index, signer) in signers.iter().enumerate() {
+                let approved = storage
+                    .get::<_, bool>(&DataKey::PauseApproval(*proposal_id, signer.clone()))
+                    .unwrap_or(false);
+                approvals.insert(std::format!("signer_{}", signer_index + 1), approved);
             }
+            proposals.insert(
+                std::format!("proposal_{}", index + 1),
+                ProposalSnapshot {
+                    action: storage.get(&DataKey::PauseProposal(*proposal_id)),
+                    approval_count: storage.get(&DataKey::PauseApprovalCount(*proposal_id)),
+                    approvals,
+                },
+            );
         }
 
-        // 3. Proposal-specific keys
-        let next_id: u64 = e.storage().instance().get(&DataKey::PauseProposalCounter).unwrap_or(0);
-        for id in 0..next_id {
-            if let Some(action) = e.storage().instance().get::<_, u32>(&DataKey::PauseProposal(id)) {
-                insert(SnapshotKey::PauseProposal(id), serde_json::to_value(action).unwrap());
-            }
-            if let Some(count) = e.storage().instance().get::<_, u32>(&DataKey::PauseApprovalCount(id)) {
-                insert(SnapshotKey::PauseApprovalCount(id), serde_json::to_value(count).unwrap());
-            }
+        StorageSnapshot {
+            initialized: storage.has(&DataKey::Admin),
+            paused: storage.get(&DataKey::Paused).unwrap_or(false),
+            pause_signer_count: storage.get(&DataKey::PauseSignerCount).unwrap_or(0),
+            pause_threshold: storage.get(&DataKey::PauseThreshold).unwrap_or(0),
+            signers: snapshot_signers,
+            proposals,
         }
-
-        StorageSnapshot { instance }
     })
+}
+
+fn assert_pause_snapshot(
+    name: &str,
+    e: &Env,
+    contract_id: &Address,
+    signers: &[Address],
+    proposal_ids: &[u64],
+) {
+    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
+        insta::assert_json_snapshot!(name, dump_pause_storage(e, contract_id, signers, proposal_ids));
+    });
 }
 
 #[test]
@@ -79,67 +87,93 @@ fn test_pause_proposal_lifecycle_snapshots() {
     e.mock_all_auths();
     let contract_id = e.register(CredenceDelegation, ());
     let client = CredenceDelegationClient::new(&e, &contract_id);
-    
+
     let admin = Address::generate(&e);
     let signer1 = Address::generate(&e);
     let signer2 = Address::generate(&e);
     let signer3 = Address::generate(&e);
-    let all_signers = vec![signer1.clone(), signer2.clone(), signer3.clone()];
+    let all_signers = std::vec![signer1.clone(), signer2.clone(), signer3.clone()];
 
-    // 1. Initial State
     client.initialize(&admin);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("01_initial_state", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot("01_initial_state", &e, &contract_id, &all_signers, &[]);
 
-    // 2. Setup signers and threshold
     client.set_pause_signer(&admin, &signer1, &true);
     client.set_pause_signer(&admin, &signer2, &true);
     client.set_pause_signer(&admin, &signer3, &true);
     client.set_pause_threshold(&admin, &2);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("02_signers_set", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot("02_signers_set", &e, &contract_id, &all_signers, &[]);
 
-    // 3. Propose Pause
     let prop_id = client.pause(&signer1).unwrap();
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("03_pause_proposed", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot("03_pause_proposed", &e, &contract_id, &all_signers, &[prop_id]);
 
-    // 4. First Approval (already done by proposer, so this is second approval)
     client.approve_pause_proposal(&signer2, &prop_id);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("04_pause_approved", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot("04_pause_approved", &e, &contract_id, &all_signers, &[prop_id]);
 
-    // 5. Execute Pause
     client.execute_pause_proposal(&prop_id);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("05_pause_executed", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot("05_pause_executed", &e, &contract_id, &all_signers, &[prop_id]);
 
-    // 6. Propose Unpause
     let unpause_id = client.unpause(&signer3).unwrap();
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("06_unpause_proposed", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot(
+        "06_unpause_proposed",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id, unpause_id],
+    );
 
-    // 7. Approve Unpause
     client.approve_pause_proposal(&signer1, &unpause_id);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("07_unpause_approved", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot(
+        "07_unpause_approved",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id, unpause_id],
+    );
 
-    // 8. Execute Unpause
     client.execute_pause_proposal(&unpause_id);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("08_unpause_executed", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
-    
-    // 9. Signer removal
+    assert_pause_snapshot(
+        "08_unpause_executed",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id, unpause_id],
+    );
+
     client.set_pause_signer(&admin, &signer2, &false);
-    insta::with_settings!({snapshot_path => "../test_snapshots/test_pausable_state"}, {
-        insta::assert_json_snapshot!("09_signer_removed", dump_pause_storage(&e, &contract_id, &all_signers));
-    });
+    assert_pause_snapshot(
+        "09_signer_removed",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id, unpause_id],
+    );
+}
+
+#[test]
+fn pause_proposal_remains_pending_when_approvals_are_below_threshold() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceDelegation, ());
+    let client = CredenceDelegationClient::new(&e, &contract_id);
+    let admin = Address::generate(&e);
+    let signer1 = Address::generate(&e);
+    let signer2 = Address::generate(&e);
+    let signers = std::vec![signer1.clone(), signer2.clone()];
+
+    client.initialize(&admin);
+    client.set_pause_signer(&admin, &signer1, &true);
+    client.set_pause_signer(&admin, &signer2, &true);
+    client.set_pause_threshold(&admin, &2);
+
+    let proposal_id = client.pause(&signer1).unwrap();
+    assert!(client.try_execute_pause_proposal(&proposal_id).is_err());
+    assert!(!client.is_paused());
+
+    assert_pause_snapshot(
+        "10_pause_execution_rejected_below_threshold",
+        &e,
+        &contract_id,
+        &signers,
+        &[proposal_id],
+    );
 }

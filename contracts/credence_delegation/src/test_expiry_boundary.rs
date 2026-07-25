@@ -37,7 +37,7 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{String, testutils::{Address as _, Ledger as _}};
 use soroban_sdk::Env;
 use std::vec::Vec as StdVec;
 
@@ -58,6 +58,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>) {
 
 /// Build a delegated payload for testing
 fn delegate_payload(
+    e: &Env,
     owner: &Address,
     target: &Address,
     contract_id: &Address,
@@ -70,6 +71,8 @@ fn delegate_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
+        ledger_number: 0,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -531,7 +534,7 @@ fn test_expiry_boundary_delegated_lower_reject_exact() {
 
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    let payload = delegate_payload(&owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0);
 
     client.execute_delegated_delegate(
         &owner,
@@ -551,7 +554,7 @@ fn test_expiry_boundary_delegated_lower_accept_plus_1() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     let expires_at = now.saturating_add(1);
-    let payload = delegate_payload(&owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0);
 
     let d = client.execute_delegated_delegate(
         &owner,
@@ -573,7 +576,7 @@ fn test_expiry_boundary_delegated_nonce_not_consumed_on_expiry_rejection() {
 
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
-    let payload = delegate_payload(&owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0);
 
     // Try with expires_at = now (should fail)
     let result = client.try_execute_delegated_delegate(
@@ -600,7 +603,7 @@ fn test_expiry_boundary_delegated_upper_reject_max_plus_1() {
     let expires_at = now
         .saturating_add(MAX_DELEGATION_DURATION)
         .saturating_add(1);
-    let payload = delegate_payload(&owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0);
 
     client.execute_delegated_delegate(
         &owner,
@@ -622,7 +625,7 @@ fn test_expiry_boundary_delegated_upper_delegated_nonce_not_consumed_on_over_max
     let expires_at = now
         .saturating_add(MAX_DELEGATION_DURATION)
         .saturating_add(1);
-    let payload = delegate_payload(&owner, &delegate, &client.address, 0);
+    let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0);
 
     let result = client.try_execute_delegated_delegate(
         &owner,
@@ -648,7 +651,7 @@ fn test_expiry_boundary_delegated_monotonic_advance_valid_sequence() {
         let delegate = Address::generate(&e);
         let now = e.ledger().timestamp();
         let expires_at = now.saturating_add(86400); // +1 day
-        let payload = delegate_payload(&owner, &delegate, &client.address, i);
+        let payload = delegate_payload(&e, &owner, &delegate, &client.address, i);
 
         let d = client.execute_delegated_delegate(
             &owner,

@@ -4,9 +4,11 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
-use soroban_sdk::String;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256};
+use soroban_sdk::String;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256,
+};
 
 use crate::pausable;
 
@@ -112,7 +114,7 @@ fn zero_cumulative_amount() -> CumulativeAmount {
 ///
 /// # Formula
 ///
-/// 
+///
 ///
 ///  alone overflows for multi-rollover sums, so rollover-safe storage
 /// splits the value across two fields.  This helper is the single canonical
@@ -209,6 +211,10 @@ impl CredenceTreasury {
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
     pub fn initialize(e: Env, admin: Address, token: Address) {
         bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Token, &token);
@@ -272,9 +278,7 @@ impl CredenceTreasury {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         from.require_auth();
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let admin: Address = e
             .storage()
             .instance()
@@ -391,7 +395,7 @@ impl CredenceTreasury {
     ///
     /// Idempotent: if  is already in the signer set this is a no-op.
     /// This invariant keeps  exactly equal to the distinct signer set size,
-    /// which is required for the  gate in 
+    /// which is required for the  gate in
     /// and  to remain meaningful.
     pub fn add_signer(e: Env, signer: Address) {
         bump_instance_ttl(&e);
@@ -510,9 +514,7 @@ impl CredenceTreasury {
         if !is_signer {
             panic_with_error!(&e, ContractError::NotSigner);
         }
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let total: i128 = e
             .storage()
             .instance()
@@ -879,7 +881,7 @@ impl CredenceTreasury {
     /// Equivalent to  but flattens the rollover/remainder
     /// accounting into one comparable value using []:
     ///
-    /// 
+    ///
     ///
     /// Use this instead of [] when you need a single value
     /// for comparisons, dashboards, or indexers — it is the canonical on-chain source
@@ -1031,9 +1033,7 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
 
         let token_addr = Self::get_token(e.clone());
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);

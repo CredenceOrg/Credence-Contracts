@@ -45,6 +45,8 @@ pub enum ArbitrationError {
     NotAuthorized = 12,
     ReasonTooLong = 14,
     QuorumNotMet = 13,
+    /// The actual outcome does not match the promised outcome.
+    PromiseNotKept = 15,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -62,5 +64,17 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
         Ok(())
     } else {
         Err(ArbitrationError::InvalidTransition)
+    }
+}
+
+/// Assert that a promised outcome matches the actual outcome.
+///
+/// Returns `Ok(())` when the outcomes match (promise kept),
+/// or `Err(ArbitrationError::PromiseNotKept)` when they differ (promise broken).
+pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), ArbitrationError> {
+    if promised == actual {
+        Ok(())
+    } else {
+        Err(ArbitrationError::PromiseNotKept)
     }
 }

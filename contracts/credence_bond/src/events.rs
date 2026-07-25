@@ -423,6 +423,16 @@ pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_a
     let data = new_admin.clone();
     e.events().publish(topics, data);
 }
+
+/// Emitted when an upgrade admin transfer is cancelled.
+pub fn emit_upgrade_admin_transfer_cancelled(e: &Env, admin: &Address, pending_admin: &Address) {
+    let topics = (
+        Symbol::new(e, "upgrade_admin_transfer_cancelled"),
+        admin.clone(),
+    );
+    let data = pending_admin.clone();
+    e.events().publish(topics, data);
+}
 /// Emitted when a protocol parameter is updated.
 ///
 /// # Topics (Indexed)

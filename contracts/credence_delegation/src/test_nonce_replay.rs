@@ -7,7 +7,7 @@
 //! cases and deterministic full-range sweeps.
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{String, testutils::Address as _};
 use soroban_sdk::Env;
 
 // ---------------------------------------------------------------------------
@@ -25,6 +25,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>) {
 }
 
 fn make_payload(
+    e: &Env,
     owner: &Address,
     delegate: &Address,
     contract_id: &Address,
@@ -37,6 +38,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
+        ledger_number: 0,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -71,7 +74,7 @@ fn nonce_replay_span_one_rejects_only_nonce() {
                 &delegate,
                 &DelegationType::Attestation,
                 &(e.ledger().timestamp() + 86_400),
-                &make_payload(&identity, &delegate, &client.address, 0),
+                &make_payload(&e, &identity, &delegate, &client.address, 0),
             )
             .is_err(),
         "nonce 0 must be rejected after invalidating [0, 1)"
@@ -84,7 +87,7 @@ fn nonce_replay_span_one_rejects_only_nonce() {
             &delegate,
             &DelegationType::Attestation,
             &(e.ledger().timestamp() + 86_400),
-            &make_payload(&identity, &delegate, &client.address, 1),
+            &make_payload(&e, &identity, &delegate, &client.address, 1),
         );
     assert_eq!(client.get_nonce(&identity), 2);
 }
@@ -108,7 +111,7 @@ fn nonce_replay_max_span_succeeds_and_rejects_all_prior_nonces() {
                     &delegate,
                     &DelegationType::Attestation,
                     &(e.ledger().timestamp() + 86_400),
-                    &make_payload(&identity, &delegate, &client.address, n),
+                    &make_payload(&e, &identity, &delegate, &client.address, n),
                 )
                 .is_err(),
             "nonce {n} must be rejected after full max-span invalidation"
@@ -143,7 +146,7 @@ fn nonce_replay_boundary_last_in_range_rejected() {
                 &delegate,
                 &DelegationType::Attestation,
                 &(e.ledger().timestamp() + 86_400),
-                &make_payload(&identity, &delegate, &client.address, NEW_NONCE - 1),
+                &make_payload(&e, &identity, &delegate, &client.address, NEW_NONCE - 1),
             )
             .is_err(),
         "nonce {} (last in range) must be rejected",
@@ -166,7 +169,7 @@ fn nonce_replay_boundary_first_after_range_accepted() {
         &delegate,
         &DelegationType::Attestation,
         &(e.ledger().timestamp() + 86_400),
-        &make_payload(&identity, &delegate, &client.address, NEW_NONCE),
+        &make_payload(&e, &identity, &delegate, &client.address, NEW_NONCE),
     );
     assert_eq!(client.get_nonce(&identity), NEW_NONCE + 1);
 }
@@ -215,7 +218,7 @@ fn nonce_replay_10k_deterministic_sweep() {
             &delegate,
             &DelegationType::Attestation,
             &(e.ledger().timestamp() + 86_400),
-            &make_payload(&identity, &delegate, &client.address, test_nonce),
+            &make_payload(&e, &identity, &delegate, &client.address, test_nonce),
         );
         assert!(
             result.is_err(),

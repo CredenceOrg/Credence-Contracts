@@ -13,6 +13,107 @@ fn test_create_bond() {
     assert_eq!(bond.slashed_amount, 0);
     assert_eq!(bond.identity, identity);
 }
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_top_up_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.top_up(&identity, &0_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_top_up_rejects_negative_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.top_up(&identity, &-100_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_withdraw_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    e.ledger().with_mut(|l| l.timestamp += 86401);
+    client.withdraw(&identity, &0_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_withdraw_rejects_negative_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    e.ledger().with_mut(|l| l.timestamp += 86401);
+    client.withdraw(&identity, &-100_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_slash_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.slash(&admin, &identity, &0_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_slash_rejects_negative_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.slash(&admin, &identity, &-100_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_deposit_fees_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, _identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.deposit_fees(&0_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_deposit_fees_rejects_negative_amount() {
+    let e = Env::default();
+    let (client, admin, _identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    
+    client.deposit_fees(&-100_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_set_attester_stake_rejects_zero_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    let attester = soroban_sdk::testutils::Address::generate(&e);
+    
+    client.set_attester_stake(&admin, &attester, &0_i128);
+}
+
+#[test]
+#[should_panic(expected = "AmountMustBePositive")]
+fn test_set_attester_stake_rejects_negative_amount() {
+    let e = Env::default();
+    let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
+    let attester = soroban_sdk::testutils::Address::generate(&e);
+    
+    client.set_attester_stake(&admin, &attester, &-100_i128);
+}
+
 #[cfg(test)]
 mod test_admin_transfer {
     use crate::CredenceBond;

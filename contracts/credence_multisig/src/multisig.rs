@@ -131,6 +131,10 @@ impl CredenceMultiSig {
     /// @param threshold Required number of signatures for execution
     pub fn initialize(e: Env, admin: Address, signers: Vec<Address>, threshold: u32) {
         bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
 
         if signers.is_empty() {
@@ -161,9 +165,11 @@ impl CredenceMultiSig {
         e.storage().instance().set(&DataKey::SignerList, &signers);
 
         for signer in signers.iter() {
-            e.storage()
-                .instance()
-                .set(&DataKey::Signer(signer.clone()), &true);
+            let key = DataKey::Signer(signer.clone());
+            if e.storage().instance().has(&key) {
+                panic_with_error!(&e, ContractError::AlreadyActive);
+            }
+            e.storage().instance().set(&key, &true);
         }
 
         e.events().publish(
