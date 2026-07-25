@@ -14,10 +14,9 @@
 //! - **Tier Monotonicity**: operations that decrease the value/net bond of a bond (Slash,
 //!   WithdrawEarly, Settle) must never increase its tier rank (`tier_after <= tier_before`).
 
-
-use credence_bond::{CredenceBond, CredenceBondClient, BondTier};
-use credence_bond::soroban_sdk::{Env, Address};
 use credence_bond::soroban_sdk::testutils::{Address as _, Ledger as _};
+use credence_bond::soroban_sdk::{Address, Env};
+use credence_bond::{BondTier, CredenceBond, CredenceBondClient};
 use proptest::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -32,19 +31,13 @@ pub enum BondAction {
         notice_period_duration: u64,
     },
     /// Increase the bonded amount.
-    TopUp {
-        amount: i128,
-    },
+    TopUp { amount: i128 },
     /// Slash a portion of the bond.
-    Slash {
-        amount: i128,
-    },
+    Slash { amount: i128 },
     /// Renew the bond if it is rolling.
     RollRenew,
     /// Withdraw early with a penalty.
-    WithdrawEarly {
-        amount: i128,
-    },
+    WithdrawEarly { amount: i128 },
     /// Request withdrawal for a rolling bond.
     RequestWithdraw,
     /// Fully settle and withdraw the bond.
@@ -72,7 +65,11 @@ impl Arbitrary for BondAction {
         prop_oneof![
             // Deposit / Create Bond
             // Durations must be valid: [MIN_BOND_DURATION (86_400), MAX_BOND_DURATION (31_536_000)]
-            (amount_strategy.clone(), 86400u64..31536000u64, any::<bool>())
+            (
+                amount_strategy.clone(),
+                86400u64..31536000u64,
+                any::<bool>()
+            )
                 .prop_flat_map(|(amount, duration, is_rolling)| {
                     let notice_period_strat = if is_rolling {
                         1u64..=duration
@@ -89,18 +86,25 @@ impl Arbitrary for BondAction {
                     })
                 }),
             // TopUp
-            amount_strategy.clone().prop_map(|amount| BondAction::TopUp { amount }),
+            amount_strategy
+                .clone()
+                .prop_map(|amount| BondAction::TopUp { amount }),
             // Slash
-            amount_strategy.clone().prop_map(|amount| BondAction::Slash { amount }),
+            amount_strategy
+                .clone()
+                .prop_map(|amount| BondAction::Slash { amount }),
             // RollRenew
             Just(BondAction::RollRenew),
             // WithdrawEarly
-            amount_strategy.clone().prop_map(|amount| BondAction::WithdrawEarly { amount }),
+            amount_strategy
+                .clone()
+                .prop_map(|amount| BondAction::WithdrawEarly { amount }),
             // RequestWithdraw
             Just(BondAction::RequestWithdraw),
             // Settle
             Just(BondAction::Settle),
-        ].boxed()
+        ]
+        .boxed()
     }
 }
 
@@ -130,7 +134,6 @@ fn expected_tier_for_amount(amount: i128) -> BondTier {
         BondTier::Platinum
     }
 }
-
 
 use std::sync::Once;
 static INIT: Once = Once::new();
@@ -178,7 +181,9 @@ fn run_sequence(actions: &[BondAction]) {
                 BondAction::Settle => {
                     if bond.is_rolling && bond.withdrawal_requested_at > 0 {
                         // Force time to end of notice period
-                        let eligible = bond.withdrawal_requested_at.saturating_add(bond.notice_period_duration);
+                        let eligible = bond
+                            .withdrawal_requested_at
+                            .saturating_add(bond.notice_period_duration);
                         if e.ledger().timestamp() < eligible {
                             e.ledger().with_mut(|li| li.timestamp = eligible);
                         }
@@ -195,35 +200,38 @@ fn run_sequence(actions: &[BondAction]) {
         }
 
         // 4. Execute the action, catching expected/validation contract panics
-        let res = catch_unwind(AssertUnwindSafe(|| {
-            match action {
-                BondAction::Deposit { amount, duration, is_rolling, notice_period_duration } => {
-                    client.create_bond(
-                        &identity,
-                        amount,
-                        duration,
-                        is_rolling,
-                        notice_period_duration
-                    );
-                }
-                BondAction::TopUp { amount } => {
-                    client.top_up(amount);
-                }
-                BondAction::Slash { amount } => {
-                    client.slash(&admin, amount);
-                }
-                BondAction::RollRenew => {
-                    client.renew_if_rolling();
-                }
-                BondAction::WithdrawEarly { amount } => {
-                    client.withdraw_early(amount);
-                }
-                BondAction::RequestWithdraw => {
-                    client.request_withdrawal();
-                }
-                BondAction::Settle => {
-                    client.withdraw_bond(&identity);
-                }
+        let res = catch_unwind(AssertUnwindSafe(|| match action {
+            BondAction::Deposit {
+                amount,
+                duration,
+                is_rolling,
+                notice_period_duration,
+            } => {
+                client.create_bond(
+                    &identity,
+                    amount,
+                    duration,
+                    is_rolling,
+                    notice_period_duration,
+                );
+            }
+            BondAction::TopUp { amount } => {
+                client.top_up(amount);
+            }
+            BondAction::Slash { amount } => {
+                client.slash(&admin, amount);
+            }
+            BondAction::RollRenew => {
+                client.renew_if_rolling();
+            }
+            BondAction::WithdrawEarly { amount } => {
+                client.withdraw_early(amount);
+            }
+            BondAction::RequestWithdraw => {
+                client.request_withdrawal();
+            }
+            BondAction::Settle => {
+                client.withdraw_bond(&identity);
             }
         }));
 

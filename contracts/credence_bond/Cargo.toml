@@ -19,6 +19,10 @@ autobins = false
 name = "proptest_tier"
 path = "tests/proptest_tier.rs"
 
+[[test]]
+name = "test_iter_chunks"
+path = "tests/test_iter_chunks.rs"
+
 [lib]
 # `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
 # the contract as a normal Rust dependency. The `cdylib` artifact used for the

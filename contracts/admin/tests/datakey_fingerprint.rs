@@ -14,7 +14,7 @@
 //! Field values are fixed, deterministic placeholders: the fingerprint is about
 //! the variant *tag and shape*, not the runtime data stored under it.
 
-use admin::{DataKey, AdminRole};
+use admin::{AdminRole, DataKey};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::xdr::{FromXdr, ToXdr};
 use soroban_sdk::{Address, Bytes, Env};
@@ -58,7 +58,6 @@ fn fingerprints(env: &Env) -> Vec<(&'static str, String)> {
 fn render(fps: &[(&'static str, String)]) -> String {
     let mut out = String::new();
     for (name, hex) in fps {
-
         out.push_str(name);
         out.push_str(" = ");
         out.push_str(hex);
