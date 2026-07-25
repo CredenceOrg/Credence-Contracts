@@ -138,6 +138,25 @@ pub fn require_non_empty_vec<T>(e: &Env, v: &Vec<T>) {
     }
 }
 
+/// Verifies that a batch size is non-zero and does not exceed the maximum allowed size.
+///
+/// # Arguments
+/// * `e` - Soroban environment
+/// * `len` - The actual size of the batch
+/// * `max_size` - The maximum allowed size for this batch operation
+///
+/// # Panics
+/// * `ContractError::EmptyBatch` if `len == 0`
+/// * `ContractError::BatchTooLarge` if `len > max_size`
+pub fn verify_batch_size(e: &Env, len: u32, max_size: u32) {
+    if len == 0 {
+        panic_with_error!(e, ContractError::EmptyBatch);
+    }
+    if len > max_size {
+        panic_with_error!(e, ContractError::BatchTooLarge);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

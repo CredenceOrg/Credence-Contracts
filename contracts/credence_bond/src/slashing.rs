@@ -1,4 +1,3 @@
-use crate::{DataKey, IdentityBond};
 //! Slashing Module
 //!
 //! Implements the core `slash_bond()` functionality for reducing a bond's value as a penalty
@@ -15,6 +14,8 @@ use crate::{DataKey, IdentityBond};
 //! - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
 //! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
 //! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
+
+use crate::{DataKey, IdentityBond};
 
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};

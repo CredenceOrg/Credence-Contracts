@@ -7,8 +7,7 @@ use crate::storage;
 use crate::DataKey;
 use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
-use soroban_sdk::{contracttype, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};
 
 /// Source classification for funds leaving the bond contract.
 #[contracttype]

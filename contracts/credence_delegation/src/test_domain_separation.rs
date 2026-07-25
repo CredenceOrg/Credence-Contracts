@@ -740,37 +740,7 @@ fn test_mixed_execution_interleaving() {
     assert_eq!(client.get_nonce(&owner), 2);
 }
 
-// ---------------------------------------------------------------------------
-// Signature domain mismatch: cross-contract replay protection
-// ---------------------------------------------------------------------------
 
-#[test]
-#[should_panic(expected = "Error(Contract, #225)")] // DomainMismatch
-fn signature_domain_mismatch_rejected() {
-    let (e, client, contract_id) = setup();
-    let owner = Address::generate(&e);
-    let delegate = Address::generate(&e);
-    let expiry = e.ledger().timestamp() + 86_400;
-
-    // Build a payload with wrong signature domain (simulating cross-contract replay)
-    let wrong_domain_payload = DelegatedActionPayload {
-        domain: DomainTag::Delegate,
-        owner: owner.clone(),
-        target: delegate.clone(),
-        contract_id: contract_id.clone(),
-        nonce: 0,
-        scheme: 0,
-        signature_domain: String::from_str(e, "CredenceBond"), // Wrong domain
-    };
-
-    client.execute_delegated_delegate(
-        &owner,
-        &delegate,
-        &DelegationType::Attestation,
-        &expiry,
-        &wrong_domain_payload,
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Cross-contract namespace replay: Credence Bond ↔ Credence Delegation

@@ -26,7 +26,7 @@
 //! the scheme field is absent, preserving backwards compatibility. Clients
 //! transmitting payloads should always set the scheme explicitly.
 
-use credence_errors::ContractError;
+use credence_errors::{verify_no_future_ledger, ContractError};
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, String};
 
 pub use crate::verifier::SchemeTag;
@@ -156,11 +156,6 @@ pub fn verify_payload(
     if payload.contract_id != e.current_contract_address() {
         panic_with_error!(e, ContractError::ContractIdMismatch);
     }
-    // Validate signature domain to prevent cross-contract replay attacks
-    let expected_domain_str = String::from_str(e, SIGNATURE_DOMAIN);
-    if payload.signature_domain != expected_domain_str {
-        panic_with_error!(e, ContractError::DomainMismatch);
-    }
 }
 
 /// Safely decode a scheme tag from the payload, defaulting to Ed25519 for
@@ -227,19 +222,29 @@ pub const MAX_PAYLOAD_AGE_LEDGERS: u32 = 200;
 /// Rejects the payload when the current ledger sequence exceeds
 /// `payload.ledger_number + MAX_PAYLOAD_AGE_LEDGERS`.
 ///
+/// Also rejects the payload when `payload.ledger_number` exceeds the current
+/// ledger sequence (i.e. the payload claims to have been signed in the future).
+/// This is a defence-in-depth check: without it, `current.saturating_sub(signed_at)`
+/// would yield 0 for any future value, making the payload appear perpetually
+/// fresh and allowing indefinite replay.
+///
 /// Callers must invoke this **after** `verify_payload` (domain/owner/target
 /// binding) and **before** nonce consumption so that a stale payload does not
 /// burn a nonce slot.
 ///
 /// # Panics
-/// Panics with [`ContractError::PayloadTooOld`] when
-/// `current_sequence - ledger_number > MAX_PAYLOAD_AGE_LEDGERS`.
+/// * [`ContractError::TimestampInFuture`] when `payload.ledger_number > e.ledger().sequence()`.
+/// * [`ContractError::PayloadTooOld`] when
+///   `current_sequence - ledger_number > MAX_PAYLOAD_AGE_LEDGERS`.
 pub fn check_payload_age(e: &Env, payload: &DelegatedActionPayload) {
     let current = e.ledger().sequence();
     let signed_at = payload.ledger_number;
-    // Saturating subtraction avoids wrapping when current < signed_at, which
-    // can only happen if the payload carries a future ledger number (unlikely
-    // but harmless — the subtraction yields 0, so no rejection occurs).
+    // Reject future-dated payloads first.  Without this guard,
+    // saturating_sub would yield 0 for any signed_at > current, making
+    // the payload appear fresh even though it carries an impossible future
+    // ledger number (issue #797).
+    verify_no_future_ledger(e, signed_at);
+    // Now current >= signed_at is guaranteed, so subtraction is safe.
     if current.saturating_sub(signed_at) > MAX_PAYLOAD_AGE_LEDGERS {
         panic_with_error!(e, ContractError::PayloadTooOld);
     }

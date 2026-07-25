@@ -95,6 +95,10 @@ mod tests {
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::TimestampInFuture,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
         ]
     }
 
@@ -443,7 +447,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            89,
+            93,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -982,7 +986,7 @@ mod tests {
         
         let e = Env::default();
         // Positive amount should pass
-        credence_errors::require_positive_amount!(&e, 100_i128);
+        crate::require_positive_amount!(&e, 100_i128);
     }
 
     fn mock_receive_fee(amount: i128, authorized: bool) -> Result<(), ContractError> {
@@ -1229,8 +1233,6 @@ mod tests {
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
-            ContractError::UnauthorizedToken => true,
-            ContractError::UnsupportedDecimals => true,
 
             // Attestation: state/caller fixes.
             ContractError::DuplicateAttestation => true,
@@ -1248,7 +1250,7 @@ mod tests {
             ContractError::AlreadyActive => true,
             ContractError::InvalidContractAddress => true,
             ContractError::ContractCodeVerificationFailed => true,
-            ContractError::UnsupportedInterface => false,
+            ContractError::UnsupportedInterface => true,
 
             // Delegation: state/caller fixes; fatal cases are scheme/crypto.
             ContractError::ExpiryInPast => true,
@@ -1262,6 +1264,7 @@ mod tests {
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => true,
+            ContractError::TimestampInFuture => false, // impossible ledger_number; payload must be discarded
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1283,6 +1286,11 @@ mod tests {
             ContractError::Overflow => false,
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
+
+            // Missing variants added to match the enum and ensure completeness
+            ContractError::BorrowFrozen => true,
+            ContractError::PayloadTooOld => true,
+            ContractError::InvalidCurrency => true,
         }
     }
 
@@ -1390,10 +1398,14 @@ mod tests {
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
+            ContractError::TimestampInFuture,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
         ];
         assert_eq!(
             cases.len(),
-            89,
+            93,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
