@@ -99,8 +99,9 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
+  - Batch entrypoints: [batch atomicity — all-or-nothing vs. partial progress](docs/BATCH_ATOMICITY.md)
 - `contracts/credence_delegation/` — Delegation contract
-- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`)
+- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `OPERATOR_BALANCES.md`, `emergency.md`, `UPGRADE.md`, `crates.md`)
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.
 
