@@ -21,11 +21,23 @@
 // use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::contracterror;
+use soroban_sdk::{contracterror, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
 use soroban_sdk::contracttype;
+
+/// Panic with `AlreadyInitialized` if the contract has already been initialized.
+///
+/// # Usage
+/// ```ignore
+/// credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
+/// ```
+pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
+    if already_initialized {
+        e.panic_with_error(ContractError::AlreadyInitialized);
+    }
+}
 
 /// Simple role enum for admin checks.
 #[contracttype]

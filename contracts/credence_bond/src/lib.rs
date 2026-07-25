@@ -1,9 +1,9 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 
-#[cfg(any(test, feature = "testutils"))]
+#[cfg(test)]
 mod batch;
 mod claims;
 mod early_exit_penalty;
