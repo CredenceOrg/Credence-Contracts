@@ -1601,26 +1601,19 @@ mod tests {
     fn test_verify_no_future_ledger_happy_path() {
         use soroban_sdk::Env;
 
-        // Timestamp equal to current ledger should pass
-        fn test_equal() -> Result<(), ContractError> {
-            let e = Env::default();
-            let now = e.ledger().timestamp();
-            crate::verify_no_future_ledger!(&e, now);
-            Ok(())
-        }
-        assert!(test_equal().is_ok());
+        let e = Env::default();
+        let now = e.ledger().timestamp();
+        // Timestamp equal to current ledger should not panic.
+        crate::verify_no_future_ledger(&e, now);
     }
 
     #[test]
+    #[should_panic(expected = "ContractError::TimestampInFuture")]
     fn test_verify_no_future_ledger_rejects_future() {
         use soroban_sdk::Env;
 
-        fn test_future() -> Result<(), ContractError> {
-            let e = Env::default();
-            let now = e.ledger().timestamp();
-            crate::verify_no_future_ledger!(&e, now + 1);
-            Ok(())
-        }
-        assert_eq!(test_future(), Err(ContractError::TimestampInFuture));
+        let e = Env::default();
+        let now = e.ledger().timestamp();
+        crate::verify_no_future_ledger(&e, now + 1);
     }
 }

@@ -1165,18 +1165,14 @@ macro_rules! require_positive_amount {
 /// `env.ledger().timestamp()`, preventing the contract from accepting
 /// values that could only originate from the future.
 ///
-/// # Examples
+/// # Panics
 ///
-/// ```ignore
-/// verify_no_future_ledger!(&env, signed_timestamp);
-/// ```
-#[macro_export]
-macro_rules! verify_no_future_ledger {
-    ($env:expr, $t:expr) => {
-        if $t > $env.ledger().timestamp() {
-            return Err($crate::ContractError::TimestampInFuture);
-        }
-    };
+/// Panics with [`ContractError::TimestampInFuture`] when `t` is strictly
+/// greater than the current ledger timestamp.
+pub fn verify_no_future_ledger(e: &Env, t: u64) {
+    if t > e.ledger().timestamp() {
+        e.panic_with_error(ContractError::TimestampInFuture);
+    }
 }
 
 #[macro_export]
