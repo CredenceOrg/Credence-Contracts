@@ -10,7 +10,7 @@ pub enum PauseAction {
     Unpause = 2,
 }
 
-fn require_admin_auth(e: &Env, admin: &Address) {
+pub(crate) fn require_admin_auth(e: &Env, admin: &Address) {
     let stored_admin: Address = e
         .storage()
         .instance()
