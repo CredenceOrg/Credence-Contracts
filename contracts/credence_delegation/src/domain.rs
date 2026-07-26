@@ -26,7 +26,7 @@
 //! the scheme field is absent, preserving backwards compatibility. Clients
 //! transmitting payloads should always set the scheme explicitly.
 
-use credence_errors::{verify_no_future_ledger, ContractError};
+use credence_errors::{ContractError, verify_no_future_ledger_sequence};
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, String};
 
 pub use crate::verifier::SchemeTag;
@@ -245,12 +245,8 @@ pub fn check_payload_age(e: &Env, payload: &DelegatedActionPayload) {
     // Reject future-dated payloads first.  Without this guard,
     // saturating_sub would yield 0 for any signed_at > current, making
     // the payload appear fresh even though it carries an impossible future
-    // ledger number (issue #797).  We inline the check because the
-    // `verify_no_future_ledger!` macro returns `Err` and is intended for
-    // `Result`-returning helpers; `check_payload_age` is `panic`-based.
-    if signed_at > current {
-        panic_with_error!(e, ContractError::TimestampInFuture);
-    }
+    // ledger number (issue #797).
+    verify_no_future_ledger_sequence!(e, signed_at);
     // Now current >= signed_at is guaranteed, so subtraction is safe.
     if current.saturating_sub(signed_at) > MAX_PAYLOAD_AGE_LEDGERS {
         panic_with_error!(e, ContractError::PayloadTooOld);

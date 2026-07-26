@@ -21,7 +21,7 @@
 // use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contracterror, Env};
+use soroban_sdk::{contracterror, panic_with_error, Env, Address};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -632,6 +632,19 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     MaxPauseSignersExceeded = 120,
 
+    /// Cross-contract caller does not match the configured partner address.
+    ///
+    /// Raised by `require_matching_contract_id` when a contract makes or
+    /// receives a cross-contract call and the counterparty address does
+    /// not match the pre-configured expected partner. This is a defence-in-
+    /// depth check that prevents attackers from redirecting cross-contract
+    /// calls to malicious contracts (e.g. a fake verifier, a rogue callback,
+    /// or a spoofed registry).
+    ///
+    /// Contracts: bond, delegation, registry, general-purpose
+    /// Wire-stable: do not renumber this error code.
+    CrossContractCallerMismatch = 119,
+
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -796,8 +809,7 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
-            | ContractError::StaleAdminEpoch
-            | ContractError::StaleSignerEpoch => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -883,7 +895,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
+            | ContractError::EmergencyDrainNotPermitted
+            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
@@ -1063,11 +1076,8 @@ impl ErrorExt for ContractError {
             ContractError::TimestampInFuture => {
                 "Supplied timestamp or ledger number is ahead of the current ledger"
             }
-            ContractError::InvalidMaxPauseSigners => {
-                "Max-pause-signers value must be greater than zero and within the hard cap"
-            }
-            ContractError::MaxPauseSignersExceeded => {
-                "Registering another pause signer would exceed the configured max-pause-signers cap"
+            ContractError::CrossContractCallerMismatch => {
+                "Cross-contract caller does not match the configured partner address"
             }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
@@ -1130,6 +1140,9 @@ impl ErrorExt for ContractError {
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.
             ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
+
+            // Cross-contract caller mismatch is a security halt; do not retry.
+            ContractError::CrossContractCallerMismatch => false,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1312,6 +1325,27 @@ pub fn verify_no_future_ledger(e: &Env, t: u64) {
     }
 }
 
+/// Rejects a caller-supplied ledger sequence number that is strictly ahead of
+/// the current on-chain ledger sequence.
+///
+/// Returns `ContractError::TimestampInFuture` when `$seq` exceeds
+/// `env.ledger().sequence()`, preventing the contract from accepting
+/// values that could only originate from the future.
+///
+/// # Examples
+///
+/// ```ignore
+/// verify_no_future_ledger_sequence!(&env, payload.ledger_number);
+/// ```
+#[macro_export]
+macro_rules! verify_no_future_ledger_sequence {
+    ($env:expr, $seq:expr) => {
+        if $seq > $env.ledger().sequence() {
+            panic_with_error!($env, $crate::ContractError::TimestampInFuture);
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! require_non_zero_bytes32 {
     ($env:expr, $val:expr) => {
@@ -1321,23 +1355,67 @@ macro_rules! require_non_zero_bytes32 {
     };
 }
 
-/// Re-init prevention guard for Soroban contract constructors.
+/// Requires that a cross-contract caller address matches the expected partner address.
 ///
-/// Every deployable contract must call this as the **first statement** in its
-/// `initialize` function, before any auth or storage writes. The guard panics
-/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
-/// already exists in instance storage, preventing a second caller from
-/// overwriting the admin and stealing the contract.
+/// This is a defence-in-depth guard that prevents attackers from redirecting
+/// cross-contract calls to malicious contracts (e.g. a fake verifier, a rogue
+/// callback, or a spoofed registry). It should be called before or after
+/// `e.invoke_contract()` to ensure the counterparty is the pre-configured
+/// partner.
 ///
 /// # Arguments
-/// * `e`              - Soroban environment (needed for typed error panic).
-/// * `is_initialized` - `true` when the sentinel key exists, meaning the
-///                      contract has already been initialized.
+/// * `e` - The Soroban environment
+/// * `caller` - The address of the contract making/receiving the cross-contract call
+/// * `expected` - The pre-configured expected partner address
 ///
 /// # Panics
-/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
-pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
-    if is_initialized {
-        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+/// Panics with `ContractError::CrossContractCallerMismatch` (code 119) if
+/// `caller != expected`.
+///
+/// # Example
+/// ```ignore
+/// // Before making a cross-contract call to a verifier:
+/// let verifier_addr = e.storage().instance().get(&DataKey::Verifier(scheme)).unwrap();
+/// credence_errors::require_matching_contract_id(&e, &verifier_addr, &expected_verifier);
+/// e.invoke_contract(&verifier_addr, &Symbol::new(&e, "verify"), args);
+///
+/// // Or when receiving a cross-contract call:
+/// let caller = e.current_contract_address(); // or get from auth context
+/// credence_errors::require_matching_contract_id(&e, &caller, &expected_partner);
+/// ```
+pub fn require_matching_contract_id(
+    e: &Env,
+    caller: &Address,
+    expected: &Address,
+) {
+    if caller != expected {
+        panic_with_error!(e, ContractError::CrossContractCallerMismatch);
+    }
+}
+
+/// Requires that a contract has not been initialized yet.
+///
+/// This is a standard initialization guard used in constructors to prevent
+/// double-initialization attacks. It panics with `ContractError::AlreadyInitialized`
+/// if the contract has already been initialized (i.e., the `initialized` flag is true).
+///
+/// # Arguments
+/// * `e` - The Soroban environment
+/// * `initialized` - A boolean indicating whether the contract is already initialized
+///
+/// # Panics
+/// Panics with `ContractError::AlreadyInitialized` (code 2) if `initialized` is true.
+///
+/// # Example
+/// ```ignore
+/// pub fn initialize(e: Env, admin: Address) {
+///     credence_errors::require_contract_uninitialized(&e, e.storage().instance().has(&DataKey::Admin));
+///     admin.require_auth();
+///     e.storage().instance().set(&DataKey::Admin, &admin);
+/// }
+/// ```
+pub fn require_contract_uninitialized(e: &Env, initialized: bool) {
+    if initialized {
+        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }
