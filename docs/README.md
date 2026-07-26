@@ -57,6 +57,7 @@ This directory contains all design docs, API references, and operational guides 
 | [credence_delegation_api.md](credence_delegation_api.md) | Integrator | Full API reference |
 | [delegation-failure-modes.md](delegation-failure-modes.md) | Contributor | Error code taxonomy, replay protection |
 | [delegation-summary-view.md](delegation-summary-view.md) | Integrator | Aggregated delegation queries |
+| [LEASE_SIGNATURES.md](LEASE_SIGNATURES.md) | Integrator | Signature format, scheme tags, and verification model for relayed lease-style payloads |
 
 ## Events & Indexing
 
