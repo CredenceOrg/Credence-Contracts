@@ -1145,7 +1145,4 @@ mod test_verifier_dispatch;
 mod test_auth;
 
 #[cfg(test)]
-mod test_payload_staleness;
-
-#[cfg(test)]
-mod test_lease_signature;
+mod test_require_matching_contract_id;
