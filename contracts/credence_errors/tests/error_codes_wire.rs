@@ -16,8 +16,8 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InsufficientSignatures as u32, 108);
     assert_eq!(ContractError::AdminSuspended as u32, 113);
     assert_eq!(ContractError::BorrowFrozen as u32, 114);
-    assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
     assert_eq!(ContractError::NoPendingAdmin as u32, 115);
+    assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
     assert_eq!(ContractError::InvalidAdminAddress as u32, 110);
     assert_eq!(ContractError::AdminUnchanged as u32, 111);
     assert_eq!(ContractError::TimelockNotReady as u32, 112);

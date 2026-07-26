@@ -573,7 +573,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 119,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -794,8 +794,8 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
-            | ContractError::DuplicateIdempotencyKey
-            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
+            | ContractError::AmountExplicitlyZero
+            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1071,9 +1071,6 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32 => true,
 
-            // Lease auth mismatches: same lease cannot be fixed by blind retry.
-            ContractError::LeaseScopeMismatch => false,
-            ContractError::LeaseExpired => false,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1151,6 +1148,7 @@ impl ErrorExt for ContractError {
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
+            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0
