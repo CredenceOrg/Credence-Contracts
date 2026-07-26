@@ -42,6 +42,18 @@ cargo test -p credence_bond
 cargo test -p credence_delegation
 ```
 
+### Using `just`
+
+The repo includes a [`justfile`](justfile) with common recipes. Install
+[`just`](https://just.systems) then run:
+
+```bash
+just              # list available recipes
+just test         # all workspace tests
+just test-one credence_bond              # all tests in one crate
+just test-one credence_bond test_name    # single test by name
+```
+
 The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests on every PR.
 
 ## Linting
