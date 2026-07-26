@@ -15,6 +15,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -25,6 +26,8 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::LeaseScopeMismatch,
+            ContractError::LeaseExpired,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -97,9 +100,11 @@ mod tests {
             ContractError::DivisionByZero,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
         ]
     }
 
@@ -141,6 +146,8 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        assert_eq!(ContractError::LeaseScopeMismatch as u32, 120);
+        assert_eq!(ContractError::LeaseExpired as u32, 121);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
@@ -474,7 +481,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            99,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1263,7 +1270,9 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::LeaseScopeMismatch => false, // wrong lease; re-issue with broader scope
+            ContractError::LeaseExpired => false, // expired lease cannot be revived by retry
+            ContractError::TimestampInFuture => false, // impossible ledger_number; discard payload
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1331,6 +1340,7 @@ mod tests {
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
+            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1353,10 +1363,7 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
 
-            // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
+            ContractError::InvalidStringifiedBytes => true,
         }
     }
 
@@ -1384,6 +1391,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -1394,6 +1402,8 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::LeaseScopeMismatch,
+            ContractError::LeaseExpired,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1470,10 +1480,11 @@ mod tests {
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
         ];
         assert_eq!(
             cases.len(),
-            94,
+            99,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

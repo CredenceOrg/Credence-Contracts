@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
+
 ### Fixed
 
 - **No-dynamic-strings in production contract code** (closes #713). New workspace

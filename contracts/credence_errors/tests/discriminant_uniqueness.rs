@@ -52,11 +52,14 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
         ContractError::UnauthorizedDepositor,
     ),
     ("ContractPaused", ContractError::ContractPaused),
+    ("BorrowFrozen", ContractError::BorrowFrozen),
     ("InvalidPauseAction", ContractError::InvalidPauseAction),
     (
         "InsufficientSignatures",
         ContractError::InsufficientSignatures,
     ),
+    ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),
+    ("LeaseExpired", ContractError::LeaseExpired),
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound),
     ("BondNotActive", ContractError::BondNotActive),
@@ -82,6 +85,10 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("UnsupportedToken", ContractError::UnsupportedToken),
     ("UnsupportedDecimals", ContractError::UnsupportedDecimals),
     ("InvalidBondAmount", ContractError::InvalidBondAmount),
+    (
+        "AmountExplicitlyZero",
+        ContractError::AmountExplicitlyZero,
+    ),
     ("InvalidBondDuration", ContractError::InvalidBondDuration),
     ("InvalidNoticePeriod", ContractError::InvalidNoticePeriod),
     ("BondAlreadyExists", ContractError::BondAlreadyExists),
@@ -174,6 +181,8 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ),
     ("DelegationNotExpired", ContractError::DelegationNotExpired),
     ("DelegationInactive", ContractError::DelegationInactive),
+    ("PayloadTooOld", ContractError::PayloadTooOld),
+    ("PromiseNotKept", ContractError::PromiseNotKept),
     // --- Treasury (600-699) ---
     ("AmountMustBePositive", ContractError::AmountMustBePositive),
     (
@@ -217,7 +226,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 92;
+const ALL_VARIANTS_COUNT: usize = 99;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
