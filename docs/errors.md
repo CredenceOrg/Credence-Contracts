@@ -125,6 +125,7 @@ This mapping is a convenience reference for authors and testers; the authoritati
 | 605 | `InsufficientApprovals` | Not enough approvals to execute proposal |
 | 606 | `InvalidFlashLoanCallback` | Flashloan callback returned invalid magic value |
 | 607 | `FlashLoanRepaymentFailed` | Flashloan principal plus fee was not fully repaid |
+| 611 | `CorridorNotRegistered` | Settlement destination is not a registered corridor |
 
 ### Arithmetic (700-799)
 

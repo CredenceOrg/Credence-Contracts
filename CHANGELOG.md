@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Slash Bond Core**: Implemented admin-only `slash_bond` functionality with partial/full slashing and event emission.
 - **Treasury Guardrails**: Added comprehensive tests and functionality for liquidity floor and slippage protection mechanisms in treasury withdrawals (`credence_treasury`).
 - **Batch Bond Atomicity**: Enhanced batch operations with explicit empty batch handling and `MAX_BATCH_BOND_SIZE` enforcement (`credence_bond`).
+- **Corridor-Gated Settlement** (closes #911): Added an admin-managed corridor allowlist (`register_corridor` / `remove_corridor` / `is_corridor_registered`) and a new `settle` entrypoint to `credence_treasury` that rejects settlement to any unregistered destination with the new `CorridorNotRegistered` (611) error.
 
 ### Changed
 
