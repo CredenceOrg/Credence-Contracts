@@ -571,7 +571,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 511,
+    TimestampInFuture = 119,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).

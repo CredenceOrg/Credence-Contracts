@@ -443,9 +443,11 @@ fn threats_markdown_wellformed() {
     let mut malformed = 0;
 
     for row in &table_rows {
-        if row.contains("| **T-") || row.contains("| T-") {
+        let trimmed = row.trim_start();
+        if trimmed.starts_with("| **T-") || trimmed.starts_with("| T-") {
             let pipes = row.matches('|').count();
             // Threat table should have consistent pipe count (9 columns = 10 pipes including edges)
+            // Note: Currently 8 columns, so 9 pipes
             if pipes < 9 {
                 println!("⚠ Incomplete row (pipe count: {}): {}", pipes, row);
                 malformed += 1;
