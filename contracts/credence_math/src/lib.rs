@@ -46,6 +46,40 @@ pub fn mul_u64(a: u64, b: u64, msg: &'static str) -> u64 {
     a.checked_mul(b).unwrap_or_else(|| panic!("{msg}"))
 }
 
+/// Floor a Unix timestamp (seconds since epoch) to the start of its UTC day.
+///
+/// Equivalent to `ts / SECS_PER_DAY * SECS_PER_DAY`, where
+/// `SECS_PER_DAY = 86_400`.  The result is the Unix timestamp of the most
+/// recent midnight (00:00:00 UTC) that is ≤ `ts`.
+///
+/// # Properties
+///
+/// * **Idempotent**: `floor_to_day(floor_to_day(ts)) == floor_to_day(ts)`.
+/// * **Monotone**: `a <= b` implies `floor_to_day(a) <= floor_to_day(b)`.
+/// * **Epoch zero**: `floor_to_day(0) == 0` (epoch is already a midnight).
+/// * **Range**: the result is always a multiple of `86_400`.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::floor_to_day;
+///
+/// // Epoch zero is already a midnight boundary.
+/// assert_eq!(floor_to_day(0), 0);
+///
+/// // Mid-day: 2024-01-01 12:00:00 UTC  →  2024-01-01 00:00:00 UTC
+/// assert_eq!(floor_to_day(1_704_067_200 + 43_200), 1_704_067_200);
+///
+/// // Last second of the day floors back to the same midnight.
+/// assert_eq!(floor_to_day(86_399), 0);
+/// ```
+#[inline]
+#[must_use]
+pub fn floor_to_day(ts: u64) -> u64 {
+    const SECS_PER_DAY: u64 = 86_400;
+    (ts / SECS_PER_DAY) * SECS_PER_DAY
+}
+
 /// Checked `i128` addition with a stable panic message.
 #[inline]
 #[must_use]
@@ -369,8 +403,90 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps, Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, floor_to_day, mul_div_i128, split_bps,
+        Rounding,
     };
+
+    // ── floor_to_day ─────────────────────────────────────────────────────────
+
+    /// Epoch zero is already a midnight: flooring it must return 0.
+    #[test]
+    fn floor_to_day_at_epoch_zero() {
+        assert_eq!(floor_to_day(0), 0);
+    }
+
+    /// A timestamp that falls exactly on a midnight boundary is unchanged.
+    ///
+    /// 2024-01-01 00:00:00 UTC = 1_704_067_200
+    #[test]
+    fn floor_to_day_at_midnight() {
+        let midnight: u64 = 1_704_067_200;
+        assert_eq!(floor_to_day(midnight), midnight);
+    }
+
+    /// A mid-day timestamp floors back to the start of the same UTC day.
+    ///
+    /// 2024-01-01 12:00:00 UTC = midnight + 43_200  →  midnight
+    #[test]
+    fn floor_to_day_mid_day() {
+        let midnight: u64 = 1_704_067_200;
+        let midday = midnight + 43_200; // 12 hours into the day
+        assert_eq!(floor_to_day(midday), midnight);
+    }
+
+    /// The last second of a day (23:59:59) floors to the same day's midnight.
+    ///
+    /// 1970-01-01 23:59:59 UTC = 86_399  →  0 (epoch midnight)
+    #[test]
+    fn floor_to_day_end_of_day() {
+        assert_eq!(floor_to_day(86_399), 0);
+    }
+
+    /// The last second of an arbitrary day floors to that day's midnight.
+    ///
+    /// 2024-01-01 23:59:59 UTC  →  2024-01-01 00:00:00 UTC
+    #[test]
+    fn floor_to_day_last_second_of_arbitrary_day() {
+        let midnight: u64 = 1_704_067_200;
+        let last_second = midnight + 86_399; // 23:59:59 on the same day
+        assert_eq!(floor_to_day(last_second), midnight);
+    }
+
+    /// The first second of the next day is the next midnight, not the previous.
+    ///
+    /// 1970-01-02 00:00:00 UTC = 86_400  →  86_400 (already a boundary)
+    #[test]
+    fn floor_to_day_first_second_of_next_day() {
+        let day2_midnight: u64 = 86_400;
+        assert_eq!(floor_to_day(day2_midnight), day2_midnight);
+    }
+
+    /// floor_to_day is idempotent: applying it twice gives the same result.
+    #[test]
+    fn floor_to_day_is_idempotent() {
+        let cases: &[u64] = &[0, 1, 43_200, 86_399, 86_400, 1_704_067_200, u64::MAX];
+        for &ts in cases {
+            assert_eq!(
+                floor_to_day(floor_to_day(ts)),
+                floor_to_day(ts),
+                "idempotent check failed for ts={ts}"
+            );
+        }
+    }
+
+    /// floor_to_day result is always a multiple of 86_400 (seconds-per-day).
+    #[test]
+    fn floor_to_day_result_is_multiple_of_86400() {
+        let cases: &[u64] = &[0, 1, 43_200, 86_399, 86_400, 1_704_067_200, u64::MAX];
+        for &ts in cases {
+            let result = floor_to_day(ts);
+            assert_eq!(
+                result % 86_400,
+                0,
+                "result {result} is not a multiple of 86_400 (input ts={ts})"
+            );
+        }
+    }
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
         amount
@@ -390,11 +506,13 @@ mod tests {
     }
 
     #[test]
-    
     #[test]
     fn test_checked_add_or_error() {
         assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
-        assert_eq!(super::checked_add_or_error(i128::MAX, 1), Err(crate::ContractError::Overflow));
+        assert_eq!(
+            super::checked_add_or_error(i128::MAX, 1),
+            Err(crate::ContractError::Overflow)
+        );
     }
 
     #[test]
