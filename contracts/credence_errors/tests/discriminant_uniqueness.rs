@@ -9,13 +9,9 @@
 //! wrong handler, so this invariant is locked here as an executable contract.
 //!
 //! When adding a new `ContractError` variant:
-//!   1. Add the row to `ALL_VARIANTS` below (one entry per *variant name*,
-//!      not per numeric code).
-//!   2. Update `src/test_errors.rs::tests::all_variants()` so the existing
-//!      exhaustive match arms (`category()`, `description()`,
-//!      `is_recoverable()`) get the right arm too.
-//!   3. Bump the `all_variants_count_is_consistent_with_enum_definition`
-//!      assert below.
+//!   1. Add one row to `variant_table.rs` (single source of truth).
+//!   2. Update exhaustive match arms in `src/test_errors.rs`
+//!      (`expected_is_recoverable()`, category tests, etc.).
 //!
 //! [`docs/error-codes-wire.md`]: ../../../docs/error-codes-wire.md
 //! [`docs/errors.md`]: ../../../docs/errors.md
@@ -41,7 +37,16 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ),
     ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
     ("TimestampInFuture", ContractError::TimestampInFuture),
+    (
+        "InvalidMaxPauseSigners",
+        ContractError::InvalidMaxPauseSigners,
+    ),
+    (
+        "MaxPauseSignersExceeded",
+        ContractError::MaxPauseSignersExceeded,
+    ),
     ("ZeroBytes32", ContractError::ZeroBytes32),
+    ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch),
     ("NotAdmin", ContractError::NotAdmin),
     ("NotBondOwner", ContractError::NotBondOwner),
     ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
@@ -52,6 +57,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
         ContractError::UnauthorizedDepositor,
     ),
     ("ContractPaused", ContractError::ContractPaused),
+    ("BorrowFrozen", ContractError::BorrowFrozen),
     ("InvalidPauseAction", ContractError::InvalidPauseAction),
     (
         "InsufficientSignatures",
@@ -82,6 +88,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("UnsupportedToken", ContractError::UnsupportedToken),
     ("UnsupportedDecimals", ContractError::UnsupportedDecimals),
     ("InvalidBondAmount", ContractError::InvalidBondAmount),
+    ("AmountExplicitlyZero", ContractError::AmountExplicitlyZero),
     ("InvalidBondDuration", ContractError::InvalidBondDuration),
     ("InvalidNoticePeriod", ContractError::InvalidNoticePeriod),
     ("BondAlreadyExists", ContractError::BondAlreadyExists),
@@ -100,7 +107,6 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("CursorOutOfRange", ContractError::CursorOutOfRange),
     ("BatchTooLarge", ContractError::BatchTooLarge),
     ("EmptyBatch", ContractError::EmptyBatch),
-    ("InvalidStringifiedBytes", ContractError::InvalidStringifiedBytes),
     // --- Shared Bond/Delegation payload mismatches ---
     // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
     ("DomainMismatch", ContractError::DomainMismatch),
@@ -174,6 +180,10 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ),
     ("DelegationNotExpired", ContractError::DelegationNotExpired),
     ("DelegationInactive", ContractError::DelegationInactive),
+    ("PayloadTooOld", ContractError::PayloadTooOld),
+    ("PromiseNotKept", ContractError::PromiseNotKept),
+    ("StaleAdminEpoch", ContractError::StaleAdminEpoch),
+    ("StaleSignerEpoch", ContractError::StaleSignerEpoch),
     // --- Treasury (600-699) ---
     ("AmountMustBePositive", ContractError::AmountMustBePositive),
     (
@@ -217,7 +227,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 92;
+const ALL_VARIANTS_COUNT: usize = 93;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
@@ -310,18 +320,12 @@ fn discriminant_codes_fit_their_documentated_category_range() {
 
 #[test]
 fn all_variants_count_is_consistent_with_enum_definition() {
-    // Forcing function: when a new `ContractError` variant is added,
-    // `ALL_VARIANTS` in this file AND `all_variants()` in
-    // `src/test_errors.rs` must both be updated. The deterministic count
-    // catches the case where a contributor adds a row to one file and
-    // forgets the other — a regression that bit production already when
-    // `test_descriptions_unique` silently shrank as the enum grew.
+    // Forcing function: `variant_table.rs` is the single generation counter.
+    // Parallel manually-bumped constants in other files caused 94-vs-96 drift.
     assert_eq!(
         ALL_VARIANTS.len(),
-        ALL_VARIANTS_COUNT,
-        "Update `ALL_VARIANTS` in `tests/discriminant_uniqueness.rs` and \
-         bump `ALL_VARIANTS_COUNT` when adding/removing a `ContractError` \
-         variant. Also update `all_variants()` in `src/test_errors.rs`.",
+        96,
+        "Add one row to `variant_table.rs` per new `ContractError` variant.",
     );
 }
 

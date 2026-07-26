@@ -1,8 +1,10 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{require_contract_uninitialized, ContractError, ErrorCategory, ErrorExt, Role};
+    use crate::{ContractError, ErrorCategory, ErrorExt, Role};
     use std::vec::Vec;
+
+    include!("../variant_table.rs");
 
     fn all_variants() -> Vec<ContractError> {
         std::vec![
@@ -15,6 +17,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -25,6 +28,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::CrossContractCallerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -47,6 +51,7 @@ mod tests {
             ContractError::BondAlreadyExists,
             ContractError::UnauthorizedToken,
             ContractError::DuplicateIdempotencyKey,
+            ContractError::InvalidStringifiedBytes,
             ContractError::InvariantViolation,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
@@ -81,6 +86,7 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -100,6 +106,10 @@ mod tests {
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
+            ContractError::StaleAdminEpoch,
+            ContractError::StaleSignerEpoch,
+            ContractError::InvalidStringifiedBytes,
         ]
     }
 
@@ -107,17 +117,25 @@ mod tests {
 
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, false);
+        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
+            crate::require_contract_uninitialized!(e, false);
+            Ok(())
+        }
+        let e = soroban_sdk::Env::default();
+        assert!(call(&e).is_ok());
     }
 
     #[test]
-    #[should_panic]
-    fn test_require_contract_uninitialized_panics_when_true() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, true);
+    fn test_require_contract_uninitialized_returns_error_when_true() {
+        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
+            crate::require_contract_uninitialized!(e, true);
+            Ok(())
+        }
+        let e = soroban_sdk::Env::default();
+        assert_eq!(
+            call(&e),
+            Err(ContractError::AlreadyInitialized)
+        );
     }
 
     // --- Wire code tests ---
@@ -139,9 +157,8 @@ mod tests {
         assert_eq!(ContractError::ContractPaused as u32, 106);
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-        assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::TimestampInFuture as u32, 118);
+        assert_eq!(ContractError::TimestampInFuture as u32, 119);
     }
 
     #[test]
@@ -263,6 +280,58 @@ mod tests {
             ContractError::UnauthorizedDepositor.category(),
             ErrorCategory::Authorization
         );
+        assert_eq!(
+            ContractError::ContractPaused.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::BorrowFrozen.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::InvalidPauseAction.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::InsufficientSignatures.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::AdminSuspended.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::NoPendingAdmin.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::InvalidAdminAddress.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::AdminUnchanged.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::TimelockNotReady.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::EmergencyDrainNotPermitted.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::RoleNotHeldAtLedger.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::ZeroBytes32.category(),
+            ErrorCategory::Authorization
+        );
+        assert_eq!(
+            ContractError::TimestampInFuture.category(),
+            ErrorCategory::Authorization
+        );
     }
 
     #[test]
@@ -325,10 +394,6 @@ mod tests {
         );
         assert_eq!(
             ContractError::InvalidNoticePeriod.category(),
-            ErrorCategory::Bond
-        );
-        assert_eq!(
-            ContractError::InvalidStringifiedBytes.category(),
             ErrorCategory::Bond
         );
     }
@@ -474,7 +539,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            98,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1264,6 +1329,8 @@ mod tests {
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
             ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
+            ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1290,6 +1357,7 @@ mod tests {
             ContractError::BondAlreadyExists => true,
             ContractError::UnauthorizedToken => true,
             ContractError::DuplicateIdempotencyKey => true,
+            ContractError::InvalidStringifiedBytes => true,
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
@@ -1329,9 +1397,10 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::DelegationInactive => true, // wait for activation or use a different delegation
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
-
+            ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
+            ContractError::StaleEpoch => false,         // proposal ID contains a stale epoch reference; caller must re-propose
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
             ContractError::ThresholdExceedsSigners => true,
@@ -1344,6 +1413,7 @@ mod tests {
             ContractError::ProposalExpired => true,
             ContractError::SlippageExceeded => true,
             ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
+            ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1354,9 +1424,8 @@ mod tests {
             ContractError::DivisionByZero => false,
 
             // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
+            ContractError::PromiseNotKept => false,
+            ContractError::InvalidStringifiedBytes => true,
         }
     }
 
@@ -1384,6 +1453,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -1419,7 +1489,7 @@ mod tests {
             ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
-            ContractError::InvalidStringifiedBytes,
+
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1452,6 +1522,7 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1466,14 +1537,19 @@ mod tests {
             ContractError::CursorOutOfRange,
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
+            ContractError::PromiseNotKept,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
+            ContractError::StaleEpoch,
         ];
         assert_eq!(
             cases.len(),
-            94,
+            91,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1545,6 +1621,17 @@ mod tests {
         assert!(!ContractError::ContractIdMismatch.is_recoverable());
     }
 
+    /// Regression test: `DelegationInactive` was previously shadowed by an
+    /// earlier, wrongly-classified match arm in `is_recoverable()`, so it
+    /// silently evaluated to `true` (recoverable) instead of `false`
+    /// (fatal). A revoked/expired delegation is a terminal *state* the
+    /// caller cannot retry past, unlike genuine *permission* errors (e.g.
+    /// `NotSigner`) which are fixed by switching signer/role.
+    #[test]
+    fn test_delegation_inactive_is_fatal_not_recoverable() {
+        assert!(!ContractError::DelegationInactive.is_recoverable());
+    }
+
     /// Verify the documented proposal-lifecycle example from the issue
     /// body: `ProposalAlreadyExecuted` is recoverable, `Overflow` is fatal.
     #[test]
@@ -1601,26 +1688,73 @@ mod tests {
     fn test_verify_no_future_ledger_happy_path() {
         use soroban_sdk::Env;
 
-        // Timestamp equal to current ledger should pass
-        fn test_equal() -> Result<(), ContractError> {
-            let e = Env::default();
-            let now = e.ledger().timestamp();
-            crate::verify_no_future_ledger!(&e, now);
-            Ok(())
-        }
-        assert!(test_equal().is_ok());
+        let e = Env::default();
+        let now = e.ledger().timestamp();
+        // Timestamp equal to current ledger should not panic.
+        crate::verify_no_future_ledger(&e, now);
     }
 
     #[test]
+    #[should_panic(expected = "ContractError::TimestampInFuture")]
     fn test_verify_no_future_ledger_rejects_future() {
         use soroban_sdk::Env;
 
-        fn test_future() -> Result<(), ContractError> {
+        let e = Env::default();
+        let now = e.ledger().timestamp();
+        crate::verify_no_future_ledger(&e, now + 1);
+    }
+
+    #[test]
+    fn test_require_within_ttl_happy_path() {
+        use soroban_sdk::Env;
+
+        fn test_valid() -> Result<(), ContractError> {
             let e = Env::default();
             let now = e.ledger().timestamp();
-            crate::verify_no_future_ledger!(&e, now + 1);
+            crate::require_within_ttl!(&e, now + 1);
             Ok(())
         }
-        assert_eq!(test_future(), Err(ContractError::TimestampInFuture));
+        assert!(test_valid().is_ok());
+    }
+
+    #[test]
+    fn test_require_within_ttl_rejects_expired() {
+        use soroban_sdk::Env;
+
+        fn test_expired() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::require_within_ttl!(&e, now);
+            Ok(())
+        }
+        assert_eq!(test_expired(), Err(ContractError::SignatureExpired));
+    }
+
+    #[test]
+    fn test_require_matching_contract_id_happy_path() {
+        use soroban_sdk::{Address, Env};
+
+        fn test_match() -> Result<(), ContractError> {
+            let e = Env::default();
+            let caller = Address::generate(&e);
+            let expected = caller.clone();
+            crate::require_matching_contract_id(&e, &caller, &expected);
+            Ok(())
+        }
+        assert!(test_match().is_ok());
+    }
+
+    #[test]
+    fn test_require_matching_contract_id_mismatch_returns_error() {
+        use soroban_sdk::{Address, Env};
+
+        fn test_mismatch() -> Result<(), ContractError> {
+            let e = Env::default();
+            let caller = Address::generate(&e);
+            let expected = Address::generate(&e);
+            crate::require_matching_contract_id(&e, &caller, &expected);
+            Ok(())
+        }
+        assert_eq!(test_mismatch(), Err(ContractError::CrossContractCallerMismatch));
     }
 }

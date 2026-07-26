@@ -37,8 +37,11 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::{String, testutils::{Address as _, Ledger as _}};
 use soroban_sdk::Env;
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    String,
+};
 use std::vec::Vec as StdVec;
 
 // ---------------------------------------------------------------------------

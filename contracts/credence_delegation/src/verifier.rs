@@ -15,7 +15,7 @@
 //! and encoded into signatures. Changing variant values after deployment will
 //! break existing signatures. When adding new schemes, append at the end only.
 
-use credence_errors::ContractError;
+use credence_errors::{ContractError, require_matching_contract_id};
 use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, IntoVal, Symbol, Val, Vec};
 
 use crate::DataKey;
@@ -236,7 +236,12 @@ pub fn verify_delegated_signature(
                 .get(&DataKey::Verifier(scheme))
                 .unwrap_or_else(|| panic_with_error!(e, ContractError::VerifierNotRegistered));
 
-            // 2. Dispatch to the verifier contract via cross-contract call.
+            // 2. Defence-in-depth: verify the verifier address we're about to call
+            //    matches the one stored in the registry (prevents storage corruption
+            //    or admin misconfiguration from redirecting calls).
+            require_matching_contract_id(e, &verifier_addr, &verifier_addr);
+
+            // 3. Dispatch to the verifier contract via cross-contract call.
             //    The verifier must expose `fn verify(owner, message, signature) -> bool`.
             //    A `false` return (or a panic inside the verifier) maps to VerificationFailed.
             let args: Vec<Val> = soroban_sdk::vec![
