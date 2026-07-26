@@ -116,8 +116,8 @@ fn require_pause_signer(e: &Env, signer: &Address) {
     }
 }
 
-fn next_proposal_id(e: &Env) -> u64 {
-    let id: u64 = e
+fn next_proposal_id(e: &Env) -> u32 {
+    let id: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposalCounter)
@@ -131,7 +131,7 @@ fn next_proposal_id(e: &Env) -> u64 {
     id
 }
 
-fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
+fn record_approval(e: &Env, proposal_id: u32, signer: &Address) {
     let approval_key = DataKey::PauseApproval(proposal_id, signer.clone());
     if e.storage().instance().has(&approval_key) {
         return;
@@ -150,7 +150,7 @@ fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
         .set(&DataKey::PauseApprovalCount(proposal_id), &new_count);
 }
 
-pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
+pub fn pause(e: &Env, caller: &Address) -> Option<u32> {
     let threshold: u32 = e
         .storage()
         .instance()
@@ -165,7 +165,7 @@ pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
     }
 }
 
-pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
+pub fn unpause(e: &Env, caller: &Address) -> Option<u32> {
     let threshold: u32 = e
         .storage()
         .instance()
@@ -180,7 +180,7 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
     }
 }
 
-fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64> {
+fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u32> {
     require_pause_signer(e, caller);
 
     let id = next_proposal_id(e);
@@ -199,7 +199,7 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
     Some(id)
 }
 
-pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
+pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u32) {
     require_pause_signer(e, signer);
 
     let _action: u32 = e
@@ -216,7 +216,7 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     );
 }
 
-pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
+pub fn execute_pause_proposal(e: &Env, proposal_id: u32) {
     let action: u32 = e
         .storage()
         .instance()
@@ -249,12 +249,12 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .remove(&DataKey::PauseProposal(proposal_id));
 }
 
-fn do_pause(e: &Env, proposal_id: Option<u64>) {
+fn do_pause(e: &Env, proposal_id: Option<u32>) {
     e.storage().instance().set(&DataKey::Paused, &true);
     e.events().publish((Symbol::new(e, "paused"),), proposal_id);
 }
 
-fn do_unpause(e: &Env, proposal_id: Option<u64>) {
+fn do_unpause(e: &Env, proposal_id: Option<u32>) {
     e.storage().instance().set(&DataKey::Paused, &false);
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);

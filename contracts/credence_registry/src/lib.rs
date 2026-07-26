@@ -84,9 +84,9 @@ enum DataKey {
     PauseSignerCount,
     PauseThreshold,
     PauseProposalCounter,
-    PauseProposal(u64),
-    PauseApproval(u64, Address),
-    PauseApprovalCount(u64),
+    PauseProposal(u32),
+    PauseApproval(u32, Address),
+    PauseApprovalCount(u32),
     IdentityToBond(Address),
     BondToIdentity(Address),
     RegisteredIdentities,
@@ -134,7 +134,7 @@ impl CredenceRegistry {
         e.storage().instance().set(&DataKey::PauseThreshold, &0_u32);
         e.storage()
             .instance()
-            .set(&DataKey::PauseProposalCounter, &0_u64);
+            .set(&DataKey::PauseProposalCounter, &0_u32);
 
         // Initialize empty registered identities list
         let identities: Vec<Address> = Vec::new(&e);
@@ -571,7 +571,7 @@ impl CredenceRegistry {
     ///
     /// # Returns
     /// The proposal ID if the pause is proposed, `None` if the pause is immediate
-    pub fn pause(e: Env, caller: Address) -> Option<u64> {
+    pub fn pause(e: Env, caller: Address) -> Option<u32> {
         bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
@@ -583,7 +583,7 @@ impl CredenceRegistry {
     ///
     /// # Returns
     /// The proposal ID if the unpause is proposed, `None` if the unpause is immediate
-    pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+    pub fn unpause(e: Env, caller: Address) -> Option<u32> {
         bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
@@ -623,7 +623,7 @@ impl CredenceRegistry {
     /// # Arguments
     /// * `signer` - The signer address
     /// * `proposal_id` - The proposal ID
-    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+    pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u32) {
         bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
@@ -632,7 +632,7 @@ impl CredenceRegistry {
     ///
     /// # Arguments
     /// * `proposal_id` - The proposal ID
-    pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+    pub fn execute_pause_proposal(e: Env, proposal_id: u32) {
         bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
