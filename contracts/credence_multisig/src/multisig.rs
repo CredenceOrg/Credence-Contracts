@@ -100,6 +100,9 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
+    /// Admin-configured cap on the number of registered pause signers.
+    /// Value: `u32`. Defaults to `pausable::DEFAULT_MAX_PAUSE_SIGNERS` when unset.
+    MaxPauseSigners,
     /// Tracks executed operations by their deterministic hash to prevent replay across proposals.
     ExecutedOp(BytesN<32>),
 }
@@ -754,6 +757,19 @@ impl CredenceMultiSig {
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
         bump_instance_ttl(&e);
         crate::pausable::set_pause_threshold(&e, &admin, threshold)
+    }
+
+    /// Get the configured cap on the number of pause signers (or the
+    /// default if the admin has not configured one).
+    pub fn get_max_pause_signers(e: Env) -> u32 {
+        bump_instance_ttl(&e);
+        crate::pausable::get_max_pause_signers(&e)
+    }
+
+    /// Configure the cap on the number of pause signers. Admin-only.
+    pub fn set_max_pause_signers(e: Env, admin: Address, max_signers: u32) {
+        bump_instance_ttl(&e);
+        crate::pausable::set_max_pause_signers(&e, &admin, max_signers)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {

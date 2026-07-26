@@ -97,6 +97,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Slashing: `slash()` with available-balance enforcement
   - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
+  - Issuance: [who can create/top-up a bond, and under what conditions](docs/BOND_ISSUANCE.md)
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
 - `contracts/credence_delegation/` — Delegation contract
