@@ -802,6 +802,8 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
+
+            ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
         }
     }
 
@@ -1024,7 +1026,7 @@ impl ErrorExt for ContractError {
             | ContractError::EarlyExitConfigNotSet      // configure early exit first
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
-| ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+            | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::AmountExplicitlyZero  // supply a non-zero amount
@@ -1044,7 +1046,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1082,15 +1083,10 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationInactive        // wait for activation or use a different delegation
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
 
-            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
-            // the payload must be discarded and re-signed.
-            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
-
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationInactive => false,              // delegation revoked/expired; cannot be fixed by caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
 
             // --- Treasury (600-699): mostly caller-fixable ---
