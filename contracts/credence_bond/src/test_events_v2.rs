@@ -1,4 +1,4 @@
-﻿#![cfg(test)]
+#![cfg(test)]
 
 use std::vec::Vec;
 
@@ -38,7 +38,7 @@ fn test_v2_event_indexing_improvements() {
 
     // --- Test bond_created_v2 event with improved indexing ---
     let initial_amount = 10_000_i128;
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     let is_rolling = false;
     let notice_period = 0_u64;
     let bond_start = e.ledger().timestamp();
@@ -109,7 +109,7 @@ fn test_v2_event_indexing_improvements() {
     let withdraw_amount = 3_000_i128;
     let expected_remaining = 7_000_i128;
 
-    // Fast-forward the ledger time so the 86400s lock-up period expires
+    // Fast-forward the ledger time so the credence_math::Timestamp::SECONDS_PER_DAYs lock-up period expires
     let mut ledger_info = e.ledger().get();
     ledger_info.timestamp += duration + 1;
     e.ledger().set(ledger_info);
@@ -250,7 +250,7 @@ fn test_event_indexing_query_efficiency() {
         let identity = if i % 2 == 0 { &identity1 } else { &identity2 };
         timestamps.push(e.ledger().timestamp());
 
-        client.create_bond_with_rolling(identity, &amount, &86400_u64, &false, &0_u64);
+        client.create_bond_with_rolling(identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
         // Advance time for uniqueness
         let mut ledger_info = e.ledger().get();
@@ -333,7 +333,7 @@ fn test_event_schema_compatibility() {
     client.set_token(&admin, &token_addr);
 
     // Test that both old and new events are emitted for backward compatibility
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let events = e.events().all();
 

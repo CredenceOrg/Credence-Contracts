@@ -661,6 +661,35 @@ mod tests {
     }
 }
 
+/// Helper struct for timestamp calculations.
+pub struct Timestamp;
+
+impl Timestamp {
+    /// The number of seconds in a standard UTC day (24 hours).
+    pub const SECONDS_PER_DAY: u64 = 86_400;
+
+    /// Truncates a timestamp (in seconds) to the start of its UTC day.
+    #[inline]
+    #[must_use]
+    pub fn floor_to_day(t: u64) -> u64 {
+        (t / Self::SECONDS_PER_DAY) * Self::SECONDS_PER_DAY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_timestamp_floor_to_day() {
+        assert_eq!(Timestamp::floor_to_day(0), 0);
+        assert_eq!(Timestamp::floor_to_day(86_399), 0);
+        assert_eq!(Timestamp::floor_to_day(86_400), 86_400);
+        assert_eq!(Timestamp::floor_to_day(86_401), 86_400);
+        assert_eq!(Timestamp::floor_to_day(172_800), 172_800);
+    }
+}
+
 #[cfg(test)]
 mod proptests {
     use super::*;

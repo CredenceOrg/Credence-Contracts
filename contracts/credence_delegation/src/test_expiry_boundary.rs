@@ -650,7 +650,7 @@ fn test_expiry_boundary_delegated_monotonic_advance_valid_sequence() {
 
         let delegate = Address::generate(&e);
         let now = e.ledger().timestamp();
-        let expires_at = now.saturating_add(86400); // +1 day
+        let expires_at = now.saturating_add(credence_math::Timestamp::SECONDS_PER_DAY); // +1 day
         let payload = delegate_payload(&e, &owner, &delegate, &client.address, i);
 
         let d = client.execute_delegated_delegate(

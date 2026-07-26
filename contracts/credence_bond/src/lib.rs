@@ -881,8 +881,8 @@ impl CredenceBond {
     /// let identity = Address::generate(&e);
     /// client.initialize(&admin, &None);
     ///
-    /// // Fixed-duration bond: 1000 tokens locked for 86400 seconds
-    /// let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    /// // Fixed-duration bond: 1000 tokens locked for credence_math::Timestamp::SECONDS_PER_DAY seconds
+    /// let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     /// assert!(bond.active);
     /// assert_eq!(bond.bonded_amount, 1000);
     /// assert_eq!(bond.slashed_amount, 0);

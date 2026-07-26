@@ -25,7 +25,7 @@ fn setup_bond_and_treasury(
     let treasury = Address::generate(e);
     client.set_slash_treasury(admin, &treasury);
     let bond_amount = 1_000_000_i128;
-    client.create_bond(identity, &bond_amount, &86400_u64, &false, &0_u64);
+    client.create_bond(identity, &bond_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     advance_ledger_sequence(e);
     bond_amount
 }
@@ -282,7 +282,7 @@ fn bonded_amount_never_decreases_from_top_up() {
     let (client, _admin, identity, _token, _contract_id) = setup_with_token(&e);
 
     let initial_amount = 1_000_000_i128;
-    client.create_bond(&identity, &initial_amount, &86400_u64, &false, &0_u64);
+    client.create_bond(&identity, &initial_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let mut prev_bonded = client.get_identity_state().bonded_amount;
 

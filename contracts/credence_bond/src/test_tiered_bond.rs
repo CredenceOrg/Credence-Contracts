@@ -1,4 +1,4 @@
-﻿//! Tests for Tiered Bond System: Bronze, Silver, Gold, Platinum by bonded amount.
+//! Tests for Tiered Bond System: Bronze, Silver, Gold, Platinum by bonded amount.
 
 use crate::test_helpers;
 use crate::tiered_bond::{get_tier_for_amount, TIER_BRONZE_MAX, TIER_GOLD_MAX, TIER_SILVER_MAX};
@@ -33,7 +33,7 @@ fn test_tier_thresholds() {
 fn test_get_tier_after_create_bond() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &(TIER_SILVER_MAX), &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &(TIER_SILVER_MAX), &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     let tier = client.get_tier();
     assert_eq!(tier, BondTier::Gold);
 }
@@ -42,7 +42,7 @@ fn test_get_tier_after_create_bond() {
 fn test_tier_upgrade_on_top_up() {
     let e = Env::default();
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &(TIER_BRONZE_MAX), &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &(TIER_BRONZE_MAX), &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     assert_eq!(client.get_tier(), BondTier::Silver);
     client.top_up(&identity, &(TIER_SILVER_MAX - TIER_BRONZE_MAX));
     assert_eq!(client.get_tier(), BondTier::Gold);
@@ -53,7 +53,7 @@ fn test_tier_downgrade_on_withdraw() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, _admin, identity, ..) = setup(&e);
-    client.create_bond_with_rolling(&identity, &(TIER_GOLD_MAX), &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &(TIER_GOLD_MAX), &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     assert_eq!(client.get_tier(), BondTier::Platinum);
     e.ledger().with_mut(|li| li.timestamp = 86401);
     let withdraw_to_silver = TIER_GOLD_MAX - TIER_SILVER_MAX + 1;
@@ -68,7 +68,7 @@ fn test_tier_unchanged_within_threshold() {
     client.create_bond_with_rolling(
         &identity,
         &(TIER_BRONZE_MAX / 2),
-        &86400_u64,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -144,7 +144,7 @@ fn test_fully_slashed_bond_tier() {
     let (client, admin, identity, ..) = setup(&e);
 
     // Create bond at Platinum tier
-    client.create_bond_with_rolling(&identity, &(TIER_GOLD_MAX), &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &(TIER_GOLD_MAX), &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     assert_eq!(client.get_tier(), BondTier::Platinum);
 
     // Fully slash the bond
