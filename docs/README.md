@@ -16,6 +16,7 @@ This directory contains all design docs, API references, and operational guides 
 | [upgrade.md](UPGRADE.md) | Operator | Contract upgrade procedure, data migration, verification |
 | [BYTES32_CANONICALISATION.md](BYTES32_CANONICALISATION.md) | Contributor / Integrator | Canonicalisation rules for BytesN<32> and zero value rejection |
 | [TIME_UNITS.md](TIME_UNITS.md) | Contributor | Time representation (seconds, days, epochs) and mocking time in tests |
+| [LEDGER_WALL_TIME.md](LEDGER_WALL_TIME.md) | Integrator | How ledger time relates to wall time and drift considerations |
 | [LEASE_MODEL.md](LEASE_MODEL.md) | Contributor | Lease semantics: scope, renewal, hard-cliff expiration, auth guards |
 
 ## Bond Contract (`credence_bond`)
