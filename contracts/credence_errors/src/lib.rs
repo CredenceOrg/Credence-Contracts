@@ -654,6 +654,15 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     TreasuryBeneficiaryMismatch = 610,
 
+    /// Settlement destination is not a registered corridor.
+    /// Raised by `settle` when the caller-supplied destination address has
+    /// not been added via `register_corridor`. Corridors are an explicit
+    /// admin-managed allowlist, so settlement cannot be routed to an
+    /// arbitrary, unvetted destination.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    CorridorNotRegistered = 611,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -811,7 +820,8 @@ impl ErrorExt for ContractError {
             | ContractError::FlashLoanRepaymentFailed
             | ContractError::ProposalExpired
             | ContractError::SlippageExceeded
-            | ContractError::TreasuryBeneficiaryMismatch => ErrorCategory::Treasury,
+            | ContractError::TreasuryBeneficiaryMismatch
+            | ContractError::CorridorNotRegistered => ErrorCategory::Treasury,
 
             ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero | ContractError::InvalidPercentSplit => {
                 ErrorCategory::Arithmetic
@@ -971,6 +981,9 @@ impl ErrorExt for ContractError {
             ContractError::TreasuryBeneficiaryMismatch => {
                 "Payment beneficiary does not match the expected treasury address"
             }
+            ContractError::CorridorNotRegistered => {
+                "Settlement destination is not a registered corridor"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -1126,7 +1139,8 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientApprovals          // collect more approvals
             | ContractError::ProposalExpired                // create a new proposal
             | ContractError::SlippageExceeded               // retry with a looser min_amount_out
-            | ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
+            | ContractError::TreasuryBeneficiaryMismatch    // call with the correct treasury address
+            | ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
 
             // FATAL Treasury flashloan failures: callback contract misbehaved.
             ContractError::InvalidFlashLoanCallback => false, // bad magic value

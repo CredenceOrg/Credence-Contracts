@@ -92,6 +92,7 @@ mod tests {
             ContractError::ProposalExpired,
             ContractError::SlippageExceeded,
             ContractError::TreasuryBeneficiaryMismatch,
+            ContractError::CorridorNotRegistered,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
@@ -474,7 +475,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            95,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1344,6 +1345,7 @@ mod tests {
             ContractError::ProposalExpired => true,
             ContractError::SlippageExceeded => true,
             ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
+            ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1463,6 +1465,7 @@ mod tests {
             ContractError::ProposalExpired,
             ContractError::SlippageExceeded,
             ContractError::TreasuryBeneficiaryMismatch,
+            ContractError::CorridorNotRegistered,
             ContractError::CursorOutOfRange,
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
@@ -1473,7 +1476,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            94,
+            95,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

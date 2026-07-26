@@ -76,3 +76,6 @@ mod test_per_source_reconciliation;
 
 #[cfg(test)]
 mod test_events_schema;
+
+#[cfg(test)]
+mod test_corridor_settlement;
