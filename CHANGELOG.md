@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+<!-- Add entries here as work lands. Use Added / Changed / Fixed / Removed / Security. -->
+
 ### Fixed
 
 - **No-dynamic-strings in production contract code** (closes #713). New workspace
