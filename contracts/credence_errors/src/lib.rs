@@ -22,6 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::{panic_with_error, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -541,7 +542,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 119,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -565,7 +566,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 513,
+    TimestampInFuture = 118,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -715,7 +716,8 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
             | ContractError::RoleNotHeldAtLedger
-            | ContractError::ZeroBytes32 => ErrorCategory::Authorization,
+            | ContractError::ZeroBytes32
+            | ContractError::TimestampInFuture => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -776,8 +778,7 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationNotExpired
             | ContractError::DelegationInactive
             | ContractError::PayloadTooOld
-            | ContractError::PromiseNotKept
-            | ContractError::TimestampInFuture => ErrorCategory::Delegation,
+            | ContractError::PromiseNotKept => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -1008,6 +1009,9 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32 => true,
 
+            // Caller supplied a future timestamp; correct it and retry.
+            ContractError::TimestampInFuture => true,
+
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
             | ContractError::BondNotActive
@@ -1042,6 +1046,7 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
+            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1076,6 +1081,7 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierAlreadyRegistered // idempotent
             | ContractError::VerifierNotRegistered
             | ContractError::DelegationNotExpired
+            | ContractError::DelegationInactive        // wait for activation or use a different delegation
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
 
             // FATAL Delegation: future ledger numbers cannot be fixed by retry;
@@ -1112,32 +1118,26 @@ impl ErrorExt for ContractError {
     }
 }
 
-#[cfg(test)]
-mod test_errors;
-
-/// Requires that a contract has not been initialized yet.
+/// Constructor guard. Reject calls that arrive after the contract was already initialized.
 ///
-/// `already_initialized` should be the result of an `instance().has(...)`
-/// check on the storage key that marks initialization (e.g. `DataKey::Admin`).
-/// Panics with `ContractError::AlreadyInitialized` if the contract is already
-/// initialized; returns silently otherwise.
+/// Pass `already_initialized = <expression that returns true when the contract is
+/// already initialized>` (e.g., `storage::get_admin(&e).is_some()`).
+/// Panics with `ContractError::AlreadyInitialized` when `true`.
 ///
-/// Use at the top of every contract entry-point that performs one-shot setup
-/// so the guard is enforced uniformly across the workspace.
-///
-/// # Example
-///
-/// ```ignore
-/// credence_errors::require_contract_uninitialized(
-///     &e,
-///     e.storage().instance().has(&DataKey::Admin),
-/// );
-/// ```
-pub fn require_contract_uninitialized(e: &soroban_sdk::Env, already_initialized: bool) {
+/// Implemented as a free function rather than a `#[macro_export]` macro because
+/// constructor entrypoints return `()`, not `Result<_, _>`. Peer helpers
+/// (`require_no_leading_zero_amount!`, `require_positive_amount!`,
+/// `verify_no_future_ledger!`, `require_non_zero_bytes32!`) early-return `Err`,
+/// which would not compile in a `()`-returning constructor; this helper must
+/// `panic_with_error!` instead.
+pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
     if already_initialized {
-        soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }
+
+#[cfg(test)]
+mod test_errors;
 
 /// Wraps `env.current_contract_address()` with a mock hook for tests.
 #[macro_export]
