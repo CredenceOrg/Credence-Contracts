@@ -127,8 +127,49 @@ fn test_proposal_id_simultaneous_submission_single_record() {
     assert_eq!(view.approvals, 3);
 }
 
-/// A proposal submitted at ledger sequence N*EPOCH_SIZE-1 (end of one epoch)
-/// and one submitted at N*EPOCH_SIZE (start of the next epoch) must differ.
+use proptest::prelude::*;
+
+proptest! {
+    /// Property: Any two sequences in the same epoch yield the same proposal ID.
+    /// Epoch N spans ledgers [N * EPOCH_SIZE + 1, (N + 1) * EPOCH_SIZE].
+    #[test]
+    fn test_proposal_id_derivation_property(
+        epoch in 0u32..10_000,
+        offset1 in 1u32..=PROPOSAL_EPOCH_SIZE,
+        offset2 in 1u32..=PROPOSAL_EPOCH_SIZE,
+    ) {
+        let (env, admin, client) = setup();
+        let signers = add_signers(&env, &admin, &client, 2, 2);
+        let s1 = signers.get(0).unwrap();
+        let s2 = signers.get(1).unwrap();
+
+        let seq1 = epoch * PROPOSAL_EPOCH_SIZE + offset1;
+        let seq2 = epoch * PROPOSAL_EPOCH_SIZE + offset2;
+
+        env.ledger().with_mut(|l| l.sequence_number = seq1);
+        let id1 = client.pause(&s1).unwrap();
+
+        env.ledger().with_mut(|l| l.sequence_number = seq2);
+        let id2 = client.pause(&s1).unwrap();
+
+        assert_eq!(id1, id2, "sequences in the same epoch must yield the same ID");
+
+        // Execute it so we can test the next epoch
+        client.approve_pause_proposal(&s2, &id1);
+        client.execute_pause_proposal(&id1);
+        client.unpause(&admin);
+
+        // Sequence in the NEXT epoch MUST yield a different ID
+        let seq3 = (epoch + 1) * PROPOSAL_EPOCH_SIZE + 1;
+        env.ledger().with_mut(|l| l.sequence_number = seq3);
+        let id3 = client.pause(&s1).unwrap();
+
+        assert_ne!(id1, id3, "sequences in different epochs must yield different IDs");
+    }
+}
+
+/// A proposal submitted at ledger sequence N*EPOCH_SIZE (end of one epoch)
+/// and one submitted at N*EPOCH_SIZE + 1 (start of the next epoch) must differ.
 #[test]
 fn test_proposal_id_epoch_boundary() {
     let (env, admin, client) = setup();
@@ -136,10 +177,10 @@ fn test_proposal_id_epoch_boundary() {
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-    // Place ledger at the last sequence of epoch 0.
+    // Place ledger at the exact end of epoch 0.
     let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
     env.ledger().with_mut(|l| {
-        l.sequence_number = epoch_boundary - 1;
+        l.sequence_number = epoch_boundary;
     });
     let id_before = client.pause(&s1).unwrap();
 
@@ -151,7 +192,7 @@ fn test_proposal_id_epoch_boundary() {
 
     // Advance to the first sequence of epoch 1.
     env.ledger().with_mut(|l| {
-        l.sequence_number = epoch_boundary;
+        l.sequence_number = epoch_boundary + 1;
     });
     let id_after = client.pause(&s1).unwrap();
 
