@@ -1476,7 +1476,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            94,
+            96,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
