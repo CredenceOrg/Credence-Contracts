@@ -27,6 +27,20 @@ cargo build --target wasm32-unknown-unknown --release --locked -p credence_bond 
 
 For the reproducibility check and the CI hash comparison, see [docs/wasm-reproducibility.md](docs/wasm-reproducibility.md).
 
+## Local Development
+
+### Reset the local network
+
+Wipe and restart a fresh local Soroban node in one command:
+
+```bash
+npm run reset-local-network
+# or directly:
+sh scripts/reset_local_network.sh
+```
+
+Safe to re-run at any time. Requires [Soroban CLI](https://developers.stellar.org/docs/smart-contracts/getting-started/setup) and [Docker](https://docs.docker.com/get-docker/).
+
 ## Tests
 
 Run all workspace tests:
