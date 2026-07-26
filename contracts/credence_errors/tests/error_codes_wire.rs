@@ -17,12 +17,12 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::AdminSuspended as u32, 113);
     assert_eq!(ContractError::BorrowFrozen as u32, 114);
     assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
-    assert_eq!(ContractError::NoPendingAdmin as u32, 118);
+    assert_eq!(ContractError::NoPendingAdmin as u32, 115);
     assert_eq!(ContractError::InvalidAdminAddress as u32, 110);
     assert_eq!(ContractError::AdminUnchanged as u32, 111);
     assert_eq!(ContractError::TimelockNotReady as u32, 112);
     assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 117);
-    assert_eq!(ContractError::TimestampInFuture as u32, 119);
+    assert_eq!(ContractError::TimestampInFuture as u32, 118);
     assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
     assert_eq!(ContractError::BondNotActive as u32, 201);
     assert_eq!(ContractError::InsufficientBalance as u32, 202);
@@ -53,7 +53,9 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::CursorOutOfRange as u32, 226);
     assert_eq!(ContractError::BatchTooLarge as u32, 227);
     assert_eq!(ContractError::EmptyBatch as u32, 228);
-    assert_eq!(ContractError::InvalidStringifiedBytes as u32, 235);
+    assert_eq!(ContractError::InvalidStringifiedBytes as u32, 230);
+    assert_eq!(ContractError::StaleAdminEpoch as u32, 514);
+    assert_eq!(ContractError::StaleSignerEpoch as u32, 515);
 
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
     assert_eq!(ContractError::AttestationNotFound as u32, 301);
