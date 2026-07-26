@@ -306,6 +306,28 @@ pub fn split_bps(
     (fee, net)
 }
 
+/// Requires that the sum of the provided basis-point splits equals exactly 10,000.
+///
+/// Iterates over `splits`, sums the values using `checked_add` to prevent overflow,
+/// and verifies the final sum is exactly `10_000` (`BPS_DENOMINATOR`).
+///
+/// # Returns
+///
+/// Returns `Ok(())` if the sum is exactly 10_000.
+/// Returns `Err(ContractError::InvariantViolation)` if the sum does not equal 10_000.
+/// Returns `Err(ContractError::Arithmetic)` if the sum overflows `u32`.
+#[inline]
+pub fn require_valid_percent_split(splits: &soroban_sdk::Vec<u32>) -> Result<(), ContractError> {
+    let mut sum: u32 = 0;
+    for split in splits.iter() {
+        sum = sum.checked_add(split).ok_or(ContractError::Arithmetic)?;
+    }
+    if sum != BPS_DENOMINATOR as u32 {
+        return Err(ContractError::InvariantViolation);
+    }
+    Ok(())
+}
+
 /// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
 ///
 /// The callback `f` receives a (`Vec<T>`, `chunk_index`) pair for every
@@ -639,6 +661,59 @@ mod tests {
             ),
             max_div_2
         );
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_valid() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(5000);
+        splits.push_back(5000);
+        assert_eq!(crate::require_valid_percent_split(&splits), Ok(()));
+        
+        let mut splits2 = soroban_sdk::Vec::new(&env);
+        splits2.push_back(10000);
+        assert_eq!(crate::require_valid_percent_split(&splits2), Ok(()));
+        
+        let mut splits3 = soroban_sdk::Vec::new(&env);
+        splits3.push_back(3333);
+        splits3.push_back(3333);
+        splits3.push_back(3334);
+        assert_eq!(crate::require_valid_percent_split(&splits3), Ok(()));
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_less_than() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(5000);
+        splits.push_back(4999);
+        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::InvariantViolation));
+        
+        let splits_empty = soroban_sdk::Vec::new(&env); // empty sums to 0
+        assert_eq!(crate::require_valid_percent_split(&splits_empty), Err(crate::ContractError::InvariantViolation));
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_greater_than() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(5000);
+        splits.push_back(5001);
+        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::InvariantViolation));
+        
+        let mut splits2 = soroban_sdk::Vec::new(&env);
+        splits2.push_back(10001);
+        assert_eq!(crate::require_valid_percent_split(&splits2), Err(crate::ContractError::InvariantViolation));
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_overflow() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(u32::MAX);
+        splits.push_back(1);
+        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::Arithmetic));
     }
 
     #[test]
