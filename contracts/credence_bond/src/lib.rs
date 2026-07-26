@@ -51,6 +51,10 @@ pub mod types;
 mod test_unauthorized_token;
 #[cfg(test)]
 mod test_events_schema;
+#[cfg(test)]
+mod test_validation;
+#[cfg(test)]
+mod test_zero_address;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;

@@ -33,13 +33,7 @@ fn advance(env: &Env, secs: u64) {
     });
 }
 
-fn as_admin(
-    env: &Env,
-    contract: &Address,
-    caller: &Address,
-    new_admin: &Address,
-    role: AdminRole,
-) {
+fn as_admin(env: &Env, contract: &Address, caller: &Address, new_admin: &Address, role: AdminRole) {
     env.mock_all_auths();
     env.as_contract(contract, || {
         AdminContract::add_admin(env.clone(), caller.clone(), new_admin.clone(), role);
@@ -54,7 +48,13 @@ fn as_admin(
 fn require_role_at_least_succeeds_for_operator_after_grant() {
     let (env, contract, super_admin) = setup_env();
     let operator = user(&env);
-    as_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    as_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     assert!(env.as_contract(&contract, || {
         AdminContract::has_role_at_least(env.clone(), operator.clone(), AdminRole::Operator)
@@ -88,21 +88,13 @@ fn require_role_at_least_succeeds_for_super_admin_after_grant() {
     );
 
     assert!(env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            new_super.clone(),
-            AdminRole::SuperAdmin,
-        )
+        AdminContract::has_role_at_least(env.clone(), new_super.clone(), AdminRole::SuperAdmin)
     }));
     assert!(env.as_contract(&contract, || {
         AdminContract::has_role_at_least(env.clone(), new_super.clone(), AdminRole::Admin)
     }));
     assert!(env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            new_super.clone(),
-            AdminRole::Operator,
-        )
+        AdminContract::has_role_at_least(env.clone(), new_super.clone(), AdminRole::Operator)
     }));
 }
 
@@ -112,11 +104,7 @@ fn require_role_at_least_rejects_unknown_address() {
     let stranger = user(&env);
 
     assert!(!env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            stranger.clone(),
-            AdminRole::Operator,
-        )
+        AdminContract::has_role_at_least(env.clone(), stranger.clone(), AdminRole::Operator)
     }));
 }
 
@@ -128,7 +116,13 @@ fn require_role_at_least_rejects_unknown_address() {
 fn require_role_at_least_succeeds_for_operator_promoted_to_admin() {
     let (env, contract, super_admin) = setup_env();
     let operator = user(&env);
-    as_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    as_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     env.mock_all_auths();
     env.as_contract(&contract, || {
@@ -162,11 +156,7 @@ fn require_role_at_least_succeeds_for_admin_promoted_to_super_admin() {
     });
 
     assert!(env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            admin.clone(),
-            AdminRole::SuperAdmin,
-        )
+        AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::SuperAdmin)
     }));
 }
 
@@ -194,11 +184,7 @@ fn require_role_at_least_fails_for_admin_demoted_to_operator() {
         AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
     }));
     assert!(env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            admin.clone(),
-            AdminRole::Operator,
-        )
+        AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Operator)
     }));
 }
 
@@ -225,21 +211,13 @@ fn require_role_at_least_fails_for_super_admin_demoted_to_operator() {
     });
 
     assert!(!env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            new_super.clone(),
-            AdminRole::SuperAdmin,
-        )
+        AdminContract::has_role_at_least(env.clone(), new_super.clone(), AdminRole::SuperAdmin)
     }));
     assert!(!env.as_contract(&contract, || {
         AdminContract::has_role_at_least(env.clone(), new_super.clone(), AdminRole::Admin)
     }));
     assert!(env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            new_super.clone(),
-            AdminRole::Operator,
-        )
+        AdminContract::has_role_at_least(env.clone(), new_super.clone(), AdminRole::Operator)
     }));
 }
 
@@ -355,7 +333,13 @@ fn operator_cannot_add_admin_after_use_before() {
     let (env, contract, super_admin) = setup_env();
     let operator = user(&env);
     let target = user(&env);
-    as_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    as_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     env.mock_all_auths();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -368,7 +352,10 @@ fn operator_cannot_add_admin_after_use_before() {
             );
         });
     }));
-    assert!(result.is_err(), "operator must not be allowed to add another admin");
+    assert!(
+        result.is_err(),
+        "operator must not be allowed to add another admin"
+    );
 }
 
 #[test]
@@ -376,7 +363,13 @@ fn operator_can_add_admin_after_promotion_to_admin() {
     let (env, contract, super_admin) = setup_env();
     let operator = user(&env);
     let target = user(&env);
-    as_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    as_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     env.mock_all_auths();
     env.as_contract(&contract, || {
@@ -409,7 +402,13 @@ fn operator_cannot_add_admin_after_role_revoked_by_deactivation() {
     let (env, contract, super_admin) = setup_env();
     let operator = user(&env);
     let target = user(&env);
-    as_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    as_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     env.mock_all_auths();
     env.as_contract(&contract, || {
