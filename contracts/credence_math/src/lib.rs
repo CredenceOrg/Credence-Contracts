@@ -368,8 +368,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps, Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, chunked_iter, div_i128, mul_div_i128, split_bps, Rounding,
     };
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
@@ -658,6 +660,65 @@ mod tests {
             split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
             (amount, 0)
         );
+    }
+    #[test]
+    fn chunked_iter_returns_zero_and_does_not_call_closure_when_empty() {
+        let e = soroban_sdk::Env::default();
+        let source: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&e);
+        let mut called = false;
+        let chunks = chunked_iter(&e, &source, 10, |_chunk, _idx| {
+            called = true;
+        });
+        assert!(!called);
+        assert_eq!(chunks, 0);
+    }
+
+    #[test]
+    fn chunked_iter_returns_single_pair_when_source_has_one_element() {
+        let e = soroban_sdk::Env::default();
+        let mut source = soroban_sdk::Vec::new(&e);
+        source.push_back(42u32);
+        
+        let mut collected = std::vec::Vec::new();
+        let mut indices = std::vec::Vec::new();
+        
+        let chunks = chunked_iter(&e, &source, 10, |chunk, idx| {
+            indices.push(idx);
+            for i in 0..chunk.len() {
+                collected.push(chunk.get(i).unwrap());
+            }
+        });
+        
+        assert_eq!(chunks, 1);
+        assert_eq!(indices, std::vec![0]);
+        assert_eq!(collected, std::vec![42]);
+    }
+
+    #[test]
+    fn chunked_iter_returns_many_pairs_when_source_exceeds_chunk_size() {
+        let e = soroban_sdk::Env::default();
+        let mut source = soroban_sdk::Vec::new(&e);
+        let n = 25u32;
+        for i in 0..n {
+            source.push_back(i);
+        }
+        
+        let mut collected = std::vec::Vec::new();
+        let mut indices = std::vec::Vec::new();
+        
+        let chunks = chunked_iter(&e, &source, 10, |chunk, idx| {
+            indices.push(idx);
+            for i in 0..chunk.len() {
+                collected.push(chunk.get(i).unwrap());
+            }
+        });
+        
+        assert_eq!(chunks, 3);
+        assert_eq!(indices, std::vec![0, 1, 2]);
+        assert_eq!(collected.len(), 25);
+        for i in 0..n {
+            assert_eq!(collected[i as usize], i);
+        }
     }
 }
 
