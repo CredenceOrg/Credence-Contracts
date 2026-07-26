@@ -124,6 +124,7 @@ This directory contains all design docs, API references, and operational guides 
 | [credence-timelock.md](credence-timelock.md) | Integrator | Timelock contract |
 | [multisig.md](multisig.md) | Integrator | Multi-sig wallet contract |
 | [known-simplifications.md](known-simplifications.md) | Contributor / Auditor | Intentional simplifications and production paths |
+| [SNAPSHOT_GENERATIONS.md](SNAPSHOT_GENERATIONS.md) | Contributor | Snapshot types, bump triggers, refresh protocols |
 
 ## Benchmarks
 
