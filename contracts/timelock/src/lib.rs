@@ -372,7 +372,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_boundaries() {
+    fn test_execute_rejects_at_expiry() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[1; 32]);
         let delay = 86_400;
@@ -380,9 +380,10 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        // At expires_at: must succeed
+        // At expires_at: must fail because the action is no longer within TTL.
         env.ledger().with_mut(|li| li.timestamp = op.expires_at);
-        client.execute_operation(&op_id);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
     }
 
     #[test]

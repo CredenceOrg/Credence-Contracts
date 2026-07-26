@@ -395,9 +395,7 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
-            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
-        }
+        crate::require_within_ttl_panic(&e, proposal.expires_at, ContractError::ProposalAlreadyExecuted);
 
         let already_signed = e
             .storage()
@@ -445,7 +443,7 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
+        if crate::is_expired(&e, proposal.expires_at) {
             Self::expire_proposal(&e, proposal_id);
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }

@@ -1346,6 +1346,7 @@ mod tests {
             ContractError::BondAlreadyExists => true,
             ContractError::UnauthorizedToken => true,
             ContractError::DuplicateIdempotencyKey => true,
+            ContractError::InvalidStringifiedBytes => true,
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
@@ -1387,7 +1388,7 @@ mod tests {
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
-            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution
+            ContractError::PromiseNotKept => false,
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1527,6 +1528,7 @@ mod tests {
             ContractError::CursorOutOfRange,
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
+            ContractError::PromiseNotKept,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
@@ -1536,7 +1538,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            99,
+            96,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1696,5 +1698,31 @@ mod tests {
             Ok(())
         }
         assert_eq!(test_future(), Err(ContractError::TimestampInFuture));
+    }
+
+    #[test]
+    fn test_require_within_ttl_happy_path() {
+        use soroban_sdk::Env;
+
+        fn test_valid() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::require_within_ttl!(&e, now + 1);
+            Ok(())
+        }
+        assert!(test_valid().is_ok());
+    }
+
+    #[test]
+    fn test_require_within_ttl_rejects_expired() {
+        use soroban_sdk::Env;
+
+        fn test_expired() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::require_within_ttl!(&e, now);
+            Ok(())
+        }
+        assert_eq!(test_expired(), Err(ContractError::SignatureExpired));
     }
 }

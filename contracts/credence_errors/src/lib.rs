@@ -22,7 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
-use soroban_sdk::Env;
+use soroban_sdk::{Env, panic_with_error};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -378,8 +378,8 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
 
-    /// A string expected to contain hex or base64 encoded bytes is malformed
-    /// or exceeds the maximum accepted encoded length.
+    /// Stringified byte input (hex/base64) is malformed or exceeds limits.
+    /// Replaces: reject invalid or oversized stringified bytes inputs.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InvalidStringifiedBytes = 230,
@@ -798,17 +798,16 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvalidStringifiedBytes
-            | ContractError::InvariantViolation
-            | ContractError::AmountExplicitlyZero
-            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
+            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -933,6 +932,7 @@ impl ErrorExt for ContractError {
                 "String is not valid bounded hex or base64 encoded bytes"
             }
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
+            ContractError::InvalidStringifiedBytes => "Stringified bytes input is invalid or too long",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1121,6 +1121,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
+            | ContractError::InvalidStringifiedBytes
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::InvalidStringifiedBytes // correct the encoded input
@@ -1285,34 +1286,45 @@ macro_rules! require_non_zero_bytes32 {
     };
 }
 
-/// Re-init prevention guard for Soroban contract constructors.
-///
-/// Every deployable contract must call this as the **first statement** in its
-/// `initialize` function, before any auth or storage writes. The guard panics
-/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
-/// already exists in instance storage, preventing a second caller from
-/// overwriting the admin and stealing the contract.
-///
-/// # Usage
-///
-/// ```ignore
-/// pub fn initialize(e: Env, admin: Address) {
-///     require_contract_uninitialized(&e, e.storage().instance().has(&DataKey::Admin));
-///     admin.require_auth();
-///     e.storage().instance().set(&DataKey::Admin, &admin);
-///     // ...
-/// }
-/// ```
-///
-/// # Arguments
-/// * `e`             - Soroban environment (needed for typed error panic).
-/// * `is_initialized` - `true` when the sentinel key exists, meaning the
-///                      contract has already been initialized.
-///
-/// # Panics
-/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
+/// Rejects the call when the current ledger timestamp is at or past
+/// the supplied `expires_at` value. Returns `SignatureExpired` when
+/// the expiry has been reached.
+#[macro_export]
+macro_rules! require_within_ttl {
+    ($env:expr, $expires_at:expr) => {
+        if $env.ledger().timestamp() >= $expires_at {
+            return Err($crate::ContractError::SignatureExpired);
+        }
+    };
+}
+
+/// Returns `true` when the supplied `expires_at` timestamp denotes a
+/// reached-or-past expiry. Treats `0` as never-expire.
+pub fn is_expired(e: &Env, expires_at: u64) -> bool {
+    expires_at != 0 && e.ledger().timestamp() >= expires_at
+}
+
+/// Panic-style helper: panics with the supplied `ContractError` when the
+/// `expires_at` has been reached. Use this in entrypoints that prefer
+/// `panic_with_error!` semantics.
+pub fn require_within_ttl_panic(e: &Env, expires_at: u64, err: ContractError) {
+    if is_expired(e, expires_at) {
+        panic_with_error!(e, err);
+    }
+}
+
+/// Result-style helper mirroring the `require_within_ttl!` macro.
+pub fn require_within_ttl_result(e: &Env, expires_at: u64) -> Result<(), ContractError> {
+    if is_expired(e, expires_at) {
+        return Err(ContractError::SignatureExpired);
+    }
+    Ok(())
+}
+
+/// Require the contract to be uninitialised. Panics with
+/// `ContractError::AlreadyInitialized` when `is_initialized` is true.
 pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
     if is_initialized {
-        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }
