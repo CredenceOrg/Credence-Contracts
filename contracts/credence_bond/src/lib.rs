@@ -4,6 +4,7 @@ mod batch;
 mod claims;
 mod early_exit_penalty;
 mod events;
+mod guards;
 mod invariants;
 mod math;
 mod migration;
@@ -326,14 +327,7 @@ impl CredenceBond {
     /// ```
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
         admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
 
@@ -531,13 +525,7 @@ impl CredenceBond {
     pub fn get_identity_state(e: Env) -> IdentityBond {
         // Ensure storage is migrated from v1 to v2 before accessing bond state
         migration::migrate_v1_to_v2(&e);
-        let key = DataKey::Bond;
-        let bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let bond: IdentityBond = guards::load_bond(&e);
         bond
     }
 
@@ -734,29 +722,15 @@ impl CredenceBond {
 
     /// Set attester stake (admin only).
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
         admin.require_auth();
-        if admin != stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
         weighted_attestation::set_attester_stake(&e, &attester, amount);
     }
 
     /// Set weight config: multiplier_bps, max_weight. Admin only.
     pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
         admin.require_auth();
-        if admin != stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
         weighted_attestation::set_weight_config(&e, multiplier_bps, max_weight);
     }
 
@@ -768,12 +742,7 @@ impl CredenceBond {
     /// Withdraw from bond after lock-up period has ended.
     pub fn withdraw(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         let now = e.ledger().timestamp();
         let end = bond
@@ -824,12 +793,7 @@ impl CredenceBond {
     /// Withdraw before lock-up end; applies a time-decayed penalty.
     pub fn withdraw_early(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         let available = bond
             .bonded_amount
@@ -906,12 +870,7 @@ impl CredenceBond {
     /// ```
     pub fn request_withdrawal(e: Env) -> IdentityBond {
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
         if !bond.is_rolling {
             panic_with_error!(e, ContractError::NotRollingBond);
         }
@@ -961,11 +920,7 @@ impl CredenceBond {
     /// ```
     pub fn renew_if_rolling(e: Env) -> IdentityBond {
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        let mut bond: IdentityBond = guards::load_bond(&e);
         if !bond.is_rolling {
             return bond;
         }
@@ -1054,11 +1009,7 @@ impl CredenceBond {
     /// ```
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         bond.bonded_amount = bond
             .bonded_amount
@@ -1100,12 +1051,7 @@ impl CredenceBond {
     /// ```
     pub fn extend_duration(e: Env, additional_duration: u64) -> IdentityBond {
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         bond.bond_duration = bond
             .bond_duration
@@ -1188,12 +1134,7 @@ impl CredenceBond {
         Self::acquire_lock(&e);
 
         let bond_key = DataKey::Bond;
-        let bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&bond_key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let bond: IdentityBond = guards::load_bond(&e);
 
         if bond.identity != identity {
             Self::release_lock(&e);
@@ -1284,22 +1225,10 @@ impl CredenceBond {
         admin.require_auth();
         Self::acquire_lock(&e);
 
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            Self::release_lock(&e);
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
 
         let bond_key = DataKey::Bond;
-        let bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&bond_key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        let bond: IdentityBond = guards::load_bond(&e);
 
         if !bond.active {
             Self::release_lock(&e);
@@ -1342,15 +1271,7 @@ impl CredenceBond {
         admin.require_auth();
         Self::acquire_lock(&e);
 
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            Self::release_lock(&e);
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
 
         let fee_key = Symbol::new(&e, "fees");
         let fees: i128 = e.storage().instance().get(&fee_key).unwrap_or(0);
