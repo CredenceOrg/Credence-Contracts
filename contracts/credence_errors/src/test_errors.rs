@@ -15,6 +15,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -47,6 +48,7 @@ mod tests {
             ContractError::BondAlreadyExists,
             ContractError::UnauthorizedToken,
             ContractError::DuplicateIdempotencyKey,
+            ContractError::InvalidStringifiedBytes,
             ContractError::InvariantViolation,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
@@ -81,6 +83,7 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -100,6 +103,8 @@ mod tests {
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
             ContractError::TimestampInFuture,
+            ContractError::InvalidMaxPauseSigners,
+            ContractError::MaxPauseSignersExceeded,
         ]
     }
 
@@ -141,7 +146,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::TimestampInFuture as u32, 118);
+        assert_eq!(ContractError::TimestampInFuture as u32, 115);
     }
 
     #[test]
@@ -474,7 +479,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            99,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1264,6 +1269,8 @@ mod tests {
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
             ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
+            ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1353,10 +1360,11 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
 
-            // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
+            // Bond: correctable encoding error.
+            ContractError::InvalidStringifiedBytes => true, // correct the encoded input
+
+            // Delegation: off-chain promise hash mismatch; same payload will fail again.
+            ContractError::PromiseNotKept => false,
         }
     }
 
@@ -1384,6 +1392,7 @@ mod tests {
             ContractError::NotSigner,
             ContractError::UnauthorizedDepositor,
             ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
             ContractError::InvalidPauseAction,
             ContractError::InsufficientSignatures,
             ContractError::AdminSuspended,
@@ -1452,6 +1461,7 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1470,10 +1480,12 @@ mod tests {
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
+            ContractError::InvalidMaxPauseSigners,
+            ContractError::MaxPauseSignersExceeded,
         ];
         assert_eq!(
             cases.len(),
-            94,
+            99,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
