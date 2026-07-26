@@ -824,7 +824,6 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::DuplicateIdempotencyKey
-            | ContractError::InvalidStringifiedBytes
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -888,6 +887,7 @@ impl ErrorExt for ContractError {
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
+            | ContractError::StaleOperatorEpoch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
 
             ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
@@ -1072,12 +1072,7 @@ impl ErrorExt for ContractError {
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
-            ContractError::StaleAdminEpoch => {
-                "Admin pause proposal carries a stale epoch reference"
-            }
-            ContractError::StaleSignerEpoch => {
-                "Signer pause proposal carries a stale epoch reference"
-            }
+            ContractError::StaleOperatorEpoch => "Operator attempted to act on a proposal from a stale epoch",
         }
     }
 
@@ -1209,12 +1204,17 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationNotExpired
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
 
+            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
+            // the payload must be discarded and re-signed.
+
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            ContractError::DelegationInactive => false,
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
-            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
+            ContractError::StaleOperatorEpoch => false,
+
 
             // --- Treasury (600-699): mostly caller-fixable ---
             ContractError::AmountMustBePositive            // supply amount > 0
