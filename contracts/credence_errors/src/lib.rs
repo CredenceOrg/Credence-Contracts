@@ -176,6 +176,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ZeroBytes32 = 109,
 
+    /// Caller is not the required lease signer.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    LeaseSignerMismatch = 119,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -797,7 +802,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
+            | ContractError::EmergencyDrainNotPermitted
+            | ContractError::LeaseSignerMismatch => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
@@ -825,6 +831,7 @@ impl ErrorExt for ContractError {
             ContractError::RoleNotHeldAtLedger => {
                 "Actor did not hold the required role at the specified ledger timestamp"
             }
+            ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1005,6 +1012,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
+            | ContractError::LeaseSignerMismatch
             | ContractError::ZeroBytes32 => true,
 
             // Caller supplied a future timestamp; correct it and retry.
@@ -1179,4 +1187,17 @@ macro_rules! require_non_zero_bytes32 {
             return Err($crate::ContractError::ZeroBytes32);
         }
     };
+}
+
+/// Validates that the provided lease signer address matches the calling actor.
+/// Panics with `ContractError::LeaseSignerMismatch` if they differ.
+#[inline]
+pub fn require_matching_lease_signer(
+    e: &soroban_sdk::Env,
+    lease: &soroban_sdk::Address,
+    actor: &soroban_sdk::Address,
+) {
+    if lease != actor {
+        soroban_sdk::panic_with_error!(e, ContractError::LeaseSignerMismatch);
+    }
 }

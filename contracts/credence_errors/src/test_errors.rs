@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{require_contract_uninitialized, ContractError, ErrorCategory, ErrorExt, Role};
+    use crate::{require_contract_uninitialized, require_matching_lease_signer, ContractError, ErrorCategory, ErrorExt, Role};
     use std::vec::Vec;
 
     fn all_variants() -> Vec<ContractError> {
@@ -25,6 +25,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -120,6 +121,26 @@ mod tests {
         require_contract_uninitialized(&e, true);
     }
 
+    // --- require_matching_lease_signer helper tests ---
+
+    #[test]
+    fn test_require_matching_lease_signer_passes_when_equal() {
+        use soroban_sdk::{Address, Env};
+        let e = Env::default();
+        let addr = Address::generate(&e);
+        require_matching_lease_signer(&e, &addr, &addr);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_require_matching_lease_signer_panics_when_different() {
+        use soroban_sdk::{Address, Env};
+        let e = Env::default();
+        let addr1 = Address::generate(&e);
+        let addr2 = Address::generate(&e);
+        require_matching_lease_signer(&e, &addr1, &addr2);
+    }
+
     // --- Wire code tests ---
 
     #[test]
@@ -141,6 +162,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        assert_eq!(ContractError::LeaseSignerMismatch as u32, 119);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
@@ -474,7 +496,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            95,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1263,6 +1285,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
+            ContractError::LeaseSignerMismatch => false,
             ContractError::TimestampInFuture => true, // caller can correct timestamp
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
@@ -1394,6 +1417,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
