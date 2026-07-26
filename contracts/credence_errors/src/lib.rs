@@ -1188,6 +1188,13 @@ macro_rules! require_non_zero_bytes32 {
     };
 }
 
+#[inline]
+pub fn verify_no_future_ledger(e: &soroban_sdk::Env, signed_at: u32) {
+    if signed_at > e.ledger().sequence() {
+        ::soroban_sdk::panic_with_error!(e, ContractError::TimestampInFuture);
+    }
+}
+
 /// Re-init prevention guard for Soroban contract constructors.
 ///
 /// Every deployable contract must call this as the **first statement** in its
