@@ -9,215 +9,16 @@
 //! wrong handler, so this invariant is locked here as an executable contract.
 //!
 //! When adding a new `ContractError` variant:
-//!   1. Add the row to `ALL_VARIANTS` below (one entry per *variant name*,
-//!      not per numeric code).
-//!   2. Update `src/test_errors.rs::tests::all_variants()` so the existing
-//!      exhaustive match arms (`category()`, `description()`,
-//!      `is_recoverable()`) get the right arm too.
-//!   3. Bump the `all_variants_count_is_consistent_with_enum_definition`
-//!      assert below.
+//!   1. Add one row to `variant_table.rs` (single source of truth).
+//!   2. Update exhaustive match arms in `src/test_errors.rs`
+//!      (`expected_is_recoverable()`, category tests, etc.).
 //!
 //! [`docs/error-codes-wire.md`]: ../../../docs/error-codes-wire.md
 //! [`docs/errors.md`]: ../../../docs/errors.md
 
 use credence_errors::ContractError;
 
-/// Every `ContractError` variant, one row per name, in numeric-code order
-/// within each category block. The discriminant-uniqueness test iterates
-/// over this table and fails on the first duplicate numeric code it finds.
-const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
-    // --- Initialization (1-99) ---
-    ("NotInitialized", ContractError::NotInitialized),
-    ("AlreadyInitialized", ContractError::AlreadyInitialized),
-    // --- Authorization (100-199) ---
-    ("NoPendingAdmin", ContractError::NoPendingAdmin),
-    ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
-    ("AdminUnchanged", ContractError::AdminUnchanged),
-    ("TimelockNotReady", ContractError::TimelockNotReady),
-    ("AdminSuspended", ContractError::AdminSuspended),
-    (
-        "EmergencyDrainNotPermitted",
-        ContractError::EmergencyDrainNotPermitted,
-    ),
-    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
-    ("TimestampInFuture", ContractError::TimestampInFuture),
-    ("ZeroBytes32", ContractError::ZeroBytes32),
-    ("NotAdmin", ContractError::NotAdmin),
-    ("NotBondOwner", ContractError::NotBondOwner),
-    ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
-    ("NotOriginalAttester", ContractError::NotOriginalAttester),
-    ("NotSigner", ContractError::NotSigner),
-    (
-        "UnauthorizedDepositor",
-        ContractError::UnauthorizedDepositor,
-    ),
-    ("ContractPaused", ContractError::ContractPaused),
-    ("InvalidPauseAction", ContractError::InvalidPauseAction),
-    (
-        "InsufficientSignatures",
-        ContractError::InsufficientSignatures,
-    ),
-    // --- Bond (200-299) ---
-    ("BondNotFound", ContractError::BondNotFound),
-    ("BondNotActive", ContractError::BondNotActive),
-    ("InsufficientBalance", ContractError::InsufficientBalance),
-    ("SlashExceedsBond", ContractError::SlashExceedsBond),
-    ("StorageCapReached", ContractError::StorageCapReached),
-    ("LockupNotExpired", ContractError::LockupNotExpired),
-    ("NotRollingBond", ContractError::NotRollingBond),
-    (
-        "WithdrawalAlreadyRequested",
-        ContractError::WithdrawalAlreadyRequested,
-    ),
-    ("ReentrancyDetected", ContractError::ReentrancyDetected),
-    ("InvalidNonce", ContractError::InvalidNonce),
-    ("SignatureExpired", ContractError::SignatureExpired),
-    ("NegativeStake", ContractError::NegativeStake),
-    (
-        "EarlyExitConfigNotSet",
-        ContractError::EarlyExitConfigNotSet,
-    ),
-    ("InvalidPenaltyBps", ContractError::InvalidPenaltyBps),
-    ("LeverageExceeded", ContractError::LeverageExceeded),
-    ("UnsupportedToken", ContractError::UnsupportedToken),
-    ("UnsupportedDecimals", ContractError::UnsupportedDecimals),
-    ("InvalidBondAmount", ContractError::InvalidBondAmount),
-    ("InvalidBondDuration", ContractError::InvalidBondDuration),
-    ("InvalidNoticePeriod", ContractError::InvalidNoticePeriod),
-    ("BondAlreadyExists", ContractError::BondAlreadyExists),
-    // Codes 218, 219, 220, 221 — see shared Bond/Delegation block below.
-    ("UnauthorizedToken", ContractError::UnauthorizedToken),
-    (
-        "DuplicateIdempotencyKey",
-        ContractError::DuplicateIdempotencyKey,
-    ),
-    ("InvariantViolation", ContractError::InvariantViolation),
-    ("InvalidCurrency", ContractError::InvalidCurrency),
-    (
-        "TreasuryNotConfigured",
-        ContractError::TreasuryNotConfigured,
-    ),
-    ("CursorOutOfRange", ContractError::CursorOutOfRange),
-    ("BatchTooLarge", ContractError::BatchTooLarge),
-    ("EmptyBatch", ContractError::EmptyBatch),
-    ("PromiseNotKept", ContractError::PromiseNotKept),
-    // --- Shared Bond/Delegation payload mismatches ---
-    // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
-    ("DomainMismatch", ContractError::DomainMismatch),
-    ("OwnerMismatch", ContractError::OwnerMismatch),
-    ("TargetMismatch", ContractError::TargetMismatch),
-    ("ContractIdMismatch", ContractError::ContractIdMismatch),
-    // --- Attestation (300-399) ---
-    ("DuplicateAttestation", ContractError::DuplicateAttestation),
-    ("AttestationNotFound", ContractError::AttestationNotFound),
-    (
-        "AttestationAlreadyRevoked",
-        ContractError::AttestationAlreadyRevoked,
-    ),
-    (
-        "InvalidAttestationWeight",
-        ContractError::InvalidAttestationWeight,
-    ),
-    (
-        "AttestationWeightExceedsMax",
-        ContractError::AttestationWeightExceedsMax,
-    ),
-    // --- Registry (400-499) ---
-    (
-        "IdentityAlreadyRegistered",
-        ContractError::IdentityAlreadyRegistered,
-    ),
-    (
-        "BondContractAlreadyRegistered",
-        ContractError::BondContractAlreadyRegistered,
-    ),
-    (
-        "IdentityNotRegistered",
-        ContractError::IdentityNotRegistered,
-    ),
-    (
-        "BondContractNotRegistered",
-        ContractError::BondContractNotRegistered,
-    ),
-    ("AlreadyDeactivated", ContractError::AlreadyDeactivated),
-    ("AlreadyActive", ContractError::AlreadyActive),
-    (
-        "InvalidContractAddress",
-        ContractError::InvalidContractAddress,
-    ),
-    (
-        "ContractCodeVerificationFailed",
-        ContractError::ContractCodeVerificationFailed,
-    ),
-    ("UnsupportedInterface", ContractError::UnsupportedInterface),
-    // --- Delegation (500-599) ---
-    ("ExpiryInPast", ContractError::ExpiryInPast),
-    ("DelegationNotFound", ContractError::DelegationNotFound),
-    ("AlreadyRevoked", ContractError::AlreadyRevoked),
-    (
-        "DelegationExpiryTooLong",
-        ContractError::DelegationExpiryTooLong,
-    ),
-    ("UnknownScheme", ContractError::UnknownScheme),
-    (
-        "VerifierAlreadyRegistered",
-        ContractError::VerifierAlreadyRegistered,
-    ),
-    (
-        "VerifierNotRegistered",
-        ContractError::VerifierNotRegistered,
-    ),
-    ("VerificationFailed", ContractError::VerificationFailed),
-    (
-        "RevocationGraceExpired",
-        ContractError::RevocationGraceExpired,
-    ),
-    ("DelegationNotExpired", ContractError::DelegationNotExpired),
-    ("DelegationInactive", ContractError::DelegationInactive),
-    // --- Treasury (600-699) ---
-    ("AmountMustBePositive", ContractError::AmountMustBePositive),
-    (
-        "ThresholdExceedsSigners",
-        ContractError::ThresholdExceedsSigners,
-    ),
-    (
-        "InsufficientTreasuryBalance",
-        ContractError::InsufficientTreasuryBalance,
-    ),
-    ("ProposalNotFound", ContractError::ProposalNotFound),
-    (
-        "ProposalAlreadyExecuted",
-        ContractError::ProposalAlreadyExecuted,
-    ),
-    (
-        "InsufficientApprovals",
-        ContractError::InsufficientApprovals,
-    ),
-    (
-        "InvalidFlashLoanCallback",
-        ContractError::InvalidFlashLoanCallback,
-    ),
-    (
-        "FlashLoanRepaymentFailed",
-        ContractError::FlashLoanRepaymentFailed,
-    ),
-    ("ProposalExpired", ContractError::ProposalExpired),
-    ("SlippageExceeded", ContractError::SlippageExceeded),
-    (
-        "TreasuryBeneficiaryMismatch",
-        ContractError::TreasuryBeneficiaryMismatch,
-    ),
-    // --- Arithmetic (700-799) ---
-    ("Overflow", ContractError::Overflow),
-    ("Underflow", ContractError::Underflow),
-    ("DivisionByZero", ContractError::DivisionByZero),
-];
-
-/// N_i128 :: Number of entries to assert in `ALL_VARIANTS`. Bumped manually
-/// when a new variant is added. The mismatch asserting test below fails the
-/// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
-/// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 93;
+include!("../variant_table.rs");
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
@@ -310,18 +111,12 @@ fn discriminant_codes_fit_their_documentated_category_range() {
 
 #[test]
 fn all_variants_count_is_consistent_with_enum_definition() {
-    // Forcing function: when a new `ContractError` variant is added,
-    // `ALL_VARIANTS` in this file AND `all_variants()` in
-    // `src/test_errors.rs` must both be updated. The deterministic count
-    // catches the case where a contributor adds a row to one file and
-    // forgets the other — a regression that bit production already when
-    // `test_descriptions_unique` silently shrank as the enum grew.
+    // Forcing function: `variant_table.rs` is the single generation counter.
+    // Parallel manually-bumped constants in other files caused 94-vs-96 drift.
     assert_eq!(
         ALL_VARIANTS.len(),
-        ALL_VARIANTS_COUNT,
-        "Update `ALL_VARIANTS` in `tests/discriminant_uniqueness.rs` and \
-         bump `ALL_VARIANTS_COUNT` when adding/removing a `ContractError` \
-         variant. Also update `all_variants()` in `src/test_errors.rs`.",
+        96,
+        "Add one row to `variant_table.rs` per new `ContractError` variant.",
     );
 }
 
