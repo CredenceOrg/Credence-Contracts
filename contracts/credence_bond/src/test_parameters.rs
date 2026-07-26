@@ -211,14 +211,23 @@ fn test_set_protocol_fee_bps_at_max_boundary() {
 }
 
 #[test]
-#[should_panic(expected = "protocol_fee_bps out of bounds")]
-fn test_set_protocol_fee_bps_below_min() {
+fn test_set_protocol_fee_bps_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 bps — must be accepted.
     let e = Env::default();
     let (client, admin) = setup(&e);
 
-    // MIN is 0, so we can't go below, but test with u32::MAX wrapping behavior
-    // Actually, since MIN is 0, we test the max boundary instead
-    client.set_protocol_fee_bps(&admin, &(MAX_PROTOCOL_FEE_BPS + 1));
+    client.set_protocol_fee_bps(&admin, &(MIN_PROTOCOL_FEE_BPS + 1));
+    assert_eq!(client.get_protocol_fee_bps(), MIN_PROTOCOL_FEE_BPS + 1);
+}
+
+#[test]
+fn test_set_protocol_fee_bps_max_minus_one_accepted() {
+    // One below the maximum (MAX_PROTOCOL_FEE_BPS - 1) must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_protocol_fee_bps(&admin, &(MAX_PROTOCOL_FEE_BPS - 1));
+    assert_eq!(client.get_protocol_fee_bps(), MAX_PROTOCOL_FEE_BPS - 1);
 }
 
 #[test]
@@ -246,6 +255,26 @@ fn test_set_attestation_fee_bps_at_max_boundary() {
 
     client.set_attestation_fee_bps(&admin, &MAX_ATTESTATION_FEE_BPS);
     assert_eq!(client.get_attestation_fee_bps(), MAX_ATTESTATION_FEE_BPS);
+}
+
+#[test]
+fn test_set_attestation_fee_bps_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 bps — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_attestation_fee_bps(&admin, &(MIN_ATTESTATION_FEE_BPS + 1));
+    assert_eq!(client.get_attestation_fee_bps(), MIN_ATTESTATION_FEE_BPS + 1);
+}
+
+#[test]
+fn test_set_attestation_fee_bps_max_minus_one_accepted() {
+    // One below the maximum (MAX_ATTESTATION_FEE_BPS - 1) must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_attestation_fee_bps(&admin, &(MAX_ATTESTATION_FEE_BPS - 1));
+    assert_eq!(client.get_attestation_fee_bps(), MAX_ATTESTATION_FEE_BPS - 1);
 }
 
 #[test]
@@ -286,6 +315,32 @@ fn test_set_withdrawal_cooldown_at_max_boundary() {
 }
 
 #[test]
+fn test_set_withdrawal_cooldown_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 second — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_withdrawal_cooldown_secs(&admin, &(MIN_WITHDRAWAL_COOLDOWN_SECS + 1));
+    assert_eq!(
+        client.get_withdrawal_cooldown_secs(),
+        MIN_WITHDRAWAL_COOLDOWN_SECS + 1
+    );
+}
+
+#[test]
+fn test_set_withdrawal_cooldown_max_minus_one_accepted() {
+    // One second below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_withdrawal_cooldown_secs(&admin, &(MAX_WITHDRAWAL_COOLDOWN_SECS - 1));
+    assert_eq!(
+        client.get_withdrawal_cooldown_secs(),
+        MAX_WITHDRAWAL_COOLDOWN_SECS - 1
+    );
+}
+
+#[test]
 #[should_panic(expected = "withdrawal_cooldown_secs out of bounds")]
 fn test_set_withdrawal_cooldown_above_max() {
     let e = Env::default();
@@ -310,6 +365,32 @@ fn test_set_slash_cooldown_at_max_boundary() {
 
     client.set_slash_cooldown_secs(&admin, &MAX_SLASH_COOLDOWN_SECS);
     assert_eq!(client.get_slash_cooldown_secs(), MAX_SLASH_COOLDOWN_SECS);
+}
+
+#[test]
+fn test_set_slash_cooldown_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 second — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_slash_cooldown_secs(&admin, &(MIN_SLASH_COOLDOWN_SECS + 1));
+    assert_eq!(
+        client.get_slash_cooldown_secs(),
+        MIN_SLASH_COOLDOWN_SECS + 1
+    );
+}
+
+#[test]
+fn test_set_slash_cooldown_max_minus_one_accepted() {
+    // One second below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_slash_cooldown_secs(&admin, &(MAX_SLASH_COOLDOWN_SECS - 1));
+    assert_eq!(
+        client.get_slash_cooldown_secs(),
+        MAX_SLASH_COOLDOWN_SECS - 1
+    );
 }
 
 #[test]
@@ -341,6 +422,26 @@ fn test_set_bronze_threshold_at_max_boundary() {
 
     client.set_bronze_threshold(&admin, &MAX_BRONZE_THRESHOLD);
     assert_eq!(client.get_bronze_threshold(), MAX_BRONZE_THRESHOLD);
+}
+
+#[test]
+fn test_set_bronze_threshold_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_bronze_threshold(&admin, &(MIN_BRONZE_THRESHOLD + 1));
+    assert_eq!(client.get_bronze_threshold(), MIN_BRONZE_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_bronze_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_bronze_threshold(&admin, &(MAX_BRONZE_THRESHOLD - 1));
+    assert_eq!(client.get_bronze_threshold(), MAX_BRONZE_THRESHOLD - 1);
 }
 
 #[test]
@@ -380,6 +481,26 @@ fn test_set_silver_threshold_at_max_boundary() {
 }
 
 #[test]
+fn test_set_silver_threshold_min_plus_one_accepted() {
+    // One above the minimum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_silver_threshold(&admin, &(MIN_SILVER_THRESHOLD + 1));
+    assert_eq!(client.get_silver_threshold(), MIN_SILVER_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_silver_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_silver_threshold(&admin, &(MAX_SILVER_THRESHOLD - 1));
+    assert_eq!(client.get_silver_threshold(), MAX_SILVER_THRESHOLD - 1);
+}
+
+#[test]
 #[should_panic(expected = "silver_threshold out of bounds")]
 fn test_set_silver_threshold_above_max() {
     let e = Env::default();
@@ -416,6 +537,26 @@ fn test_set_gold_threshold_at_max_boundary() {
 }
 
 #[test]
+fn test_set_gold_threshold_min_plus_one_accepted() {
+    // One above the minimum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_gold_threshold(&admin, &(MIN_GOLD_THRESHOLD + 1));
+    assert_eq!(client.get_gold_threshold(), MIN_GOLD_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_gold_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_gold_threshold(&admin, &(MAX_GOLD_THRESHOLD - 1));
+    assert_eq!(client.get_gold_threshold(), MAX_GOLD_THRESHOLD - 1);
+}
+
+#[test]
 #[should_panic(expected = "gold_threshold out of bounds")]
 fn test_set_gold_threshold_above_max() {
     let e = Env::default();
@@ -449,6 +590,26 @@ fn test_set_platinum_threshold_at_max_boundary() {
 
     client.set_platinum_threshold(&admin, &MAX_PLATINUM_THRESHOLD);
     assert_eq!(client.get_platinum_threshold(), MAX_PLATINUM_THRESHOLD);
+}
+
+#[test]
+fn test_set_platinum_threshold_min_plus_one_accepted() {
+    // One above the minimum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_platinum_threshold(&admin, &(MIN_PLATINUM_THRESHOLD + 1));
+    assert_eq!(client.get_platinum_threshold(), MIN_PLATINUM_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_platinum_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_platinum_threshold(&admin, &(MAX_PLATINUM_THRESHOLD - 1));
+    assert_eq!(client.get_platinum_threshold(), MAX_PLATINUM_THRESHOLD - 1);
 }
 
 #[test]
