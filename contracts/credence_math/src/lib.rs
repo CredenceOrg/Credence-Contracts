@@ -30,7 +30,10 @@ pub mod rate;
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
 
-/// Rounding behavior for [`mul_div_i128`].
+/// Fixed-point denominator for percentage calculations.
+pub const PERCENT_DENOMINATOR: i128 = 100;
+
+/// Rounding behavior for [`mul_div_i128`] and [`sat_mul_div_i128`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero.
@@ -188,13 +191,8 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
         .ok_or(ContractError::Overflow)
 }
 
-/// Checked `i128` addition returning a typed error instead of panicking.
-#[inline]
-pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
-    a.checked_add(b).ok_or(ContractError::Overflow)
-}
-
-/// Compute `a * b / denom` over a 256-bit intermediate.
+/// Compute `a * b / denom` over a 256-bit intermediate, **panicking** on overflow
+/// or `denom == 0`.
 ///
 /// The intermediate product is widened before division, so large products that
 /// exceed `i128` can still succeed when the final rounded result fits in
@@ -269,7 +267,83 @@ pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static
     }
 }
 
+/// Compute `a * b / denom` over a 256-bit intermediate with **saturating**
+/// semantics.
+///
+/// Unlike [`mul_div_i128`] — which panics on overflow or `denom == 0` — this
+/// helper silently **clamps** the result to `i128::MIN` / `i128::MAX` and
+/// **returns `0`** when `denom == 0`. Use it on UX/aggregation paths that must
+/// never revert the transaction.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::{sat_mul_div_i128, Rounding};
+///
+/// // Saturation at upper bound: never panics, clamps to i128::MAX.
+/// assert_eq!(sat_mul_div_i128(i128::MAX, 2, 1, Rounding::Down), i128::MAX);
+/// // Saturation at lower bound: clamps to i128::MIN.
+/// assert_eq!(sat_mul_div_i128(i128::MIN, 2, 1, Rounding::Down), i128::MIN);
+/// // Zero denominator is treated as zero (no panic).
+/// assert_eq!(sat_mul_div_i128(10, 3, 0, Rounding::Down), 0);
+/// // Basic rounding semantics:
+/// assert_eq!(sat_mul_div_i128(10, 3, 4, Rounding::Down), 7);
+/// assert_eq!(sat_mul_div_i128(10, 3, 4, Rounding::Up), 8);
+/// ```
+#[inline]
+#[must_use]
+pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding) -> i128 {
+    if denom == 0 {
+        return 0;
+    }
+
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let numerator = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let quotient = numerator / divisor;
+    let remainder = numerator % divisor;
+
+    let rounded = match mode {
+        Rounding::Down => quotient,
+        Rounding::Up => {
+            if remainder == U256::ZERO {
+                quotient
+            } else {
+                quotient + U256::ONE
+            }
+        }
+        Rounding::Nearest => {
+            if remainder * U256::new(2) >= divisor {
+                quotient + U256::ONE
+            } else {
+                quotient
+            }
+        }
+    };
+
+    let positive_limit = U256::new(i128::MAX as u128);
+    let negative_limit = U256::new((i128::MAX as u128) + 1);
+    if negative {
+        if rounded >= negative_limit {
+            i128::MIN
+        } else {
+            -(rounded.as_u128() as i128)
+        }
+    } else {
+        if rounded >= positive_limit {
+            i128::MAX
+        } else {
+            rounded.as_u128() as i128
+        }
+    }
+}
+
 /// Calculate a basis-point percentage of an `i128` amount: `amount * bps / BPS_DENOMINATOR`.
+///
+/// # Panics
+/// Panics with `mul_msg` on i128 multiplication overflow, with `div_msg` on
+/// division by zero. Panics never fire on hot paths because the i128 multiply
+/// step is the only widening boundary on this call.
 #[inline]
 #[must_use]
 pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str) -> i128 {
@@ -318,6 +392,9 @@ pub fn bps_round_up(amount: i128, bps_value: u32, msg: &'static str) -> i128 {
 }
 
 /// Calculate a basis-point percentage of a `u64` amount: `amount * bps / BPS_DENOMINATOR`.
+///
+/// # Panics
+/// Panics with `mul_msg` on u64 multiplication overflow.
 #[inline]
 #[must_use]
 pub fn bps_u64(amount: u64, bps: u32, mul_msg: &'static str) -> u64 {
@@ -325,6 +402,10 @@ pub fn bps_u64(amount: u64, bps: u32, mul_msg: &'static str) -> u64 {
 }
 
 /// Split an amount into `(fee, net)` using basis-point math.
+///
+/// # Panics
+/// Panics with `mul_msg` on i128 multiplication overflow, with `div_msg` on
+/// division by zero, with `sub_msg` if `fee > amount`.
 #[inline]
 #[must_use]
 pub fn split_bps(
@@ -477,8 +558,8 @@ mod tests {
     extern crate std;
 
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, floor_to_day, mul_div_i128, split_bps,
-        Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps,
+        split_percent, Rounding,
     };
 
     // ── floor_to_day ─────────────────────────────────────────────────────────
@@ -761,10 +842,6 @@ mod tests {
         // bonded=7, slashed=3: ceil(3*10_000/7) = 4286
         assert_eq!(ceil_div_i128(3 * 10_000, 7, "test"), 4286);
     }
-
-    // -----------------------------------------------------------------------
-    // Overflow boundary of the inner `a + (b - 1)` add (issue #660)
-    // -----------------------------------------------------------------------
 
     /// `a == i128::MAX, b == 2` makes the inner `a + (b - 1)` overflow, which
     /// must hit the `checked_add` panic path with the supplied message.
