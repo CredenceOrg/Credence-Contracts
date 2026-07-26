@@ -1,7 +1,10 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{require_contract_uninitialized, require_matching_lease_signer, ContractError, ErrorCategory, ErrorExt, Role};
+    use crate::{
+        require_contract_uninitialized, require_matching_lease_signer, ContractError,
+        ErrorCategory, ErrorExt, Role,
+    };
     use std::vec::Vec;
 
     fn all_variants() -> Vec<ContractError> {

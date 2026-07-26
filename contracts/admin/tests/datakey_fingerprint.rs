@@ -137,6 +137,7 @@ fn previous_snapshot_deserialises_with_new_spec() {
             .collect();
 
         let bytes = Bytes::from_slice(&env, &bytes_vec);
-        let _ = DataKey::from_xdr(&env, &bytes).expect("Failed to deserialize DataKey from snapshot hex");
+        let _ = DataKey::from_xdr(&env, &bytes)
+            .expect("Failed to deserialize DataKey from snapshot hex");
     }
 }

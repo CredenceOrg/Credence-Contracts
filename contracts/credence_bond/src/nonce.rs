@@ -212,7 +212,7 @@ mod tests {
         #[test]
         fn prop_require_within_ttl_boundaries_enforce_strict_expiry(expires_at in 1u64..100_000_000_000u64) {
             let e = Env::default();
-            
+
             // At expires_at - 1 (valid)
             e.ledger().with_mut(|l| l.timestamp = expires_at - 1);
             require_not_expired(&e, expires_at);

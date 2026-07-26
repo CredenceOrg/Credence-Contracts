@@ -24,9 +24,9 @@
 pub mod pausable;
 
 #[cfg(test)]
-mod test_ownership_transfer;
-#[cfg(test)]
 mod test_events_schema;
+#[cfg(test)]
+mod test_ownership_transfer;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
@@ -978,12 +978,7 @@ impl AdminContract {
     /// * `role`      - Minimum `AdminRole` that must have been held
     /// * `actor`     - Address whose historical role is checked
     /// * `at_ledger` - Unix timestamp (seconds) of the signed action
-    pub fn check_role_at_ledger(
-        e: Env,
-        role: AdminRole,
-        actor: Address,
-        at_ledger: u64,
-    ) {
+    pub fn check_role_at_ledger(e: Env, role: AdminRole, actor: Address, at_ledger: u64) {
         bump_instance_ttl(&e);
         Self::require_role_at_ledger(&e, role, &actor, at_ledger);
     }
@@ -1161,12 +1156,7 @@ impl AdminContract {
     /// # Panics
     /// Panics via [`panic_with_error!`] — compatible with Soroban's error
     /// propagation model.
-    pub fn require_role_at_ledger(
-        e: &Env,
-        role: AdminRole,
-        actor: &Address,
-        at_ledger: u64,
-    ) {
+    pub fn require_role_at_ledger(e: &Env, role: AdminRole, actor: &Address, at_ledger: u64) {
         let admin_info: AdminInfo = e
             .storage()
             .instance()

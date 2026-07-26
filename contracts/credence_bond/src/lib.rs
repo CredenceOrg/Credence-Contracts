@@ -2,7 +2,6 @@
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-
 #[cfg(any(test, feature = "testutils"))]
 mod batch;
 mod claims;
@@ -11,6 +10,7 @@ pub mod emergency;
 mod emergency_drain;
 mod events;
 pub mod fee;
+mod idempotency;
 mod idempotency;
 mod invariants;
 pub mod iter_chunks;
@@ -24,16 +24,15 @@ mod pausable;
 mod rolling_bond;
 mod safe_token;
 mod same_ledger_liquidation_guard;
-mod storage;
 mod slash_history;
 mod slashing;
+mod storage;
 mod storage;
 mod tiered_bond;
 mod token_integration;
 mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
-mod idempotency;
 
 #[cfg(test)]
 #[path = "fuzz/test_weighted_attestation_rounding.rs"]
@@ -46,17 +45,17 @@ mod test_normalization_invariant;
 #[path = "types/mod.rs"]
 pub mod types;
 
-/// Shared test setup utilities (mock token, bond registration).
-#[cfg(test)]
-mod test_unauthorized_token;
 #[cfg(test)]
 mod test_events_schema;
+/// Shared test setup utilities (mock token, bond registration).
+#[cfg(test)]
+pub mod test_helpers;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
-pub mod test_helpers;
+mod test_unauthorized_token;
 
 /// Chaos testing suite for simulating host and token failures.
 #[cfg(test)]
@@ -203,7 +202,14 @@ impl CredenceBond {
         safe_token::transfer_in(&e, &identity, amount);
 
         storage::set_bond(&e, &identity, &bond);
-        events::emit_bond_created_v2(&e, &identity, amount, duration, is_rolling, e.ledger().timestamp());
+        events::emit_bond_created_v2(
+            &e,
+            &identity,
+            amount,
+            duration,
+            is_rolling,
+            e.ledger().timestamp(),
+        );
 
         Ok(bond)
     }
@@ -217,26 +223,34 @@ impl CredenceBond {
         }
 
         let mut bond = storage::get_bond(&e, &identity)?;
-        
+
         safe_token::transfer_in(&e, &identity, amount);
 
-        bond.amount = bond.amount.checked_add(amount)
+        bond.amount = bond
+            .amount
+            .checked_add(amount)
             .ok_or(ContractError::Overflow)?;
-        
+
         storage::set_bond(&e, &identity, &bond);
         events::emit_bond_increased_v2(&e, &identity, amount, bond.amount, e.ledger().timestamp());
         Ok(())
     }
 
     /// Extends the duration of an existing bond.
-    pub fn extend_duration(e: Env, identity: Address, extra_duration: u64) -> Result<(), ContractError> {
+    pub fn extend_duration(
+        e: Env,
+        identity: Address,
+        extra_duration: u64,
+    ) -> Result<(), ContractError> {
         Self::require_not_paused(&e);
         identity.require_auth();
         let mut bond = storage::get_bond(&e, &identity)?;
-        
-        bond.duration = bond.duration.checked_add(extra_duration)
+
+        bond.duration = bond
+            .duration
+            .checked_add(extra_duration)
             .ok_or(ContractError::Overflow)?;
-            
+
         storage::set_bond(&e, &identity, &bond);
         events::emit_duration_extended_v2(&e, &identity, bond.duration, e.ledger().timestamp());
         Ok(())
@@ -261,12 +275,14 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         identity.require_auth();
         acquire_lock(&e);
-        
+
         let mut bond = storage::get_bond(&e, &identity)?;
         let now = e.ledger().timestamp();
 
         if bond.is_rolling {
-            if bond.withdrawal_requested_at == 0 { panic!("notice not started"); }
+            if bond.withdrawal_requested_at == 0 {
+                panic!("notice not started");
+            }
             if now < bond.withdrawal_requested_at + bond.notice_period_duration {
                 panic!("notice period not elapsed");
             }
@@ -275,36 +291,63 @@ impl CredenceBond {
         }
 
         let available = bond.amount - bond.slashed_amount;
-        if amount > available { return Err(ContractError::InsufficientBalance); }
+        if amount > available {
+            return Err(ContractError::InsufficientBalance);
+        }
 
-        bond.amount = bond.amount.checked_sub(amount).ok_or(ContractError::Underflow)?;
+        bond.amount = bond
+            .amount
+            .checked_sub(amount)
+            .ok_or(ContractError::Underflow)?;
         storage::set_bond(&e, &identity, &bond);
-        
+
         safe_token::transfer_out(&e, &identity, amount);
         events::emit_withdrawal_v2(&e, &identity, amount, bond.amount, now);
-        
+
         release_lock(&e);
         Ok(())
     }
 
-    pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
+    pub fn slash(
+        e: Env,
+        admin: Address,
+        identity: Address,
+        amount: i128,
+    ) -> Result<(), ContractError> {
         Self::require_not_paused(&e);
         admin.require_auth();
-        if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
+        if Some(admin) != storage::get_admin(&e) {
+            return Err(ContractError::NotAdmin);
+        }
 
         let mut bond = storage::get_bond(&e, &identity)?;
-        let new_slashed = bond.slashed_amount.checked_add(amount).ok_or(ContractError::Overflow)?;
-        
-        bond.slashed_amount = if new_slashed > bond.amount { bond.amount } else { new_slashed };
+        let new_slashed = bond
+            .slashed_amount
+            .checked_add(amount)
+            .ok_or(ContractError::Overflow)?;
+
+        bond.slashed_amount = if new_slashed > bond.amount {
+            bond.amount
+        } else {
+            new_slashed
+        };
         storage::set_bond(&e, &identity, &bond);
-        
-        events::emit_bond_slashed_v2(&e, &identity, amount, bond.slashed_amount, e.ledger().timestamp());
+
+        events::emit_bond_slashed_v2(
+            &e,
+            &identity,
+            amount,
+            bond.slashed_amount,
+            e.ledger().timestamp(),
+        );
         Ok(())
     }
 }
 
 fn acquire_lock(e: &Env) {
-    if storage::is_locked(e) { panic_with_error!(e, ContractError::ReentrancyDetected); }
+    if storage::is_locked(e) {
+        panic_with_error!(e, ContractError::ReentrancyDetected);
+    }
     storage::set_lock(e, true);
 }
 
@@ -333,11 +376,18 @@ fn validate_and_create_bond_struct(
         return Err(ContractError::InvalidNoticePeriod);
     }
 
-    e.ledger().timestamp()
+    e.ledger()
+        .timestamp()
         .checked_add(duration)
         .ok_or(ContractError::Overflow)?;
     let bond_start = e.ledger().timestamp();
-    let bond = create_bond(amount, bond_start, duration, is_rolling, notice_period_duration)?;
+    let bond = create_bond(
+        amount,
+        bond_start,
+        duration,
+        is_rolling,
+        notice_period_duration,
+    )?;
     Ok(bond)
 }
 
@@ -595,8 +645,6 @@ impl CredenceBond {
         crate::validation::require_non_empty_vec(&e, &accepted_tokens);
         storage::set_accepted_tokens(&e, &accepted_tokens);
     }
-
-
 
     /// Return the contract version.
     pub fn version(e: Env) -> String {
@@ -2056,12 +2104,7 @@ impl CredenceBond {
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    pub fn slash_bond(
-        e: Env,
-        admin: Address,
-        slash_amount: i128,
-        idempotency_salt: Bytes,
-    ) -> i128 {
+    pub fn slash_bond(e: Env, admin: Address, slash_amount: i128, idempotency_salt: Bytes) -> i128 {
         Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();

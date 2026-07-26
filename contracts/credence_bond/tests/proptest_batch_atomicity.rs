@@ -44,9 +44,9 @@
 
 extern crate std;
 
-use credence_bond::{AttestationBatchItem, CredenceBond, CredenceBondClient};
 use credence_bond::soroban_sdk::testutils::Address as _;
 use credence_bond::soroban_sdk::{Address, Env, String, Vec};
+use credence_bond::{AttestationBatchItem, CredenceBond, CredenceBondClient};
 use proptest::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 

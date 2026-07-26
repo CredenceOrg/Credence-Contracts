@@ -27,17 +27,17 @@ pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128
         .instance()
         .set(&DataKey::AttesterStake(attester.clone()), &amount);
 }
-//!
-//! ## Overview
-//! Attestation weight is derived from the attester's bond (or configured stake), with
-//! a configurable multiplier (basis points) and a protocol cap.
-//!
-//! ## Rounding semantics
-//!
-//! ```text
-//! raw = floor(stake * multiplier_bps / BPS_DENOMINATOR)
-//! weight = clamp(raw, DEFAULT_ATTESTATION_WEIGHT, min(config_max, MAX_ATTESTATION_WEIGHT))
-//! ```
+//
+// ## Overview
+// Attestation weight is derived from the attester's bond (or configured stake), with
+// a configurable multiplier (basis points) and a protocol cap.
+//
+// ## Rounding semantics
+//
+// ```text
+// raw = floor(stake * multiplier_bps / BPS_DENOMINATOR)
+// weight = clamp(raw, DEFAULT_ATTESTATION_WEIGHT, min(config_max, MAX_ATTESTATION_WEIGHT))
+// ```
 
 use crate::math;
 use crate::types::attestation::MAX_ATTESTATION_WEIGHT;

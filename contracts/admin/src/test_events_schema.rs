@@ -106,7 +106,8 @@ mod tests {
     fn paused_schema_matches() {
         let e = Env::default();
         let proposal_id: Option<u64> = Some(42u64);
-        e.events().publish((Symbol::new(&e, "paused"),), proposal_id);
+        e.events()
+            .publish((Symbol::new(&e, "paused"),), proposal_id);
         let events = e.events().get_all();
         // Topics: paused (1)
         // Data: Option<u64> (1)
@@ -117,7 +118,8 @@ mod tests {
     fn unpaused_schema_matches() {
         let e = Env::default();
         let proposal_id: Option<u64> = Some(42u64);
-        e.events().publish((Symbol::new(&e, "unpaused"),), proposal_id);
+        e.events()
+            .publish((Symbol::new(&e, "unpaused"),), proposal_id);
         let events = e.events().get_all();
         // Topics: unpaused (1)
         // Data: Option<u64> (1)
