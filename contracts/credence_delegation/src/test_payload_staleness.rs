@@ -31,8 +31,11 @@
 use super::*;
 use credence_errors::ContractError;
 use domain::MAX_PAYLOAD_AGE_LEDGERS;
-use soroban_sdk::{String, testutils::{Address as _, Ledger as _}};
 use soroban_sdk::Env;
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    String,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -140,14 +143,13 @@ fn exactly_at_limit_delegate_is_accepted() {
 
     let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0, signed_at);
 
-    client
-        .execute_delegated_delegate(
-            &owner,
-            &delegate,
-            &DelegationType::Attestation,
-            &expires_at(&e),
-            &payload,
-        );
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expires_at(&e),
+        &payload,
+    );
     // If we reach here the delegation was accepted.
 }
 
@@ -303,6 +305,7 @@ fn future_ledger_number_is_rejected() {
         nonce: 0,
         scheme: 0,
         ledger_number: future_ledger,
+        signature_domain: soroban_sdk::String::from_str(&e, "CredenceDelegation"),
     };
 
     let result = client.try_execute_delegated_delegate(
@@ -324,4 +327,3 @@ fn future_ledger_number_is_rejected() {
         "rejection must surface as TimestampInFuture (code 511)"
     );
 }
-

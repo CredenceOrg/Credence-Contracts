@@ -119,6 +119,21 @@ fn test_invalid_resolve_while_voting_active() {
 }
 
 #[test]
+fn test_create_dispute_rejects_when_creator_has_ongoing_dispute() {
+    let s = setup();
+    let _id = open_dispute(&s);
+
+    let description = String::from_str(&s.env, "second dispute");
+    let err = s
+        .client
+        .try_create_dispute(&s.creator, &description, &3600)
+        .unwrap_err()
+        .unwrap();
+
+    assert_eq!(err, ArbitrationError::OngoingDispute);
+}
+
+#[test]
 fn test_invalid_resolve_already_resolved() {
     let s = setup();
     let id = open_dispute(&s);
@@ -611,4 +626,103 @@ fn test_clear_winner_outcomes_not_tied() {
     let dispute = s.client.get_dispute(&id);
     assert_eq!(dispute.status, DisputeStatus::Resolved); // Not Tied
     assert_eq!(dispute.outcome, 1); // outcome 1 is valid (non-zero)
+}
+
+// ── dispute-lease guard tests ───────────────────────────────────────────────
+// Active dispute blocks; resolved allows.
+
+#[test]
+fn require_dispute_resolved_allows_resolved_state() {
+    use status::require_dispute_resolved;
+    assert!(require_dispute_resolved(&DisputeStatus::Resolved).is_ok());
+}
+
+#[test]
+fn require_dispute_resolved_allows_cancelled_state() {
+    use status::require_dispute_resolved;
+    assert!(require_dispute_resolved(&DisputeStatus::Cancelled).is_ok());
+}
+
+#[test]
+fn require_dispute_resolved_allows_tied_state() {
+    use status::require_dispute_resolved;
+    assert!(require_dispute_resolved(&DisputeStatus::Tied).is_ok());
+}
+
+#[test]
+fn require_dispute_resolved_rejects_open_state() {
+    use status::{require_dispute_resolved, ArbitrationError};
+    assert_eq!(
+        require_dispute_resolved(&DisputeStatus::Open),
+        Err(ArbitrationError::DisputeActive)
+    );
+}
+
+#[test]
+fn require_dispute_resolved_rejects_voting_state() {
+    use status::{require_dispute_resolved, ArbitrationError};
+    assert_eq!(
+        require_dispute_resolved(&DisputeStatus::Voting),
+        Err(ArbitrationError::DisputeActive)
+    );
+}
+
+#[test]
+fn require_dispute_resolved_rejects_resolving_state() {
+    use status::{require_dispute_resolved, ArbitrationError};
+    assert_eq!(
+        require_dispute_resolved(&DisputeStatus::Resolving),
+        Err(ArbitrationError::DisputeActive)
+    );
+}
+
+// ── integration-style: dispute lifecycle with the guard ────────────────────
+
+#[test]
+fn dispute_lease_guard_blocks_operations_when_dispute_active() {
+    // Active dispute (Voting) → guard rejects
+    let s = setup();
+    let id = open_dispute(&s);
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Voting);
+    assert_eq!(
+        status::require_dispute_resolved(&dispute.status),
+        Err(ArbitrationError::DisputeActive)
+    );
+}
+
+#[test]
+fn dispute_lease_guard_allows_operations_when_dispute_resolved() {
+    // Resolved dispute → guard allows
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1);
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Resolved);
+    assert!(status::require_dispute_resolved(&dispute.status).is_ok());
+}
+
+#[test]
+fn dispute_lease_guard_allows_operations_when_dispute_cancelled() {
+    // Cancelled dispute → guard allows
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.cancel_dispute(&s.creator, &id, &None);
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Cancelled);
+    assert!(status::require_dispute_resolved(&dispute.status).is_ok());
+}
+
+#[test]
+fn dispute_lease_guard_allows_operations_when_dispute_tied() {
+    // Tied dispute → guard allows
+    let s = setup();
+    let id = open_dispute(&s);
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    let dispute = s.client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::Tied);
+    assert!(status::require_dispute_resolved(&dispute.status).is_ok());
 }

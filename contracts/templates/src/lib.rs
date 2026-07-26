@@ -30,7 +30,7 @@
 
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
@@ -142,7 +142,7 @@ impl TemplateContract {
             .expect("record not found");
 
         // Reference expiry pattern: reject and purge on read if expired
-        if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+        if crate::is_expired(&e, record.expires_at) {
             e.storage().instance().remove(&DataKey::Record(owner));
             panic_with_error!(&e, ContractError::SignatureExpired);
         }
@@ -157,7 +157,7 @@ impl TemplateContract {
             .instance()
             .get::<_, Record>(&DataKey::Record(owner.clone()))
         {
-            if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+            if crate::is_expired(&e, record.expires_at) {
                 e.storage().instance().remove(&DataKey::Record(owner));
                 return false;
             }
@@ -174,7 +174,7 @@ impl TemplateContract {
             .instance()
             .get::<_, Record>(&DataKey::Record(owner))
         {
-            return record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at;
+            return crate::is_expired(&e, record.expires_at);
         }
         false
     }

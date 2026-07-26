@@ -1,0 +1,4 @@
+{
+  "topics": ["batch_transfer", "Address"],
+  "data": ["u32", "i128"]
+}

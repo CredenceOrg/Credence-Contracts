@@ -121,6 +121,7 @@ classification, so every consumer stays consistent as new variants are added.
 | 603 | `ProposalNotFound` | `"proposal not found"` | Withdrawal proposal not found |
 | 604 | `ProposalAlreadyExecuted` | `"proposal already executed"` | Proposal already executed |
 | 605 | `InsufficientApprovals` | `"insufficient approvals to execute"` | Not enough approvals yet |
+| 611 | `CorridorNotRegistered` | n/a (new, structured error only) | Settlement destination is not a registered corridor |
 
 ### Arithmetic (700-799)
 

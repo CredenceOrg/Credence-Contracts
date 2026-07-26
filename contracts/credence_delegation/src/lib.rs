@@ -17,9 +17,9 @@
 // Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
 // `clippy::disallowed_macros` lint belongs to the `restriction` group, so
 // a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests + the testutils feature
+// is the only mode where this deny fires (tests
 // stay free to use format!/write! for diagnostics).
-#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -49,11 +49,11 @@ use soroban_sdk::String;
 #[allow(dead_code)]
 const SIGNATURE_DOMAIN: &str = "CredenceDelegation";
 
+pub mod audit;
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
 pub mod verifier;
-pub mod audit;
 
 pub use domain::{DelegatedActionPayload, DomainTag};
 pub use pausable::PauseProposalView;
@@ -1145,4 +1145,4 @@ mod test_verifier_dispatch;
 mod test_auth;
 
 #[cfg(test)]
-mod test_payload_staleness;
+mod test_require_matching_contract_id;

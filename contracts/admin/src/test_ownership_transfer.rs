@@ -4,7 +4,7 @@ use soroban_sdk::{Address, Env};
 #[cfg(test)]
 mod ownership_transfer_tests {
     use super::*;
-    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
 
     fn create_contract() -> AdminContract {
         AdminContract {}
@@ -124,6 +124,11 @@ mod ownership_transfer_tests {
             );
         });
 
+        // Advance past the timelock delay
+        env.ledger().with_mut(|li| {
+            li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
+        });
+
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
@@ -146,6 +151,11 @@ mod ownership_transfer_tests {
                 super_admin_1.clone(),
                 super_admin_2.clone(),
             );
+        });
+
+        // Advance past the timelock delay
+        env.ledger().with_mut(|li| {
+            li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
         });
 
         env.mock_all_auths();
@@ -336,7 +346,7 @@ mod ownership_transfer_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #1)")]
+    #[should_panic(expected = "Error(Contract, #109)")]
     fn test_accept_ownership_rejects_when_no_pending_owner() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
@@ -411,6 +421,11 @@ mod ownership_transfer_tests {
         });
         assert_eq!(new_pending_owner, Some(super_admin_3.clone()));
 
+        // Advance past the timelock delay
+        env.ledger().with_mut(|li| {
+            li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
+        });
+
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             // Accept the latest transfer
@@ -467,6 +482,11 @@ mod ownership_transfer_tests {
             );
         });
 
+        // Advance past the timelock delay
+        env.ledger().with_mut(|li| {
+            li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
+        });
+
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
@@ -485,6 +505,11 @@ mod ownership_transfer_tests {
             );
         });
 
+        // Advance past the timelock delay again
+        env.ledger().with_mut(|li| {
+            li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
+        });
+
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_3.clone());
@@ -494,5 +519,40 @@ mod ownership_transfer_tests {
             env.as_contract(&contract_address, || AdminContract::get_owner(env.clone()));
 
         assert_eq!(final_owner, super_admin_3);
+    }
+
+    /// Negative test: `accept_ownership` must reject before the timelock has elapsed.
+    ///
+    /// Threat modelled: If the current owner's key is compromised, an attacker can
+    /// call `transfer_ownership` to propose themselves as the new owner. Without a
+    /// timelock they can immediately call `accept_ownership` and seize control.
+    /// With the timelock, the legitimate owner has a 24-hour window to detect the
+    /// pending transfer and take corrective action (e.g. rotating credentials or
+    /// proposing a different owner).
+    #[test]
+    #[should_panic(expected = "Error(Contract, #112)")]
+    fn test_accept_ownership_rejects_before_timelock_elapses() {
+        let env = Env::default();
+        let (contract_address, super_admin_1, super_admin_2) = setup_multiple_super_admins(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::transfer_ownership(
+                env.clone(),
+                super_admin_1.clone(),
+                super_admin_2.clone(),
+            );
+        });
+
+        // Advance only *partially* past the timelock — still not enough
+        env.ledger().with_mut(|li| {
+            li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK - 1;
+        });
+
+        env.mock_all_auths();
+        // This must panic with TimelockNotReady (#112)
+        env.as_contract(&contract_address, || {
+            AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
+        });
     }
 }

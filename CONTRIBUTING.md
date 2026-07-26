@@ -46,6 +46,23 @@ cargo build --target wasm32-unknown-unknown --release --locked -p credence_bond 
 cargo test --workspace
 ```
 
+### Run a single test
+
+Use the [`justfile`](justfile) recipe to run tests for one crate or a single
+test function:
+
+```bash
+just test-one credence_bond              # all tests in one crate
+just test-one credence_bond test_name    # single test by name
+```
+
+Or with `cargo` directly:
+
+```bash
+cargo test -p credence_bond              # all tests in one crate
+cargo test -p credence_bond test_name    # single test by name
+```
+
 ---
 
 ## Development Workflow
