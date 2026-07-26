@@ -746,13 +746,15 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::InvariantViolation
+            | ContractError::InvalidStringifiedBytes
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -867,6 +869,7 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
+            ContractError::InvalidStringifiedBytes => "Stringified bytes input is invalid or too long",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1041,6 +1044,7 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
+            | ContractError::InvalidStringifiedBytes
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             => true,
