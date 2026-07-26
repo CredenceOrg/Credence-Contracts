@@ -1290,6 +1290,7 @@ mod tests {
             ContractError::BondAlreadyExists => true,
             ContractError::UnauthorizedToken => true,
             ContractError::DuplicateIdempotencyKey => true,
+            ContractError::InvalidStringifiedBytes => true,
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
