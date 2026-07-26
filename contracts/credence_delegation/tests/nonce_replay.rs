@@ -17,6 +17,8 @@
 //! * The upper boundary nonce `new_nonce - 1` is rejected.
 //! * The first post-invalidation nonce `new_nonce` is accepted.
 
+#![allow(clippy::disallowed_macros)]
+
 use credence_delegation::{
     domain::SIGNATURE_DOMAIN, CredenceDelegation, CredenceDelegationClient, DelegatedActionPayload,
     DelegationType, DomainTag,
