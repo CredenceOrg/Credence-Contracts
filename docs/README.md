@@ -123,6 +123,7 @@ This directory contains all design docs, API references, and operational guides 
 | [arbitration_api.md](arbitration_api.md) | Integrator | Arbitration contract API |
 | [credence-timelock.md](credence-timelock.md) | Integrator | Timelock contract |
 | [multisig.md](multisig.md) | Integrator | Multi-sig wallet contract |
+| [migration-prohibitions.md](migration-prohibitions.md) | Contributor | What we forbid during migrations: error code renumbering, storage key changes, event topic shifts, and other silent breakage |
 | [known-simplifications.md](known-simplifications.md) | Contributor / Auditor | Intentional simplifications and production paths |
 
 ## Benchmarks
