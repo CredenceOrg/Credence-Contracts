@@ -11,6 +11,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Distinguish permission errors from state errors in `is_recoverable()`** (closes #912).
+  `credence_errors::ContractError::is_recoverable()` had three enum variants
+  (`TimestampInFuture`, `DuplicateIdempotencyKey`, `DelegationInactive`) each
+  matched twice across the `match`; Rust's first-arm-wins semantics silently
+  discarded the later, correct arm. `DelegationInactive` — a terminal *state*
+  (delegation already revoked/expired) that no retry can fix — was wrongly
+  reported as recoverable, indistinguishable from genuine *permission* errors
+  like `NotSigner`/`NotAdmin` that a caller resolves by switching signer/role.
+  Off-chain consumers using `is_recoverable()` to choose a WARN (recoverable)
+  vs. ERROR (fatal) log level would under-alert on inactive delegations.
+
 - **No-dynamic-strings in production contract code** (closes #713). New workspace
   `clippy.toml` declares `disallowed-macros` for `format`, `format_args`, `write`,
   `writeln` (and their `std::` / `alloc::` / `core::` qualified forms); every
