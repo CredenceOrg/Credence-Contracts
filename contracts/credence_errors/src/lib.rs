@@ -22,6 +22,8 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::panic_with_error;
+use soroban_sdk::Env;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -201,6 +203,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     SlashExceedsBond = 203,
+
+    /// Snapshot generation mismatch between state and expectation.
+    /// Triggered by: batch operations across epochs.
+    /// Wire-stable: do not renumber this error code.
+    SnapshotGenerationMismatch = 235,
+
     /// Storage cap for attestations or slash history reached.
     /// Replaces: panic!("storage cap reached")
     StorageCapReached = 224,
@@ -531,6 +539,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PromiseNotKept = 512,
 
+    /// Raised when an operator attempts to approve or execute a proposal
+    /// from a previous (stale) epoch.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    StaleOperatorEpoch = 513,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
@@ -541,7 +555,10 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    /// Replaces: panic!("no pending admin transfer")
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    NoPendingAdmin = 119,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -565,7 +582,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
+    TimestampInFuture = 513,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -655,6 +672,11 @@ pub enum ContractError {
     /// Contracts: math, bond
     /// Wire-stable: do not renumber this error code.
     DivisionByZero = 702,
+
+    /// Percentage splits do not sum to exactly 10 000 bps.
+    /// Contracts: math
+    /// Wire-stable: do not renumber this error code.
+    InvalidPercentSplit = 703,
 }
 
 /// @title  ErrorExt
@@ -746,6 +768,7 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -790,7 +813,7 @@ impl ErrorExt for ContractError {
             | ContractError::SlippageExceeded
             | ContractError::TreasuryBeneficiaryMismatch => ErrorCategory::Treasury,
 
-            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero => {
+            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero | ContractError::InvalidPercentSplit => {
                 ErrorCategory::Arithmetic
             }
             ContractError::NoPendingAdmin
@@ -854,6 +877,7 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
+            ContractError::SnapshotGenerationMismatch => "Pagination cursor from a different snapshot generation",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -963,6 +987,7 @@ impl ErrorExt for ContractError {
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
+            ContractError::InvalidPercentSplit => "Percentage splits do not sum to exactly 10 000 bps",
         }
     }
 
@@ -1033,6 +1058,7 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
@@ -1044,7 +1070,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1079,17 +1104,16 @@ impl ErrorExt for ContractError {
             | ContractError::VerifierAlreadyRegistered // idempotent
             | ContractError::VerifierNotRegistered
             | ContractError::DelegationNotExpired
-            | ContractError::DelegationInactive        // wait for activation or use a different delegation
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
-
-            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
-            // the payload must be discarded and re-signed.
-            ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
 
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            // Terminal *state* (delegation already revoked or expired), not a
+            // *permission* problem: unlike NotSigner/NotAdmin, which the
+            // caller can resolve by switching signer/role, no retry with the
+            // same delegation will ever succeed.
             ContractError::DelegationInactive => false,              // delegation revoked/expired; cannot be fixed by caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
 
@@ -1108,11 +1132,30 @@ impl ErrorExt for ContractError {
             ContractError::InvalidFlashLoanCallback => false, // bad magic value
             ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
 
+            ContractError::InvalidPercentSplit => true, // caller can provide valid splits
+
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
         }
+    }
+}
+
+/// Constructor guard for the "already initialized" check.
+///
+/// Pass `already_initialized = <expression that returns true when the contract is
+/// already initialized>` (e.g., `storage::get_admin(&e).is_some()`). When `true`,
+/// this helper `panic_with_error!`s with `ContractError::AlreadyInitialized`.
+///
+/// Why a free function (not a `#[macro_export]` macro): constructor entrypoints
+/// return `()`, not `Result<_,_>`. The peer helpers (`require_no_leading_zero_amount!`,
+/// `require_positive_amount!`, `verify_no_future_ledger!`, `require_non_zero_bytes32!`)
+/// early-return `Err(... )` via macro expansion; an early-return macro would not
+/// compile in a `()`-returning constructor, so this helper panics instead.
+pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
+    if already_initialized {
+        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }
 

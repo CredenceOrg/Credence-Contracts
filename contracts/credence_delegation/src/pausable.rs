@@ -84,7 +84,7 @@ pub const PROPOSAL_EPOCH_SIZE: u32 = 100;
 /// The helper is **pure**: identical inputs always produce identical output;
 /// it reads the ledger sequence from `env` but writes nothing to storage.
 fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
-    let epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
+    let epoch = e.ledger().sequence().saturating_sub(1) / PROPOSAL_EPOCH_SIZE;
     let action_u32 = action as u32;
 
     // Build an 8-byte preimage: 4 bytes action || 4 bytes epoch (big-endian).
@@ -106,6 +106,13 @@ fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
 
     let b = hash.to_array();
     u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+}
+
+fn require_matching_operator_epoch(e: &Env, action: PauseAction, ep: u64) {
+    let expected_id = derive_proposal_id(e, action);
+    if ep != expected_id {
+        panic_with_error!(e, ContractError::StaleOperatorEpoch);
+    }
 }
 
 fn require_admin_auth(e: &Env, admin: &Address) {
@@ -336,11 +343,18 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     require_pause_signer(e, signer);
 
-    let _action: u32 = e
+    let action: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+
+    let pause_action = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+    require_matching_operator_epoch(e, pause_action, proposal_id);
 
     record_approval(e, proposal_id, signer);
 
@@ -356,6 +370,13 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+
+    let pause_action = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+    require_matching_operator_epoch(e, pause_action, proposal_id);
 
     let threshold: u32 = e
         .storage()
