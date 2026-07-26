@@ -46,6 +46,8 @@ mod test_normalization_invariant;
 #[path = "types/mod.rs"]
 pub mod types;
 
+#[cfg(test)]
+mod test_unauthorized_token;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 mod test_unauthorized_token;
@@ -154,6 +156,15 @@ pub struct CredenceBond;
 #[contractimpl]
 impl CredenceBond {
     pub fn initialize(e: Env, admin: Address) {
+        if storage::get_admin(&e).is_some() {
+            panic!("already initialized");
+        }
+        storage::set_admin(&e, &admin);
+    }
+
+    /// Set the set of accepted token addresses.
+    /// Only callable by admin.
+    pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
         credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
         storage::set_admin(&e, &admin);
     }

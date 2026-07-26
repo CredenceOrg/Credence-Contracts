@@ -165,6 +165,10 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientSignatures = 108,
 
+    /// Signature deadline has expired (even with grace window).
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond
+    SignatureExpired = 109,
     /// The target admin is currently suspended (suspended_until > now).
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
@@ -312,6 +316,7 @@ pub enum ContractError {
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
+    UnauthorizedToken = 218,
     UnauthorizedToken = 231,
     /// An idempotency key has already been used for this operation.
     /// Contracts: bond
@@ -738,6 +743,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::UnauthorizedToken => ErrorCategory::Bond,
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::StorageCapReached
