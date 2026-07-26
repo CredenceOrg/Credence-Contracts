@@ -92,7 +92,7 @@ pub struct AdminInfo {
 /// Storage keys for the admin contract
 #[contracttype]
 #[derive(Clone)]
-enum DataKey {
+pub enum DataKey {
     /// List of all admin addresses
     AdminList,
     /// Admin information by address: Address -> AdminInfo

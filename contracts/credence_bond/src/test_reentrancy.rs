@@ -165,7 +165,7 @@ mod cross_attacker {
                 .get(&Symbol::new(&e, "admin"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.slash_bond(&admin, &100_i128);
+            client.slash_bond(&admin, &100_i128, &soroban_sdk::Bytes::new(&e));
         }
 
         pub fn setup(e: Env, target: Address, admin: Address) {
@@ -378,7 +378,7 @@ fn test_slash_reentrancy_blocked() {
     attacker_client.setup(&bond_id, &admin);
     client.set_callback(&admin, &attacker_id);
 
-    client.slash_bond(&admin, &500_i128);
+    client.slash_bond(&admin, &500_i128, &soroban_sdk::Bytes::new(&e));
 }
 
 // ===========================================================================
@@ -447,7 +447,7 @@ fn test_lock_released_after_slash() {
     let benign_id = e.register(BenignCallback, ());
     client.set_callback(&admin, &benign_id);
 
-    client.slash_bond(&admin, &100_i128);
+    client.slash_bond(&admin, &100_i128, &soroban_sdk::Bytes::new(&e));
     assert!(!client.is_locked());
 }
 
@@ -499,7 +499,8 @@ fn test_normal_slash_succeeds() {
     let (bond_id, admin, _identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    let slashed = client.slash_bond(&admin, &3_000_i128);
+    let slashed =
+        client.slash_bond(&admin, &3_000_i128, &soroban_sdk::Bytes::new(&e));
     assert_eq!(slashed, 3_000_i128);
 
     let state = client.get_identity_state();
@@ -532,7 +533,7 @@ fn test_sequential_operations_succeed() {
     let (bond_id, admin, identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    client.slash_bond(&admin, &1_000_i128);
+    client.slash_bond(&admin, &1_000_i128, &soroban_sdk::Bytes::new(&e));
     assert!(!client.is_locked());
 
     client.deposit_fees(&100_i128);
@@ -556,7 +557,7 @@ fn test_slash_exceeds_bond_rejected() {
     let (bond_id, admin, _identity) = setup_bond(&e);
     let client = CredenceBondClient::new(&e, &bond_id);
 
-    client.slash_bond(&admin, &20_000_i128);
+    client.slash_bond(&admin, &20_000_i128, &soroban_sdk::Bytes::new(&e));
 }
 
 // ===========================================================================
@@ -730,7 +731,8 @@ fn test_state_committed_before_callback_slash() {
     let benign_id = e.register(BenignCallback, ());
     client.set_callback(&admin, &benign_id);
 
-    let slashed = client.slash_bond(&admin, &2_500_i128);
+    let slashed =
+        client.slash_bond(&admin, &2_500_i128, &soroban_sdk::Bytes::new(&e));
     assert_eq!(slashed, 2_500_i128);
 
     let state = client.get_identity_state();

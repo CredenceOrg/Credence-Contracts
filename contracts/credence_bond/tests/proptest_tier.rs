@@ -154,7 +154,7 @@ fn run_sequence(actions: &[BondAction]) {
     let identity = Address::generate(&e);
 
     // Initialize the contract
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     for (step_idx, action) in actions.iter().enumerate() {
         // 1. Advance sequence and timestamp slightly before every action
@@ -216,19 +216,19 @@ fn run_sequence(actions: &[BondAction]) {
                 );
             }
             BondAction::TopUp { amount } => {
-                client.top_up(amount);
+                client.top_up(&identity, amount);
             }
             BondAction::Slash { amount } => {
                 client.slash(&admin, amount);
             }
             BondAction::RollRenew => {
-                client.renew_if_rolling();
+                client.renew_if_rolling(&identity);
             }
             BondAction::WithdrawEarly { amount } => {
-                client.withdraw_early(amount);
+                client.withdraw_early(&identity, amount);
             }
             BondAction::RequestWithdraw => {
-                client.request_withdrawal();
+                client.request_withdrawal(&identity);
             }
             BondAction::Settle => {
                 client.withdraw_bond(&identity);

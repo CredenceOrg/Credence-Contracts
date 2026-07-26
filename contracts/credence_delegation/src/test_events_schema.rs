@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod tests {
     use soroban_sdk::{
-        testutils::Address as TestAddress, testutils::Events, Address, Env, TryFromVal, Val, Vec,
+        testutils::{Address as _, Events},
+        Address, Env, TryFromVal, Val, Vec,
     };
 
     type ContractEvent = (Address, Vec<Val>, Val);
@@ -39,8 +40,8 @@ mod tests {
     fn verifier_registered_schema_matches() {
         let e = Env::default();
         let scheme = 1u32;
-        let verifier_id = TestAddress::generate(&e);
-        let admin = TestAddress::generate(&e);
+        let verifier_id = Address::generate(&e);
+        let admin = Address::generate(&e);
         crate::verifier::emit_verifier_registered(&e, scheme, &verifier_id, &admin);
         let events = e.events().all();
         // Topics: verifier_registered, u32, Address, Address (4)
@@ -51,7 +52,7 @@ mod tests {
     #[test]
     fn contract_paused_schema_matches() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
         crate::pausable::emit_contract_paused(&e, &admin);
         let events = e.events().all();
         // Topics: contract_paused, Address (2)
@@ -62,7 +63,7 @@ mod tests {
     #[test]
     fn contract_unpaused_schema_matches() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
         crate::pausable::emit_contract_unpaused(&e, &admin);
         let events = e.events().all();
         // Topics: contract_unpaused, Address (2)

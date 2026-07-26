@@ -21,7 +21,7 @@
 use credence_bond::{CredenceBond, CredenceBondClient, IdentityBond};
 use soroban_sdk::{
     testutils::{Address as _, Events as _, Ledger as _},
-    Address, Env, Symbol, TryFromVal, Val,
+    Address, Bytes, Env, Symbol, TryFromVal, Val,
 };
 
 // ---------------------------------------------------------------------------
@@ -192,7 +192,7 @@ fn setup() -> Fixture {
     let client = CredenceBondClient::new(&env, &contract_id);
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     Fixture {
         env,
         client,
@@ -249,7 +249,8 @@ fn scenario_create_then_slash() {
     let f = setup();
     f.client
         .create_bond(&f.identity, &10_000_i128, &10_000_u64, &false, &0_u64);
-    f.client.slash_bond(&f.admin, &4_000_i128);
+    f.client
+        .slash_bond(&f.admin, &4_000_i128, &Bytes::new(&f.env));
     assert_replay_matches(&f);
 }
 
@@ -260,11 +261,12 @@ fn scenario_full_lifecycle() {
     f.env.ledger().set_timestamp(0);
     f.client
         .create_bond(&f.identity, &10_000_i128, &1_000_u64, &false, &0_u64);
-    f.client.top_up(&identity, &5_000_i128);
-    f.client.slash_bond(&f.admin, &2_000_i128);
+    f.client.top_up(&f.identity, &5_000_i128);
+    f.client
+        .slash_bond(&f.admin, &2_000_i128, &Bytes::new(&f.env));
     // Advance past the lock-up so the standard withdraw path is allowed.
     f.env.ledger().set_timestamp(2_000);
-    f.client.withdraw(&identity, &1_000_i128);
+    f.client.withdraw(&f.identity, &1_000_i128);
     assert_replay_matches(&f);
 }
 
@@ -279,7 +281,7 @@ fn scenario_withdraw_early() {
     f.client
         .create_bond(&f.identity, &10_000_i128, &10_000_u64, &false, &0_u64);
     f.env.ledger().set_timestamp(1_000); // still within lock-up
-    f.client.withdraw_early(&identity, &1_000_i128);
+    f.client.withdraw_early(&f.identity, &1_000_i128);
     assert_replay_matches(&f);
 }
 
@@ -294,7 +296,7 @@ fn dropping_topup_event_diverges() {
     let f = setup();
     f.client
         .create_bond(&f.identity, &5_000_i128, &10_000_u64, &false, &0_u64);
-    f.client.top_up(&identity, &2_500_i128);
+    f.client.top_up(&f.identity, &2_500_i128);
 
     let full_stream = capture(&f.env);
     // Sanity: the intact stream reconstructs correctly.

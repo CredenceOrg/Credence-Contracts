@@ -3,10 +3,10 @@
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::AdminRole;
     use soroban_sdk::{
-        testutils::Address as TestAddress, testutils::Events, Address, Env, Symbol, TryFromVal,
-        Val, Vec,
+        testutils::{Address as _, Events},
+        Address, Env, Symbol, TryFromVal, Val, Vec,
     };
 
     type ContractEvent = (Address, Vec<Val>, Val);
@@ -33,8 +33,8 @@ mod tests {
     #[test]
     fn admin_rotated_schema_matches() {
         let e = Env::default();
-        let previous_owner = TestAddress::generate(&e);
-        let new_owner = TestAddress::generate(&e);
+        let previous_owner = Address::generate(&e);
+        let new_owner = Address::generate(&e);
         let ledger_seq: u32 = e.ledger().sequence();
         e.events().publish(
             (
@@ -53,8 +53,8 @@ mod tests {
     #[test]
     fn ownership_transfer_initiated_schema_matches() {
         let e = Env::default();
-        let current_owner = TestAddress::generate(&e);
-        let new_owner = TestAddress::generate(&e);
+        let current_owner = Address::generate(&e);
+        let new_owner = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "ownership_transfer_initiated"),),
             (current_owner.clone(), new_owner.clone()),
@@ -68,8 +68,8 @@ mod tests {
     #[test]
     fn ownership_transfer_accepted_schema_matches() {
         let e = Env::default();
-        let previous_owner = TestAddress::generate(&e);
-        let pending_owner = TestAddress::generate(&e);
+        let previous_owner = Address::generate(&e);
+        let pending_owner = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "ownership_transfer_accepted"),),
             (previous_owner.clone(), pending_owner.clone()),
@@ -83,8 +83,8 @@ mod tests {
     #[test]
     fn role_assigned_schema_matches() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
-        let caller = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
+        let caller = Address::generate(&e);
         let role = AdminRole::Admin;
         e.events().publish(
             (Symbol::new(&e, "ROLE_ASSIGNED"), admin.clone()),
@@ -99,8 +99,8 @@ mod tests {
     #[test]
     fn role_revoked_schema_matches() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
-        let caller = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
+        let caller = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "ROLE_REVOKED"), admin.clone()),
             (caller.clone(),),
@@ -139,7 +139,7 @@ mod tests {
     fn pause_approved_schema_matches() {
         let e = Env::default();
         let proposal_id = 42u64;
-        let signer = TestAddress::generate(&e);
+        let signer = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "pause_approved"), proposal_id),
             signer.clone(),
@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn pause_signer_set_schema_matches() {
         let e = Env::default();
-        let signer = TestAddress::generate(&e);
+        let signer = Address::generate(&e);
         let enabled = true;
         e.events().publish(
             (Symbol::new(&e, "pause_signer_set"), signer.clone()),

@@ -400,7 +400,11 @@ fn fuzz_bond_operations() {
                                 client.slash(&admin, &slash_amount)
                             } else {
                                 // `slash_bond` returns i128 (new_slashed).
-                                let _ = client.slash_bond(&admin, &slash_amount);
+                                let _ = client.slash_bond(
+                                    &admin,
+                                    &slash_amount,
+                                    &soroban_sdk::Bytes::new(&e),
+                                );
                                 client.get_identity_state()
                             }
                         }));

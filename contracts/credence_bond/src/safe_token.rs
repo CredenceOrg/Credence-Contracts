@@ -233,7 +233,7 @@ where
 mod tests {
     extern crate std;
     use super::*;
-    use soroban_sdk::{testutils::Address as TestAddress, Address, Env};
+    use soroban_sdk::{testutils::Address as _, Address, Env};
 
     #[test]
     fn test_validate_amount() {

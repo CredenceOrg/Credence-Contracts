@@ -5,8 +5,8 @@
 mod tests {
     use super::*;
     use soroban_sdk::{
-        testutils::Address as TestAddress, testutils::Events, Address, Env, Symbol, TryFromVal,
-        Val, Vec,
+        testutils::{Address as _, Events},
+        Address, Env, Symbol, TryFromVal, Val, Vec,
     };
 
     type ContractEvent = (Address, Vec<Val>, Val);
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn arbitrator_registered_schema_matches() {
         let e = Env::default();
-        let arbitrator = TestAddress::generate(&e);
+        let arbitrator = Address::generate(&e);
         let weight = 100u32;
         e.events().publish(
             (Symbol::new(&e, "arbitrator_registered"), arbitrator),
@@ -49,7 +49,7 @@ mod tests {
     fn dispute_created_schema_matches() {
         let e = Env::default();
         let dispute_id = 1u64;
-        let creator = TestAddress::generate(&e);
+        let creator = Address::generate(&e);
         e.events()
             .publish((Symbol::new(&e, "dispute_created"), dispute_id), creator);
         let events = e.events().all();
@@ -78,7 +78,7 @@ mod tests {
     fn dispute_cancelled_schema_matches() {
         let e = Env::default();
         let dispute_id = 1u64;
-        let caller = TestAddress::generate(&e);
+        let caller = Address::generate(&e);
         let role = 1u32;
         let reason = Symbol::new(&e, "test");
         e.events().publish(
@@ -95,7 +95,7 @@ mod tests {
     fn vote_cast_schema_matches() {
         let e = Env::default();
         let dispute_id = 1u64;
-        let voter = TestAddress::generate(&e);
+        let voter = Address::generate(&e);
         let outcome = 1u32;
         let weight = 100u32;
         e.events().publish(
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn paused_schema_matches() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
         crate::pausable::emit_contract_paused(&e, &admin);
         let events = e.events().all();
         // Topics: contract_paused, Address (2)
@@ -182,7 +182,7 @@ mod tests {
     #[test]
     fn unpaused_schema_matches() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
         crate::pausable::emit_contract_unpaused(&e, &admin);
         let events = e.events().all();
         // Topics: contract_unpaused, Address (2)

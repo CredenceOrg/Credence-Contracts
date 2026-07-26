@@ -5,8 +5,8 @@
 mod tests {
     use super::*;
     use soroban_sdk::{
-        testutils::Address as TestAddress, testutils::Events, Address, Env, Symbol, TryFromVal,
-        Val, Vec,
+        testutils::{Address as _, Events},
+        Address, Env, Symbol, TryFromVal, Val, Vec,
     };
 
     type ContractEvent = (Address, Vec<Val>, Val);
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn treasury_deposit_schema_matches() {
         let e = Env::default();
-        let from = TestAddress::generate(&e);
+        let from = Address::generate(&e);
         let amount = 1000i128;
         let source = FundSource::ProtocolFee;
         e.events().publish(
@@ -65,9 +65,9 @@ mod tests {
     fn treasury_withdrawal_proposed_schema_matches() {
         let e = Env::default();
         let proposal_id = 1u64;
-        let recipient = TestAddress::generate(&e);
+        let recipient = Address::generate(&e);
         let amount = 500i128;
-        let proposer = TestAddress::generate(&e);
+        let proposer = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_proposed"), proposal_id),
             (recipient.clone(), amount, proposer.clone()),
@@ -96,7 +96,7 @@ mod tests {
     fn treasury_withdrawal_approved_schema_matches() {
         let e = Env::default();
         let proposal_id = 1u64;
-        let approver = TestAddress::generate(&e);
+        let approver = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_approved"), proposal_id),
             (approver.clone(),),
@@ -111,7 +111,7 @@ mod tests {
     fn treasury_withdrawal_executed_schema_matches() {
         let e = Env::default();
         let proposal_id = 1u64;
-        let recipient = TestAddress::generate(&e);
+        let recipient = Address::generate(&e);
         let min_amount_out = 450i128;
         let actual_amount = 480i128;
         e.events().publish(
@@ -152,7 +152,7 @@ mod tests {
     fn pause_approved_schema_matches() {
         let e = Env::default();
         let proposal_id = 42u64;
-        let signer = TestAddress::generate(&e);
+        let signer = Address::generate(&e);
         e.events().publish(
             (Symbol::new(&e, "pause_approved"), proposal_id),
             signer.clone(),
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn pause_signer_set_schema_matches() {
         let e = Env::default();
-        let signer = TestAddress::generate(&e);
+        let signer = Address::generate(&e);
         let enabled = true;
         e.events().publish(
             (Symbol::new(&e, "pause_signer_set"), signer.clone()),

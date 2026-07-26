@@ -15,7 +15,7 @@
 use credence_bond::CredenceBondClient;
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig, Ledger as _},
-    Address, Env, String as SorobanString,
+    Address, Bytes, Env, String as SorobanString,
 };
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -87,7 +87,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         let client = CredenceBondClient::new(&env, &env.register(credence_bond::CredenceBond, ()));
         let identity = Address::generate(&env);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
-        client.top_up(&(bond_amount / 2));
+        client.top_up(&identity, &(bond_amount / 2));
         out.insert("top_up".into(), measure(&env));
     }
 
@@ -99,7 +99,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         env.ledger().set_timestamp(0);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         env.ledger().set_timestamp(2_000);
-        client.withdraw(&(bond_amount / 10));
+        client.withdraw(&identity, &(bond_amount / 10));
         out.insert("withdraw".into(), measure(&env));
     }
 
@@ -115,7 +115,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         env.ledger().set_timestamp(0);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         env.ledger().set_timestamp(100);
-        client.withdraw_early(&(bond_amount / 10));
+        client.withdraw_early(&identity, &(bond_amount / 10));
         out.insert("withdraw_early".into(), measure(&env));
     }
 
@@ -127,7 +127,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         let identity = Address::generate(&env);
         client.initialize(&admin, &None);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
-        client.slash_bond(&admin, &(bond_amount / 10));
+        client.slash_bond(&admin, &(bond_amount / 10), &Bytes::new(&env));
         out.insert("slash_bond".into(), measure(&env));
     }
 

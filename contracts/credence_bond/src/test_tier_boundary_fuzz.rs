@@ -225,12 +225,12 @@ fn test_top_up_crosses_bronze_to_silver_boundary() {
     assert_eq!(f.client.get_tier(), BondTier::Bronze);
 
     // +2 units pushes the bond past the boundary into Silver.
-    f.client.top_up(&2_i128);
+    f.client.top_up(&f.identity, &2_i128);
     assert_eq!(f.client.get_tier(), BondTier::Silver);
 
     // +0 stays exactly on the boundary — still Silver (upper bound is exclusive,
     // so `bonded_amount == bronze_max` is Silver by the documented semantics).
-    f.client.top_up(&0_i128);
+    f.client.top_up(&f.identity, &0_i128);
     assert_eq!(f.client.get_tier(), BondTier::Silver);
 }
 
@@ -245,7 +245,7 @@ fn test_withdraw_under_threshold_downgrades_tier() {
     assert_eq!(client.get_tier(), BondTier::Silver);
 
     env.ledger().with_mut(|li| li.timestamp = 86_401);
-    client.withdraw(&1_i128);
+    client.withdraw(&identity, &1_i128);
     assert_eq!(client.get_tier(), BondTier::Bronze);
 }
 
@@ -263,7 +263,7 @@ fn test_top_up_crosses_two_thresholds_in_one_call() {
     // top_up is large enough to skip both bronze→silver and silver→gold.
     let target = TIER_GOLD_MAX + 100;
     let delta = target - start;
-    f.client.top_up(&delta);
+    f.client.top_up(&f.identity, &delta);
 
     assert_eq!(f.client.get_tier(), BondTier::Platinum);
 }
@@ -383,7 +383,8 @@ fn test_top_up_emits_tier_changed_event_on_boundary_cross() {
     let start: i128 = TIER_BRONZE_MAX + 1; // Silver
     let f = BondFixture::new(start);
 
-    f.client.top_up(&(TIER_GOLD_MAX + 100 - start));
+    f.client
+        .top_up(&f.identity, &(TIER_GOLD_MAX + 100 - start));
     assert_eq!(f.client.get_tier(), BondTier::Platinum);
 
     let v1 = count_v1_tier_events(f.env(), &f.contract_id);
@@ -406,7 +407,7 @@ fn test_withdraw_emits_tier_changed_event_on_boundary_cross() {
     let v2_before = count_v2_tier_events(&env, &contract_id, &identity);
 
     env.ledger().with_mut(|li| li.timestamp = 86_401);
-    client.withdraw(&1_i128);
+    client.withdraw(&identity, &1_i128);
     assert_eq!(client.get_tier(), BondTier::Bronze);
 
     let v1_after = count_v1_tier_events(&env, &contract_id);
@@ -450,8 +451,9 @@ fn test_no_tier_change_emits_no_event() {
     let pre_v1 = count_v1_tier_events(f.env(), &f.contract_id);
     let pre_v2 = count_v2_tier_events(f.env(), &f.contract_id, &f.identity);
 
-    f.client.top_up(&0_i128);
-    f.client.top_up(&123_i128); // stays Silver (well below gold_max)
+    f.client.top_up(&f.identity, &0_i128);
+    f.client
+        .top_up(&f.identity, &123_i128); // stays Silver (well below gold_max)
     assert_eq!(f.client.get_tier(), BondTier::Silver);
 
     let post_v1 = count_v1_tier_events(f.env(), &f.contract_id);
@@ -517,7 +519,8 @@ fn fuzz_tier_tracks_bonded_amount_under_random_sequences() {
             match op {
                 0 => {
                     let delta = rng.range(1, TIER_GOLD_MAX * 2);
-                    let _ = catch_unwind(AssertUnwindSafe(|| client.top_up(&delta)));
+                    let _ =
+                        catch_unwind(AssertUnwindSafe(|| client.top_up(&identity, &delta)));
                 }
                 1 => {
                     let slash = rng.range(0, bonded + 1);
@@ -529,7 +532,8 @@ fn fuzz_tier_tracks_bonded_amount_under_random_sequences() {
                         continue;
                     }
                     let take = rng.range(0, available_for_withdraw + 1);
-                    let _ = catch_unwind(AssertUnwindSafe(|| client.withdraw(&take)));
+                    let _ =
+                        catch_unwind(AssertUnwindSafe(|| client.withdraw(&identity, &take)));
                 }
             }
 
@@ -607,10 +611,12 @@ fn fuzz_rapid_threshold_crossing() {
 
         let cur = client.get_identity_state().bonded_amount;
         if target > cur {
-            let _ = catch_unwind(AssertUnwindSafe(|| client.top_up(&(target - cur))));
+            let _ = catch_unwind(AssertUnwindSafe(|| {
+                client.top_up(&identity, &(target - cur))
+            }));
         } else {
             let take = cur - target;
-            let _ = catch_unwind(AssertUnwindSafe(|| client.withdraw(&take)));
+            let _ = catch_unwind(AssertUnwindSafe(|| client.withdraw(&identity, &take)));
         }
 
         let state = client.get_identity_state();

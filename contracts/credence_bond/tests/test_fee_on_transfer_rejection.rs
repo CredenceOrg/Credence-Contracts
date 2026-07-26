@@ -24,7 +24,7 @@ fn setup_with_standard_token(
         .register_stellar_asset_contract_v2(admin.clone())
         .address();
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.set_usdc_token(&admin, &token_id, &String::from_str(env, "testnet"));
 
     // Mint tokens to user
@@ -138,7 +138,7 @@ fn bond_rejects_fee_on_transfer_token_on_create() {
     let admin = Address::generate(&env);
     let user = Address::generate(&env);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let token_id = env.register(MockFeeOnTransferToken, ());
     client.set_usdc_token(&admin, &token_id, &String::from_str(&env, "testnet"));
