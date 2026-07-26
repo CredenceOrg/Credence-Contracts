@@ -861,7 +861,7 @@ fn test_ttl_zero_never_expires() {
 fn test_receive_fee_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, _token) = setup(&e);
-    
+
     client.receive_fee(&admin, &0, &FundSource::ProtocolFee);
 }
 
@@ -870,7 +870,7 @@ fn test_receive_fee_rejects_zero_amount() {
 fn test_receive_fee_rejects_negative_amount() {
     let e = Env::default();
     let (client, admin, _token) = setup(&e);
-    
+
     client.receive_fee(&admin, &-100, &FundSource::ProtocolFee);
 }
 
@@ -897,6 +897,6 @@ fn test_rescue_native_rejects_zero_amount() {
     let to = Address::generate(&e);
 
     client.receive_fee(&admin, &1000, &FundSource::ProtocolFee);
-    
+
     client.rescue_native(&admin, &to, &0);
 }

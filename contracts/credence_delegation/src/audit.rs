@@ -31,7 +31,7 @@
 //! that were actually passed to the entry point).
 
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Bytes, Env, IntoVal, xdr::ToXdr};
+use soroban_sdk::{panic_with_error, xdr::ToXdr, Bytes, Env, IntoVal};
 
 /// Assert that a promised action hash matches the actual execution hash.
 ///
@@ -58,7 +58,11 @@ use soroban_sdk::{panic_with_error, Bytes, Env, IntoVal, xdr::ToXdr};
 /// let actual = compute_action_hash(&owner, &delegate, &delegation_type, &expires_at, &domain, nonce, scheme, ledger_number);
 /// audit::require_kept_promise(&e, &promised_hash, &actual)?;
 /// ```
-pub fn require_kept_promise(e: &Env, promised_hash: &Bytes, actual_hash: &Bytes) -> Result<(), ContractError> {
+pub fn require_kept_promise(
+    e: &Env,
+    promised_hash: &Bytes,
+    actual_hash: &Bytes,
+) -> Result<(), ContractError> {
     if promised_hash == actual_hash {
         Ok(())
     } else {
@@ -134,7 +138,7 @@ pub fn hash_delegated_action(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{DelegationType, domain::DomainTag};
+    use crate::{domain::DomainTag, DelegationType};
     use soroban_sdk::{testutils::Address as _, Address, Bytes, Env};
 
     fn setup() -> Env {

@@ -42,6 +42,18 @@ cargo test -p credence_bond
 cargo test -p credence_delegation
 ```
 
+### Using `just`
+
+The repo includes a [`justfile`](justfile) with common recipes. Install
+[`just`](https://just.systems) then run:
+
+```bash
+just              # list available recipes
+just test         # all workspace tests
+just test-one credence_bond              # all tests in one crate
+just test-one credence_bond test_name    # single test by name
+```
+
 The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests on every PR.
 
 ## Linting
@@ -62,6 +74,15 @@ The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the sa
 ## Security scanning
 
 Pull requests run `cargo audit --deny warnings`; dependency vulnerabilities are surfaced in a sticky PR comment and the full JSON report is uploaded as a workflow artifact. See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for the local command and triage flow.
+
+## Threat modelling
+
+Per-contract STRIDE attack trees document every entrypoint, the concrete attack goal, and the exact code that blocks it:
+
+- [`contracts/credence_bond/docs/ATTACK_TREE.md`](contracts/credence_bond/docs/ATTACK_TREE.md) — bond contract
+- [`contracts/credence_delegation/docs/ATTACK_TREE.md`](contracts/credence_delegation/docs/ATTACK_TREE.md) — delegation contract
+
+The workspace-level threat model and Soroban auth-tree analysis live in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/auth-tree-threats.md`](docs/auth-tree-threats.md).
 
 ## Release profile — WASM size
 
@@ -97,10 +118,11 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Slashing: `slash()` with available-balance enforcement
   - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
   - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
+  - Issuance: [who can create/top-up a bond, and under what conditions](docs/BOND_ISSUANCE.md)
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
 - `contracts/credence_delegation/` — Delegation contract
-- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `TIME_UNITS.md`)
+- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `TIME_UNITS.md`, `ADMIN_EPOCHS.md`)
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.
 

@@ -16,6 +16,7 @@ This directory contains all design docs, API references, and operational guides 
 | [upgrade.md](UPGRADE.md) | Operator | Contract upgrade procedure, data migration, verification |
 | [BYTES32_CANONICALISATION.md](BYTES32_CANONICALISATION.md) | Contributor / Integrator | Canonicalisation rules for BytesN<32> and zero value rejection |
 | [TIME_UNITS.md](TIME_UNITS.md) | Contributor | Time representation (seconds, days, epochs) and mocking time in tests |
+| [ADMIN_EPOCHS.md](ADMIN_EPOCHS.md) | Contributor | Admin pause-proposal epochs: motivation, bumping cadence, stale-epoch guard |
 
 ## Bond Contract (`credence_bond`)
 
@@ -23,6 +24,7 @@ This directory contains all design docs, API references, and operational guides 
 |---|---|---|
 | [credence-bond.md](credence-bond.md) | Integrator | High-level overview of the identity bond contract |
 | [credence_bond_api.md](credence_bond_api.md) | Integrator | Complete API reference (entrypoints, types, errors) |
+| [BOND_ISSUANCE.md](BOND_ISSUANCE.md) | Contributor | Who can call `create_bond`/`top_up` and the conditions enforced |
 | [bond-state-transitions.md](bond-state-transitions.md) | Contributor | State machine for bond lifecycle |
 | [tier-system.md](tier-system.md) | Contributor / Operator | Auto-upgrade/downgrade tier logic |
 | [rolling-bonds.md](rolling-bonds.md) | Integrator | `request_withdrawal` / `renew_if_rolling` flow |
@@ -72,6 +74,8 @@ This directory contains all design docs, API references, and operational guides 
 | [security.md](security.md) | Contributor / Auditor | Security model, trust assumptions |
 | [THREAT_MODEL.md](THREAT_MODEL.md) | Auditor | STRIDE analysis, mitigations |
 | [auth-tree-threats.md](auth-tree-threats.md) | Auditor | Auth tree specific threats |
+| [credence_bond ATTACK_TREE](../contracts/credence_bond/docs/ATTACK_TREE.md) | Contributor / Auditor | Per-entrypoint STRIDE attack tree for the bond contract |
+| [credence_delegation ATTACK_TREE](../contracts/credence_delegation/docs/ATTACK_TREE.md) | Contributor / Auditor | Per-entrypoint STRIDE attack tree for the delegation contract |
 | [reentrancy.md](reentrancy.md) | Contributor | Reentrancy guards, patterns |
 | [arbitration.md](arbitration.md) | Contributor | Dispute resolution flow |
 | [dispute-resolution.md](dispute-resolution.md) | Integrator | Arbitration API |
@@ -98,6 +102,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [testing.md](testing.md) | Contributor | Test organization, patterns, coverage |
+| [TEST_HELPER_LIBRARY.md](TEST_HELPER_LIBRARY.md) | Contributor | Available test helpers in the `testutils` crate and feature-gated helpers |
 | [doctest-style.md](doctest-style.md) | Contributor | Doc-test conventions |
 | [fuzz-testing.md](fuzz-testing.md) | Contributor | Cargo-fuzz targets, invariants |
 | [chaos-testing.md](chaos-testing.md) | Contributor | Chaos engineering scenarios |
@@ -110,6 +115,7 @@ This directory contains all design docs, API references, and operational guides 
 |---|---|---|
 | [datakey-fingerprint.md](datakey-fingerprint.md) | Contributor | Storage key fingerprinting for upgrades |
 | [decimal-handling.md](decimal-handling.md) | Contributor | Fixed-point arithmetic patterns |
+| [PERCENT_SPLIT_MODEL.md](PERCENT_SPLIT_MODEL.md) | Integrator | Multi-recipient percent splits in bps; must sum to 10_000 |
 | [error-codes-wire.md](error-codes-wire.md) | Integrator | On-chain error code → off-chain mapping |
 | [errors.md](errors.md) | Contributor | Error enum definitions |
 | [proposal-id-derivation.md](proposal-id-derivation.md) | Contributor | Deterministic proposal ID scheme |
@@ -123,12 +129,14 @@ This directory contains all design docs, API references, and operational guides 
 | [arbitration_api.md](arbitration_api.md) | Integrator | Arbitration contract API |
 | [credence-timelock.md](credence-timelock.md) | Integrator | Timelock contract |
 | [multisig.md](multisig.md) | Integrator | Multi-sig wallet contract |
+| [migration-prohibitions.md](migration-prohibitions.md) | Contributor | What we forbid during migrations: error code renumbering, storage key changes, event topic shifts, and other silent breakage |
 | [known-simplifications.md](known-simplifications.md) | Contributor / Auditor | Intentional simplifications and production paths |
 
 ## Benchmarks
 
 | Document | Audience | Summary |
 |---|---|---|
+| [GAS_BUDGET_BREAKDOWN.md](GAS_BUDGET_BREAKDOWN.md) | Contributor | Per-contract gas cost tables for every entrypoint |
 | [bond_gas_benchmarks.md](bond_gas_benchmarks.md) | Contributor | Bond contract gas costs |
 | [dispute_resolution_gas_benchmarks.md](dispute_resolution_gas_benchmarks.md) | Contributor | Arbitration gas costs |
 
