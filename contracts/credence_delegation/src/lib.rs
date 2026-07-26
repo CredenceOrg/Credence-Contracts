@@ -1146,3 +1146,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_payload_staleness;
+
+#[cfg(test)]
+mod test_lease_signature;

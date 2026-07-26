@@ -141,7 +141,7 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::AdminSuspended as u32, 113);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::TimestampInFuture as u32, 118);
+        assert_eq!(ContractError::TimestampInFuture as u32, 513);
     }
 
     #[test]
