@@ -153,6 +153,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RoleNotHeldAtLedger = 116,
 
+    /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
+    /// Contracts: admin, timelock
+    /// Wire-stable: do not renumber this error code.
+    OutsideBusinessHours = 120,
+
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
     /// Contracts: registry, treasury
@@ -825,6 +830,7 @@ impl ErrorExt for ContractError {
             ContractError::RoleNotHeldAtLedger => {
                 "Actor did not hold the required role at the specified ledger timestamp"
             }
+            ContractError::OutsideBusinessHours => "Scheduled operation must fall within business hours",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1005,6 +1011,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
+            | ContractError::OutsideBusinessHours
             | ContractError::ZeroBytes32 => true,
 
             // Caller supplied a future timestamp; correct it and retry.
@@ -1180,3 +1187,25 @@ macro_rules! require_non_zero_bytes32 {
         }
     };
 }
+
+/// Validates that the provided timestamp (seconds since UNIX epoch) falls within 
+/// UTC business hours (Monday-Friday, 09:00:00 to 16:59:59).
+/// Panics with `ContractError::OutsideBusinessHours` if it does not.
+#[inline]
+pub fn require_within_business_hours(e: &soroban_sdk::Env, t: u64) {
+    let days_since_epoch = t / 86_400;
+    // 1970-01-01 was a Thursday.
+    // 0 = Thu, 1 = Fri, 2 = Sat, 3 = Sun, 4 = Mon, 5 = Tue, 6 = Wed
+    let weekday_shifted = days_since_epoch % 7;
+    let is_weekend = weekday_shifted == 2 || weekday_shifted == 3;
+
+    let time_of_day = t % 86_400;
+    // 09:00:00 = 32_400
+    // 17:00:00 = 61_200
+    let is_business_time = time_of_day >= 32_400 && time_of_day < 61_200;
+
+    if is_weekend || !is_business_time {
+        soroban_sdk::panic_with_error!(e, ContractError::OutsideBusinessHours);
+    }
+}
+
