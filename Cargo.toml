@@ -17,3 +17,6 @@ lto = "fat"
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
+
+[dev-dependencies]
+regex = "1.10.4"
