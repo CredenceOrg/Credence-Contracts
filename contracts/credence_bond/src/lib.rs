@@ -95,6 +95,9 @@ mod test_rolling_notice;
 #[cfg(test)]
 mod fee_tests;
 
+#[cfg(test)]
+mod test_migration_guard;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
