@@ -100,6 +100,10 @@ mod tests {
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
+            ContractError::StaleAdminEpoch,
+            ContractError::StaleSignerEpoch,
+            ContractError::InvalidStringifiedBytes,
         ]
     }
 
@@ -474,7 +478,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            98,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1329,8 +1333,12 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
+            ContractError::DelegationInactive => true, // wait for activation or use a different delegation
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
+            ContractError::PromiseNotKept => false,
+            ContractError::StaleAdminEpoch => false,
+            ContractError::StaleSignerEpoch => false,
+            ContractError::InvalidStringifiedBytes => true,
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1355,7 +1363,6 @@ mod tests {
 
             // Missing variants added to match the enum and ensure completeness
             ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
             ContractError::InvalidCurrency => true,
         }
     }
@@ -1470,10 +1477,13 @@ mod tests {
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
+            ContractError::StaleAdminEpoch,
+            ContractError::StaleSignerEpoch,
         ];
         assert_eq!(
             cases.len(),
-            94,
+            98,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

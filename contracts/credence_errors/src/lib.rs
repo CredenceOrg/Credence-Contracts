@@ -22,6 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::Env;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -309,6 +310,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BondAlreadyExists = 218,
 
+    /// Hex/base64 stringified bytes input is malformed or exceeds the length bound.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 230,
+
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
@@ -531,6 +537,18 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PromiseNotKept = 512,
 
+    /// Raised when an admin-path caller attempts to approve or execute a pause
+    /// proposal whose ID was derived under a previous (stale) epoch bucket.
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    StaleAdminEpoch = 514,
+
+    /// Raised when a multisig/signer-path caller attempts to approve or execute
+    /// a pause proposal whose ID was derived under a previous (stale) epoch.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    StaleSignerEpoch = 515,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
@@ -541,7 +559,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -716,7 +734,9 @@ impl ErrorExt for ContractError {
             | ContractError::AdminSuspended
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32
-            | ContractError::TimestampInFuture => ErrorCategory::Authorization,
+            | ContractError::TimestampInFuture
+            | ContractError::StaleAdminEpoch
+            | ContractError::StaleSignerEpoch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -740,6 +760,8 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -854,6 +876,9 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
+            ContractError::InvalidStringifiedBytes => {
+                "Hex/base64 stringified bytes input is malformed or too long"
+            }
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -963,6 +988,12 @@ impl ErrorExt for ContractError {
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
+            ContractError::StaleAdminEpoch => {
+                "Admin pause proposal carries a stale epoch reference"
+            }
+            ContractError::StaleSignerEpoch => {
+                "Signer pause proposal carries a stale epoch reference"
+            }
         }
     }
 
@@ -1010,6 +1041,10 @@ impl ErrorExt for ContractError {
             // Caller supplied a future timestamp; correct it and retry.
             ContractError::TimestampInFuture => true,
 
+            // Stale epoch proposals cannot be fixed by retry — re-propose in the
+            // current bucket.
+            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
+
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
             | ContractError::BondNotActive
@@ -1033,6 +1068,7 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
+            | ContractError::InvalidStringifiedBytes
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
@@ -1044,7 +1080,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1179,4 +1214,25 @@ macro_rules! require_non_zero_bytes32 {
             return Err($crate::ContractError::ZeroBytes32);
         }
     };
+}
+
+/// Re-init prevention guard for Soroban contract constructors.
+///
+/// Every deployable contract must call this as the **first statement** in its
+/// `initialize` function, before any auth or storage writes. The guard panics
+/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
+/// already exists in instance storage, preventing a second caller from
+/// overwriting the admin and stealing the contract.
+///
+/// # Arguments
+/// * `e`              - Soroban environment (needed for typed error panic).
+/// * `is_initialized` - `true` when the sentinel key exists, meaning the
+///                      contract has already been initialized.
+///
+/// # Panics
+/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
+pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
+    if is_initialized {
+        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
 }
