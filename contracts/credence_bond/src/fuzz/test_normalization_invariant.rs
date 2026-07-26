@@ -9,7 +9,6 @@ use crate::normalization::{
     denormalize, normalize, MAX_SUPPORTED_DECIMALS, MIN_SUPPORTED_DECIMALS, NORMALIZED_DECIMALS,
 };
 use proptest::prelude::*;
-use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 
 /// Mock token that returns a configurable `decimals()` value.

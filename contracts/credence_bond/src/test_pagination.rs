@@ -36,7 +36,7 @@ use crate::{
     slash_history, CredenceBond, CredenceBondClient,
 };
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env, String, Symbol, Vec};
+use soroban_sdk::{Address, Env, String, Symbol};
 
 // ============================================================================
 // Shared helpers

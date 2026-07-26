@@ -69,7 +69,7 @@ fn set_early_exit_config_succeeds_when_admin_authorizes() {
 #[should_panic]
 fn set_early_exit_config_rejected_when_non_admin_calls() {
     let (env, _admin, client) = setup();
-    let _stranger = Address::generate(&env);
+    let stranger = Address::generate(&env);
     let treasury = Address::generate(&env);
     // Passes stranger as admin — contract checks stranger != stored admin → panic.
     client.set_early_exit_config(&stranger, &treasury, &500_u32);
@@ -198,7 +198,7 @@ fn set_weight_config_succeeds_when_admin_authorizes() {
 #[should_panic]
 fn set_weight_config_rejected_when_non_admin_calls() {
     let (env, _admin, client) = setup();
-    let _stranger = Address::generate(&env);
+    let stranger = Address::generate(&env);
     client.set_weight_config(&stranger, &200_u32, &5_u32);
 }
 
@@ -291,7 +291,7 @@ fn top_up_succeeds_when_identity_authorizes() {
 fn top_up_rejected_when_stranger_calls() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
-    let stranger = Address::generate(&env);
+    let _stranger = Address::generate(&env);
     client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     client.top_up(&identity, &500_i128);
 }
@@ -316,7 +316,7 @@ fn extend_duration_succeeds_when_identity_authorizes() {
 fn extend_duration_rejected_when_stranger_calls() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
-    let stranger = Address::generate(&env);
+    let _stranger = Address::generate(&env);
     client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
     client.extend_duration(&identity, &3600_u64);
 }
