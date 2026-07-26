@@ -50,10 +50,30 @@ pub fn require_matching_lease_scope(e: &Env, lease: &Lease, op: u32) {
     }
 }
 
+/// Rejects a lease that has already expired at the current ledger timestamp.
+///
+/// Accepted when `now < lease.expires_at` (hard cliff; equality is expired).
+///
+/// Threat mitigated: replaying a previously valid lease after its window to
+/// perform privileged ops. Without this check, expiry is advisory only.
+///
+/// # Panics
+/// With [`ContractError::LeaseExpired`] when `now >= lease.expires_at`.
+#[inline]
+pub fn require_no_expired_lease(e: &Env, lease: &Lease) {
+    let now = e.ledger().timestamp();
+    if now >= lease.expires_at {
+        soroban_sdk::panic_with_error!(e, ContractError::LeaseExpired);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::{
+        testutils::{Address as _, Ledger},
+        Env,
+    };
 
     fn lease(e: &Env, scope: u32, expires_at: u64) -> Lease {
         Lease {
@@ -101,5 +121,52 @@ mod tests {
         let e = Env::default();
         let l = lease(&e, lease_op::READ | lease_op::WRITE, u64::MAX);
         require_matching_lease_scope(&e, &l, lease_op::WRITE | lease_op::RENEW);
+    }
+
+    // --- expired-lease guard: Fresh, expiring soon, expired (#845) ---
+
+    #[test]
+    fn require_no_expired_lease_allows_fresh_lease() {
+        let e = Env::default();
+        e.ledger().with_mut(|li| {
+            li.timestamp = 1_000_000;
+        });
+        // Fresh: a full day remaining.
+        let l = lease(&e, lease_op::ALL, 1_000_000 + 86_400);
+        require_no_expired_lease(&e, &l);
+    }
+
+    #[test]
+    fn require_no_expired_lease_allows_expiring_soon() {
+        let e = Env::default();
+        e.ledger().with_mut(|li| {
+            li.timestamp = 1_000_000;
+        });
+        // Expiring soon: still valid for one more second (hard cliff at equality).
+        let l = lease(&e, lease_op::ALL, 1_000_001);
+        require_no_expired_lease(&e, &l);
+    }
+
+    #[test]
+    #[should_panic]
+    fn require_no_expired_lease_rejects_expired_at_exact_boundary() {
+        let e = Env::default();
+        e.ledger().with_mut(|li| {
+            li.timestamp = 1_000_000;
+        });
+        // Expired: now == expires_at is a hard cliff.
+        let l = lease(&e, lease_op::ALL, 1_000_000);
+        require_no_expired_lease(&e, &l);
+    }
+
+    #[test]
+    #[should_panic]
+    fn require_no_expired_lease_rejects_expired_in_the_past() {
+        let e = Env::default();
+        e.ledger().with_mut(|li| {
+            li.timestamp = 1_000_000;
+        });
+        let l = lease(&e, lease_op::ALL, 999_999);
+        require_no_expired_lease(&e, &l);
     }
 }

@@ -26,7 +26,7 @@ use soroban_sdk::{contracterror, contracttype, Env};
 pub const VERSION: &str = "0.1.0";
 
 pub mod lease;
-pub use lease::{lease_op, require_matching_lease_scope, Lease};
+pub use lease::{lease_op, require_matching_lease_scope, require_no_expired_lease, Lease};
 
 /// Simple role enum for admin checks.
 #[contracttype]
