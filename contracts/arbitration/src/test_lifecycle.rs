@@ -119,6 +119,21 @@ fn test_invalid_resolve_while_voting_active() {
 }
 
 #[test]
+fn test_create_dispute_rejects_when_creator_has_ongoing_dispute() {
+    let s = setup();
+    let _id = open_dispute(&s);
+
+    let description = String::from_str(&s.env, "second dispute");
+    let err = s
+        .client
+        .try_create_dispute(&s.creator, &description, &3600)
+        .unwrap_err()
+        .unwrap();
+
+    assert_eq!(err, ArbitrationError::OngoingDispute);
+}
+
+#[test]
 fn test_invalid_resolve_already_resolved() {
     let s = setup();
     let id = open_dispute(&s);
