@@ -1,20 +1,14 @@
-//! Weighted attestation system: attestation value depends on attester's credibility.
-//!
-//! ## Overview
-//! Attestation weight is derived from the attester's bond (or configured stake), with
-//! a configurable multiplier (basis points) and a protocol cap.
-//!
-//! ## Rounding semantics
-//!
-//! ```text
-//! raw = floor(stake * multiplier_bps / BPS_DENOMINATOR)
-//! weight = clamp(raw, DEFAULT_ATTESTATION_WEIGHT, min(config_max, MAX_ATTESTATION_WEIGHT))
-//! ```
-
 use crate::math;
 use crate::types::attestation::MAX_ATTESTATION_WEIGHT;
 use crate::DataKey;
-use soroban_sdk::Env;
+use soroban_sdk::{contracttype, Address, Env, Symbol};
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WeightConfig {
+    pub multiplier_bps: u32,
+    pub max_weight: u32,
+}
 
 /// Default weight multiplier in basis points (1 = 0.01%).
 pub const DEFAULT_WEIGHT_MULTIPLIER_BPS: u32 = 100;
@@ -25,8 +19,8 @@ pub const MAX_WEIGHT_MULTIPLIER_BPS: u32 = 10_000;
 /// Default maximum attestation weight when no config is set.
 pub const DEFAULT_MAX_WEIGHT: u32 = 100_000;
 
-fn weight_config_key(e: &Env) -> soroban_sdk::Symbol {
-    soroban_sdk::Symbol::new(e, "weight_cfg")
+fn weight_config_key(e: &Env) -> Symbol {
+    Symbol::new(e, "weight_cfg")
 }
 
 /// Returns (multiplier_bps, max_weight). Uses defaults if not set.
@@ -49,7 +43,7 @@ pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
 
 /// Returns the attester's stake. 0 if not set.
 #[must_use]
-pub fn get_attester_stake(e: &Env, attester: &soroban_sdk::Address) -> i128 {
+pub fn get_attester_stake(e: &Env, attester: &Address) -> i128 {
     e.storage()
         .instance()
         .get(&DataKey::AttesterStake(attester.clone()))
@@ -57,7 +51,7 @@ pub fn get_attester_stake(e: &Env, attester: &soroban_sdk::Address) -> i128 {
 }
 
 /// Sets attester stake. Rejects negative amounts.
-pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128) {
+pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
     if amount < 0 {
         panic!("attester stake cannot be negative");
     }
@@ -69,7 +63,7 @@ pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128
 /// Computes attestation weight from attester stake using config. Capped by config max and
 /// MAX_ATTESTATION_WEIGHT. If stake is 0, returns default weight (1) so attestations are still allowed.
 #[must_use]
-pub fn compute_weight(e: &Env, attester: &soroban_sdk::Address) -> u32 {
+pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
     use crate::types::attestation::DEFAULT_ATTESTATION_WEIGHT;
 
     let stake = get_attester_stake(e, attester);

@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
 
 use crate::DataKey;
 
@@ -175,7 +175,7 @@ pub fn pause(e: &Env, caller: &Address) -> Option<u32> {
         .unwrap_or(0);
     if threshold == 0 {
         require_admin_auth(e, caller);
-        do_pause(e, None);
+        do_pause(e, None, &caller.to_string());
         None
     } else {
         propose_action(e, caller, PauseAction::Pause)
@@ -256,7 +256,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u32) {
     }
 
     match action {
-        1 => do_pause(e, Some(proposal_id)),
+        1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
     }
@@ -266,9 +266,10 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u32) {
         .remove(&DataKey::PauseProposal(proposal_id));
 }
 
-fn do_pause(e: &Env, proposal_id: Option<u32>) {
+fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
     e.storage().instance().set(&DataKey::Paused, &true);
-    e.events().publish((Symbol::new(e, "paused"),), proposal_id);
+    e.events()
+        .publish((Symbol::new(e, "paused"),), (proposal_id, reason.clone()));
 }
 
 fn do_unpause(e: &Env, proposal_id: Option<u32>) {

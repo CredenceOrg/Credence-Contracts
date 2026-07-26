@@ -17,17 +17,28 @@
 // Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
 // `clippy::disallowed_macros` lint belongs to the `restriction` group, so
 // a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests + the testutils feature
-// stay free to use format!/write! for diagnostics).
-#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
+// is the only mode where this deny fires (tests stay free to
+// use format!/write! for diagnostics).
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::contracterror;
-use soroban_sdk::Env;
+use soroban_sdk::{contracterror, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
 pub mod lease;
 pub use lease::{lease_op, require_matching_lease_scope, require_no_expired_lease, Lease};
+
+/// Panic with `AlreadyInitialized` if the contract has already been initialized.
+///
+/// # Usage
+/// ```ignore
+/// credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
+/// ```
+pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
+    if already_initialized {
+        e.panic_with_error(ContractError::AlreadyInitialized);
+    }
+}
 
 /// Simple role enum for admin checks.
 #[contracttype]
@@ -819,8 +830,9 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::InvalidStringifiedBytes
-            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
+            | ContractError::InvariantViolation
+            | ContractError::AmountExplicitlyZero
+            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1201,7 +1213,6 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationInactive => false,    // delegation revoked/expired; cannot be fixed by caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
             ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
 
@@ -1291,18 +1302,14 @@ macro_rules! require_positive_amount {
 /// `env.ledger().timestamp()`, preventing the contract from accepting
 /// values that could only originate from the future.
 ///
-/// # Examples
+/// # Panics
 ///
-/// ```ignore
-/// verify_no_future_ledger!(&env, signed_timestamp);
-/// ```
-#[macro_export]
-macro_rules! verify_no_future_ledger {
-    ($env:expr, $t:expr) => {
-        if $t > $env.ledger().timestamp() {
-            return Err($crate::ContractError::TimestampInFuture);
-        }
-    };
+/// Panics with [`ContractError::TimestampInFuture`] when `t` is strictly
+/// greater than the current ledger timestamp.
+pub fn verify_no_future_ledger(e: &Env, t: u64) {
+    if t > e.ledger().timestamp() {
+        e.panic_with_error(ContractError::TimestampInFuture);
+    }
 }
 
 #[macro_export]
