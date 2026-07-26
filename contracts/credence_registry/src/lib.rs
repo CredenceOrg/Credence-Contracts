@@ -91,6 +91,7 @@ enum DataKey {
     BondToIdentity(Address),
     RegisteredIdentities,
     AllowNonInterface(Address),
+    BondCodeHash,
 }
 
 /// Maximum number of identities that can be returned in a single page
@@ -119,10 +120,9 @@ impl CredenceRegistry {
     /// * If contract is already initialized
     pub fn initialize(e: Env, admin: Address) {
         bump_instance_ttl(&e);
-        credence_errors::require_contract_uninitialized(
-            &e,
-            e.storage().instance().has(&DataKey::Admin),
-        );
+        if e.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&e, ContractError::AlreadyInitialized);
+        }
 
         admin.require_auth();
 
