@@ -98,6 +98,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [testing.md](testing.md) | Contributor | Test organization, patterns, coverage |
+| [TEST_HELPER_LIBRARY.md](TEST_HELPER_LIBRARY.md) | Contributor | Available test helpers in the `testutils` crate and feature-gated helpers |
 | [doctest-style.md](doctest-style.md) | Contributor | Doc-test conventions |
 | [fuzz-testing.md](fuzz-testing.md) | Contributor | Cargo-fuzz targets, invariants |
 | [chaos-testing.md](chaos-testing.md) | Contributor | Chaos engineering scenarios |
