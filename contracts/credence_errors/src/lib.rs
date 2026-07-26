@@ -22,6 +22,8 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::panic_with_error;
+use soroban_sdk::Env;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -541,7 +543,10 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    /// Replaces: panic!("no pending admin transfer")
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    NoPendingAdmin = 119,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -751,6 +756,7 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -1050,7 +1056,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::DuplicateIdempotencyKey => true, // duplicate transaction payload; change salt/key and retry
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1121,6 +1126,23 @@ impl ErrorExt for ContractError {
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
         }
+    }
+}
+
+/// Constructor guard for the "already initialized" check.
+///
+/// Pass `already_initialized = <expression that returns true when the contract is
+/// already initialized>` (e.g., `storage::get_admin(&e).is_some()`). When `true`,
+/// this helper `panic_with_error!`s with `ContractError::AlreadyInitialized`.
+///
+/// Why a free function (not a `#[macro_export]` macro): constructor entrypoints
+/// return `()`, not `Result<_,_>`. The peer helpers (`require_no_leading_zero_amount!`,
+/// `require_positive_amount!`, `verify_no_future_ledger!`, `require_non_zero_bytes32!`)
+/// early-return `Err(... )` via macro expansion; an early-return macro would not
+/// compile in a `()`-returning constructor, so this helper panics instead.
+pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
+    if already_initialized {
+        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }
 

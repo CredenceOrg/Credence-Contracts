@@ -26,13 +26,11 @@ mod same_ledger_liquidation_guard;
 mod storage;
 mod slash_history;
 mod slashing;
-mod storage;
 mod tiered_bond;
 mod token_integration;
 mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
-mod idempotency;
 
 #[cfg(test)]
 #[path = "fuzz/test_weighted_attestation_rounding.rs"]
@@ -429,16 +427,8 @@ pub enum DataKey {
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
     // --- Pausable functionality variants ---
-    /// Contract pause state. Value: `bool`.
-    Paused,
     /// Authorized pause signers. Key: `Address`, Value: `bool`.
     PauseSigner(Address),
-    /// Count of authorized pause signers. Value: `u32`.
-    PauseSignerCount,
-    /// Threshold of signers required to pause. Value: `u32`.
-    PauseThreshold,
-    /// Monotonic pause proposal counter. Value: `u64`.
-    PauseProposalCounter,
     /// Individual pause approval by signer and proposal. Value: `bool`.
     PauseApproval(u64, Address),
     /// Count of approvals for a pause proposal. Value: `u32`.
