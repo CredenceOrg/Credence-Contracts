@@ -589,12 +589,12 @@ impl CredenceTreasury {
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
-        if e.ledger().timestamp() >= proposal.expires_at {
+        if crate::is_expired(&e, proposal.expires_at) {
             e.events().publish(
                 (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
-                (),
             );
             panic_with_error!(&e, ContractError::ProposalExpired);
+        }
         }
         let already = e
             .storage()
@@ -657,12 +657,12 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::Proposal(proposal_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
-        if e.ledger().timestamp() >= proposal.expires_at {
+        if crate::is_expired(&e, proposal.expires_at) {
             e.events().publish(
                 (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
-                (),
             );
             panic_with_error!(&e, ContractError::ProposalExpired);
+        }
         }
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);

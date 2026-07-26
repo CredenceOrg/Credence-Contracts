@@ -1623,4 +1623,30 @@ mod tests {
         }
         assert_eq!(test_future(), Err(ContractError::TimestampInFuture));
     }
+
+    #[test]
+    fn test_require_within_ttl_happy_path() {
+        use soroban_sdk::Env;
+
+        fn test_valid() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::require_within_ttl!(&e, now + 1);
+            Ok(())
+        }
+        assert!(test_valid().is_ok());
+    }
+
+    #[test]
+    fn test_require_within_ttl_rejects_expired() {
+        use soroban_sdk::Env;
+
+        fn test_expired() -> Result<(), ContractError> {
+            let e = Env::default();
+            let now = e.ledger().timestamp();
+            crate::require_within_ttl!(&e, now);
+            Ok(())
+        }
+        assert_eq!(test_expired(), Err(ContractError::SignatureExpired));
+    }
 }

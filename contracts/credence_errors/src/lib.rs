@@ -22,6 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::{Env, panic_with_error};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -541,7 +542,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -1179,4 +1180,47 @@ macro_rules! require_non_zero_bytes32 {
             return Err($crate::ContractError::ZeroBytes32);
         }
     };
+}
+
+/// Rejects the call when the current ledger timestamp is at or past
+/// the supplied `expires_at` value. Returns `SignatureExpired` when
+/// the expiry has been reached.
+#[macro_export]
+macro_rules! require_within_ttl {
+    ($env:expr, $expires_at:expr) => {
+        if $env.ledger().timestamp() >= $expires_at {
+            return Err($crate::ContractError::SignatureExpired);
+        }
+    };
+}
+
+/// Returns `true` when the supplied `expires_at` timestamp denotes a
+/// reached-or-past expiry. Treats `0` as never-expire.
+pub fn is_expired(e: &Env, expires_at: u64) -> bool {
+    expires_at != 0 && e.ledger().timestamp() >= expires_at
+}
+
+/// Panic-style helper: panics with the supplied `ContractError` when the
+/// `expires_at` has been reached. Use this in entrypoints that prefer
+/// `panic_with_error!` semantics.
+pub fn require_within_ttl_panic(e: &Env, expires_at: u64, err: ContractError) {
+    if is_expired(e, expires_at) {
+        panic_with_error!(e, err);
+    }
+}
+
+/// Result-style helper mirroring the `require_within_ttl!` macro.
+pub fn require_within_ttl_result(e: &Env, expires_at: u64) -> Result<(), ContractError> {
+    if is_expired(e, expires_at) {
+        return Err(ContractError::SignatureExpired);
+    }
+    Ok(())
+}
+
+/// Require the contract to be uninitialised. Panics with
+/// `ContractError::AlreadyInitialized` when `is_initialized` is true.
+pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
+    if is_initialized {
+        panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
 }
