@@ -1120,6 +1120,10 @@ impl ErrorExt for ContractError {
             // current bucket.
             ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
 
+            // Stale epoch proposals cannot be fixed by retry — re-propose in the
+            // current bucket.
+            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
+
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
             | ContractError::BondNotActive

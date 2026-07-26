@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, IntoVal, String, Symbol, Val, Vec};
+use soroban_sdk::{panic_with_error, Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec};
 
 use crate::DataKey;
 
@@ -8,6 +8,48 @@ use crate::DataKey;
 pub enum PauseAction {
     Pause = 1,
     Unpause = 2,
+}
+
+/// Number of ledger sequences that form one epoch bucket for admin pause
+/// proposal-ID derivation. Same cadence as the delegation operator-epoch model.
+pub const PROPOSAL_EPOCH_SIZE: u32 = 100;
+
+/// Derive a stable proposal ID from `(action, epoch)`.
+///
+/// ```text
+/// epoch    = ledger_sequence / PROPOSAL_EPOCH_SIZE
+/// preimage = action_u32_be ++ epoch_u32_be
+/// id       = first 8 bytes of SHA-256(preimage) as big-endian u64
+/// ```
+fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
+    let epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
+    let action_u32 = action as u32;
+
+    let preimage = Bytes::from_array(
+        e,
+        &[
+            ((action_u32 >> 24) & 0xff) as u8,
+            ((action_u32 >> 16) & 0xff) as u8,
+            ((action_u32 >> 8) & 0xff) as u8,
+            (action_u32 & 0xff) as u8,
+            ((epoch >> 24) & 0xff) as u8,
+            ((epoch >> 16) & 0xff) as u8,
+            ((epoch >> 8) & 0xff) as u8,
+            (epoch & 0xff) as u8,
+        ],
+    );
+
+    let hash = e.crypto().sha256(&preimage);
+    let b = hash.to_array();
+    u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
+}
+
+/// Reject approvals/executions whose `proposal_id` was derived under a prior epoch.
+fn require_matching_admin_epoch(e: &Env, action: PauseAction, ep: u64) {
+    let expected_id = derive_proposal_id(e, action);
+    if ep != expected_id {
+        panic_with_error!(e, ContractError::StaleAdminEpoch);
+    }
 }
 
 fn require_admin_auth(e: &Env, admin: &Address, args: Vec<Val>) {
@@ -132,21 +174,6 @@ fn require_pause_signer(e: &Env, signer: &Address, args: Vec<Val>) {
     }
 }
 
-fn next_proposal_id(e: &Env) -> u64 {
-    let id: u64 = e
-        .storage()
-        .instance()
-        .get(&DataKey::PauseProposalCounter)
-        .unwrap_or(0);
-    let next = id
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
-    e.storage()
-        .instance()
-        .set(&DataKey::PauseProposalCounter, &next);
-    id
-}
-
 fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
     let approval_key = DataKey::PauseApproval(proposal_id, signer.clone());
     if e.storage().instance().has(&approval_key) {
@@ -199,18 +226,21 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
 fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64> {
     require_pause_signer(e, caller, (caller.clone(),).into_val(e));
 
-    let id = next_proposal_id(e);
-    e.storage()
-        .instance()
-        .set(&DataKey::PauseProposal(id), &(action as u32));
-    e.storage()
-        .instance()
-        .set(&DataKey::PauseApprovalCount(id), &0_u32);
+    let id = derive_proposal_id(e, action);
+    let proposal_key = DataKey::PauseProposal(id);
+
+    // Idempotent: only write the proposal record if it does not already exist.
+    if !e.storage().instance().has(&proposal_key) {
+        e.storage().instance().set(&proposal_key, &(action as u32));
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseApprovalCount(id), &0_u32);
+
+        e.events()
+            .publish((Symbol::new(e, "pause_proposed"), id), action as u32);
+    }
 
     record_approval(e, id, caller);
-
-    e.events()
-        .publish((Symbol::new(e, "pause_proposed"), id), action as u32);
 
     Some(id)
 }
@@ -218,11 +248,18 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     require_pause_signer(e, signer, (signer.clone(), proposal_id).into_val(e));
 
-    let _action: u32 = e
+    let action: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+
+    let pause_action = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+    require_matching_admin_epoch(e, pause_action, proposal_id);
 
     record_approval(e, proposal_id, signer);
 
@@ -238,6 +275,13 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+
+    let pause_action = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+    require_matching_admin_epoch(e, pause_action, proposal_id);
 
     let threshold: u32 = e
         .storage()
