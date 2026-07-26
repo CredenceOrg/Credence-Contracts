@@ -135,7 +135,7 @@ def parse_mod_graph(root_file: Path):
         reachable.add(file)
         if not unconditional:
             test_gated.add(file)
-        lines = file.read_text().splitlines()
+        lines = file.read_text(encoding="utf-8").splitlines()
         n = len(lines)
         i = 0
         while i < n:
@@ -230,7 +230,7 @@ def scan() -> list:
             continue
         reachable, test_gated = parse_mod_graph(lib)
         for rs in sorted(f for f in reachable if f not in test_gated):
-            masked = mask_cfg_test_blocks(rs.read_text())
+            masked = mask_cfg_test_blocks(rs.read_text(encoding="utf-8"))
             all_results.extend(find_panics_in_text(masked, str(rs.relative_to(ROOT))))
     return sorted(all_results)
 
@@ -244,7 +244,7 @@ def load_baseline() -> set:
         return set()
     return {
         line.rstrip("\n")
-        for line in BASELINE_PATH.read_text().splitlines()
+        for line in BASELINE_PATH.read_text(encoding="utf-8").splitlines()
         if line.strip() and not line.startswith("#")
     }
 
@@ -259,7 +259,7 @@ def write_baseline(keys) -> None:
         "# This file only exists to grandfather pre-existing debt; it should\n"
         "# shrink over time, never grow casually.\n"
     )
-    BASELINE_PATH.write_text(header + "\n".join(sorted(keys)) + "\n")
+    BASELINE_PATH.write_text(header + "\n".join(sorted(keys)) + "\n", encoding="utf-8")
 
 
 def main():
