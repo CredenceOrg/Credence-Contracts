@@ -7,13 +7,13 @@
 use soroban_sdk::{
     contract, contractimpl,
     testutils::{Address as _, Ledger as _},
-    Address, Bytes, Env,
+    Address, Bytes, Env, String,
 };
 
 use crate::{
     domain::{DelegatedActionPayload, DomainTag},
     verifier::SchemeTag,
-    CredenceDelegation, CredenceDelegationClient, DelegationType,
+    CredenceDelegation, CredenceDelegationClient, DelegationType, SIGNATURE_DOMAIN,
 };
 
 // ---------------------------------------------------------------------------
@@ -67,6 +67,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>, Address) {
 }
 
 fn make_payload(
+    e: &Env,
     owner: &Address,
     target: &Address,
     contract_id: &Address,
@@ -80,6 +81,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
+        ledger_number: 0,
+        signature_domain: String::from_str(e, SIGNATURE_DOMAIN),
     }
 }
 
@@ -96,6 +99,7 @@ fn test_ed25519_unaffected() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -119,6 +123,7 @@ fn test_ed25519_ignores_registered_verifier() {
     let v = e.register(AlwaysInvalidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Ed25519.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -152,6 +157,7 @@ fn test_secp256r1_unregistered_panics() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -174,6 +180,7 @@ fn test_secp256r1_valid_verifier_succeeds() {
     let v = e.register(AlwaysValidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -197,6 +204,7 @@ fn test_secp256r1_invalid_verifier_panics() {
     let v = e.register(AlwaysInvalidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -222,6 +230,7 @@ fn test_mldsa44_unregistered_panics() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -244,6 +253,7 @@ fn test_mldsa44_valid_verifier_succeeds() {
     let v = e.register(AlwaysValidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::MLDSA44.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -275,6 +285,7 @@ fn test_re_registration_overwrites() {
     client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &good);
 
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,

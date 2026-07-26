@@ -1,4 +1,4 @@
-﻿//! Shared cost-measurement harness for the `credence_bond` contract.
+//! Shared cost-measurement harness for the `credence_bond` contract.
 //!
 //! This module is compiled into both the `cost` bench ([cost.rs]) and the
 //! `update-cost-baseline` binary ([update_cost_baseline.rs]). It drives every
@@ -8,9 +8,9 @@
 //! The numbers are *modelled* host costs, not wall-clock time, so they are
 //! deterministic across machines — which is exactly what makes them usable as a
 //! committed regression baseline. See `docs/gas-regression.md` for how to read
-//! and triage them.
+//! and triage them.#![allow(dead_code)]
+#![allow(clippy::disallowed_macros)]
 
-#![allow(dead_code)]
 
 use std::collections::BTreeMap;
 
@@ -85,7 +85,7 @@ fn measure(env: &Env) -> EntryCost {
 /// `cost_estimate().resources()` reports that call alone.
 pub fn measure_all() -> BTreeMap<String, EntryCost> {
     let mut out = BTreeMap::new();
-    
+
     // Use realistic bond amounts (minimum is 1e18)
     let bond_amount = 1_000_000_000_000_000_000i128; // 1e18
     let duration = 1_000_u64;

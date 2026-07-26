@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
+use soroban_sdk::{panic_with_error, Address, Env, IntoVal, String, Symbol, Val, Vec};
 
 use crate::DataKey;
 
@@ -10,7 +10,7 @@ pub enum PauseAction {
     Unpause = 2,
 }
 
-fn require_admin_auth(e: &Env, admin: &Address) {
+fn require_admin_auth(e: &Env, admin: &Address, args: Vec<Val>) {
     // In admin contract, we need to check if the caller is a SuperAdmin
     use crate::{AdminContract, AdminRole};
 
@@ -18,7 +18,7 @@ fn require_admin_auth(e: &Env, admin: &Address) {
     if caller_role != AdminRole::SuperAdmin {
         panic_with_error!(e, ContractError::NotAdmin);
     }
-    admin.require_auth();
+    admin.require_auth_for_args(args);
 }
 
 pub fn is_paused(e: &Env) -> bool {
@@ -35,7 +35,11 @@ pub fn require_not_paused(e: &Env) {
 }
 
 pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: bool) {
-    require_admin_auth(e, admin);
+    require_admin_auth(
+        e,
+        admin,
+        (admin.clone(), signer.clone(), enabled).into_val(e),
+    );
 
     // Reject zero/invalid signer address
     if signer.to_string()
@@ -100,7 +104,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
 }
 
 pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
-    require_admin_auth(e, admin);
+    require_admin_auth(e, admin, (admin.clone(), threshold).into_val(e));
     let count: u32 = e
         .storage()
         .instance()
@@ -116,8 +120,8 @@ pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
         .publish((Symbol::new(e, "pause_threshold_set"),), threshold);
 }
 
-fn require_pause_signer(e: &Env, signer: &Address) {
-    signer.require_auth();
+fn require_pause_signer(e: &Env, signer: &Address, args: Vec<Val>) {
+    signer.require_auth_for_args(args);
     let ok: bool = e
         .storage()
         .instance()
@@ -169,7 +173,7 @@ pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
         .get(&DataKey::PauseThreshold)
         .unwrap_or(0);
     if threshold == 0 {
-        require_admin_auth(e, caller);
+        require_admin_auth(e, caller, (caller.clone(),).into_val(e));
         do_pause(e, None);
         None
     } else {
@@ -184,7 +188,7 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
         .get(&DataKey::PauseThreshold)
         .unwrap_or(0);
     if threshold == 0 {
-        require_admin_auth(e, caller);
+        require_admin_auth(e, caller, (caller.clone(),).into_val(e));
         do_unpause(e, None);
         None
     } else {
@@ -193,7 +197,7 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
 }
 
 fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64> {
-    require_pause_signer(e, caller);
+    require_pause_signer(e, caller, (caller.clone(),).into_val(e));
 
     let id = next_proposal_id(e);
     e.storage()
@@ -212,7 +216,7 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 }
 
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
-    require_pause_signer(e, signer);
+    require_pause_signer(e, signer, (signer.clone(), proposal_id).into_val(e));
 
     let _action: u32 = e
         .storage()

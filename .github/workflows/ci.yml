@@ -12,6 +12,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  no-bare-panic:
+    name: No bare panic!() in release code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for new bare panic!(...) call sites
+        run: python3 scripts/check_no_panic.py
+
   test:
     name: Test
     runs-on: ubuntu-latest

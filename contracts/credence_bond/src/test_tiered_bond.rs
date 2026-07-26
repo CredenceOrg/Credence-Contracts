@@ -154,6 +154,6 @@ fn test_fully_slashed_bond_tier() {
     assert_eq!(state.slashed_amount, TIER_GOLD_MAX);
     assert_eq!(state.bonded_amount, TIER_GOLD_MAX);
 
-    // Tier should still be Platinum
-    assert_eq!(client.get_tier(), BondTier::Platinum);
+    // Tier should downgrade to Bronze (net bond is 0)
+    assert_eq!(client.get_tier(), BondTier::Bronze);
 }

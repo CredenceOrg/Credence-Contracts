@@ -3,6 +3,9 @@
 This document describes the `credence-admin` command-line tool — the
 operator's interface for administrative actions on Credence protocol contracts.
 
+> See [OPERATOR_BALANCES.md](OPERATOR_BALANCES.md) for what each operation costs
+> and how to keep your signing account and protocol balances healthy.
+
 > **What changed in this release?**  
 > All three handlers (`bond-set-early-exit-config`, `bond-set-weights`,
 > `delegation-set-pause-signer`) now build **real** Soroban

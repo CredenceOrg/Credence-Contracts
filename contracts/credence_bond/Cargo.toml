@@ -15,6 +15,14 @@ autotests = false
 autobenches = false
 autobins = false
 
+[[test]]
+name = "proptest_tier"
+path = "tests/proptest_tier.rs"
+
+[[test]]
+name = "proptest_batch_atomicity"
+path = "tests/proptest_batch_atomicity.rs"
+
 [lib]
 # `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
 # the contract as a normal Rust dependency. The `cdylib` artifact used for the
@@ -47,12 +55,22 @@ path = "tests/test_cost_regression.rs"
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }
 timelock = { path = "../timelock" }
-soroban-sdk = { version = "22.0", features = ["testutils"] }
+# soroban-sdk is always required; testutils APIs are only needed for test
+# builds and are gated via the `testutils` feature defined below.
+soroban-sdk = { version = "22.0" }
+
+[dev-dependencies]
+# proptest is only used in #[cfg(test)] / fuzz modules — not in release WASM.
 proptest = "1.11.0"
+soroban-sdk = { version = "22.0", features = ["testutils"] }
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(skip_slash_invariant)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(skip_slash_invariant)', 'cfg(feature, values("testutils"))'] }
 
 [features]
 default = []
+# Enable testutils APIs (Address::generate, mock_all_auths, etc.) for
+# off-chain tooling, integration harnesses, and benchmarks that link the
+# crate as an rlib.  Must NOT be enabled when building the release WASM.
+testutils = ["soroban-sdk/testutils"]
 gas-bench = ["soroban-sdk/testutils"]

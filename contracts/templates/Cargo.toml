@@ -8,6 +8,7 @@ description = "Credence Soroban contract template — canonical starting point f
 crate-type = ["cdylib"]
 
 [dependencies]
+credence_errors = { version = "0.1.0", path = "../credence_errors" }
 soroban-sdk = "22.0"
 
 [dev-dependencies]

@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,15 +14,47 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 pub mod pausable;
 
 #[cfg(test)]
 mod test_ownership_transfer;
+#[cfg(test)]
+mod test_events_schema;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Vec,
+};
+
+/// Signature domain identifier for the Admin contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "Admin";
 
 /// Admin role hierarchy levels
 #[contracttype]
@@ -128,9 +161,10 @@ impl AdminContract {
     /// Emits `admin_initialized` with the super admin address
     pub fn initialize(e: Env, super_admin: Address, min_admins: u32, max_admins: u32) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Initialized) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Initialized),
+        );
 
         if min_admins == 0 {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
@@ -140,7 +174,8 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
-        super_admin.require_auth();
+        super_admin
+            .require_auth_for_args((super_admin.clone(), min_admins, max_admins).into_val(&e));
 
         // Set configuration
         e.storage().instance().set(&DataKey::Initialized, &true);
@@ -221,7 +256,7 @@ impl AdminContract {
     pub fn add_admin(e: Env, caller: Address, new_admin: Address, role: AdminRole) -> AdminInfo {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), new_admin.clone(), role).into_val(&e));
 
         Self::require_valid_admin_address(&e, &new_admin);
 
@@ -316,7 +351,7 @@ impl AdminContract {
     pub fn remove_admin(e: Env, caller: Address, admin_to_remove: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_to_remove.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_to_remove);
 
@@ -420,7 +455,8 @@ impl AdminContract {
     ) -> AdminInfo {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller
+            .require_auth_for_args((caller.clone(), admin_address.clone(), new_role).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_address);
 
@@ -511,7 +547,7 @@ impl AdminContract {
     pub fn deactivate_admin(e: Env, caller: Address, admin_address: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_address.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_address);
 
@@ -560,7 +596,7 @@ impl AdminContract {
     pub fn reactivate_admin(e: Env, caller: Address, admin_address: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_address.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &admin_address);
 
@@ -627,7 +663,7 @@ impl AdminContract {
     pub fn suspend_admin(e: Env, caller: Address, admin: Address, until_ts: u64) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin.clone(), until_ts).into_val(&e));
 
         // until_ts must be in the future
         if until_ts <= e.ledger().timestamp() {
@@ -707,7 +743,7 @@ impl AdminContract {
     pub fn transfer_ownership(e: Env, caller: Address, new_owner: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), new_owner.clone()).into_val(&e));
 
         Self::require_valid_admin_address(&e, &new_owner);
 
@@ -772,7 +808,7 @@ impl AdminContract {
     pub fn accept_ownership(e: Env, caller: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(),).into_val(&e));
 
         // Get pending owner
         let pending_owner: Address = e
@@ -927,6 +963,31 @@ impl AdminContract {
         }
     }
 
+    /// Historical role check: assert that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// Panics with [`ContractError::NotAdmin`] when `actor` is not a registered
+    /// admin or when their role is below the required level.
+    /// Panics with [`ContractError::RoleNotHeldAtLedger`] when the actor's role
+    /// was granted **after** `at_ledger`, meaning they were not authorised at
+    /// the time the signed action was created.
+    ///
+    /// See [`Self::require_role_at_ledger`] (private) for the full threat model.
+    ///
+    /// # Arguments
+    /// * `role`      - Minimum `AdminRole` that must have been held
+    /// * `actor`     - Address whose historical role is checked
+    /// * `at_ledger` - Unix timestamp (seconds) of the signed action
+    pub fn check_role_at_ledger(
+        e: Env,
+        role: AdminRole,
+        actor: Address,
+        at_ledger: u64,
+    ) {
+        bump_instance_ttl(&e);
+        Self::require_role_at_ledger(&e, role, &actor, at_ledger);
+    }
+
     /// Get all admin addresses.
     ///
     /// # Returns
@@ -1069,6 +1130,61 @@ impl AdminContract {
             Err(())
         }
     }
+
+    /// Historical role check: verify that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// This is a **defence-in-depth** guard for delegated actions that carry
+    /// an off-chain signature produced at a past ledger. Without it an attacker
+    /// could:
+    ///
+    /// 1. Obtain a signature from an address that was *not yet* an admin at
+    ///    the time the signature was created.
+    /// 2. Wait until that address is later elevated, then replay the signed
+    ///    payload to authorise a historical action as if the signer had been
+    ///    an admin all along.
+    ///
+    /// By asserting `admin_info.assigned_at <= at_ledger` we ensure the role
+    /// assignment predates (or coincides with) the moment the signature covers.
+    ///
+    /// # Arguments
+    /// * `e`          - Soroban environment
+    /// * `role`       - Minimum `AdminRole` that must have been held
+    /// * `actor`      - Address whose historical role is checked
+    /// * `at_ledger`  - Ledger timestamp of the signed action
+    ///
+    /// # Errors
+    /// * [`ContractError::NotAdmin`] — `actor` is not a known admin at all.
+    /// * [`ContractError::RoleNotHeldAtLedger`] — `actor`'s role was assigned
+    ///   after `at_ledger`, meaning they were not yet authorised at that time.
+    ///
+    /// # Panics
+    /// Panics via [`panic_with_error!`] — compatible with Soroban's error
+    /// propagation model.
+    pub fn require_role_at_ledger(
+        e: &Env,
+        role: AdminRole,
+        actor: &Address,
+        at_ledger: u64,
+    ) {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(actor.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+
+        // The actor must have the required role level.
+        if admin_info.role < role {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        // The role must have been assigned at or before the ledger under review.
+        // If `assigned_at > at_ledger` the actor was not yet an admin when the
+        // action was signed, so the authorisation is invalid.
+        if admin_info.assigned_at > at_ledger {
+            panic_with_error!(e, ContractError::RoleNotHeldAtLedger);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1133,3 +1249,6 @@ mod test_suspension;
 
 #[cfg(test)]
 mod test_auth_entrypoints;
+
+#[cfg(test)]
+mod test_require_role_at_least;

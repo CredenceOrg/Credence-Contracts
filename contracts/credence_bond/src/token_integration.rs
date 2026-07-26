@@ -9,6 +9,10 @@ use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
 use soroban_sdk::{contracttype, Address, Env, String, Symbol};
+use crate::{storage, DataKey};
+use credence_errors::ContractError;
+use soroban_sdk::token::TokenClient;
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};
 
 /// Source classification for funds leaving the bond contract.
 #[contracttype]
@@ -99,7 +103,10 @@ pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
 
 /// @notice Transfers tokens from owner into the bond contract.
 /// @dev Requires prior approval for the bond contract as spender.
-/// Detects and rejects fee-on-transfer tokens by verifying balance changes.
+/// Constructs the token client exactly once and reuses it for the balance read,
+/// the transfer, and the post-transfer balance verification.
+/// The balance-delta check is the authoritative fee-on-transfer guard:
+/// it ensures the contract received exactly the requested amount.
 /// @param e Environment reference
 /// @param owner Token owner address (must have approved the contract)
 /// @param amount Amount to transfer (must match actual amount received)
@@ -112,18 +119,26 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
         return;
     }
 
-    require_allowance(e, owner, amount);
     let contract = e.current_contract_address();
-    let token = crate::safe_token::token_client(e);
+    let token_addr = safe_token::get_token(e);
+    crate::normalization::validate_supported_decimals(e, &token_addr);
+    // Construct the token client once; reuse for allowance check, balance reads, and transfer.
+    let token: TokenClient = TokenClient::new(e, &token_addr);
 
-    // Check contract balance before transfer
+    let allowance = token.allowance(owner, &contract);
+    if allowance < amount {
+        panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE);
+    }
+
+    // Balance-delta check: authoritative fee-on-transfer guard.
+    // Rejects fee-on-transfer tokens where received < requested.
     let balance_before = token.balance(&contract);
 
-    // Perform transfer using safe_token
-    safe_token::safe_transfer_from(e, owner, amount);
+    match token.try_transfer_from(&contract, owner, &contract, &amount) {
+        Ok(_) => {}
+        Err(_) => panic!("token transfer failed"),
+    }
 
-    // Verify balance increased by exactly the expected amount
-    // Rejects fee-on-transfer tokens where received < requested
     let balance_after = token.balance(&contract);
     let actual_received = balance_after
         .checked_sub(balance_before)
@@ -136,7 +151,10 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 
 /// @notice Transfers tokens from the bond contract to recipient.
 /// @dev Used for standard withdrawals and penalty/treasury transfers.
-/// Detects and rejects fee-on-transfer tokens by verifying balance changes.
+/// Constructs the token client exactly once and reuses it for the balance read,
+/// the transfer, and the post-transfer balance verification.
+/// The balance-delta check is the authoritative fee-on-transfer guard:
+/// it ensures the contract sent exactly the requested amount.
 /// @param e Environment reference
 /// @param recipient Recipient address
 /// @param amount Amount to transfer (must match actual amount sent)
@@ -150,16 +168,18 @@ pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     }
 
     let contract = e.current_contract_address();
-    let token = crate::safe_token::token_client(e);
+    // Construct the token client once; reuse for balance reads and transfer.
+    let token: TokenClient = safe_token::token_client(e);
 
-    // Check contract balance before transfer
+    // Balance-delta check: authoritative fee-on-transfer guard.
+    // Rejects fee-on-transfer tokens where sent != requested.
     let balance_before = token.balance(&contract);
 
-    // Perform transfer using safe_token
-    safe_token::safe_transfer(e, recipient, amount);
+    match token.try_transfer(&contract, recipient, &amount) {
+        Ok(_) => {}
+        Err(_) => panic!("token transfer failed"),
+    }
 
-    // Verify balance decreased by exactly the expected amount
-    // Rejects fee-on-transfer tokens where sent != requested
     let balance_after = token.balance(&contract);
     let actual_sent = balance_before
         .checked_sub(balance_after)

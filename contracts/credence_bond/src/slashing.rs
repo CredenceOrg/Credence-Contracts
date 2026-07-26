@@ -68,12 +68,13 @@ pub fn slash_bond(e: &Env, admin: &Address, slash_amount: i128) -> IdentityBond 
 //! "not admin" error message.
 //!
 //! ## Design
-//! - **Partial Slashing**: Can slash any amount up to bonded_amount
-//! - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
-//! - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
-//! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
-//! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
+/// - **Partial Slashing**: Can slash any amount up to bonded_amount
+/// - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
+/// - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
+/// - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
+/// - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
 
+use crate::{DataKey, IdentityBond};
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 
@@ -127,7 +128,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 ///
 /// Executes the slash with full validation:
 /// 1. Validates caller is admin (panics if not)
-/// 2. Computes available balance (bonded − already_slashed)
+/// 2. Computes available balance (bonded âˆ’ already_slashed)
 /// 3. Caps slash at available balance (prevents over-slash)
 /// 4. Updates bond state
 /// 5. Appends a normalized SlashRecord to persistent history
@@ -150,7 +151,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// - If arithmetic overflows (checked_add protection)
 ///
 /// # Security Notes
-/// - Slash is bounded by available balance (bonded − slashed), not just bonded
+/// - Slash is bounded by available balance (bonded âˆ’ slashed), not just bonded
 /// - Slashing is monotonic (always increases or stays same, never decreases)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 /// - Slasher receives 10% of slashed amount as reward (pull-payment)
@@ -171,7 +172,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         .get::<_, crate::IdentityBond>(&key)
         .unwrap_or_else(|| panic!("no bond"));
 
-    // 3. Available balance = bonded − already_slashed
+    // 3. Available balance = bonded âˆ’ already_slashed
     let available = bond
         .bonded_amount
         .checked_sub(bond.slashed_amount)
@@ -203,7 +204,14 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         "invariant: slashed <= bonded"
     );
 
+    let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let old_tier = crate::tiered_bond::get_tier_for_amount(e, old_available);
+
     bond.slashed_amount = new_slashed;
+
+    let new_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let new_tier = crate::tiered_bond::get_tier_for_amount(e, new_available);
+    crate::tiered_bond::emit_tier_change_if_needed(e, &bond.identity, old_tier, new_tier);
 
     // 5. Append normalized slash history record
     crate::slash_history::append_slash_history(
@@ -370,7 +378,7 @@ pub fn is_partial_slash(slash_amount: i128, bonded_amount: i128) -> bool {
 /// Transfers `amount` tokens from this bond contract to the configured slash treasury.
 ///
 /// Reads the treasury address from `DataKey::SlashTreasury`. If the key is absent,
-/// reverts with [`ContractError::TreasuryNotConfigured`] — the protocol must never
+/// reverts with [`ContractError::TreasuryNotConfigured`] â€” the protocol must never
 /// silently drop slashed capital.
 ///
 /// The transfer is classified as `FundSource::SlashedFunds` at the treasury level.

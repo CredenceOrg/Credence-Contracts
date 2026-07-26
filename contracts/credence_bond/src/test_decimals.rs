@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use crate::{BondTier, CredenceBond, CredenceBondClient};
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 
@@ -14,6 +15,12 @@ impl MockToken {
             .instance()
             .get(&Symbol::new(&e, "decimals"))
             .unwrap_or(7)
+    }
+    pub fn symbol(e: Env) -> soroban_sdk::String {
+        e.storage()
+            .instance()
+            .get(&Symbol::new(&e, "symbol"))
+            .unwrap_or_else(|| soroban_sdk::String::from_str(&e, "USDC"))
     }
     pub fn balance(e: Env, id: Address) -> i128 {
         e.storage()
@@ -99,13 +106,15 @@ fn test_tier_silver_with_8_decimals() {
 }
 
 #[test]
-#[should_panic(expected = "token decimals 24 outside supported range [0, 18]")]
-fn test_24_decimals_panics() {
+fn test_unsupported_decimals_returns_typed_error() {
     let e = Env::default();
     let (client, _admin, identity, _token) = setup_with_decimals(&e, 24);
 
     let amount = 1_000_000_000;
-    client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ContractError::UnsupportedDecimals);
 }
 
 #[test]
@@ -135,4 +144,57 @@ fn test_validation_bounds_18_decimals() {
     // Min bond in tests is 1000 normalized units
     let too_small = 999;
     client.create_bond_with_rolling(&identity, &too_small, &86400, &false, &0);
+}
+
+#[test]
+fn test_create_bond_empty_symbol_rejected() {
+    let e = Env::default();
+    let (client, _admin, identity, token) = setup_with_decimals(&e, 18);
+
+    // Set empty symbol for the mock token
+    e.as_contract(&token, || {
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "symbol"), &soroban_sdk::String::from_str(&e, ""));
+    });
+
+    let amount = 1_000_000_000_000_000_000_000;
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ContractError::InvalidCurrency);
+}
+
+#[test]
+fn test_create_bond_whitespace_symbol_rejected() {
+    let e = Env::default();
+    let (client, _admin, identity, token) = setup_with_decimals(&e, 18);
+
+    // Set whitespace-only symbol for the mock token
+    e.as_contract(&token, || {
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "symbol"), &soroban_sdk::String::from_str(&e, "   "));
+    });
+
+    let amount = 1_000_000_000_000_000_000_000;
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), ContractError::InvalidCurrency);
+}
+
+#[test]
+fn test_create_bond_valid_symbol_accepted() {
+    let e = Env::default();
+    let (client, _admin, identity, token) = setup_with_decimals(&e, 18);
+
+    // Set valid symbol for the mock token
+    e.as_contract(&token, || {
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "symbol"), &soroban_sdk::String::from_str(&e, "USD"));
+    });
+
+    let amount = 1_000_000_000_000_000_000_000;
+    let bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    assert!(bond.active);
 }

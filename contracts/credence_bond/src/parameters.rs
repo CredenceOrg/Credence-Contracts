@@ -76,6 +76,41 @@ pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)
 pub const MAX_SLASH_RECORDS: u32 = 1_000;
 
+// ============================================================================
+// Pagination Constants
+// ============================================================================
+
+/// Hard cap on the number of items any single paginated read may return.
+///
+/// Every paginated entry-point (`get_subject_attestations_page`,
+/// `get_slash_history_page`, `get_pending_claims_paginated`) silently clamps
+/// its `limit` argument to this value. A caller that passes a larger limit
+/// receives at most `MAX_QUERY_LIMIT` items — they cannot force the contract
+/// to iterate unbounded state in one instruction budget.
+///
+/// Value 200 matches `liquidation_scanner::MAX_ITER_HARD_CAP` so all
+/// collection-read caps stay consistent across the codebase.
+pub const MAX_QUERY_LIMIT: u32 = 200;
+
+// ============================================================================
+// Chunk Iteration Constants
+// ============================================================================
+
+/// Default number of items processed per chunk when iterating a `Vec` in
+/// fixed-size pieces for gas budgeting.
+///
+/// This is the single source of truth for the chunk size used by
+/// [`crate::iter_chunks::vec_chunks`]. Callers that need a different size pass
+/// it explicitly; this constant documents the safe, tested default.
+///
+/// The value 50 is chosen to keep each chunk well inside the Soroban
+/// instruction budget even for moderately expensive per-item work, while
+/// still amortising loop overhead across a non-trivial batch.
+///
+/// **Do not duplicate this constant.** Import it as
+/// `crate::parameters::DEFAULT_CHUNK_SIZE` wherever you need it.
+pub const DEFAULT_CHUNK_SIZE: u32 = 50;
+
 /// Minimum bronze tier threshold (0 = no minimum)
 pub const MIN_BRONZE_THRESHOLD: i128 = 0;
 /// Maximum bronze tier threshold (1 million tokens)
@@ -740,59 +775,57 @@ pub fn set_max_leverage_with_approval(
 // ============================================================================
 // Borrow Freeze (Governance-Controlled)
 // ============================================================================
-// NOTE: The BorrowFrozen variant was removed from DataKey, so these functions
-// are disabled. They remain for reference but should not be called.
 
-// /// Returns `true` when new borrows/increases are frozen.
-// #[must_use]
-// pub fn is_borrow_frozen(e: &Env) -> bool {
-//     e.storage()
-//         .instance()
-//         .get(&crate::DataKey::BorrowFrozen)
-//         .unwrap_or(false)
-// }
+/// Returns `true` when new borrows/increases are frozen.
+#[must_use]
+pub fn is_borrow_frozen(e: &Env) -> bool {
+    e.storage()
+        .instance()
+        .get(&crate::DataKey::BorrowFrozen)
+        .unwrap_or(false)
+}
 
-// /// Panics with `BorrowFrozen` if borrows are currently frozen.
-// pub fn require_not_borrow_frozen(e: &Env) {
-//     if is_borrow_frozen(e) {
-//         panic!("borrow frozen");
-//     }
-// }
+/// Panics with `BorrowFrozen` if borrows are currently frozen.
+pub fn require_not_borrow_frozen(e: &Env) {
+    if is_borrow_frozen(e) {
+        crate::panic_with_error!(e, credence_errors::ContractError::BorrowFrozen);
+    }
+}
 
-// /// Freeze or unfreeze new bond creation and top-ups. Governance-only.
-// ///
-// /// Repayments and withdrawals are unaffected.
-// ///
-// /// # Events
-// /// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
-// pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
-//     let approval = GovernanceApproval {
-//         approver: admin.clone(),
-//         expires_at: 0,
-//         category: symbol_short!("risk"),
-//     };
-//     set_borrow_frozen_with_approval(e, admin, frozen, &approval);
-// }
+/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
+///
+/// Repayments and withdrawals are unaffected.
+///
+/// # Events
+/// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
+pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("risk"),
+    };
+    set_borrow_frozen_with_approval(e, admin, frozen, &approval);
+}
 
-// /// Set borrow freeze with explicit governance approval invariants.
-// pub fn set_borrow_frozen_with_approval(
-//     e: &Env,
-//     admin: &Address,
-//     frozen: bool,
-//     approval: &GovernanceApproval,
-// ) {
-//     validate_admin(e, admin);
-//     validate_governance_approval(e, admin, approval, symbol_short!("risk"));
-//     let old = is_borrow_frozen(e);
-//     e.storage()
-//         .instance()
-//         .set(&crate::DataKey::BorrowFrozen, &frozen);
-//     let timestamp = e.ledger().timestamp();
-//     e.events().publish(
-//         (Symbol::new(e, "borrow_freeze_set"),),
-//         (old, frozen, admin.clone(), timestamp),
-//     );
-// }
+/// Set borrow freeze with explicit governance approval invariants.
+pub fn set_borrow_frozen_with_approval(
+    e: &Env,
+    admin: &Address,
+    frozen: bool,
+    approval: &GovernanceApproval,
+) {
+    validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("risk"));
+    let old = is_borrow_frozen(e);
+    e.storage()
+        .instance()
+        .set(&crate::DataKey::BorrowFrozen, &frozen);
+    let timestamp = e.ledger().timestamp();
+    e.events().publish(
+        (Symbol::new(e, "borrow_freeze_set"),),
+        (old, frozen, admin.clone(), timestamp),
+    );
+}
 
 // ============================================================================
 // Internal Helpers

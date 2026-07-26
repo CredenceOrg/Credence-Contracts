@@ -80,7 +80,7 @@ mod slash_attacker {
                 .get(&Symbol::new(&e, "admin"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.slash_bond(&admin, &100_i128);
+            client.slash_bond(&admin, &100_i128, &soroban_sdk::Bytes::new(&e));
         }
 
         pub fn setup(e: Env, target: Address, admin: Address) {
@@ -115,7 +115,7 @@ mod fee_attacker {
                 .get(&Symbol::new(&e, "admin"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.collect_fees(&admin);
+            client.collect_fees(&admin, &soroban_sdk::Bytes::new(&e));
         }
 
         pub fn setup(e: Env, target: Address, admin: Address) {

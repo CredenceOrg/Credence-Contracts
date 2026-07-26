@@ -90,7 +90,7 @@ soroban contract invoke \
 
 ## Admin Rotation
 
-For administrative safety, transferring the Upgrade Admin role uses a two-step flow protected by a 24-hour timelock.
+For the operator-facing admin handoff pattern and rationale, see [TWO_STEP_ADMIN.md](TWO_STEP_ADMIN.md). For administrative safety, transferring the Upgrade Admin role uses a two-step flow protected by a 24-hour timelock.
 
 1. **Propose**:
    ```bash

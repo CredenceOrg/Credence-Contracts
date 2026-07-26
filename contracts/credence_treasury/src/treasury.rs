@@ -4,9 +4,11 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
-use soroban_sdk::String;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
+use soroban_sdk::String;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256,
+};
 
 use crate::pausable;
 
@@ -108,6 +110,28 @@ fn zero_cumulative_amount() -> CumulativeAmount {
     }
 }
 
+/// Reconstruct a [] as a single [] host value.
+///
+/// # Formula
+///
+///
+///
+///  alone overflows for multi-rollover sums, so rollover-safe storage
+/// splits the value across two fields.  This helper is the single canonical
+/// reconstruction so every off-chain consumer uses the same arithmetic.
+///
+/// # Arguments
+/// *  - Contract environment (required to construct the host U256)
+/// *  - The rollover-safe cumulative amount to flatten
+pub fn cumulative_to_u256(e: &Env, amount: &CumulativeAmount) -> SdkU256 {
+    // CUMULATIVE_SEGMENT = 2^127 fits in u128 exactly.
+    let segment = SdkU256::from_u128(e, CUMULATIVE_SEGMENT);
+    let rollovers = SdkU256::from_u128(e, amount.rollovers as u128);
+    // remainder is always in [0, CUMULATIVE_SEGMENT) and fits in u128.
+    let remainder = SdkU256::from_u128(e, amount.remainder as u128);
+    rollovers.mul(&segment).add(&remainder)
+}
+
 fn add_to_cumulative(e: &Env, current: &CumulativeAmount, amount: i128) -> CumulativeAmount {
     let current_remainder = u128::try_from(current.remainder)
         .unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
@@ -187,6 +211,10 @@ impl CredenceTreasury {
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
     pub fn initialize(e: Env, admin: Address, token: Address) {
         bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Token, &token);
@@ -250,9 +278,7 @@ impl CredenceTreasury {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         from.require_auth();
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let admin: Address = e
             .storage()
             .instance()
@@ -316,6 +342,11 @@ impl CredenceTreasury {
     }
 
     /// Add an address that can deposit funds via receive_fee (e.g. bond contract).
+    ///
+    /// Idempotent: if  is already registered this is a no-op so callers
+    /// cannot accidentally emit duplicate events or corrupt any future accounting that
+    /// keys on the depositor set size.
+    ///
     /// @param e The contract environment
     /// @param depositor Address to allow as depositor
     pub fn add_depositor(e: Env, depositor: Address) {
@@ -327,6 +358,15 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         admin.require_auth();
+        // Duplicate-guard: re-registering an existing depositor is a no-op.
+        let already: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::Depositor(depositor.clone()))
+            .unwrap_or(false);
+        if already {
+            return;
+        }
         e.storage()
             .instance()
             .set(&DataKey::Depositor(depositor.clone()), &true);
@@ -352,6 +392,11 @@ impl CredenceTreasury {
     }
 
     /// Add a signer for multi-sig withdrawals. Threshold must be <= signer count after add.
+    ///
+    /// Idempotent: if  is already in the signer set this is a no-op.
+    /// This invariant keeps  exactly equal to the distinct signer set size,
+    /// which is required for the  gate in
+    /// and  to remain meaningful.
     pub fn add_signer(e: Env, signer: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -361,6 +406,9 @@ impl CredenceTreasury {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
         admin.require_auth();
+        // Duplicate-guard: SignerCount must stay in lockstep with the distinct signer set.
+        // Re-adding an existing signer would double-increment the count, potentially
+        // making the configured threshold unreachable (DoS) or structurally weaker.
         let already = e
             .storage()
             .instance()
@@ -466,9 +514,7 @@ impl CredenceTreasury {
         if !is_signer {
             panic_with_error!(&e, ContractError::NotSigner);
         }
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let total: i128 = e
             .storage()
             .instance()
@@ -587,10 +633,17 @@ impl CredenceTreasury {
     /// # Arguments
     /// * `proposal_id`   - ID of the approved withdrawal proposal.
     /// * `min_amount_out` - Caller-provided minimum acceptable settlement amount.
-    ///                      Reverts with "slippage: received amount below minimum" when
-    ///                      the proposal amount is less than this value, protecting the
+    ///                      Reverts with `SlippageExceeded` when the realized
+    ///                      `actual_amount` is less than this value, protecting the
     ///                      caller against unfavorable price movement between proposal
     ///                      creation and execution.  Pass `0` to skip the check.
+    ///
+    /// # Failure modes
+    /// This path distinguishes two failures that previously shared one code:
+    /// * `InsufficientTreasuryBalance` - the treasury lacks funds or the
+    ///   withdrawal would breach the `MinLiquidity` floor (operator must top up).
+    /// * `SlippageExceeded` - the treasury had funds but the settled amount fell
+    ///   below `min_amount_out` (caller should retry with a looser bound).
     ///
     /// # Events
     /// Emits `treasury_withdrawal_executed` with `(recipient, expected, actual)` so
@@ -658,9 +711,13 @@ impl CredenceTreasury {
             .checked_sub(recipient_balance_before)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
 
-        // Slippage guard: revert if the settled amount falls below the caller's threshold.
+        // Slippage guard: revert if the settled amount falls below the caller's
+        // threshold. This is a distinct failure mode from a balance/liquidity
+        // shortfall (which raises `InsufficientTreasuryBalance` above): here the
+        // treasury had funds but the realized amount tripped the caller's bound,
+        // so callers and indexers must be able to tell the two apart.
         if actual_amount < min_amount_out {
-            panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
+            panic_with_error!(&e, ContractError::SlippageExceeded);
         }
 
         let new_total = total
@@ -819,6 +876,41 @@ impl CredenceTreasury {
             .unwrap_or_else(zero_cumulative_amount)
     }
 
+    /// Get the lifetime cumulative received amount across all sources as a single [].
+    ///
+    /// Equivalent to  but flattens the rollover/remainder
+    /// accounting into one comparable value using []:
+    ///
+    ///
+    ///
+    /// Use this instead of [] when you need a single value
+    /// for comparisons, dashboards, or indexers — it is the canonical on-chain source
+    /// of truth for the rollover reconstruction formula.
+    pub fn get_cumulative_received_u256(e: Env) -> SdkU256 {
+        bump_instance_ttl(&e);
+        let amount: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceived)
+            .unwrap_or_else(zero_cumulative_amount);
+        cumulative_to_u256(&e, &amount)
+    }
+
+    /// Get the lifetime cumulative received amount for a specific [] as a [].
+    ///
+    /// Per-source variant of [].  The two sources
+    /// ( + ) always reconcile with the total returned by
+    /// [].
+    pub fn get_cumulative_by_source_u256(e: Env, source: FundSource) -> SdkU256 {
+        bump_instance_ttl(&e);
+        let amount: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceivedBySource(source))
+            .unwrap_or_else(zero_cumulative_amount);
+        cumulative_to_u256(&e, &amount)
+    }
+
     /// Get admin address.
     pub fn get_admin(e: Env) -> Address {
         bump_instance_ttl(&e);
@@ -941,9 +1033,7 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
 
         let token_addr = Self::get_token(e.clone());
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);

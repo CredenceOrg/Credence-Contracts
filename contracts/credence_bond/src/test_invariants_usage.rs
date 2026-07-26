@@ -1,4 +1,4 @@
-﻿//! Tests that exercise the reusable [`crate::test_invariants`] library.
+//! Tests that exercise the reusable [`crate::test_invariants`] library.
 //!
 //! Every state-changing contract call is followed by
 //! [`assert_all_invariants`], demonstrating the intended usage pattern and
@@ -14,6 +14,7 @@ use crate::test_invariants::{
 use crate::{CredenceBond, CredenceBondClient, IdentityBond};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, String};
+use proptest::prelude::*;
 
 struct Ctx<'a> {
     env: Env,
@@ -284,3 +285,60 @@ fn oversized_notice_period_is_detected() {
     bond.notice_period_duration = bond.bond_duration + 1;
     assert_notice_period_bounded(&bond);
 }
+
+#[derive(Clone, Debug)]
+enum Action {
+    Deposit(i128),
+    Withdraw(i128),
+}
+
+fn action_strategy() -> impl Strategy<Value = Action> {
+    prop_oneof![
+        // Happy paths
+        (1..10_000_i128).prop_map(Action::Deposit),
+        (1..10_000_i128).prop_map(Action::Withdraw),
+        // Sad paths (negative, zero)
+        (-1000..=0_i128).prop_map(Action::Deposit),
+        (-1000..=0_i128).prop_map(Action::Withdraw),
+        // Overflow paths
+        (i128::MAX - 1000..=i128::MAX).prop_map(Action::Deposit),
+    ]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn prop_random_deposit_withdraw_invariants(actions in proptest::collection::vec(action_strategy(), 1..20)) {
+        let ctx = setup();
+        
+        // Initial bond creation so we can deposit/withdraw
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ctx.client.create_bond(&ctx.identity, &1000, &86400, &false, &0);
+        }));
+        
+        assert_all_invariants(&ctx.env, &ctx.contract);
+        
+        for action in actions {
+            // Advance ledger to allow withdrawals (since bond_duration is 86400)
+            advance(&ctx.env, 100_000);
+            
+            match action {
+                Action::Deposit(amount) => {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        ctx.client.top_up(&ctx.identity, &amount);
+                    }));
+                }
+                Action::Withdraw(amount) => {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        ctx.client.withdraw(&ctx.identity, &amount);
+                    }));
+                }
+            }
+            
+            // The invariant must hold regardless of whether the action succeeded or panicked
+            assert_all_invariants(&ctx.env, &ctx.contract);
+        }
+    }
+}
+

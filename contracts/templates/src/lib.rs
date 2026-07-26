@@ -17,7 +17,8 @@
 //! Canonical starting point for new Soroban contracts in this workspace.
 //!
 //! ## Patterns demonstrated
-//! - `#![no_std]` + `soroban_sdk` imports
+//! - `#![no_std]
+#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
 //! - `DataKey` enum for typed storage
 //! - `#[contracttype]` structs for on-chain data
 //! - Admin-gated initialisation (panic-on-reinit guard)
@@ -28,8 +29,11 @@
 //! Copy this crate, rename the package and struct, then extend.
 
 #![no_std]
+#![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+use credence_errors::ContractError;
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -74,9 +78,10 @@ impl TemplateContract {
 
     /// Initialise the contract. Panics if already initialised.
     pub fn initialize(e: Env, admin: Address) {
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.events().publish((Symbol::new(&e, "initialized"),), admin);
     }
@@ -139,7 +144,7 @@ impl TemplateContract {
         // Reference expiry pattern: reject and purge on read if expired
         if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
             e.storage().instance().remove(&DataKey::Record(owner));
-            panic!("record expired");
+            panic_with_error!(&e, ContractError::SignatureExpired);
         }
 
         record

@@ -1,9 +1,33 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
 };
+
+/// Signature domain identifier for the Timelock contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "Timelock";
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 
@@ -58,9 +82,10 @@ impl TimelockContract {
     /// Initialize the timelock contract with the admin address.
     pub fn initialize(e: Env, admin: Address) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage()
             .instance()
@@ -91,7 +116,7 @@ impl TimelockContract {
             .get(&DataKey::ExecutedOp(op_hash.clone()))
             .unwrap_or(false)
         {
-            panic!("operation already executed");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         let op_id: u64 = e
@@ -160,7 +185,7 @@ impl TimelockContract {
             .get(&DataKey::ExecutedOp(op.op_hash.clone()))
             .unwrap_or(false)
         {
-            panic!("operation already executed");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         // Mark executed
@@ -299,6 +324,54 @@ mod tests {
     }
 
     #[test]
+    fn execute_rejects_already_executed_operation_with_typed_error() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[7; 32]);
+        let delay = min_delay_seconds();
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
+        client.execute_operation(&op_id);
+
+        let err = client.try_execute_operation(&op_id).unwrap_err().unwrap();
+        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+    }
+
+    #[test]
+    fn cancel_rejects_executed_operation_with_typed_error() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[8; 32]);
+        let delay = min_delay_seconds();
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        let op = client.get_operation(&op_id).unwrap();
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
+        client.execute_operation(&op_id);
+
+        let err = client
+            .try_cancel_operation(&admin, &op_id)
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+    }
+
+    #[test]
+    fn execute_rejects_cancelled_operation_with_typed_error() {
+        let (env, client, admin) = setup_env();
+        let op_hash = BytesN::from_array(&env, &[9; 32]);
+        let delay = min_delay_seconds();
+
+        let op_id = client.queue_operation(&admin, &op_hash, &delay);
+        client.cancel_operation(&admin, &op_id);
+        let op = client.get_operation(&op_id).unwrap();
+        env.ledger().with_mut(|li| li.timestamp = op.eta);
+
+        let err = client.try_execute_operation(&op_id).unwrap_err().unwrap();
+        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+    }
+
+    #[test]
     fn test_execute_boundaries() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[1; 32]);
@@ -388,5 +461,106 @@ mod tests {
 
         let res = client.try_queue_operation(&admin, &op_hash, &delay);
         assert!(res.is_err());
+    }
+
+    // --- is_ready boundary regression suite ---
+    //
+    // `is_ready(eta, now)` returns `true` iff `now >= eta`.
+    // `min_delay_seconds()` returns 86_400, interpreted as 1 second per ledger
+    // (i.e. the minimum queue delay is 86 400 ledgers / seconds = 24 hours).
+    //
+    // The table below covers every interesting u64 boundary:
+    //   eta == 0, now == 0, eta == u64::MAX, now == u64::MAX,
+    //   eta == now (tie-break), eta == now + 1 (one ledger early),
+    //   now == eta + 1 (one ledger late).
+    // No combination should panic; the comparison is total over u64.
+
+    #[test]
+    fn is_ready_boundary_eta_zero_now_zero() {
+        // eta == 0, now == 0  →  0 >= 0  →  true
+        assert!(is_ready(0, 0));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_zero_now_nonzero() {
+        // eta == 0, now > 0  →  always ready
+        assert!(is_ready(0, 1));
+        assert!(is_ready(0, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_zero_eta_nonzero() {
+        // now == 0, eta > 0  →  never ready
+        assert!(!is_ready(1, 0));
+        assert!(!is_ready(u64::MAX, 0));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_equals_now_exact_tie() {
+        // eta == now: the tie-break that decides whether an action executes
+        // on the exact ledger it becomes valid.  Must return true.
+        let t: u64 = 1_000_000;
+        assert!(is_ready(t, t));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_one_before_eta() {
+        // now == eta - 1: one ledger before the ETA — must be false.
+        let eta: u64 = 500;
+        assert!(!is_ready(eta, eta - 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_now_one_after_eta() {
+        // now == eta + 1: one ledger after the ETA — must be true.
+        let eta: u64 = 500;
+        assert!(is_ready(eta, eta + 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_now_max_minus_one() {
+        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  →  false
+        assert!(!is_ready(u64::MAX, u64::MAX - 1));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_now_max() {
+        // eta == u64::MAX, now == u64::MAX  →  true (tie-break at maximum value)
+        assert!(is_ready(u64::MAX, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_eta_max_minus_one_now_max() {
+        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  →  true
+        assert!(is_ready(u64::MAX - 1, u64::MAX));
+    }
+
+    #[test]
+    fn is_ready_boundary_no_panic_exhaustive_pairs() {
+        // Spot-check a selection of extreme pairs to confirm no overflow/panic.
+        let pairs: &[(u64, u64)] = &[
+            (0, 0),
+            (0, u64::MAX),
+            (u64::MAX, 0),
+            (u64::MAX, u64::MAX),
+            (u64::MAX - 1, u64::MAX),
+            (u64::MAX, u64::MAX - 1),
+            (1, 0),
+            (0, 1),
+        ];
+        for &(eta, now) in pairs {
+            let _ = is_ready(eta, now); // must not panic
+        }
+    }
+
+    #[test]
+    fn min_delay_seconds_is_86400_one_second_per_ledger() {
+        // min_delay_seconds() must equal 86_400.
+        // Under the assumed 1-second-per-ledger cadence this corresponds to
+        // exactly 24 hours, the minimum window before a queued action may execute.
+        assert_eq!(min_delay_seconds(), 86_400);
+        // Verify the constant fits comfortably in u64 (no truncation).
+        let delay: u64 = min_delay_seconds();
+        assert_eq!(delay, 86_400_u64);
     }
 }
