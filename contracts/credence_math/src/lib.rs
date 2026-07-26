@@ -25,6 +25,8 @@ use credence_errors::ContractError;
 use ethnum::U256;
 use soroban_sdk;
 
+pub mod rate;
+
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
 
