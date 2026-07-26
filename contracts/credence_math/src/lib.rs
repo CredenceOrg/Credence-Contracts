@@ -420,60 +420,50 @@ pub fn split_bps(
     (fee, net)
 }
 
-/// Seconds in one calendar day.
-pub const SECS_PER_DAY: u64 = 86_400;
-
-/// Day-of-week from a Unix timestamp.
+/// Check that the absolute difference between `requested` and `actual` does not
+/// exceed `max_slippage_bps` basis points.
 ///
-/// Returns `0 = Sunday, 1 = Monday, … 6 = Saturday`.
-/// The Unix epoch (1970-01-01) was a Thursday (day 4).
-#[inline]
-#[must_use]
-pub fn day_of_week(unix_ts: u64) -> u8 {
-    ((unix_ts / SECS_PER_DAY + 4) % 7) as u8
-}
-
-/// Returns `true` when the given Unix timestamp falls on a Saturday or Sunday.
-#[inline]
-#[must_use]
-pub fn is_weekend(unix_ts: u64) -> bool {
-    matches!(day_of_week(unix_ts), 0 | 6)
-}
-
-/// Advance `start` by `business_days` weekdays (Mon–Fri), skipping weekends.
-///
-/// Each calendar day is treated as exactly [`SECS_PER_DAY`] seconds.  If
-/// `business_days` is `0` the start timestamp is returned unchanged.
+/// Returns `Ok(())` when the actual amount is within the slippage tolerance of
+/// the requested amount. Returns [`ContractError::SlippageExceeded`] when the
+/// slippage exceeds the bound.
 ///
 /// # Arguments
 ///
-/// * `start` – Unix timestamp (seconds since epoch) of the starting day.
-/// * `business_days` – number of weekdays to add.
-///
-/// # Panics
-///
-/// Panics on arithmetic overflow.
+/// * `requested` - The expected/requested amount.
+/// * `actual` - The realized amount.
+/// * `max_slippage_bps` - Maximum allowed slippage in basis points.
 ///
 /// # Examples
 ///
 /// ```
-/// use credence_math::add_business_days;
+/// use credence_math::slippage_bps_check;
+/// use credence_errors::ContractError;
 ///
-/// // 2024-01-01 (Monday) + 1 business day → 2024-01-02 (Tuesday)
-/// let mon = 1704067200;
-/// assert_eq!(add_business_days(mon, 1), mon + 86_400);
+/// assert_eq!(slippage_bps_check(1000, 1000, 100), Ok(()));
+/// assert_eq!(slippage_bps_check(1000, 990, 100), Ok(()));
+/// assert_eq!(slippage_bps_check(1000, 900, 100), Err(ContractError::SlippageExceeded));
 /// ```
-#[must_use]
-pub fn add_business_days(start: u64, business_days: u32) -> u64 {
-    let mut ts = start;
-    let mut remaining = business_days;
-    while remaining > 0 {
-        ts = ts.checked_add(SECS_PER_DAY).expect("add_business_days overflow");
-        if !is_weekend(ts) {
-            remaining -= 1;
-        }
+#[inline]
+pub fn slippage_bps_check(
+    requested: i128,
+    actual: i128,
+    max_slippage_bps: u32,
+) -> Result<(), ContractError> {
+    if requested == actual {
+        return Ok(());
     }
-    ts
+    if max_slippage_bps == 0 || requested == 0 {
+        return Err(ContractError::SlippageExceeded);
+    }
+    let diff = requested.abs_diff(actual);
+    let requested_abs = requested.unsigned_abs();
+    if U256::new(diff) * U256::new(BPS_DENOMINATOR as u128)
+        <= U256::new(requested_abs) * U256::new(max_slippage_bps as u128)
+    {
+        Ok(())
+    } else {
+        Err(ContractError::SlippageExceeded)
+    }
 }
 
 /// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
@@ -558,8 +548,8 @@ mod tests {
     extern crate std;
 
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps,
-        split_percent, Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, slippage_bps_check,
+        split_bps, Rounding,
     };
 
     // ── floor_to_day ─────────────────────────────────────────────────────────
@@ -982,136 +972,89 @@ mod tests {
         );
     }
 
-    // -----------------------------------------------------------------------
-    // add_business_days tests
-    // -----------------------------------------------------------------------
-
-    const SECS: u64 = super::SECS_PER_DAY;
-
-    /// Helper: build a Unix timestamp for a known weekday.
-    /// 2024-01-01 00:00:00 UTC is a Monday (day_of_week == 1).
-    const MON_2024_01_01: u64 = 1_704_067_200;
-
     #[test]
-    fn day_of_week_monday() {
-        assert_eq!(super::day_of_week(MON_2024_01_01), 1);
+    fn slippage_bps_check_exact_match() {
+        assert_eq!(slippage_bps_check(1000, 1000, 100), Ok(()));
+        assert_eq!(slippage_bps_check(0, 0, 100), Ok(()));
+        assert_eq!(slippage_bps_check(-1000, -1000, 100), Ok(()));
     }
 
     #[test]
-    fn day_of_week_weekend() {
-        // Saturday 2024-01-06
-        assert_eq!(super::day_of_week(MON_2024_01_01 + 5 * SECS), 6);
-        // Sunday 2024-01-07
-        assert_eq!(super::day_of_week(MON_2024_01_01 + 6 * SECS), 0);
-    }
-
-    #[test]
-    fn is_weekend_saturday_sunday() {
-        assert!(super::is_weekend(MON_2024_01_01 + 5 * SECS)); // Sat
-        assert!(super::is_weekend(MON_2024_01_01 + 6 * SECS)); // Sun
-        assert!(!super::is_weekend(MON_2024_01_01));            // Mon
-        assert!(!super::is_weekend(MON_2024_01_01 + 4 * SECS)); // Fri
-    }
-
-    // -- weekday inputs ---------------------------------------------------
-
-    #[test]
-    fn add_business_days_zero_returns_start() {
-        assert_eq!(super::add_business_days(MON_2024_01_01, 0), MON_2024_01_01);
-    }
-
-    #[test]
-    fn add_one_business_day_from_monday_gives_tuesday() {
-        // Monday + 1 -> Tuesday
-        assert_eq!(super::add_business_days(MON_2024_01_01, 1), MON_2024_01_01 + SECS);
-    }
-
-    #[test]
-    fn add_one_business_day_from_friday_gives_next_monday() {
-        // Friday 2024-01-05 + 1 -> Monday 2024-01-08
-        let fri = MON_2024_01_01 + 4 * SECS;
-        assert_eq!(super::add_business_days(fri, 1), fri + 3 * SECS);
-    }
-
-    #[test]
-    fn add_five_business_days_from_monday_gives_next_monday() {
-        // Mon + 5 -> next Mon
+    fn slippage_bps_check_zero_slippage_tolerance() {
+        assert_eq!(slippage_bps_check(1000, 1000, 0), Ok(()));
         assert_eq!(
-            super::add_business_days(MON_2024_01_01, 5),
-            MON_2024_01_01 + 7 * SECS
+            slippage_bps_check(1000, 1001, 0),
+            Err(ContractError::SlippageExceeded)
         );
     }
 
     #[test]
-    fn add_two_business_days_from_wednesday_gives_friday() {
-        // Wednesday 2024-01-03 + 2 -> Friday 2024-01-05
-        let wed = MON_2024_01_01 + 2 * SECS;
-        assert_eq!(super::add_business_days(wed, 2), wed + 2 * SECS);
+    fn slippage_bps_check_within_tolerance() {
+        assert_eq!(slippage_bps_check(1000, 995, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 1005, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 990, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 1010, 100), Ok(()));
     }
 
     #[test]
-    fn add_three_business_days_from_thursday_gives_next_tuesday() {
-        // Thursday 2024-01-04 + 3 -> Tue 2024-01-09
-        let thu = MON_2024_01_01 + 3 * SECS;
-        assert_eq!(super::add_business_days(thu, 3), thu + 5 * SECS);
-    }
-
-    // -- weekend inputs ---------------------------------------------------
-
-    #[test]
-    fn add_business_days_from_saturday_skips_to_monday_then_counts() {
-        // Saturday 2024-01-06 + 1 -> Monday 2024-01-08
-        let sat = MON_2024_01_01 + 5 * SECS;
-        assert_eq!(super::add_business_days(sat, 1), sat + 2 * SECS);
-    }
-
-    #[test]
-    fn add_business_days_from_sunday_skips_to_monday_then_counts() {
-        // Sunday 2024-01-07 + 1 -> Monday 2024-01-08
-        let sun = MON_2024_01_01 + 6 * SECS;
-        assert_eq!(super::add_business_days(sun, 1), sun + 1 * SECS);
-    }
-
-    #[test]
-    fn add_business_days_from_saturday_zero_returns_saturday() {
-        let sat = MON_2024_01_01 + 5 * SECS;
-        assert_eq!(super::add_business_days(sat, 0), sat);
-    }
-
-    // -- month-boundary ---------------------------------------------------
-
-    #[test]
-    fn add_business_days_crosses_month_boundary() {
-        // Friday 2024-01-26 + 4 -> Wednesday 2024-01-31
-        let fri_jan26 = MON_2024_01_01 + 25 * SECS;
-        assert_eq!(super::day_of_week(fri_jan26), 5); // Friday
-        // Fri -> Mon(+3) -> Tue(+1) -> Wed(+1) = 4 business days
-        assert_eq!(super::add_business_days(fri_jan26, 4), fri_jan26 + 6 * SECS);
-    }
-
-    #[test]
-    fn add_business_days_from_end_of_february() {
-        // Thursday 2024-02-29 (leap year) + 3 -> Tuesday 2024-03-05
-        let thu_feb29 = MON_2024_01_01 + 59 * SECS;
-        assert_eq!(super::day_of_week(thu_feb29), 4); // Thursday
-        // Thu -> Fri(+1) -> Mon(+3) -> Tue(+1) = 3 business days
-        assert_eq!(super::add_business_days(thu_feb29, 3), thu_feb29 + 5 * SECS);
-    }
-
-    #[test]
-    fn add_business_days_from_month_end_crosses_weekend() {
-        // Friday 2024-02-23 + 2 -> Tuesday 2024-02-27
-        let fri_feb23 = MON_2024_01_01 + (31 + 22) * SECS;
-        assert_eq!(super::day_of_week(fri_feb23), 5); // Friday
-        assert_eq!(super::add_business_days(fri_feb23, 2), fri_feb23 + 4 * SECS);
-    }
-
-    #[test]
-    fn add_multiple_weeks() {
-        // 10 business days from Monday = 2 full weeks = 14 calendar days
+    fn slippage_bps_check_at_boundary() {
+        assert_eq!(slippage_bps_check(10000, 9900, 100), Ok(()));
+        assert_eq!(slippage_bps_check(10000, 10100, 100), Ok(()));
         assert_eq!(
-            super::add_business_days(MON_2024_01_01, 10),
-            MON_2024_01_01 + 14 * SECS
+            slippage_bps_check(10000, 9899, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(10000, 10101, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_beyond_tolerance() {
+        assert_eq!(
+            slippage_bps_check(1000, 900, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(1000, 1100, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_zero_requested() {
+        assert_eq!(
+            slippage_bps_check(0, 1, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(0, 100, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_negative_values() {
+        assert_eq!(slippage_bps_check(-1000, -1000, 100), Ok(()));
+        assert_eq!(slippage_bps_check(-1000, -990, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(-1000, -900, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_large_values() {
+        assert_eq!(slippage_bps_check(i128::MAX, i128::MAX, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(i128::MAX, i128::MAX - 1, 0),
+            Err(ContractError::SlippageExceeded)
+        );
+        let tiny_diff = i128::MAX / 10000;
+        assert_eq!(
+            slippage_bps_check(i128::MAX, i128::MAX - tiny_diff, 100),
+            Ok(())
         );
     }
 }
