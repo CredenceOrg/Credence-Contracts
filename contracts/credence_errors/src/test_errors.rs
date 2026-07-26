@@ -115,7 +115,28 @@ mod tests {
 
     // --- require_contract_uninitialized helper tests ---
 
+    #[test]
+    fn test_require_contract_uninitialized_passes_when_false() {
+        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
+            crate::require_contract_uninitialized!(e, false);
+            Ok(())
+        }
+        let e = soroban_sdk::Env::default();
+        assert!(call(&e).is_ok());
+    }
 
+    #[test]
+    fn test_require_contract_uninitialized_returns_error_when_true() {
+        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
+            crate::require_contract_uninitialized!(e, true);
+            Ok(())
+        }
+        let e = soroban_sdk::Env::default();
+        assert_eq!(
+            call(&e),
+            Err(ContractError::AlreadyInitialized)
+        );
+    }
 
     // --- Wire code tests ---
 
@@ -137,7 +158,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::TimestampInFuture as u32, 115);
+        assert_eq!(ContractError::TimestampInFuture as u32, 119);
     }
 
     #[test]
@@ -1406,9 +1427,8 @@ mod tests {
             ContractError::DivisionByZero => false,
 
             // Missing variants added to match the enum and ensure completeness
-
             ContractError::PromiseNotKept => false,
-            ContractError::StaleOperatorEpoch => false,
+            ContractError::InvalidStringifiedBytes => true,
         }
     }
 
@@ -1531,7 +1551,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            98,
+            95,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

@@ -52,7 +52,7 @@ pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_transition, ArbitrationError, DisputeStatus};
+use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

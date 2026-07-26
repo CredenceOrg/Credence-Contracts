@@ -365,6 +365,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidCurrency = 234,
 
+    /// String input is not valid hex or base64 and cannot be safely decoded.
+    /// Raised by `verify_stringified_bytes` when the input exceeds the maximum
+    /// length or contains non-canonical characters.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 235,
+
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
     /// Contracts: bond
@@ -619,31 +626,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 115,
-
-    /// Requested max-pause-signers value is zero or exceeds the hard cap.
-    /// Contracts: multisig
-    /// Wire-stable: do not renumber this error code.
-    InvalidMaxPauseSigners = 119,
-
-    /// Registering another pause signer would exceed the configured
-    /// max-pause-signers cap.
-    /// Contracts: multisig
-    /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 120,
-
-    /// Cross-contract caller does not match the configured partner address.
-    ///
-    /// Raised by `require_matching_contract_id` when a contract makes or
-    /// receives a cross-contract call and the counterparty address does
-    /// not match the pre-configured expected partner. This is a defence-in-
-    /// depth check that prevents attackers from redirecting cross-contract
-    /// calls to malicious contracts (e.g. a fake verifier, a rogue callback,
-    /// or a spoofed registry).
-    ///
-    /// Contracts: bond, delegation, registry, general-purpose
-    /// Wire-stable: do not renumber this error code.
-    CrossContractCallerMismatch = 119,
+    TimestampInFuture = 119,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -842,8 +825,9 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
-            | ContractError::AmountExplicitlyZero
-            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
+            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -972,7 +956,9 @@ impl ErrorExt for ContractError {
                 "String is not valid bounded hex or base64 encoded bytes"
             }
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
-            ContractError::InvalidStringifiedBytes => "Stringified bytes input is invalid or too long",
+            ContractError::InvalidStringifiedBytes => {
+                "String input is not valid hex or base64"
+            }
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1169,7 +1155,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidCurrency
             | ContractError::InvalidStringifiedBytes
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
-            | ContractError::InvalidStringifiedBytes
+            | ContractError::InvalidStringifiedBytes   // supply valid hex or base64
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::InvalidStringifiedBytes // correct the encoded input
@@ -1217,14 +1203,10 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationNotExpired
             | ContractError::PayloadTooOld => true,    // re-sign with current ledger number
 
-            // FATAL Delegation: future ledger numbers cannot be fixed by retry;
-            // the payload must be discarded and re-signed.
-
             // FATAL Delegation: caller cannot fix these.
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            ContractError::DelegationInactive => false,
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
             ContractError::StaleOperatorEpoch => false,
 
@@ -1275,6 +1257,21 @@ pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
 
 #[cfg(test)]
 mod test_errors;
+
+/// Rejects a call when the contract has already been initialized.
+///
+/// Pass `true` if the contract storage already contains an admin/key,
+/// meaning `initialize` has already been called.
+///
+/// Panics with `ContractError::AlreadyInitialized` when `is_initialized` is `true`.
+#[macro_export]
+macro_rules! require_contract_uninitialized {
+    ($env:expr, $is_initialized:expr) => {
+        if $is_initialized {
+            return Err($crate::ContractError::AlreadyInitialized);
+        }
+    };
+}
 
 /// Wraps `env.current_contract_address()` with a mock hook for tests.
 #[macro_export]
