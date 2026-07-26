@@ -21,13 +21,12 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::contracterror;
-use soroban_sdk::panic_with_error;
-use soroban_sdk::Env;
+use soroban_sdk::{contracterror, contracttype, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
-use soroban_sdk::contracttype;
+pub mod lease;
+pub use lease::{lease_op, require_matching_lease_scope, require_no_expired_lease, Lease};
 
 /// Simple role enum for admin checks.
 #[contracttype]
@@ -177,6 +176,18 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     ZeroBytes32 = 109,
+
+    /// Lease scope bitmask does not cover the requested operation.
+    /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
+    /// Contracts: general-purpose (lease auth)
+    /// Wire-stable: do not renumber this error code.
+    LeaseScopeMismatch = 120,
+
+    /// Lease `expires_at` has been reached or passed (hard cliff).
+    /// Raised by `require_no_expired_lease` when `now >= lease.expires_at`.
+    /// Contracts: general-purpose (lease auth)
+    /// Wire-stable: do not renumber this error code.
+    LeaseExpired = 121,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -365,6 +376,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+    /// A string expected to contain hex or base64 encoded bytes is malformed
+    /// or exceeds the maximum accepted encoded length.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 230,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -555,10 +572,8 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    /// Replaces: panic!("no pending admin transfer")
-    /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
-    NoPendingAdmin = 119,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -747,7 +762,9 @@ impl ErrorExt for ContractError {
             | ContractError::AdminSuspended
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32
-            | ContractError::TimestampInFuture => ErrorCategory::Authorization,
+            | ContractError::TimestampInFuture
+            | ContractError::LeaseScopeMismatch
+            | ContractError::LeaseExpired => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -777,8 +794,9 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
+            | ContractError::AmountExplicitlyZero
             | ContractError::DuplicateIdempotencyKey
-            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
+            | ContractError::InvalidStringifiedBytes => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -858,6 +876,10 @@ impl ErrorExt for ContractError {
             ContractError::RoleNotHeldAtLedger => {
                 "Actor did not hold the required role at the specified ledger timestamp"
             }
+            ContractError::LeaseScopeMismatch => {
+                "Lease scope does not cover the requested operation"
+            }
+            ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -893,6 +915,9 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
+            ContractError::InvalidStringifiedBytes => {
+                "Stringified bytes payload is malformed or exceeds the maximum encoded length"
+            }
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
@@ -1045,8 +1070,9 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32 => true,
 
-            // Caller supplied a future timestamp; correct it and retry.
-            ContractError::TimestampInFuture => true,
+            // Lease auth mismatches: same lease cannot be fixed by blind retry.
+            ContractError::LeaseScopeMismatch => false,
+            ContractError::LeaseExpired => false,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1062,7 +1088,7 @@ impl ErrorExt for ContractError {
             | ContractError::EarlyExitConfigNotSet      // configure early exit first
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
-| ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
+            | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::AmountExplicitlyZero  // supply a non-zero amount
@@ -1075,7 +1101,7 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
-            => true,
+            | ContractError::InvalidStringifiedBytes => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
@@ -1236,4 +1262,19 @@ macro_rules! require_non_zero_bytes32 {
             return Err($crate::ContractError::ZeroBytes32);
         }
     };
+}
+
+/// Re-init prevention guard for Soroban contract constructors.
+///
+/// Every deployable contract must call this as the **first statement** in its
+/// `initialize` function, before any auth or storage writes. The guard panics
+/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel is
+/// already set, preventing a second caller from overwriting the admin.
+///
+/// # Panics
+/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
+pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
+    if is_initialized {
+        soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
 }

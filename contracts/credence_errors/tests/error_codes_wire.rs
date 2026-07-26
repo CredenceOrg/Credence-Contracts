@@ -23,6 +23,8 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::TimelockNotReady as u32, 112);
     assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 117);
     assert_eq!(ContractError::TimestampInFuture as u32, 118);
+    assert_eq!(ContractError::LeaseScopeMismatch as u32, 120);
+    assert_eq!(ContractError::LeaseExpired as u32, 121);
     assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
     assert_eq!(ContractError::BondNotActive as u32, 201);
     assert_eq!(ContractError::InsufficientBalance as u32, 202);
