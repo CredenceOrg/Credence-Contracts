@@ -602,6 +602,20 @@ pub fn execute_upgrade(
         panic!("same implementation");
     }
 
+    // Replay guard check: Ensure this new implementation hash hasn't been executed before
+    use soroban_sdk::xdr::ToXdr;
+    let mut hash_input = Bytes::new(e);
+    hash_input.append(&new_implementation.to_xdr(e));
+    let op_hash: soroban_sdk::BytesN<32> = e.crypto().sha256(&hash_input).into();
+
+    if e.storage()
+        .instance()
+        .get(&DataKey::ExecutedOp(op_hash.clone()))
+        .unwrap_or(false)
+    {
+        soroban_sdk::panic_with_error!(e, credence_errors::ContractError::ProposalAlreadyExecuted);
+    }
+
     // Record upgrade in history
     let record = UpgradeRecord {
         old_implementation: current_impl,
@@ -626,6 +640,9 @@ pub fn execute_upgrade(
         &DataKey::Upgrade(UpgradeKey::Implementation),
         new_implementation,
     );
+    
+    // Mark the implementation hash as executed
+    e.storage().instance().set(&DataKey::ExecutedOp(op_hash), &true);
 
     events::emit_upgrade_executed(e, executor, new_implementation, proposal_id);
 }

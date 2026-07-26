@@ -452,6 +452,8 @@ pub enum DataKey {
     IdempotencyKey(Bytes),
     /// Flag indicating if borrowing operations are frozen. Value: `bool`.
     BorrowFrozen,
+    /// Executed upgrade hashes to prevent replay. Value: `bool`.
+    ExecutedOp(soroban_sdk::BytesN<32>),
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
