@@ -177,9 +177,6 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
 /// assert_eq!(mul_div_i128(10, 3, 4, Rounding::Nearest, "overflow"), 8);
 /// assert_eq!(mul_div_i128(-10, 3, 4, Rounding::Up, "overflow"), -8);
 /// ```
-#[inline]
-#[must_use]
-
 /// Checked `i128` addition returning a typed error instead of panicking.
 #[inline]
 pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
