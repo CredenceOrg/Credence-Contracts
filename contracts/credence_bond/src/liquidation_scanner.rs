@@ -266,6 +266,7 @@ pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
 /// * `max_iter` - Maximum number of accounts to inspect (capped at `MAX_ITER_HARD_CAP`)
 /// * `min_slash_ratio_bps` - Minimum slashed/bonded ratio (basis points) to qualify
 ///   as a liquidation candidate. E.g. 5000 = 50%.
+/// * `snapshot_generation` - The active registry size recorded when the scan started.
 ///
 /// # Returns
 /// `ScanResult` with candidates found, next cursor, and done flag.
@@ -279,6 +280,7 @@ pub fn scan_liquidation_candidates(
     cursor: u32,
     max_iter: u32,
     min_slash_ratio_bps: u32,
+    snapshot_generation: u32,
 ) -> ScanResult {
     keeper.require_auth();
 
@@ -290,6 +292,10 @@ pub fn scan_liquidation_candidates(
 
     let registry_slots = registry.len();
     let active_registry_size = get_registry_size(e);
+
+    if cursor > 0 {
+        require_matching_snapshot_generation(e, snapshot_generation, active_registry_size);
+    }
 
     // Reject any cursor that is at or beyond the end of the registry.
     // The one exception is cursor == 0 on an empty registry, which is the
@@ -376,5 +382,14 @@ pub fn scan_liquidation_candidates(
         next_cursor,
         done,
         registry_size: active_registry_size,
+    }
+}
+
+/// Reject paginated reads if the requested snapshot generation does not match
+/// the active on-chain generation. This ensures keepers do not process pages
+/// with a stale cursor if the registry size mutated mid-scan.
+pub fn require_matching_snapshot_generation(e: &Env, requested_generation: u32, current_generation: u32) {
+    if requested_generation != current_generation {
+        panic_with_error!(e, ContractError::SnapshotGenerationMismatch);
     }
 }
