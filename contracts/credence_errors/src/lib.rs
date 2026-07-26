@@ -542,7 +542,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 119,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -566,7 +566,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 513,
+    TimestampInFuture = 118,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -1123,6 +1123,13 @@ impl ErrorExt for ContractError {
 /// Pass `already_initialized = <expression that returns true when the contract is
 /// already initialized>` (e.g., `storage::get_admin(&e).is_some()`).
 /// Panics with `ContractError::AlreadyInitialized` when `true`.
+///
+/// Implemented as a free function rather than a `#[macro_export]` macro because
+/// constructor entrypoints return `()`, not `Result<_, _>`. Peer helpers
+/// (`require_no_leading_zero_amount!`, `require_positive_amount!`,
+/// `verify_no_future_ledger!`, `require_non_zero_bytes32!`) early-return `Err`,
+/// which would not compile in a `()`-returning constructor; this helper must
+/// `panic_with_error!` instead.
 pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
     if already_initialized {
         panic_with_error!(e, ContractError::AlreadyInitialized);
