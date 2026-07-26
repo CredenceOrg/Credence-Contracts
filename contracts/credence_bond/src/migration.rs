@@ -1,7 +1,7 @@
 //! Storage migration utilities for IdentityBond
 use crate::{DataKey, IdentityBond};
-use soroban_sdk::{contracttype, panic_with_error, Env};
 use credence_errors::ContractError;
+use soroban_sdk::{contracttype, panic_with_error, Env};
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -40,7 +40,10 @@ fn test_mutating_functions_fail_during_migration() {
 
     // Set migration status in storage
     e.as_contract(&client.address, || {
-        e.storage().instance().set(&crate::DataKey::MigrationStatus, &crate::migration::MigrationStatus::InProgress);
+        e.storage().instance().set(
+            &crate::DataKey::MigrationStatus,
+            &crate::migration::MigrationStatus::InProgress,
+        );
     });
 
     // Try a mutating function, it should fail

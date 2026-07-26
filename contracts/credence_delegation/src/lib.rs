@@ -49,11 +49,11 @@ use soroban_sdk::String;
 #[allow(dead_code)]
 const SIGNATURE_DOMAIN: &str = "CredenceDelegation";
 
+pub mod audit;
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
 pub mod verifier;
-pub mod audit;
 
 pub use domain::{DelegatedActionPayload, DomainTag};
 pub use pausable::PauseProposalView;

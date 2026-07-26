@@ -30,8 +30,8 @@
 //! ```
 
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Bytes, Env, Symbol};
 use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{panic_with_error, Address, Bytes, Env, Symbol};
 
 use soroban_sdk::xdr::ToXdr;
 
@@ -57,7 +57,7 @@ use crate::DataKey;
 pub fn compute_key(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> Bytes {
     // Create a byte vector containing all components by converting to XDR
     let mut hash_input = Bytes::new(e);
-    
+
     // Use XDR serialization for deterministic byte representation
     hash_input.append(&actor.to_xdr(e));
     hash_input.append(&operation.to_xdr(e));

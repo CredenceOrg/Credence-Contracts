@@ -17,8 +17,7 @@
 //! Canonical starting point for new Soroban contracts in this workspace.
 //!
 //! ## Patterns demonstrated
-//! - `#![no_std]
-#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
+//! - `#![no_std]`, `#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
 //! - `DataKey` enum for typed storage
 //! - `#[contracttype]` structs for on-chain data
 //! - Admin-gated initialisation (panic-on-reinit guard)
