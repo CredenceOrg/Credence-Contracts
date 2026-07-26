@@ -22,6 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::{panic_with_error, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -565,7 +566,7 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
+    TimestampInFuture = 513,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -746,6 +747,7 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
+            | ContractError::DuplicateIdempotencyKey
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -1113,6 +1115,17 @@ impl ErrorExt for ContractError {
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
         }
+    }
+}
+
+/// Constructor guard. Reject calls that arrive after the contract was already initialized.
+///
+/// Pass `already_initialized = <expression that returns true when the contract is
+/// already initialized>` (e.g., `storage::get_admin(&e).is_some()`).
+/// Panics with `ContractError::AlreadyInitialized` when `true`.
+pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
+    if already_initialized {
+        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }
 
