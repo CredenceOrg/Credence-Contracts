@@ -487,6 +487,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "credence-contracts"
+version = "0.1.0"
+
+[[package]]
 name = "credence_admin_cli"
 version = "0.1.0"
 dependencies = [

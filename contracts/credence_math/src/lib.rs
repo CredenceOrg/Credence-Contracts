@@ -366,6 +366,23 @@ where
     chunk_index
 }
 
+/// Validate that an array of percentage splits sums to exactly 10,000 bps.
+///
+/// Returns `ContractError::InvalidPercentSplit` if the splits sum is not exactly `BPS_DENOMINATOR`.
+/// Returns `ContractError::Overflow` if the sum exceeds `u32::MAX`.
+#[inline]
+pub fn require_valid_percent_split(splits: &soroban_sdk::Vec<u32>) -> Result<(), ContractError> {
+    let mut sum: u32 = 0;
+    for i in 0..splits.len() {
+        let split = splits.get(i).unwrap();
+        sum = sum.checked_add(split).ok_or(ContractError::Overflow)?;
+    }
+    if sum != BPS_DENOMINATOR as u32 {
+        return Err(ContractError::InvalidPercentSplit);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -719,6 +736,40 @@ mod tests {
         for i in 0..n {
             assert_eq!(collected[i as usize], i);
         }
+    }
+
+    #[test]
+    fn test_require_valid_percent_split() {
+        let e = soroban_sdk::Env::default();
+        
+        // Positive tests
+        let mut valid_splits = soroban_sdk::Vec::new(&e);
+        valid_splits.push_back(10_000);
+        assert_eq!(super::require_valid_percent_split(&valid_splits), Ok(()));
+        
+        let mut valid_splits2 = soroban_sdk::Vec::new(&e);
+        valid_splits2.push_back(5_000);
+        valid_splits2.push_back(3_000);
+        valid_splits2.push_back(2_000);
+        assert_eq!(super::require_valid_percent_split(&valid_splits2), Ok(()));
+
+        // Negative tests
+        let mut invalid_splits_short = soroban_sdk::Vec::new(&e);
+        invalid_splits_short.push_back(9_999);
+        assert_eq!(super::require_valid_percent_split(&invalid_splits_short), Err(crate::ContractError::InvalidPercentSplit));
+        
+        let mut invalid_splits_over = soroban_sdk::Vec::new(&e);
+        invalid_splits_over.push_back(5_000);
+        invalid_splits_over.push_back(5_001);
+        assert_eq!(super::require_valid_percent_split(&invalid_splits_over), Err(crate::ContractError::InvalidPercentSplit));
+
+        let invalid_splits_empty = soroban_sdk::Vec::new(&e);
+        assert_eq!(super::require_valid_percent_split(&invalid_splits_empty), Err(crate::ContractError::InvalidPercentSplit));
+
+        let mut invalid_splits_overflow = soroban_sdk::Vec::new(&e);
+        invalid_splits_overflow.push_back(u32::MAX);
+        invalid_splits_overflow.push_back(1);
+        assert_eq!(super::require_valid_percent_split(&invalid_splits_overflow), Err(crate::ContractError::Overflow));
     }
 }
 
