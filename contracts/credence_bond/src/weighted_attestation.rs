@@ -1,62 +1,58 @@
-//! Weighted attestation system: attestation value depends on attester's credibility.
+use crate::types::MAX_ATTESTATION_WEIGHT;
+use crate::DataKey;
+use soroban_sdk::{contracttype, Address, Env, Symbol};
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct WeightConfig {
+    pub multiplier_bps: u32,
+    pub max_weight: u32,
+}
+
+#[allow(dead_code)]
+pub const MAX_WEIGHT_CONFIG_MULTIPLIER_BPS: u32 = 10_000;
+#[allow(dead_code)]
+pub const DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT: u32 = MAX_ATTESTATION_WEIGHT;
+const WEIGHT_BASIS_POINTS_DENOMINATOR: i128 = 10_000;
+
+/// Sets attester stake (e.g. from bond). Caller must be admin. Rejects negative amount.
+///
+/// # Errors
+/// Panics if amount < 0.
+pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128) {
+    if amount < 0 {
+        panic!("attester stake cannot be negative");
+    }
+    e.storage()
+        .instance()
+        .set(&DataKey::AttesterStake(attester.clone()), &amount);
+}
 //!
 //! ## Overview
 //! Attestation weight is derived from the attester's bond (or configured stake), with
-//! a configurable multiplier (basis points) and a protocol cap. When attester bond changes,
-//! new attestations use the new weight; existing attestations retain their stored weight.
+//! a configurable multiplier (basis points) and a protocol cap.
 //!
-//! ## Rounding semantics (documented invariants)
+//! ## Rounding semantics
 //!
-//! The weight formula is:
 //! ```text
-//! raw = floor(stake_u64 * multiplier_bps / BPS_DENOMINATOR)   // integer floor division
+//! raw = floor(stake * multiplier_bps / BPS_DENOMINATOR)
 //! weight = clamp(raw, DEFAULT_ATTESTATION_WEIGHT, min(config_max, MAX_ATTESTATION_WEIGHT))
 //! ```
-//!
-//! Key invariants that are enforced and regression-tested:
-//!
-//! 1. **Floor division** — fractional results are always truncated toward zero.
-//!    e.g. `stake=9_999, mult=100` → `floor(99.99) = 99`, not 100.
-//!
-//! 2. **Lower bound** — weight is always `>= DEFAULT_ATTESTATION_WEIGHT` (1).
-//!    A raw result of 0 (e.g. tiny stake or zero multiplier) is clamped up to 1.
-//!
-//! 3. **Upper bound** — weight is always `<= MAX_ATTESTATION_WEIGHT`.
-//!    Both the config max and the protocol hard cap are enforced independently.
-//!
-//! 4. **Determinism** — identical `(stake, multiplier_bps, config_max)` inputs
-//!    always produce the same output; there is no randomness or ledger-time dependency.
-//!
-//! 5. **Monotonicity** — for a fixed config, increasing stake never decreases weight
-//!    (until the cap is reached).
-//!
-//! 6. **Immutability of stored weights** — once an attestation is written to storage,
-//!    its `weight` field is never mutated. Subsequent stake/config changes only affect
-//!    future attestations.
-//!
-//! 7. **Config clamping** — `set_weight_config` silently clamps `max_weight` to
-//!    `MAX_ATTESTATION_WEIGHT`; the stored value reflects the clamped result.
-//!
-//! ## Security
-//! - Maximum weight is capped by `MAX_ATTESTATION_WEIGHT` to limit influence.
-//! - Negative stake is rejected in `set_attester_stake`.
-//! - Weight config is admin-only (enforced by contract entrypoints).
-//! - `stake` is cast to `u64` via `unsigned_abs()` before the BPS multiplication to
-//!   avoid signed-integer overflow; the negative-stake guard above ensures this is safe.
-
-use soroban_sdk::Env;
 
 use crate::math;
 use crate::types::attestation::MAX_ATTESTATION_WEIGHT;
 use crate::DataKey;
+use soroban_sdk::Env;
 
-/// Default weight multiplier in basis points (1 = 0.01%). Formula: weight = stake * multiplier_bps / BPS_DENOMINATOR.
+/// Default weight multiplier in basis points (1 = 0.01%).
 pub const DEFAULT_WEIGHT_MULTIPLIER_BPS: u32 = 100;
+
+/// Maximum configurable weight multiplier in basis points (10_000 = 100%).
+pub const MAX_WEIGHT_MULTIPLIER_BPS: u32 = 10_000;
 
 /// Default maximum attestation weight when no config is set.
 pub const DEFAULT_MAX_WEIGHT: u32 = 100_000;
 
-/// Storage key for weight config (multiplier_bps, max weight). Stored as (u32, u32).
 fn weight_config_key(e: &Env) -> soroban_sdk::Symbol {
     soroban_sdk::Symbol::new(e, "weight_cfg")
 }
@@ -70,16 +66,16 @@ pub fn get_weight_config(e: &Env) -> (u32, u32) {
         .unwrap_or((DEFAULT_WEIGHT_MULTIPLIER_BPS, DEFAULT_MAX_WEIGHT))
 }
 
-/// Sets weight config (admin only; caller must enforce). multiplier_bps in basis points;
-/// max_weight is capped by MAX_ATTESTATION_WEIGHT.
+/// Sets weight config. multiplier_bps and max_weight are clamped to protocol caps.
 pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
+    let multiplier = core::cmp::min(multiplier_bps, MAX_WEIGHT_MULTIPLIER_BPS);
     let cap = core::cmp::min(max_weight, MAX_ATTESTATION_WEIGHT);
     e.storage()
         .instance()
-        .set(&weight_config_key(e), &(multiplier_bps, cap));
+        .set(&weight_config_key(e), &(multiplier, cap));
 }
 
-/// Returns the attester's stake (bond amount or configured stake). 0 if not set.
+/// Returns the attester's stake. 0 if not set.
 #[must_use]
 pub fn get_attester_stake(e: &Env, attester: &soroban_sdk::Address) -> i128 {
     e.storage()
@@ -88,10 +84,7 @@ pub fn get_attester_stake(e: &Env, attester: &soroban_sdk::Address) -> i128 {
         .unwrap_or(0)
 }
 
-/// Sets attester stake (e.g. from bond). Caller must be admin. Rejects negative amount.
-///
-/// # Errors
-/// Panics if amount < 0.
+/// Sets attester stake. Rejects negative amounts.
 pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128) {
     if amount < 0 {
         panic!("attester stake cannot be negative");
@@ -99,6 +92,47 @@ pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128
     e.storage()
         .instance()
         .set(&DataKey::AttesterStake(attester.clone()), &amount);
+}
+
+#[allow(dead_code)]
+pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
+    if multiplier_bps > MAX_WEIGHT_CONFIG_MULTIPLIER_BPS {
+        panic!("multiplier_bps exceeds maximum");
+    }
+    if max_weight > MAX_ATTESTATION_WEIGHT {
+        panic!("max_weight exceeds maximum");
+    }
+
+    let key = DataKey::WeightConfig;
+    let old_config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT,
+    });
+
+    let new_config = WeightConfig {
+        multiplier_bps,
+        max_weight,
+    };
+    e.storage().instance().set(&key, &new_config);
+
+    e.events().publish(
+        (Symbol::new(e, "weight_config_set"),),
+        (
+            old_config.multiplier_bps,
+            old_config.max_weight,
+            multiplier_bps,
+            max_weight,
+        ),
+    );
+}
+
+pub fn get_weight_config(e: &Env) -> (u32, u32) {
+    let key = DataKey::WeightConfig;
+    let config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT,
+    });
+    (config.multiplier_bps, config.max_weight)
 }
 
 /// Computes attestation weight from attester stake using config. Capped by config max and
@@ -114,9 +148,14 @@ pub fn compute_weight(e: &Env, attester: &soroban_sdk::Address) -> u32 {
         return DEFAULT_ATTESTATION_WEIGHT;
     }
 
-    // weight = (stake * multiplier_bps / BPS_DENOMINATOR) capped at max_weight and MAX_ATTESTATION_WEIGHT
-    let stake_u64 = stake.unsigned_abs() as u64;
-    let w = math::bps_u64(stake_u64, multiplier_bps, "attestation weight overflow") as u32;
-    let capped = core::cmp::min(w, max_weight);
-    core::cmp::min(capped, MAX_ATTESTATION_WEIGHT).max(DEFAULT_ATTESTATION_WEIGHT)
+    let stake_u128 = stake.unsigned_abs();
+    let denom = math::BPS_DENOMINATOR as u128;
+    let mult = core::cmp::min(multiplier_bps, MAX_WEIGHT_MULTIPLIER_BPS) as u128;
+    let raw = (stake_u128 / denom)
+        .saturating_mul(mult)
+        .saturating_add((stake_u128 % denom).saturating_mul(mult) / denom);
+    let cap = core::cmp::min(max_weight, MAX_ATTESTATION_WEIGHT) as u128;
+    let capped = core::cmp::min(raw, cap);
+    let bounded = core::cmp::min(capped, MAX_ATTESTATION_WEIGHT as u128) as u32;
+    bounded.max(DEFAULT_ATTESTATION_WEIGHT)
 }

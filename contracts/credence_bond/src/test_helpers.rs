@@ -1,7 +1,7 @@
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
 #[contract]
 pub struct MockStellarAsset;
@@ -11,8 +11,14 @@ impl MockStellarAsset {
     pub fn decimals(_e: Env) -> u32 {
         18
     }
+    pub fn symbol(e: Env) -> soroban_sdk::String {
+        soroban_sdk::String::from_str(&e, "USDC")
+    }
     pub fn balance(e: Env, id: Address) -> i128 {
-        e.storage().instance().get(&id).unwrap_or(10_000_000_000_000_000_000_000_000_000_i128)
+        e.storage()
+            .instance()
+            .get(&id)
+            .unwrap_or(10_000_000_000_000_000_000_000_000_000_i128)
     }
     pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
         let from_bal = Self::balance(e.clone(), from.clone());
@@ -41,6 +47,7 @@ impl MockStellarAsset {
 /// Advance ledger sequence (test utility). Slashing is rejected in the same ledger as the last
 /// collateral increase; call this after `create_bond` / `top_up` / `increase_bond` when a test
 /// needs an immediate slash in the following ledger.
+#[allow(dead_code)]
 pub fn advance_ledger_sequence(e: &Env) {
     let mut info = e.ledger().get();
     info.sequence_number = info.sequence_number.saturating_add(1);
@@ -51,6 +58,7 @@ pub fn advance_ledger_sequence(e: &Env) {
 const DEFAULT_MINT: i128 = 100_000_000_000_000_000;
 
 /// Mint amount for tests needing i128::MAX (e.g. overflow tests).
+#[allow(dead_code)]
 const MAX_MINT: i128 = i128::MAX;
 
 /// Setup bond contract with Stellar Asset token.
@@ -61,6 +69,7 @@ pub fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address, A
 }
 
 /// Setup with max mint for overflow/edge case tests.
+#[allow(dead_code)]
 pub fn setup_with_max_mint(
     e: &Env,
 ) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {
@@ -78,7 +87,7 @@ pub fn setup_with_token_mint(
     let admin = Address::generate(e);
     let identity = Address::generate(e);
 
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let stellar_asset = e.register(MockStellarAsset, ());
     let stellar_client = StellarAssetClient::new(e, &stellar_asset);
@@ -89,7 +98,17 @@ pub fn setup_with_token_mint(
     let expiration = e.ledger().sequence().saturating_add(10000);
     token_client.approve(&identity, &contract_id, &mint_amount, &expiration);
 
+    // Set accepted tokens to include the stellar asset
+    let mut accepted_tokens = Vec::new(e);
+    accepted_tokens.push_back(stellar_asset.clone());
+    client.set_accepted_tokens(&admin, &accepted_tokens);
+
     client.set_token(&admin, &stellar_asset);
+    e.as_contract(&contract_id, || {
+        e.storage()
+            .instance()
+            .set(&crate::DataKey::BondToken, &stellar_asset);
+    });
 
     (client, admin, identity, stellar_asset, contract_id)
 }

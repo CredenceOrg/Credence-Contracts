@@ -40,7 +40,7 @@ fn setup(e: &Env) -> (Address, Address, Address, Address) {
 
     let bond_id = e.register(CredenceBond, ());
     let bond_client = CredenceBondClient::new(e, &bond_id);
-    bond_client.initialize(&admin);
+    bond_client.initialize(&admin, &None);
 
     let owner = Address::generate(e);
     let subject = Address::generate(e);

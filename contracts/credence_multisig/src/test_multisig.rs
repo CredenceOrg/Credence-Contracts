@@ -1,8 +1,11 @@
+extern crate std;
+
 use crate::{ActionType, CredenceMultiSig, CredenceMultiSigClient, ProposalStatus};
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Events, Ledger},
     Address, BytesN, Env, String, Vec,
 };
+use proptest::prelude::*;
 
 fn setup(e: &Env) -> (CredenceMultiSigClient, Address, Vec<Address>) {
     let contract_id = e.register(CredenceMultiSig, ());
@@ -70,6 +73,49 @@ fn test_initialize_threshold_exceeds_signers() {
     let (client, admin, signers) = setup(&e);
 
     client.initialize(&admin, &signers, &4);
+}
+
+/// Regression: initialize must reject a signer list containing duplicates.
+/// Before the fix, `SignerCount` could be inflated and `SignerList` could
+/// contain duplicates, violating the invariant that every unique signer appears
+/// exactly once.
+#[test]
+#[should_panic(expected = "Error(Contract, #405)")]
+fn test_initialize_rejects_duplicate_signers_back_to_back() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceMultiSig, ());
+    let client = CredenceMultiSigClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let dup = Address::generate(&e);
+
+    let mut signers = Vec::new(&e);
+    signers.push_back(dup.clone());
+    signers.push_back(dup.clone()); // exact duplicate, back-to-back
+
+    client.initialize(&admin, &signers, &1);
+}
+
+/// Separated duplicates: `[A, B, A]` must also be rejected.
+#[test]
+#[should_panic(expected = "Error(Contract, #405)")]
+fn test_initialize_rejects_duplicate_signers_separated() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceMultiSig, ());
+    let client = CredenceMultiSigClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let a = Address::generate(&e);
+    let b = Address::generate(&e);
+
+    let mut signers = Vec::new(&e);
+    signers.push_back(a.clone());
+    signers.push_back(b.clone());
+    signers.push_back(a.clone()); // duplicate, separated by B
+
+    client.initialize(&admin, &signers, &2);
 }
 
 // ==================== Signer Management Tests ====================
@@ -144,6 +190,112 @@ fn test_remove_signer_auto_adjusts_threshold() {
 
     assert_eq!(client.get_signer_count(), 2);
     assert_eq!(client.get_threshold(), 2); // auto-adjusted from 3 to 2
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #605)")]
+fn test_remove_signer_invalidates_removed_signature_at_execute() {
+    let e = Env::default();
+    let (client, admin, _) = setup(&e);
+    let mut signers = Vec::new(&e);
+    for _ in 0..4 {
+        signers.push_back(Address::generate(&e));
+    }
+
+    client.initialize(&admin, &signers, &3);
+
+    let proposal_id = client.submit_proposal(
+        &signers.get(0).unwrap(),
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Test proposal"),
+        &0_u64,
+        &None,
+        &BytesN::from_array(&e, &[100; 32]),
+    );
+
+    client.sign_proposal(&signers.get(0).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(1).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(2).unwrap(), &proposal_id);
+
+    client.remove_signer(&admin, &signers.get(2).unwrap());
+
+    assert_eq!(client.get_signer_count(), 3);
+    assert_eq!(client.get_threshold(), 3);
+
+    client.execute_proposal(&proposal_id);
+}
+
+#[test]
+fn test_remove_signer_keeps_proposal_executable_when_threshold_still_met() {
+    let e = Env::default();
+    let (client, admin, _) = setup(&e);
+    let mut signers = Vec::new(&e);
+    for _ in 0..4 {
+        signers.push_back(Address::generate(&e));
+    }
+
+    client.initialize(&admin, &signers, &3);
+
+    let proposal_id = client.submit_proposal(
+        &signers.get(0).unwrap(),
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Test proposal"),
+        &0_u64,
+        &None,
+        &BytesN::from_array(&e, &[101; 32]),
+    );
+
+    client.sign_proposal(&signers.get(0).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(1).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(2).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(3).unwrap(), &proposal_id);
+
+    client.remove_signer(&admin, &signers.get(2).unwrap());
+
+    client.execute_proposal(&proposal_id);
+    let proposal = client.get_proposal(&proposal_id);
+    assert_eq!(proposal.status, ProposalStatus::Executed);
+}
+
+#[test]
+fn test_readd_signer_restores_prior_signature_at_execute() {
+    let e = Env::default();
+    let (client, admin, _) = setup(&e);
+    let mut signers = Vec::new(&e);
+    for _ in 0..4 {
+        signers.push_back(Address::generate(&e));
+    }
+
+    client.initialize(&admin, &signers, &3);
+
+    let proposal_id = client.submit_proposal(
+        &signers.get(0).unwrap(),
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Test proposal"),
+        &0_u64,
+        &None,
+        &BytesN::from_array(&e, &[102; 32]),
+    );
+
+    client.sign_proposal(&signers.get(0).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(1).unwrap(), &proposal_id);
+    client.sign_proposal(&signers.get(2).unwrap(), &proposal_id);
+
+    client.remove_signer(&admin, &signers.get(2).unwrap());
+    client.add_signer(&admin, &signers.get(2).unwrap());
+
+    client.execute_proposal(&proposal_id);
+    let proposal = client.get_proposal(&proposal_id);
+    assert_eq!(proposal.status, ProposalStatus::Executed);
 }
 
 // ==================== Threshold Tests ====================
@@ -958,4 +1110,354 @@ fn test_signer_management_workflow() {
         client.get_proposal(&proposal_id).status,
         ProposalStatus::Executed
     );
+}
+
+#[test]
+fn test_prune_expired_proposals_basic() {
+    use soroban_sdk::FromVal;
+    let e = Env::default();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    let proposer = signers.get(0).unwrap();
+    let signer2 = signers.get(1).unwrap();
+
+    // Proposal 0: Expired (expires_at = 1200, now = 1000) -> will be expired after timestamp advances
+    let id0 = client.submit_proposal(
+        &proposer,
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Expired proposal"),
+        &1200_u64,
+        &None,
+        &BytesN::from_array(&e, &[30; 32]),
+    );
+
+    // Proposal 1: Pending (expires_at = 2000, now = 1000) -> not expired
+    let id1 = client.submit_proposal(
+        &proposer,
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Pending proposal"),
+        &2000_u64,
+        &None,
+        &BytesN::from_array(&e, &[31; 32]),
+    );
+
+    // Proposal 2: Executed (expires_at = 1200) -> will not be pruned because status is Executed
+    let id2 = client.submit_proposal(
+        &proposer,
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Executed proposal"),
+        &1200_u64,
+        &None,
+        &BytesN::from_array(&e, &[32; 32]),
+    );
+
+    client.sign_proposal(&proposer, &id2);
+    client.sign_proposal(&signer2, &id2);
+    client.execute_proposal(&id2);
+
+    // Proposal 3: Rejected (expires_at = 1200) -> will be expired after timestamp advances -> pruned
+    let id3 = client.submit_proposal(
+        &proposer,
+        &ActionType::ConfigChange,
+        &None,
+        &None,
+        &None,
+        &String::from_str(&e, "Rejected proposal"),
+        &1200_u64,
+        &None,
+        &BytesN::from_array(&e, &[33; 32]),
+    );
+    client.reject_proposal(&admin, &id3);
+
+    // Sign Proposal 0
+    client.sign_proposal(&proposer, &id0);
+
+    // Move time past 1200 (to 1300)
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1300;
+    });
+
+    // Check pre-conditions
+    assert_eq!(client.get_proposal(&id0).status, ProposalStatus::Pending);
+    assert_eq!(client.get_signature_count(&id0), 1);
+    assert_eq!(client.has_signed(&id0, &proposer), true);
+
+    // Now prune starting from ID 0
+    let pruned = client.prune_expired_proposals(&0, &10);
+    assert_eq!(pruned, 2); // id0 and id3 are pruned
+
+    // Verify pruned proposals are gone
+    assert!(client.try_get_proposal(&id0).is_err());
+    assert!(client.try_get_proposal(&id3).is_err());
+
+    // Verify signatures are removed
+    assert_eq!(client.get_signature_count(&id0), 0);
+    assert_eq!(client.has_signed(&id0, &proposer), false);
+
+    // Verify non-expired proposal 1 is NOT pruned
+    let prop1 = client.get_proposal(&id1);
+    assert_eq!(prop1.status, ProposalStatus::Pending);
+
+    // Verify executed proposal 2 is NOT pruned and its executed op_hash is preserved
+    let prop2 = client.get_proposal(&id2);
+    assert_eq!(prop2.status, ProposalStatus::Executed);
+    assert_eq!(
+        client.is_operation_executed(&BytesN::from_array(&e, &[32; 32])),
+        true
+    );
+
+    // Verify event using snapshot-based diagnostics
+    assert_eq!(pruned, 2, "expected 2 proposals pruned");
+}
+
+#[test]
+fn test_prune_expired_proposals_max_iter() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+    });
+
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    let proposer = signers.get(0).unwrap();
+
+    // Create 5 expired proposals (id 0 to 4)
+    for i in 0..5 {
+        client.submit_proposal(
+            &proposer,
+            &ActionType::ConfigChange,
+            &None,
+            &None,
+            &None,
+            &String::from_str(&e, "Expired"),
+            &1200_u64,
+            &None,
+            &BytesN::from_array(&e, &[i; 32]),
+        );
+    }
+
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1300;
+    });
+
+    // Prune with max_iter = 2 starting at 0
+    let pruned1 = client.prune_expired_proposals(&0, &2);
+    assert_eq!(pruned1, 2); // prunes 0 and 1
+
+    // Verify 0 and 1 are gone, 2 is still there
+    assert!(client.try_get_proposal(&0).is_err());
+    assert!(client.try_get_proposal(&1).is_err());
+    assert!(client.get_proposal(&2).id == 2);
+
+    // Prune with max_iter = 10 starting at 2
+    let pruned2 = client.prune_expired_proposals(&2, &10);
+    assert_eq!(pruned2, 3); // prunes 2, 3, 4
+
+    assert!(client.try_get_proposal(&2).is_err());
+    assert!(client.try_get_proposal(&3).is_err());
+    assert!(client.try_get_proposal(&4).is_err());
+}
+
+#[test]
+fn test_prune_expired_proposals_nonexistent() {
+    let e = Env::default();
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    // Prune on non-existent proposals should just return 0 without panicking
+    let pruned = client.prune_expired_proposals(&100, &10);
+    assert_eq!(pruned, 0);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #106)")]
+fn test_prune_expired_proposals_paused() {
+    let e = Env::default();
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    client.pause(&admin);
+    assert_eq!(client.is_paused(), true);
+
+    // Calling prune while paused should panic with ContractPaused (#106)
+    client.prune_expired_proposals(&0, &10);
+}
+
+// ==================== Property Tests ====================
+
+/// Strategy that builds a `Vec<Address>` by randomly picking from a small
+/// pool of pre-generated addresses (with repetition allowed). The returned
+/// vector is the **deduplicated** set, but the raw multiset is what the
+/// strategy shrinks on — exercising the invariant that the output length
+/// never exceeds the input length and every unique element is preserved.
+fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, Vec<Address>)> {
+    (1_usize..20_usize)
+        .prop_flat_map(|pool_size| {
+            (1_usize..20_usize)
+                .prop_flat_map(move |pick_count| {
+                    // Generate `pick_count` indices into a pool of `pool_size` addresses.
+                    // Duplicates are possible when pick_count > pool_size or by random
+                    // chance — this is what tests the dedup invariant.
+                    proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
+                        .prop_map(move |indices| (pool_size, indices))
+                })
+        })
+        .prop_map(|(pool_size, indices)| {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        // Build a small pool of distinct addresses.
+        let mut pool = Vec::new(&e);
+        for _ in 0..pool_size {
+            pool.push_back(Address::generate(&e));
+        }
+
+        // Build the raw input list from the indices (may contain duplicates).
+        let raw_len = indices.len();
+        let mut raw = Vec::new(&e);
+        for &idx in &indices {
+            raw.push_back(pool.get(idx as u32).unwrap());
+        }
+
+        // Deduplicate: scan and keep first occurrence of each address.
+        let mut deduped = Vec::new(&e);
+        for i in 0..raw.len() {
+            let addr = raw.get(i).unwrap();
+            let mut already_seen = false;
+            for j in 0..deduped.len() {
+                if deduped.get(j).unwrap() == addr {
+                    already_seen = true;
+                    break;
+                }
+            }
+            if !already_seen {
+                deduped.push_back(addr);
+            }
+        }
+
+        (e, raw, deduped)
+    })
+}
+
+/// Property: after initializing with a deduplicated signer list:
+///  1. `SignerList` length equals the number of unique signers (≤ raw input length)
+///  2. `SignerCount` == `SignerList` length
+///  3. Every unique element from the raw input is preserved exactly once in `SignerList`
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(256))]
+
+    #[test]
+    fn prop_signer_list_length_le_input_length_every_unique_preserved_once(
+        (e, raw, deduped) in deduped_signer_list_strategy()
+    ) {
+        let contract_id = e.register(CredenceMultiSig, ());
+        let client = CredenceMultiSigClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+
+        // Initialize with the deduplicated list (duplicates would panic).
+        client.initialize(&admin, &deduped, &1);
+
+        let list = client.get_signers();
+        let count = client.get_signer_count();
+
+        // Invariant 1: output length ≤ raw input length
+        assert!(
+            list.len() <= raw.len(),
+            "SignerList len {} must be ≤ raw input len {}",
+            list.len(),
+            raw.len()
+        );
+
+        // Invariant 2: output length == number of unique elements
+        assert_eq!(
+            list.len(),
+            deduped.len(),
+            "SignerList len must equal the number of unique input elements"
+        );
+
+        // Invariant 3: SignerCount == SignerList.len()
+        assert_eq!(
+            count,
+            list.len(),
+            "SignerCount must equal SignerList length"
+        );
+
+        // Invariant 4: every unique element preserved exactly once
+        for i in 0..deduped.len() {
+            let s = deduped.get(i).unwrap();
+            assert!(client.is_signer(&s), "every unique signer must be recognised");
+        }
+
+        // No element appears more than once in SignerList.
+        for i in 0..list.len() {
+            let si = list.get(i).unwrap();
+            let occurrences = (0..list.len())
+                .filter(|j| list.get(j).unwrap() == si)
+                .count();
+            assert_eq!(occurrences, 1, "SignerList must contain each signer at most once");
+        }
+    }
+
+    #[test]
+    fn prop_signer_list_invariant_across_add_remove(
+        n in 2_usize..10_usize,
+        remove_idx in 0_usize..10_usize,
+    ) {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceMultiSig, ());
+        let client = CredenceMultiSigClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let mut signers = Vec::new(&e);
+        for _ in 0..n {
+            signers.push_back(Address::generate(&e));
+        }
+
+        client.initialize(&admin, &signers, &1);
+
+        // Add a new distinct signer.
+        let new_signer = Address::generate(&e);
+        client.add_signer(&admin, &new_signer);
+
+        let list_after_add = client.get_signers();
+        assert_eq!(list_after_add.len(), (n + 1) as u32);
+        assert_eq!(client.get_signer_count(), (n + 1) as u32);
+        assert!(client.is_signer(&new_signer));
+
+        // Remove a randomly-chosen signer from the original set.
+        let idx = (remove_idx % (n as usize)) as u32;
+        let removed = signers.get(idx).unwrap();
+        client.remove_signer(&admin, &removed);
+
+        let list_after_remove = client.get_signers();
+        assert_eq!(list_after_remove.len(), n as u32);
+        assert_eq!(client.get_signer_count(), n as u32);
+        assert!(!client.is_signer(&removed));
+
+        // Verify no duplicates in the resulting list.
+        let len = list_after_remove.len();
+        for i in 0..len {
+            let si = list_after_remove.get(i).unwrap();
+            let occurrences = (0..len)
+                .filter(|j| list_after_remove.get(j).unwrap() == si)
+                .count();
+            assert_eq!(occurrences, 1, "SignerList must never contain duplicates after add/remove");
+        }
+    }
 }

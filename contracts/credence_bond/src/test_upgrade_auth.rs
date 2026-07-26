@@ -13,7 +13,7 @@ fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     (client, admin, contract_id)
 }
 

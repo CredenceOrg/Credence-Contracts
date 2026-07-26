@@ -24,6 +24,8 @@
 //! - old value
 //! - new value
 
+#![allow(dead_code)]
+
 use crate::events::emit_parameter_updated;
 use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
 
@@ -42,7 +44,6 @@ pub struct GovernanceApproval {
 // ============================================================================
 // Parameter Bounds Constants
 // ============================================================================
-
 /// Minimum protocol fee rate in basis points (0 bps = 0%)
 pub const MIN_PROTOCOL_FEE_BPS: u32 = 0;
 /// Maximum protocol fee rate in basis points (1000 bps = 10%)
@@ -74,6 +75,41 @@ pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = 86_400;
 pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)
 pub const MAX_SLASH_RECORDS: u32 = 1_000;
+
+// ============================================================================
+// Pagination Constants
+// ============================================================================
+
+/// Hard cap on the number of items any single paginated read may return.
+///
+/// Every paginated entry-point (`get_subject_attestations_page`,
+/// `get_slash_history_page`, `get_pending_claims_paginated`) silently clamps
+/// its `limit` argument to this value. A caller that passes a larger limit
+/// receives at most `MAX_QUERY_LIMIT` items — they cannot force the contract
+/// to iterate unbounded state in one instruction budget.
+///
+/// Value 200 matches `liquidation_scanner::MAX_ITER_HARD_CAP` so all
+/// collection-read caps stay consistent across the codebase.
+pub const MAX_QUERY_LIMIT: u32 = 200;
+
+// ============================================================================
+// Chunk Iteration Constants
+// ============================================================================
+
+/// Default number of items processed per chunk when iterating a `Vec` in
+/// fixed-size pieces for gas budgeting.
+///
+/// This is the single source of truth for the chunk size used by
+/// [`crate::iter_chunks::vec_chunks`]. Callers that need a different size pass
+/// it explicitly; this constant documents the safe, tested default.
+///
+/// The value 50 is chosen to keep each chunk well inside the Soroban
+/// instruction budget even for moderately expensive per-item work, while
+/// still amortising loop overhead across a non-trivial batch.
+///
+/// **Do not duplicate this constant.** Import it as
+/// `crate::parameters::DEFAULT_CHUNK_SIZE` wherever you need it.
+pub const DEFAULT_CHUNK_SIZE: u32 = 50;
 
 /// Minimum bronze tier threshold (0 = no minimum)
 pub const MIN_BRONZE_THRESHOLD: i128 = 0;
@@ -752,7 +788,7 @@ pub fn is_borrow_frozen(e: &Env) -> bool {
 /// Panics with `BorrowFrozen` if borrows are currently frozen.
 pub fn require_not_borrow_frozen(e: &Env) {
     if is_borrow_frozen(e) {
-        panic!("borrow frozen");
+        crate::panic_with_error!(e, credence_errors::ContractError::BorrowFrozen);
     }
 }
 

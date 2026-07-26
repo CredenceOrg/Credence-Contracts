@@ -16,7 +16,9 @@
 //! break existing signatures. When adding new schemes, append at the end only.
 
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, IntoVal, Symbol, Val, Vec};
+
+use crate::DataKey;
 
 /// Supported signature schemes for delegated action signatures.
 ///
@@ -190,9 +192,10 @@ pub fn validate_scheme_registered(e: &Env, scheme: u32) {
 ///   multi-scheme support (which implicitly use Ed25519) continue to verify.
 ///
 /// For **post-quantum schemes** (Secp256r1, MLDSA44):
+/// - Looks up the verifier address stored under `DataKey::Verifier(scheme)`.
 /// - If no verifier is registered for the scheme, panics with `VerifierNotRegistered`.
-/// - If verification fails, panics with `VerificationFailed`.
-/// - The verifier address must be looked up from contract storage by the caller.
+/// - Invokes the verifier via a cross-contract call to `verify(owner, message, signature) -> bool`.
+/// - If the verifier returns `false` (or panics internally), panics with `VerificationFailed`.
 ///
 /// # Wire Stability
 ///
@@ -226,16 +229,26 @@ pub fn verify_delegated_signature(
             // has already authenticated the owner.
         }
         Some(SchemeTag::Secp256r1) | Some(SchemeTag::MLDSA44) => {
-            // Post-quantum schemes require explicit verifier registration.
-            // The contract stores a registered verifier address for each scheme.
-            // To implement this, the caller should:
-            // 1. Look up the verifier address from contract storage
-            // 2. Call the verifier's signature verification function
-            // 3. Handle VerificationFailed if the signature is invalid
-            //
-            // This is a placeholder that documents the expected integration point.
-            // Actual verification would dispatch to a registered verifier contract.
-            panic_with_error!(e, ContractError::VerifierNotRegistered);
+            // 1. Look up the registered verifier address for this scheme.
+            let verifier_addr: Address = e
+                .storage()
+                .instance()
+                .get(&DataKey::Verifier(scheme))
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::VerifierNotRegistered));
+
+            // 2. Dispatch to the verifier contract via cross-contract call.
+            //    The verifier must expose `fn verify(owner, message, signature) -> bool`.
+            //    A `false` return (or a panic inside the verifier) maps to VerificationFailed.
+            let args: Vec<Val> = soroban_sdk::vec![
+                e,
+                owner.clone().into_val(e),
+                message.clone().into_val(e),
+                signature.clone().into_val(e),
+            ];
+            let ok: bool = e.invoke_contract(&verifier_addr, &Symbol::new(e, "verify"), args);
+            if !ok {
+                panic_with_error!(e, ContractError::VerificationFailed);
+            }
         }
         None => {
             panic_with_error!(e, ContractError::UnknownScheme);

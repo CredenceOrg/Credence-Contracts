@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,19 +14,57 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
 
+use soroban_sdk::String;
+
+/// Signature domain identifier for the CredenceDelegation contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "CredenceDelegation";
+
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
 pub mod verifier;
+pub mod audit;
 
 pub use domain::{DelegatedActionPayload, DomainTag};
 pub use pausable::PauseProposalView;
 pub use verifier::SchemeTag;
+
+/// Monotonic counter for intentional on-chain ABI (`contractspecv0`) changes.
+///
+/// Increment this whenever the pinned spec snapshot in
+/// `tests/spec_xdr_regression.rs` is refreshed so CI can distinguish deliberate
+/// interface bumps from accidental drift.
+pub const CONTRACT_SPEC_VERSION: u32 = 2;
 
 // ---------------------------------------------------------------------------
 // Contract types
@@ -38,14 +77,61 @@ pub enum DelegationType {
     Management,
 }
 
+/// Lifecycle status for a delegation record.
+///
+/// `InGrace` is informational only: it does **not** confer delegate authority.
+/// Authorization checks use [`Self::is_valid_delegate`], which remains a hard
+/// cliff at `expires_at`.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
+pub enum DelegationStatus {
+    Active,
+    InGrace,
+    Expired,
+    Revoked,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
 pub enum AttestationStatus {
     Active,
+    InGrace,
+    Expired,
     Revoked,
     NotFound,
 }
 
+/// Pre-v2 layout — used only for lazy-migration reads of entries stored before
+/// `revoked_at` and `scheme` were added.
+///
+/// **Do not use for writes.**  All new writes go through [`Delegation`].
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct LegacyDelegation {
+    pub owner: Address,
+    pub delegate: Address,
+    pub delegation_type: DelegationType,
+    pub expires_at: u64,
+    pub revoked: bool,
+}
+
+/// A stored delegation record.
+///
+/// ## Wire layout (Soroban XDR, field-order stable)
+/// | # | Field           | Type   | Notes                                         |
+/// |---|-----------------|--------|-----------------------------------------------|
+/// | 0 | `owner`         | Address| —                                             |
+/// | 1 | `delegate`      | Address| —                                             |
+/// | 2 | `delegation_type`| DelegationType | —                                    |
+/// | 3 | `expires_at`    | u64    | —                                             |
+/// | 4 | `revoked`       | bool   | —                                             |
+/// | 5 | `revoked_at`    | u64    | Added v2. `0` = not revoked (sentinel).       |
+/// | 6 | `scheme`        | u32    | Added v2. `0` = Ed25519 (legacy default).     |
+///
+/// ## Legacy-entry defaults
+/// Entries written before v2 lack fields 5–6.  [`load_delegation`] reads them
+/// as [`LegacyDelegation`] and re-saves the upgraded struct with
+/// `revoked_at = 0` and `scheme = 0`.  Subsequent reads see the v2 layout.
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct Delegation {
@@ -54,6 +140,8 @@ pub struct Delegation {
     pub delegation_type: DelegationType,
     pub expires_at: u64,
     pub revoked: bool,
+    /// Ledger timestamp when revocation occurred; `0` while not revoked.
+    pub revoked_at: u64,
 }
 
 /// Aggregated view of a delegation's state for indexers and off-chain tools.
@@ -61,6 +149,7 @@ pub struct Delegation {
 #[derive(Clone, Debug, PartialEq)]
 pub struct DelegationSummary {
     pub is_valid: bool,
+    pub status: DelegationStatus,
     pub time_to_expiry: u64,
     pub delegation_type: DelegationType,
     pub revoked_at: u64,
@@ -116,11 +205,25 @@ pub enum DataKey {
     /// Verifier ID for a given signature scheme tag (scheme -> Address).
     /// Maps scheme tag (Ed25519=0, Secp256r1=1, MLDSA44=2) to a verifier address.
     Verifier(u32),
+    /// Admin-configured post-expiry window (seconds) for late revocation and
+    /// `InGrace` status reporting. Unset defaults to
+    /// [DEFAULT_REVOCATION_GRACE_PERIOD] (`300` seconds / 5 minutes).
+    /// Set to `0` for the legacy hard-cliff expiry with unlimited
+    /// post-expiry revocation.
+    RevocationGracePeriod,
 }
 
 // ---------------------------------------------------------------------------
 // Contract implementation
 // ---------------------------------------------------------------------------
+
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
 
 #[contract]
 pub struct CredenceDelegation;
@@ -151,13 +254,30 @@ const MAX_NONCE_INVALIDATION_SPAN: u64 = 10_000;
 /// delegations such as `u64::MAX`.
 pub const MAX_DELEGATION_DURATION: u64 = 365 * 24 * 60 * 60;
 
+/// Standard post-expiry grace window in seconds (5 minutes).
+///
+/// When `revocation_grace_period` is unset (no stored value), this
+/// default provides a buffer after `expires_at` during which the
+/// delegation remains in `InGrace` status and late revocation is
+/// still permitted.  Explicitly setting the grace period to `0`
+/// restores the legacy hard-cliff behaviour (immediate `Expired`
+/// status at `expires_at`, unlimited post-expiry revocation).
+pub const DEFAULT_REVOCATION_GRACE_PERIOD: u64 = 300;
+
 #[contractimpl]
 impl CredenceDelegation {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the contract with an admin address.
     pub fn initialize(e: Env, admin: Address) {
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
@@ -196,6 +316,7 @@ impl CredenceDelegation {
         expires_at: u64,
         nonce: u64,
     ) -> Delegation {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
@@ -206,14 +327,19 @@ impl CredenceDelegation {
         // blocks both interaction types uniformly.
         nonce::consume_nonce(&e, &owner, nonce);
 
-        Self::store_delegation(&e, owner, delegate, delegation_type, expires_at)
+        Self::store_delegation(&e, owner, delegate, delegation_type, expires_at, 0)
     }
 
     /// Revoke an existing delegation. Only the owner can revoke.
     ///
-    /// Expired delegations may still be revoked so the stored audit state can
-    /// reflect both facts: expired delegations are invalid before revocation,
-    /// and remain invalid after the `revoked` flag is set.
+    /// Active delegations may always be revoked. After `expires_at`, revocation
+    /// is allowed while `now <= expires_at + revocation_grace_period` when
+    /// `revocation_grace_period > 0`. When the grace period is at its default
+    /// ([DEFAULT_REVOCATION_GRACE_PERIOD] = 300 s), post-expiry revocation is
+    /// permitted for up to that window after `expires_at`. When the grace period
+    /// is explicitly set to `0`, post-expiry revocation remains permitted at any
+    /// time (legacy behaviour).
+    /// The real `revoked_at` timestamp is persisted on the delegation record.
     pub fn revoke_delegation(
         e: Env,
         owner: Address,
@@ -221,6 +347,7 @@ impl CredenceDelegation {
         delegation_type: DelegationType,
         nonce: u64,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
@@ -232,6 +359,7 @@ impl CredenceDelegation {
 
     /// Revoke an attestation-type delegation. Only the original attester can revoke and must provide the correct current nonce.
     pub fn revoke_attestation(e: Env, attester: Address, subject: Address, nonce: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         attester.require_auth();
 
@@ -280,18 +408,42 @@ impl CredenceDelegation {
         expires_at: u64,
         payload: DelegatedActionPayload,
     ) -> Delegation {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
         // Domain-separated payload verification
         domain::verify_payload(&e, &payload, DomainTag::Delegate, &owner, &delegate);
 
+        // Staleness guard: reject payloads signed more than MAX_PAYLOAD_AGE_LEDGERS ago.
+        // Placed after verify_payload (so we know this payload was intended for this call)
+        // but before nonce consumption (so a stale payload does not burn a nonce slot).
+        domain::check_payload_age(&e, &payload);
+
+        // Signature scheme dispatch: Ed25519 is covered by owner.require_auth() above;
+        // Secp256r1/MLDSA44 dispatch to their registered verifier contracts.
+        let scheme = domain::decode_scheme_safe(&payload);
+        verifier::verify_delegated_signature(
+            &e,
+            &owner,
+            &soroban_sdk::Bytes::new(&e),
+            &soroban_sdk::Bytes::new(&e),
+            scheme.to_u32(),
+        );
+
         Self::validate_delegation_expiry(&e, expires_at);
 
         // Nonce consumption (replay prevention)
         nonce::consume_nonce(&e, &owner, payload.nonce);
 
-        Self::store_delegation(&e, owner, delegate, delegation_type, expires_at)
+        Self::store_delegation(
+            &e,
+            owner,
+            delegate,
+            delegation_type,
+            expires_at,
+            payload.scheme,
+        )
     }
 
     /// Relayer-friendly variant of `revoke_delegation`.
@@ -314,10 +466,25 @@ impl CredenceDelegation {
         delegation_type: DelegationType,
         payload: DelegatedActionPayload,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         owner.require_auth();
 
         domain::verify_payload(&e, &payload, DomainTag::RevokeDelegation, &owner, &delegate);
+
+        // Staleness guard: reject payloads signed more than MAX_PAYLOAD_AGE_LEDGERS ago.
+        domain::check_payload_age(&e, &payload);
+
+        // Signature scheme dispatch for non-Ed25519 schemes.
+        let scheme = domain::decode_scheme_safe(&payload);
+        verifier::verify_delegated_signature(
+            &e,
+            &owner,
+            &soroban_sdk::Bytes::new(&e),
+            &soroban_sdk::Bytes::new(&e),
+            scheme.to_u32(),
+        );
+
         nonce::consume_nonce(&e, &owner, payload.nonce);
 
         Self::mark_delegation_revoked(&e, owner, delegate, delegation_type, "delegation");
@@ -341,6 +508,7 @@ impl CredenceDelegation {
         subject: Address,
         payload: DelegatedActionPayload,
     ) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         attester.require_auth();
 
@@ -351,6 +519,20 @@ impl CredenceDelegation {
             &attester,
             &subject,
         );
+
+        // Staleness guard: reject payloads signed more than MAX_PAYLOAD_AGE_LEDGERS ago.
+        domain::check_payload_age(&e, &payload);
+
+        // Signature scheme dispatch for non-Ed25519 schemes.
+        let scheme = domain::decode_scheme_safe(&payload);
+        verifier::verify_delegated_signature(
+            &e,
+            &attester,
+            &soroban_sdk::Bytes::new(&e),
+            &soroban_sdk::Bytes::new(&e),
+            scheme.to_u32(),
+        );
+
         nonce::consume_nonce(&e, &attester, payload.nonce);
 
         Self::mark_delegation_revoked(
@@ -364,26 +546,74 @@ impl CredenceDelegation {
 
     /// Provides a derived summary of a delegation's current status.
     ///
-    /// This is a read-only view that aggregates validity, time-to-expiry,
+    /// This is a read-only view that aggregates validity, explicit lifecycle
+    /// status (`Active` / `InGrace` / `Expired` / `Revoked`), time-to-expiry,
     /// and metadata into a single struct. Useful for indexers.
+    ///
+    /// # Authority vs audit semantics
+    /// `is_valid` and [`Self::is_valid_delegate`] are identical for authorization:
+    /// both are `false` once `now >= expires_at`, even during `InGrace`.
+    /// `status == InGrace` is informational only and does not re-grant authority.
     pub fn get_delegation_summary(
         e: Env,
         owner: Address,
         delegate: Address,
         delegation_type: DelegationType,
     ) -> DelegationSummary {
+        bump_instance_ttl(&e);
         let d = Self::get_delegation(e.clone(), owner, delegate, delegation_type);
         let now = e.ledger().timestamp();
-        let is_expired = now >= d.expires_at;
-        let is_valid = !d.revoked && !is_expired;
+        let grace = Self::revocation_grace_period(&e);
+        let status = Self::delegation_status(&d, now, grace);
+        let is_valid = !d.revoked && d.expires_at > now;
 
         DelegationSummary {
             is_valid,
+            status,
             time_to_expiry: d.expires_at.saturating_sub(now),
             delegation_type: d.delegation_type,
-            revoked_at: 0, // Placeholder: not currently recorded in Delegation struct
-            scheme: 0,     // Placeholder: defaults to Ed25519 (0)
+            revoked_at: d.revoked_at,
+            scheme: 0, // Placeholder: defaults to Ed25519 (0)
         }
+    }
+
+    /// Removes an expired delegation record from storage.
+    ///
+    /// # Gating & Permissions Choice
+    /// This function is permissionless: anyone can call it to clean up expired entries
+    /// and reclaim storage rent. Gating it behind `owner.require_auth()` is not preferred
+    /// here because delegations are time-bounded by design. Once a delegation is expired,
+    /// it has no authority and cannot be revived. Allowing anyone to clean up expired entries
+    /// lets the contract remain lean without placing the operational/gas burden solely
+    /// on the owner.
+    ///
+    /// # Errors
+    /// - `ContractError::DelegationNotFound` if the delegation entry does not exist.
+    /// - `ContractError::DelegationNotExpired` if the delegation has not yet expired (now < expires_at).
+    pub fn cleanup_expired(
+        e: Env,
+        owner: Address,
+        delegate: Address,
+        delegation_type: DelegationType,
+    ) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+
+        let key = DataKey::Delegation(owner.clone(), delegate.clone(), delegation_type.clone());
+        let d: Delegation = Self::load_delegation(&e, &key)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::DelegationNotFound));
+
+        let now = e.ledger().timestamp();
+        if now < d.expires_at {
+            panic_with_error!(&e, ContractError::DelegationNotExpired);
+        }
+
+        e.storage().persistent().remove(&key);
+
+        e.events().publish(
+            (Symbol::new(&e, "delegation_cleaned"), owner, delegate),
+            delegation_type,
+        );
     }
 
     /// Retrieve a stored delegation.
@@ -393,11 +623,9 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
     ) -> Delegation {
+        bump_instance_ttl(&e);
         let key = DataKey::Delegation(owner, delegate, delegation_type);
-        let d: Delegation = e
-            .storage()
-            .persistent()
-            .get(&key)
+        let d: Delegation = Self::load_delegation(&e, &key)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::DelegationNotFound));
         nonce::bump_delegation_ttl(&e, &key, d.expires_at);
         d
@@ -408,17 +636,20 @@ impl CredenceDelegation {
     /// Delegations expire exactly at `expires_at`: the record is valid only
     /// while `e.ledger().timestamp() < expires_at`.
     ///
-    /// # Expiry Boundary
-    /// - At `timestamp == expires_at` exactly, the delegation is already invalid (has expired).
+    /// # Expiry boundary and grace window
+    /// - At `timestamp == expires_at` exactly, the delegation is already invalid.
     /// - Returns `false` when `e.ledger().timestamp() >= expires_at`.
+    /// - The configurable `revocation_grace_period` affects audit status and
+    ///   late-revocation eligibility only; it does **not** extend authority.
     pub fn is_valid_delegate(
         e: Env,
         owner: Address,
         delegate: Address,
         delegation_type: DelegationType,
     ) -> bool {
+        bump_instance_ttl(&e);
         let key = DataKey::Delegation(owner, delegate, delegation_type);
-        match e.storage().persistent().get::<_, Delegation>(&key) {
+        match Self::load_delegation(&e, &key) {
             Some(d) => {
                 nonce::bump_delegation_ttl(&e, &key, d.expires_at);
                 // Validity check: not revoked AND expires_at > current timestamp (strictly greater)
@@ -428,28 +659,84 @@ impl CredenceDelegation {
         }
     }
 
+    /// Assert that the delegation identified by `(owner, delegate, delegation_type)`
+    /// is currently active: not revoked and not expired.
+    ///
+    /// Panics with [`ContractError::DelegationNotFound`] when no delegation
+    /// record exists for the key.
+    /// Panics with [`ContractError::DelegationInactive`] when the delegation is
+    /// revoked or expired.
+    ///
+    /// Use this as a pre-condition guard before executing any delegated action
+    /// to guarantee the delegation is still valid at the time of execution.
+    /// Centralising the check here prevents callers from accidentally skipping
+    /// the revocation/expiry verification.
+    pub fn check_delegation_active(
+        e: Env,
+        owner: Address,
+        delegate: Address,
+        delegation_type: DelegationType,
+    ) {
+        bump_instance_ttl(&e);
+        let key = DataKey::Delegation(owner, delegate, delegation_type);
+        let d: Delegation = Self::load_delegation(&e, &key)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::DelegationNotFound));
+        nonce::bump_delegation_ttl(&e, &key, d.expires_at);
+        Self::verify_delegation_active(&e, &d);
+    }
+
     pub fn get_attestation_status(
         e: Env,
         attester: Address,
         subject: Address,
     ) -> AttestationStatus {
+        bump_instance_ttl(&e);
         let key = DataKey::Delegation(attester, subject, DelegationType::Attestation);
-        match e.storage().persistent().get::<_, Delegation>(&key) {
+        match Self::load_delegation(&e, &key) {
             Some(d) => {
                 nonce::bump_delegation_ttl(&e, &key, d.expires_at);
-                if d.revoked {
-                    AttestationStatus::Revoked
-                } else {
-                    AttestationStatus::Active
+                let now = e.ledger().timestamp();
+                let grace = Self::revocation_grace_period(&e);
+                match Self::delegation_status(&d, now, grace) {
+                    DelegationStatus::Active => AttestationStatus::Active,
+                    DelegationStatus::InGrace => AttestationStatus::InGrace,
+                    DelegationStatus::Expired => AttestationStatus::Expired,
+                    DelegationStatus::Revoked => AttestationStatus::Revoked,
                 }
             }
             None => AttestationStatus::NotFound,
         }
     }
 
+    /// Configure the post-expiry grace window for late revocation and `InGrace`
+    /// status reporting. Only the admin may call. A value of `0` restores the
+    /// legacy hard-cliff expiry with unlimited post-expiry revocation.
+    ///
+    /// When unset, the default grace window is [DEFAULT_REVOCATION_GRACE_PERIOD]
+    /// (`300` seconds / 5 minutes).
+    pub fn set_revocation_grace_period(e: Env, admin: Address, grace_seconds: u64) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        admin.require_auth();
+        Self::require_admin(&e, &admin);
+        e.storage()
+            .instance()
+            .set(&DataKey::RevocationGracePeriod, &grace_seconds);
+    }
+
+    /// Return the configured post-expiry grace window in seconds.
+    ///
+    /// Returns [DEFAULT_REVOCATION_GRACE_PERIOD] (`300`) when unset.
+    /// Set to `0` to restore the legacy hard-cliff behaviour.
+    pub fn get_revocation_grace_period(e: Env) -> u64 {
+        bump_instance_ttl(&e);
+        Self::revocation_grace_period(&e)
+    }
+
     /// Return the current nonce for `identity`.  Relayers query this before
     /// building the off-chain payload.
     pub fn get_nonce(e: Env, identity: Address) -> u64 {
+        bump_instance_ttl(&e);
         nonce::get_nonce(&e, &identity)
     }
 
@@ -463,6 +750,7 @@ impl CredenceDelegation {
     /// - Nonce remains strictly monotonic (`new_nonce` must be greater).
     /// - Range size is capped to keep gas predictable.
     pub fn invalidate_nonce_range(e: Env, identity: Address, new_nonce: u64) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         identity.require_auth();
         let (from_nonce, to_nonce) =
@@ -497,6 +785,7 @@ impl CredenceDelegation {
     /// * `NotAdmin` - if `admin` is not the contract admin
     /// * `UnknownScheme` - if scheme is not a recognized value
     pub fn register_verifier(e: Env, admin: Address, scheme: u32, verifier_id: Address) {
+        bump_instance_ttl(&e);
         admin.require_auth();
 
         // Check that only the admin can register verifiers
@@ -533,6 +822,7 @@ impl CredenceDelegation {
     /// Clients can use this to check scheme support before submitting
     /// delegated payloads.
     pub fn get_verifier(e: Env, scheme: u32) -> Option<Address> {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::Verifier(scheme))
     }
 
@@ -541,30 +831,37 @@ impl CredenceDelegation {
     // -----------------------------------------------------------------------
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 
@@ -583,6 +880,7 @@ impl CredenceDelegation {
         proposal_id: u64,
         signers: Vec<Address>,
     ) -> PauseProposalView {
+        bump_instance_ttl(&e);
         pausable::get_pause_proposal_state(&e, proposal_id, &signers)
     }
 
@@ -597,6 +895,7 @@ impl CredenceDelegation {
     /// instead. This entry point exists solely for backward compatibility with
     /// clients that persisted counter-based IDs before the migration.
     pub fn get_proposal_by_legacy_id(e: Env, legacy_id: u64) -> u32 {
+        bump_instance_ttl(&e);
         pausable::get_proposal_by_legacy_id(&e, legacy_id)
             .unwrap_or_else(|err| panic_with_error!(&e, err))
     }
@@ -645,6 +944,20 @@ impl CredenceDelegation {
     ///
     /// This harness validates this property with sequences of advancing ledger
     /// timestamps and verifies the rejection set remains stable.
+    /// Load a delegation from storage.
+    ///
+    /// Returns `Some(Delegation)` if the entry exists, `None` if absent.
+    ///
+    /// ## Legacy entries (v1 → v2 migration)
+    /// [`LegacyDelegation`] documents the pre-v2 on-disk layout. In a live
+    /// upgrade scenario, an admin should call a migration entry point that reads
+    /// each entry as `LegacyDelegation`, fills `revoked_at = 0` and `scheme = 0`,
+    /// and re-persists it as `Delegation`.  All *new* entries are written in v2
+    /// format, so this hot path only calls `get::<_, Delegation>`.
+    fn load_delegation(e: &Env, key: &DataKey) -> Option<Delegation> {
+        e.storage().persistent().get::<_, Delegation>(key)
+    }
+
     fn validate_delegation_expiry(e: &Env, expires_at: u64) {
         let now = e.ledger().timestamp();
         // Lower bound check: expires_at must be STRICTLY GREATER than now (not equal)
@@ -666,6 +979,7 @@ impl CredenceDelegation {
         delegate: Address,
         delegation_type: DelegationType,
         expires_at: u64,
+        scheme: u32,
     ) -> Delegation {
         let key = DataKey::Delegation(owner.clone(), delegate.clone(), delegation_type.clone());
         let d = Delegation {
@@ -674,6 +988,7 @@ impl CredenceDelegation {
             delegation_type,
             expires_at,
             revoked: false,
+            revoked_at: 0,
         };
         e.storage().persistent().set(&key, &d);
         nonce::bump_delegation_ttl(e, &key, expires_at);
@@ -693,21 +1008,103 @@ impl CredenceDelegation {
         kind: &'static str,
     ) {
         let key = DataKey::Delegation(owner.clone(), delegate.clone(), delegation_type.clone());
-        let mut d: Delegation = e
-            .storage()
-            .persistent()
-            .get(&key)
+        let mut d: Delegation = Self::load_delegation(e, &key)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::DelegationNotFound));
 
         if d.revoked {
             panic_with_error!(e, ContractError::AlreadyRevoked);
         }
 
+        let now = e.ledger().timestamp();
+        Self::require_revocation_allowed(e, &d, now);
+
         d.revoked = true;
+        d.revoked_at = now;
         e.storage().persistent().set(&key, &d);
         nonce::bump_delegation_ttl(e, &key, d.expires_at);
         e.events()
             .publish((Symbol::new(e, "delegation_revoked"),), d);
+    }
+
+    fn require_admin(e: &Env, admin: &Address) {
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if admin != &stored_admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+    }
+
+    fn revocation_grace_period(e: &Env) -> u64 {
+        e.storage()
+            .instance()
+            .get(&DataKey::RevocationGracePeriod)
+            .unwrap_or(DEFAULT_REVOCATION_GRACE_PERIOD)
+    }
+
+    /// Derive the audit lifecycle status for a delegation at `now`.
+    fn delegation_status(d: &Delegation, now: u64, grace: u64) -> DelegationStatus {
+        if d.revoked {
+            return DelegationStatus::Revoked;
+        }
+        if now < d.expires_at {
+            return DelegationStatus::Active;
+        }
+        if grace > 0 {
+            let grace_end = d.expires_at.saturating_add(grace);
+            if now <= grace_end {
+                return DelegationStatus::InGrace;
+            }
+        }
+        DelegationStatus::Expired
+    }
+
+    /// Enforce post-expiry revocation bounds when a grace window is configured.
+    fn require_revocation_allowed(e: &Env, d: &Delegation, now: u64) {
+        if now < d.expires_at {
+            return;
+        }
+        let grace = Self::revocation_grace_period(e);
+        if grace == 0 {
+            return;
+        }
+        let grace_end = d.expires_at.saturating_add(grace);
+        if now > grace_end {
+            panic_with_error!(e, ContractError::RevocationGraceExpired);
+        }
+    }
+
+    /// Assert that `delegation` is currently active (not revoked, not expired).
+    ///
+    /// # Threat being mitigated
+    ///
+    /// Without this guard a caller could present a delegation that has already
+    /// expired or been explicitly revoked and still have it accepted as valid
+    /// authority. An attacker who obtains a leaked delegation record could:
+    ///
+    /// 1. Use an expired delegation long after the owner intended it to stop
+    ///    being valid.
+    /// 2. Continue using a delegation after the owner revoked it (e.g. after a
+    ///    key compromise).
+    ///
+    /// By calling `verify_delegation_active` at every authorisation point,
+    /// enforcement is centralised in a single place rather than scattered across
+    /// callers, reducing the risk of a missed check.
+    ///
+    /// # Errors
+    /// * [`ContractError::DelegationInactive`] if `delegation.revoked == true`
+    ///   **or** if `delegation.expires_at <= now`.
+    ///
+    /// The caller receives a single typed error regardless of whether the
+    /// delegation is expired or revoked so that error-handling paths remain
+    /// simple while still surfacing a wire-stable code for monitoring.
+    fn verify_delegation_active(e: &Env, delegation: &Delegation) {
+        let now = e.ledger().timestamp();
+        if delegation.revoked || delegation.expires_at <= now {
+            panic_with_error!(e, ContractError::DelegationInactive);
+        }
     }
 }
 
@@ -718,6 +1115,9 @@ impl CredenceDelegation {
 // mod test_verifier;
 #[cfg(test)]
 mod test_pausable;
+
+#[cfg(test)]
+mod test_pause_snapshots;
 
 // #[cfg(test)]
 // mod test_pause_signer_invariant;
@@ -737,3 +1137,12 @@ mod test_pause_proposal_view;
 
 #[cfg(test)]
 mod test_expiry_boundary;
+
+#[cfg(test)]
+mod test_verifier_dispatch;
+
+#[cfg(test)]
+mod test_auth;
+
+#[cfg(test)]
+mod test_payload_staleness;

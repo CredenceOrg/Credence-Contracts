@@ -1,10 +1,21 @@
 # Known Simplifications
 
-This document consolidates all known simplifications, stubs, and intentional limitations in the Credence Contracts reference implementation. It is the single source of truth for anything that is deliberately incomplete or deferred.
+## Current Limitations
 
-See also: [fund-flow.md](fund-flow.md) for a complete token custody trace and discrepancy notes regarding treasury state.
+1. **No appeal mechanism** — Decisions are final once finalized
+2. **No timelocks** — Disputes resolve immediately upon quorum
+3. **Single dispute per identity per epoch** — Cannot have overlappingtes
+4. **No appeal bond** — Appeals are free (not yet implemented)
+5. **Manual dispute initiation** — No automated trigger
+6. **No graceful shutdown** — Cannot pause arbitration
+7. **No fee split** — All slashed XLM goes to protocol
+8. **No arbitrator rotation** — Same arbitrators in all disputes
 
-Each entry describes what is simplified, why, and what a production implementation would do instead.
+## Resolved
+
+### 4. Slashed Funds Are Now Transferred to Treasury
+
+Slashed funds are now transferred to the configured slash treasury on every `slash()` call via `token_integration::transfer_from_contract`. Slashing reverts with `ContractError::TreasuryNotConfigured` if no treasury has been set via `set_slash_treasury(admin, treasury)`.
 
 ---
 
@@ -30,56 +41,6 @@ Each entry describes what is simplified, why, and what a production implementati
 
 **Production path:** A multi-bond contract with a `Map<Address, IdentityBond>` storage layout would allow a single contract to serve many identities. The registry would still be useful for discovery but would not be strictly required for storage. See [registry.md](registry.md).
 
----
-
-## 3. Treasury is a Pure Accounting System (No Token Custody)
-
-**Where:** `contracts/credence_treasury/src/`
-
-**What:** The treasury contract tracks fee balances and withdrawal records internally but does not hold tokens directly. `receive_fee()` accepts fee reports from bond contracts without an actual token transfer. `execute_withdrawal()` updates internal balance tracking without moving tokens.
-
-**Impact:** Fee accounting is correct and auditable on-chain, but the treasury cannot actually disburse funds without an additional integration layer that connects the accounting records to a real token transfer.
-
-**Production path:** The treasury should be extended to hold a token balance and execute real `transfer()` calls on `execute_withdrawal()`. The bond contract's fee collection path would then call `transfer` to the treasury address rather than just reporting. See [treasury.md](treasury.md).
-
----
-
-## 4. Admin Role is Non-Transferable After Initialization (credence_bond)
-
-**Where:** `contracts/credence_bond/src/lib.rs`, `contracts/credence_bond/src/access_control.rs`
-
-**What:** In the bond contract, the admin address is set once at initialization and cannot be changed. There is no `transfer_admin` function on the bond contract itself (unlike `credence_registry`, which does support admin transfer).
-
-**Impact:** If the admin key is lost or compromised, the contract cannot be re-administered without a contract upgrade or migration.
-
-**Production path:** Add an `transfer_admin(current_admin, new_admin)` function with dual-auth (both addresses must sign) to allow safe key rotation. The `admin` contract (`contracts/admin/`) provides a more complete role management model that can be adopted. See [admin-roles.md](admin-roles.md).
-
----
-
-## 5. Slashed Funds Are Not Transferred to Treasury
-
-**Where:** `contracts/credence_bond/src/slashing.rs`
-
-**What:** When a bond is slashed, `slashed_amount` is incremented and the withdrawable balance is reduced, but no tokens are actually moved. The slashed value sits locked in the contract with no mechanism to transfer it out.
-
-**Impact:** Slashing correctly prevents the identity from withdrawing the slashed portion, but the protocol does not capture those funds. In a production system, slashed tokens would be transferred to the treasury or burned.
-
-**Production path:** After updating `slashed_amount`, call `transfer(treasury, slash_amount)` to move the slashed tokens to the treasury address. This requires the treasury to be configured and the token integration to be live. See [slashing.md](slashing.md) and [treasury.md](treasury.md).
-
----
-
-## 6. Early-Exit Penalty Transfer to Treasury is Conditional
-
-**Where:** `contracts/credence_bond/src/early_exit_penalty.rs`
-
-**What:** The early-exit penalty is calculated correctly and deducted from the withdrawal amount, but the penalty portion is only transferred to the treasury if a treasury address is configured. If no treasury is set, the penalty is silently dropped (the identity receives `amount - penalty` and the penalty is not sent anywhere).
-
-**Impact:** In a test or unconfigured environment, penalty funds are effectively burned. The accounting is correct from the identity's perspective but the protocol does not capture the penalty revenue.
-
-**Production path:** Require a treasury address to be set before `withdraw_early` is callable, or revert if no treasury is configured. See [early-exit.md](early-exit.md).
-
----
-
 ## 7. get_all_identities() Has No Pagination
 
 **Where:** `contracts/credence_registry/src/lib.rs`
@@ -89,20 +50,6 @@ Each entry describes what is simplified, why, and what a production implementati
 **Impact:** As the registry grows, this call will consume increasing amounts of ledger read budget and may eventually exceed Soroban's per-transaction resource limits.
 
 **Production path:** Add a `get_identities_page(offset: u32, limit: u32)` function and deprecate the unbounded variant. Off-chain indexers should use event-based discovery (`identity_registered` events) rather than polling `get_all_identities()`. See [registry.md](registry.md).
-
----
-
-## 8. Expired Delegations Are Not Auto-Cleaned
-
-**Where:** `contracts/credence_delegation/src/lib.rs`
-
-**What:** When `delegate()` or `execute_delegated_delegate()` is called, `expires_at` must be a future timestamp and no later than `now + MAX_DELEGATION_DURATION`. However, expired delegations are not automatically cleaned up — they remain in storage until TTL archival or an explicit future cleanup path. `is_valid_delegate()` correctly returns `false` for expired delegations, but the storage entry can persist.
-
-**Impact:** Expired delegations cannot grant authority, but storage can still grow as expired records accumulate. There is no explicit on-chain garbage collection.
-
-**Production path:** Add a `cleanup_expired(owner, delegate, delegation_type)` function that anyone can call to remove expired entries and reclaim storage rent. Alternatively, use Soroban's TTL-based storage expiry for delegation entries. See [delegation.md](delegation.md).
-
----
 
 ## 9. Arbitration Voting Weights Are Not Stake-Backed
 
@@ -116,8 +63,6 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-
-
 ## 11. Multisig Proposals Have No Expiry
 
 **Where:** `contracts/credence_multisig/src/multisig.rs`
@@ -130,16 +75,6 @@ Each entry describes what is simplified, why, and what a production implementati
 
 ---
 
-## 12. No Cross-Contract Calls Between Bond and Registry
-
-**Where:** `contracts/credence_bond/src/`, `contracts/credence_registry/src/`
-
-**What:** The bond contract and registry contract are independent. The bond contract does not call the registry to register itself on creation, and the registry does not validate that a registered bond contract address is a genuine deployed bond contract.
-
-**Impact:** Registration is a manual admin step. There is no automatic or trustless binding between a deployed bond contract and its registry entry. A malicious admin could register an arbitrary address as a bond contract.
-
-**Production path:** The bond contract should call `registry.register(identity, self)` during `initialize()`, or the registry should verify the bond contract's code hash before accepting registration. See [registry.md](registry.md).
-
 ---
 
 ## Summary Table
@@ -149,11 +84,7 @@ Each entry describes what is simplified, why, and what a production implementati
 | 1 | Token transfer stubbed in tests | credence_bond | Configure live USDC via `set_usdc_token` |
 | 2 | Single-bond-per-contract-instance | credence_bond | Multi-bond map storage |
 | 3 | Treasury is pure accounting, no token custody | credence_treasury | Add real token transfers on withdrawal |
-| 4 | Admin non-transferable in bond contract | credence_bond | Add `transfer_admin` with dual-auth |
-| 5 | Slashed funds not transferred to treasury | credence_bond | Call `transfer(treasury, slash_amount)` post-slash |
 | 6 | Early-exit penalty dropped if no treasury | credence_bond | Require treasury before `withdraw_early` |
 | 7 | `get_all_identities()` unbounded | credence_registry | Add pagination; use event-based indexing |
-| 8 | Expired delegations not cleaned up | credence_delegation | TTL storage or explicit cleanup function |
 | 9 | Arbitrator weights not stake-backed | credence_arbitration | Derive weight from bond balance |
 | 11 | Multisig proposals have no expiry | credence_multisig | Add `expires_at` to proposals |
-| 12 | No cross-contract bond↔registry binding | credence_bond + registry | Auto-register on bond init or verify code hash |

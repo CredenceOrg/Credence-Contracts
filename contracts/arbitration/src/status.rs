@@ -6,8 +6,13 @@ use soroban_sdk::contracterror;
 ///   Open      → Voting    (voting period begins — implicit at creation)
 ///   Voting    → Resolving (voting period ends, resolve_dispute called)
 ///   Voting    → Cancelled (cancel_dispute called by creator or admin)
-///   Resolving → Resolved  (outcome tallied and stored)
+///   Resolving → Resolved  (outcome tallied and stored, outcome != 0)
+///   Resolving → Tied      (votes tallied with tie, outcome = 0 is reserved)
 ///   Open      → Cancelled (cancel before voting starts)
+///
+/// Tied state indicates the voting outcome was ambiguous (two or more outcomes
+/// tied for the highest weight). This is distinct from a definite ruling and must
+/// be handled separately by consumers, as outcome = 0 is reserved as invalid.
 ///
 /// All other transitions are rejected with InvalidTransition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,6 +23,9 @@ pub enum DisputeStatus {
     Resolving = 2,
     Resolved = 3,
     Cancelled = 4,
+    /// Vote resulted in a tie or no clear winner.
+    /// outcome field will be 0 in this state.
+    Tied = 5,
 }
 
 #[contracterror]
@@ -35,6 +43,10 @@ pub enum ArbitrationError {
     InvalidOutcome = 10,
     WeightNotPositive = 11,
     NotAuthorized = 12,
+    ReasonTooLong = 14,
+    QuorumNotMet = 13,
+    /// The actual outcome does not match the promised outcome.
+    PromiseNotKept = 15,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -46,10 +58,23 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
             | (DisputeStatus::Voting, DisputeStatus::Resolving)
             | (DisputeStatus::Voting, DisputeStatus::Cancelled)
             | (DisputeStatus::Resolving, DisputeStatus::Resolved)
+            | (DisputeStatus::Resolving, DisputeStatus::Tied)
     );
     if valid {
         Ok(())
     } else {
         Err(ArbitrationError::InvalidTransition)
+    }
+}
+
+/// Assert that a promised outcome matches the actual outcome.
+///
+/// Returns `Ok(())` when the outcomes match (promise kept),
+/// or `Err(ArbitrationError::PromiseNotKept)` when they differ (promise broken).
+pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), ArbitrationError> {
+    if promised == actual {
+        Ok(())
+    } else {
+        Err(ArbitrationError::PromiseNotKept)
     }
 }

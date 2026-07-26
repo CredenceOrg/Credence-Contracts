@@ -24,74 +24,152 @@ mod zero_address_tests {
         (contract_address, super_admin)
     }
 
+    /// The all-zero Ed25519 public key in strkey format.
+    fn zero_address(env: &Env) -> Address {
+        Address::from_string(&String::from_str(
+            env,
+            "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+        ))
+    }
+
     #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
     fn test_add_admin_rejects_zero_address() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
-        let zero_address = Address::from_string(&String::from_str(&env, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
+        let zero = zero_address(&env);
 
         env.mock_all_auths();
-        
         env.as_contract(&contract_address, || {
-            let result = std::panic::catch_unwind(|| {
-                AdminContract::add_admin(
-                    env.clone(),
-                    super_admin.clone(),
-                    zero_address.clone(),
-                    AdminRole::Admin,
-                );
-            });
-            
-            assert!(result.is_err());
-            let panic_msg = result.unwrap_err().downcast::<String>().unwrap();
-            assert!(panic_msg.contains("ZeroAddress"));
+            AdminContract::add_admin(env.clone(), super_admin.clone(), zero, AdminRole::Admin);
         });
     }
 
     #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
     fn test_transfer_ownership_rejects_zero_address() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
-        let zero_address = Address::from_string(&String::from_str(&env, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
+        let zero = zero_address(&env);
 
         env.mock_all_auths();
-        
         env.as_contract(&contract_address, || {
-            let result = std::panic::catch_unwind(|| {
-                AdminContract::transfer_ownership(
-                    env.clone(),
-                    super_admin.clone(),
-                    zero_address.clone(),
-                );
-            });
-            
-            assert!(result.is_err());
-            let panic_msg = result.unwrap_err().downcast::<String>().unwrap();
-            assert!(panic_msg.contains("ZeroAddress"));
+            AdminContract::transfer_ownership(env.clone(), super_admin.clone(), zero);
         });
     }
 
     #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
+    fn test_update_admin_role_rejects_zero_address() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+        let zero = zero_address(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::update_admin_role(
+                env.clone(),
+                super_admin.clone(),
+                zero,
+                AdminRole::Admin,
+            );
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
+    fn test_reactivate_admin_rejects_zero_address() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+        let zero = zero_address(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::reactivate_admin(env.clone(), super_admin.clone(), zero);
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
+    fn test_deactivate_admin_rejects_zero_address() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+        let zero = zero_address(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::deactivate_admin(env.clone(), super_admin.clone(), zero);
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
+    fn test_remove_admin_rejects_zero_address() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+        let zero = zero_address(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::remove_admin(env.clone(), super_admin.clone(), zero);
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
     fn test_set_pause_signer_rejects_zero_address() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
-        let zero_address = Address::from_string(&String::from_str(&env, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"));
+        let zero = zero_address(&env);
 
         env.mock_all_auths();
-        
         env.as_contract(&contract_address, || {
-            let result = std::panic::catch_unwind(|| {
-                AdminContract::set_pause_signer(
-                    env.clone(),
-                    super_admin.clone(),
-                    zero_address.clone(),
-                    true,
-                );
-            });
-            
-            assert!(result.is_err());
-            let panic_msg = result.unwrap_err().downcast::<String>().unwrap();
-            assert!(panic_msg.contains("ZeroAddress"));
+            AdminContract::set_pause_signer(env.clone(), super_admin.clone(), zero, true);
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
+    fn test_add_admin_rejects_contract_self_address() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                contract_address.clone(),
+                AdminRole::Admin,
+            );
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #110)")]
+    fn test_transfer_ownership_rejects_contract_self_address() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+
+        // Add another SuperAdmin so the check in transfer_ownership passes
+        let other = Address::generate(&env);
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                other.clone(),
+                AdminRole::SuperAdmin,
+            );
+        });
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::transfer_ownership(
+                env.clone(),
+                super_admin.clone(),
+                contract_address.clone(),
+            );
         });
     }
 
@@ -104,9 +182,7 @@ mod zero_address_tests {
         let pause_signer = Address::generate(&env);
 
         env.mock_all_auths();
-        
         env.as_contract(&contract_address, || {
-            // These should all succeed
             let admin_info = AdminContract::add_admin(
                 env.clone(),
                 super_admin.clone(),
@@ -115,26 +191,40 @@ mod zero_address_tests {
             );
             assert_eq!(admin_info.address, new_admin);
             assert_eq!(admin_info.role, AdminRole::Admin);
+        });
 
-            // Add the new admin as SuperAdmin for ownership transfer
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
             AdminContract::add_admin(
                 env.clone(),
                 super_admin.clone(),
                 new_owner.clone(),
                 AdminRole::SuperAdmin,
             );
+        });
 
-            AdminContract::transfer_ownership(
-                env.clone(),
-                super_admin.clone(),
-                new_owner.clone(),
-            );
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_owner.clone());
+        });
 
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
             AdminContract::set_pause_signer(
                 env.clone(),
                 new_owner.clone(),
                 pause_signer.clone(),
                 true,
+            );
+        });
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::update_admin_role(
+                env.clone(),
+                super_admin.clone(),
+                new_admin.clone(),
+                AdminRole::Operator,
             );
         });
     }

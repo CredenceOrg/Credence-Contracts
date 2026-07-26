@@ -20,6 +20,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
@@ -491,9 +492,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "hex",
  "serde",
  "serde_json",
  "soroban-client",
+ "stellar-baselib",
+ "tokio",
 ]
 
 [[package]]
@@ -519,13 +523,13 @@ dependencies = [
 name = "credence_delegation"
 version = "0.1.0"
 dependencies = [
- "credence_bond",
  "credence_errors",
  "insta",
  "proptest",
  "serde",
  "serde_json",
  "soroban-sdk",
+ "soroban-spec",
 ]
 
 [[package]]
@@ -538,9 +542,24 @@ dependencies = [
 [[package]]
 name = "credence_math"
 version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "ethnum",
+ "proptest",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "credence_multisig"
+version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "proptest",
+ "soroban-sdk",
+]
+
+[[package]]
+name = "credence_registry"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
@@ -876,9 +895,9 @@ checksum = "2bfcf67fea2815c2fc3b90873fae90957be12ff417335dfadc7f52927feb03b2"
 
 [[package]]
 name = "ethnum"
-version = "1.5.2"
+version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
+checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 
 [[package]]
 name = "fastrand"
@@ -2792,6 +2811,14 @@ dependencies = [
 
 [[package]]
 name = "templates"
+version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "soroban-sdk",
+]
+
+[[package]]
+name = "testutils"
 version = "0.1.0"
 dependencies = [
  "soroban-sdk",

@@ -81,15 +81,33 @@ Calculates the winner and closes the case.
 | --- | --- | --- |
 | `get_dispute` | `Dispute` | Returns the full details and current status of a dispute. |
 | `get_tally` | `i128` | Returns the current accumulated weight for a specific outcome. |
+| `get_arbitrator_weight` | `Result<u32, Error>` | Returns the voting weight of an arbitrator. Returns `Error::NotArbitrator` if unregistered. |
+| `has_voted` | `bool` | Returns `true` if the arbitrator has already voted on the specified dispute, `false` otherwise. |
+| `get_arbitrators_page` | `(Vec<Address>, Option<u32>)` | Returns a page of registered arbitrator addresses starting at `cursor` up to `limit`. |
+
+### 📖 Pagination Semantics (`get_arbitrators_page`)
+
+- **Cursor-based**: Supply a 0-based index `cursor` to begin fetching results from.
+- **Deterministic Ordering**: The order of returned arbitrator addresses matches their registration order.
+- **Compaction**: When an arbitrator is removed, the registry is compacted without leaving gaps, and subsequent registrations append to the end.
+- **Clamping**: The `limit` parameter is clamped to a hard cap of `200` to prevent gas limit exhaustion on-chain. If `limit` is set to `0`, a default limit of `50` is applied.
+- **Returned Value**:
+  - The first element is a `Vec<Address>` representing the page of arbitrators.
+  - The second element is `Some(next_cursor)` containing the index of the next item to fetch if more results remain, or `None` if the pagination is complete.
 
 ---
 
 ## 📋 Summary of Error States
 
-| Panic Message | Cause |
+| Panic / Error Variant | Cause |
 | --- | --- |
-| `already initialized` | Attempted to call `initialize` more than once. |
-| `weight must be positive` | Attempted to register an arbitrator with a weight $\le 0$. |
-| `voting period is inactive` | Attempted to vote before the start or after the end time. |
-| `arbitrator already voted` | Attempted to cast multiple votes on the same dispute. |
-| `voting period has not ended` | Attempted to call `resolve_dispute` before the deadline. |
+| `AlreadyInitialized` | Attempted to call `initialize` more than once. |
+| `WeightNotPositive` | Attempted to register an arbitrator with a weight $\le 0$. |
+| `VotingInactive` | Attempted to vote before the start or after the end time, or dispute not in Voting state. |
+| `AlreadyVoted` | Attempted to cast multiple votes on the same dispute. |
+| `VotingNotEnded` | Attempted to call `resolve_dispute` before the deadline. |
+| `NotArbitrator` | The specified address is not a registered arbitrator (returned by `get_arbitrator_weight` or `vote`). |
+| `DisputeNotFound` | The specified dispute ID does not exist in storage. |
+| `InvalidTransition` | Attempted an invalid dispute status transition. |
+| `NotAuthorized` | Caller is not authorized (e.g. non-creator/non-admin trying to cancel). |
+

@@ -427,13 +427,30 @@ contract.withdraw(300);
 4. **Timelocks**: Delay slash execution for governance safety
 5. **Signaling**: Allow other addresses to propose slashing for governance review
 
+## Treasury Transfer
+
+After `slash_bond()` updates `slashed_amount` and persists state, it transfers `actual_slash_amount` tokens from the bond contract to the configured slash treasury:
+
+```rust
+// In slashing.rs — runs after state is persisted
+if actual_slash_amount > 0 {
+    transfer_slashed_funds_to_treasury(e, actual_slash_amount);
+}
+```
+
+The treasury address is stored at `DataKey::SlashTreasury` and configured by:
+
+```
+set_slash_treasury(admin: Address, treasury: Address)
+get_slash_treasury() -> Option<Address>
+```
+
+**If no treasury is configured, `slash()` reverts with `ContractError::TreasuryNotConfigured` (code 223).** This guarantees slashed capital is never silently dropped.
+
+The transfer uses `token_integration::transfer_from_contract`, which includes the fee-on-transfer rejection check already applied to all other bond-side transfers.
+
 ## References
 
 - [Security Analysis](../SECURITY_ANALYSIS.md)
 - [Contract Tests](../contracts/credence_bond/src/test_slashing.rs)
 - [Slashing Module](../contracts/credence_bond/src/slashing.rs)
-
-
-## Known Simplifications
-
-Slashed funds are not transferred to the treasury in this reference implementation. See [known-simplifications.md](known-simplifications.md#5-slashed-funds-are-not-transferred-to-treasury) for details and the production path.

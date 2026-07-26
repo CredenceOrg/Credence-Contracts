@@ -12,7 +12,7 @@ fn setup_contract(e: &Env) -> (Address, CredenceBondClient<'_>) {
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = Address::generate(e);
     let identity = Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     client.create_bond(&identity, &1_000_i128, &3_600_u64, &false, &0_u64);
     (contract_id, client)
 }

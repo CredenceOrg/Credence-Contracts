@@ -17,7 +17,8 @@
 //! Canonical starting point for new Soroban contracts in this workspace.
 //!
 //! ## Patterns demonstrated
-//! - `#![no_std]` + `soroban_sdk` imports
+//! - `#![no_std]
+#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
 //! - `DataKey` enum for typed storage
 //! - `#[contracttype]` structs for on-chain data
 //! - Admin-gated initialisation (panic-on-reinit guard)
@@ -28,8 +29,11 @@
 //! Copy this crate, rename the package and struct, then extend.
 
 #![no_std]
+#![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol};
+use credence_errors::ContractError;
+use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -55,6 +59,8 @@ pub struct Record {
     pub value: i128,
     /// Ledger timestamp when the record was last updated.
     pub updated_at: u64,
+    /// Ledger timestamp when the record expires (0 = never expires).
+    pub expires_at: u64,
 }
 
 // ---------------------------------------------------------------------------
@@ -72,9 +78,10 @@ impl TemplateContract {
 
     /// Initialise the contract. Panics if already initialised.
     pub fn initialize(e: Env, admin: Address) {
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic!("already initialized");
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.events().publish((Symbol::new(&e, "initialized"),), admin);
     }
@@ -84,7 +91,7 @@ impl TemplateContract {
     // -----------------------------------------------------------------------
 
     /// Store or overwrite a record for `owner`. Only the admin may call this.
-    pub fn set_record(e: Env, owner: Address, value: i128) {
+    pub fn set_record(e: Env, owner: Address, value: i128, expires_at: u64) {
         let admin: Address = e
             .storage()
             .instance()
@@ -95,6 +102,7 @@ impl TemplateContract {
         let record = Record {
             value,
             updated_at: e.ledger().timestamp(),
+            expires_at,
         };
         e.storage()
             .instance()
@@ -127,15 +135,48 @@ impl TemplateContract {
 
     /// Return the record for `owner`, or panic if none exists.
     pub fn get_record(e: Env, owner: Address) -> Record {
-        e.storage()
+        let record: Record = e
+            .storage()
             .instance()
-            .get(&DataKey::Record(owner))
-            .expect("record not found")
+            .get(&DataKey::Record(owner.clone()))
+            .expect("record not found");
+
+        // Reference expiry pattern: reject and purge on read if expired
+        if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+            e.storage().instance().remove(&DataKey::Record(owner));
+            panic_with_error!(&e, ContractError::SignatureExpired);
+        }
+
+        record
     }
 
     /// Return `true` if a record exists for `owner`.
     pub fn has_record(e: Env, owner: Address) -> bool {
-        e.storage().instance().has(&DataKey::Record(owner))
+        if let Some(record) = e
+            .storage()
+            .instance()
+            .get::<_, Record>(&DataKey::Record(owner.clone()))
+        {
+            if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+                e.storage().instance().remove(&DataKey::Record(owner));
+                return false;
+            }
+            return true;
+        }
+        false
+    }
+
+    /// Return `true` if a record exists for `owner` and is currently expired.
+    /// Demonstrates the reference expiry pattern.
+    pub fn is_expired(e: Env, owner: Address) -> bool {
+        if let Some(record) = e
+            .storage()
+            .instance()
+            .get::<_, Record>(&DataKey::Record(owner))
+        {
+            return record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at;
+        }
+        false
     }
 
     /// Return the current admin address.

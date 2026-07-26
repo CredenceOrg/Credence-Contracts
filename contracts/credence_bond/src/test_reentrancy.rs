@@ -1,4 +1,4 @@
-//! Security tests for reentrancy protection in the Credence Bond contract.
+﻿//! Security tests for reentrancy protection in the Credence Bond contract.
 //!
 //! These tests verify that:
 //! - Reentrancy in `withdraw_bond_full` is blocked
@@ -80,7 +80,7 @@ mod slash_attacker {
                 .get(&Symbol::new(&e, "admin"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.slash_bond(&admin, &100_i128);
+            client.slash_bond(&admin, &100_i128, &soroban_sdk::Bytes::new(&e));
         }
 
         pub fn setup(e: Env, target: Address, admin: Address) {
@@ -115,7 +115,7 @@ mod fee_attacker {
                 .get(&Symbol::new(&e, "admin"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.collect_fees(&admin);
+            client.collect_fees(&admin, &soroban_sdk::Bytes::new(&e));
         }
 
         pub fn setup(e: Env, target: Address, admin: Address) {
@@ -224,7 +224,7 @@ mod early_withdraw_attacker {
                 .get(&Symbol::new(&e, "target"))
                 .unwrap();
             let client = CredenceBondClient::new(&e, &bond_addr);
-            client.withdraw_early(&amount);
+            client.withdraw_early(&identity, &amount);
         }
 
         pub fn setup(e: Env, target: Address) {
@@ -650,7 +650,7 @@ fn test_withdraw_early_reentrancy_blocked() {
     attacker_client.setup(&bond_id);
     client.set_callback(&admin, &attacker_id);
 
-    client.withdraw_early(&500_i128);
+    client.withdraw_early(&identity, &500_i128);
 }
 
 // ===========================================================================

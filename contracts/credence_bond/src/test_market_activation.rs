@@ -36,7 +36,7 @@ fn test_activation_fails_without_token_config() {
     let client = crate::CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
     let identity = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     // No token set → should panic
     client.create_bond(&identity, &VALID_AMOUNT, &VALID_DURATION);
 }

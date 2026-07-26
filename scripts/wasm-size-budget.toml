@@ -1,0 +1,17 @@
+# Per-contract WASM size budgets enforced by CI (scripts/check_wasm_size.sh).
+# Values are in KiB. Soroban's on-chain limit is ~64 KiB per contract.
+#
+# To adjust a single contract's ceiling, change its entry under [contracts] and
+# update docs/wasm-size-budget.md in the same PR.
+
+default_kb = 64
+
+[contracts]
+admin = 64
+credence_arbitration = 64
+credence_bond = 64
+credence_delegation = 64
+credence_multisig = 64
+credence_treasury = 64
+templates = 64
+timelock = 64
