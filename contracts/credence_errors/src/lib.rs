@@ -539,6 +539,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PromiseNotKept = 512,
 
+    /// Raised when an operator attempts to approve or execute a proposal
+    /// from a previous (stale) epoch.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    StaleOperatorEpoch = 513,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
