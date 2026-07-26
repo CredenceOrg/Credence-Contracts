@@ -84,7 +84,7 @@ pub const PROPOSAL_EPOCH_SIZE: u32 = 100;
 /// The helper is **pure**: identical inputs always produce identical output;
 /// it reads the ledger sequence from `env` but writes nothing to storage.
 fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
-    let epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
+    let epoch = e.ledger().sequence().saturating_sub(1) / PROPOSAL_EPOCH_SIZE;
     let action_u32 = action as u32;
 
     // Build an 8-byte preimage: 4 bytes action || 4 bytes epoch (big-endian).
