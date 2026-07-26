@@ -18,9 +18,10 @@
 //! * The first post-invalidation nonce `new_nonce` is accepted.
 
 use credence_delegation::{
-    CredenceDelegation, CredenceDelegationClient, DelegatedActionPayload, DelegationType, DomainTag,
+    domain::SIGNATURE_DOMAIN, CredenceDelegation, CredenceDelegationClient, DelegatedActionPayload,
+    DelegationType, DomainTag,
 };
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 use proptest::prelude::*;
 
@@ -58,6 +59,7 @@ fn make_delegate_payload(
         nonce,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(e, SIGNATURE_DOMAIN),
     }
 }
 

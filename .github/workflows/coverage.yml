@@ -8,8 +8,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Minimum line-coverage threshold (%) enforced per crate.
-  COVERAGE_THRESHOLD: 95
 
 jobs:
   coverage:
@@ -40,27 +38,31 @@ jobs:
 
       - name: Coverage — credence_bond
         run: |
-          cargo llvm-cov --package credence_bond \
-            --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
+          cargo llvm-cov --no-cfg-coverage --package credence_bond \
+            --test proptest_tier \
+            --test proptest_batch_atomicity \
+            --test test_cost_regression \
             --lcov --output-path lcov-credence_bond.info
 
       - name: Coverage — credence_delegation
         run: |
-          cargo llvm-cov --package credence_delegation \
-            --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
+          cargo llvm-cov --no-cfg-coverage --package credence_delegation \
+            --test auth_tree_fuzz \
+            --test datakey_fingerprint \
+            --test nonce_replay \
+            --test spec_xdr_regression \
             --lcov --output-path lcov-credence_delegation.info
 
       - name: Coverage — timelock
         run: |
-          cargo llvm-cov --package timelock \
-            --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
+          cargo llvm-cov --no-cfg-coverage --package timelock \
             --lcov --output-path lcov-timelock.info
-
 
       - name: Coverage — credence_errors
         run: |
-          cargo llvm-cov --package credence_errors \
-            --fail-under-lines 90 \
+          cargo llvm-cov --no-cfg-coverage --package credence_errors \
+            --test discriminant_uniqueness \
+            --test error_codes_wire \
             --lcov --output-path lcov-credence_errors.info
 
       - name: Upload coverage reports

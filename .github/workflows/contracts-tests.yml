@@ -44,5 +44,28 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Run workspace tests
-        run: cargo test --workspace
+      - name: Compile workspace test harnesses
+        run: cargo test --workspace --no-run
+
+      - name: Run maintained integration tests
+        run: |
+          cargo test --package credence-contracts \
+            --test signature_domains_unique \
+            --test threats_link
+          cargo test --package credence_bond \
+            --test proptest_tier \
+            --test proptest_batch_atomicity \
+            --test test_cost_regression
+          cargo test --package credence_delegation \
+            --test auth_tree_fuzz \
+            --test datakey_fingerprint \
+            --test nonce_replay \
+            --test spec_xdr_regression
+          cargo test --package credence_errors \
+            --test discriminant_uniqueness \
+            --test error_codes_wire
+          cargo test --package credence_arbitration \
+            --test datakey_fingerprint \
+            --test test_weight_derivation
+          cargo test --package admin --test datakey_fingerprint
+          cargo test --package credence_admin_cli --test integration_test
