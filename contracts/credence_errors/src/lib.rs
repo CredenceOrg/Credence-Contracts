@@ -203,6 +203,12 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     SlashExceedsBond = 203,
+
+    /// Snapshot generation mismatch between state and expectation.
+    /// Triggered by: batch operations across epochs.
+    /// Wire-stable: do not renumber this error code.
+    SnapshotGenerationMismatch = 235,
+
     /// Storage cap for attestations or slash history reached.
     /// Replaces: panic!("storage cap reached")
     StorageCapReached = 224,
@@ -865,6 +871,7 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
+            ContractError::SnapshotGenerationMismatch => "Pagination cursor from a different snapshot generation",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -1045,6 +1052,7 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
