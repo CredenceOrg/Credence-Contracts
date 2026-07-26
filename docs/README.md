@@ -116,6 +116,7 @@ This directory contains all design docs, API references, and operational guides 
 |---|---|---|
 | [datakey-fingerprint.md](datakey-fingerprint.md) | Contributor | Storage key fingerprinting for upgrades |
 | [decimal-handling.md](decimal-handling.md) | Contributor | Fixed-point arithmetic patterns |
+| [PERCENT_SPLIT_MODEL.md](PERCENT_SPLIT_MODEL.md) | Integrator | Multi-recipient percent splits in bps; must sum to 10_000 |
 | [error-codes-wire.md](error-codes-wire.md) | Integrator | On-chain error code → off-chain mapping |
 | [errors.md](errors.md) | Contributor | Error enum definitions |
 | [proposal-id-derivation.md](proposal-id-derivation.md) | Contributor | Deterministic proposal ID scheme |
