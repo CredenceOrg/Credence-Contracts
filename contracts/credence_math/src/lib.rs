@@ -433,11 +433,13 @@ mod tests {
     }
 
     #[test]
-    
     #[test]
     fn test_checked_add_or_error() {
         assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
-        assert_eq!(super::checked_add_or_error(i128::MAX, 1), Err(crate::ContractError::Overflow));
+        assert_eq!(
+            super::checked_add_or_error(i128::MAX, 1),
+            Err(crate::ContractError::Overflow)
+        );
     }
 
     #[test]

@@ -26,8 +26,10 @@ mod tests {
         let e = Env::default();
         let arbitrator = TestAddress::generate(&e);
         let weight = 100u32;
-        e.events()
-            .publish((Symbol::new(&e, "arbitrator_registered"), arbitrator), weight);
+        e.events().publish(
+            (Symbol::new(&e, "arbitrator_registered"), arbitrator),
+            weight,
+        );
         let events = e.events().get_all();
         // Topics: arbitrator_registered, Address (2)
         // Data: u32 (1)
@@ -53,8 +55,10 @@ mod tests {
         let dispute_id = 1u64;
         let from = DisputeStatus::Open as u32;
         let to = DisputeStatus::Voting as u32;
-        e.events()
-            .publish((Symbol::new(&e, "status_transition"), dispute_id), (from, to));
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (from, to),
+        );
         let events = e.events().get_all();
         // Topics: status_transition, u64 (2)
         // Data: u32, u32 (2)
@@ -68,8 +72,10 @@ mod tests {
         let caller = TestAddress::generate(&e);
         let role = 1u32;
         let reason = Symbol::new(&e, "test");
-        e.events()
-            .publish((Symbol::new(&e, "dispute_cancelled"), dispute_id), (caller, role, reason));
+        e.events().publish(
+            (Symbol::new(&e, "dispute_cancelled"), dispute_id),
+            (caller, role, reason),
+        );
         let events = e.events().get_all();
         // Topics: dispute_cancelled, u64 (2)
         // Data: Address, u32, Symbol (3)
@@ -83,8 +89,10 @@ mod tests {
         let voter = TestAddress::generate(&e);
         let outcome = 1u32;
         let weight = 100u32;
-        e.events()
-            .publish((Symbol::new(&e, "vote_cast"), dispute_id, voter), (outcome, weight));
+        e.events().publish(
+            (Symbol::new(&e, "vote_cast"), dispute_id, voter),
+            (outcome, weight),
+        );
         let events = e.events().get_all();
         // Topics: vote_cast, u64, Address (3)
         // Data: u32, u32 (2)
@@ -113,7 +121,8 @@ mod tests {
     fn dispute_tied_schema_matches() {
         let e = Env::default();
         let dispute_id = 1u64;
-        e.events().publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
+        e.events()
+            .publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
         let events = e.events().get_all();
         // Topics: dispute_tied, u64 (2)
         // Data: () (0)
@@ -125,8 +134,10 @@ mod tests {
         let e = Env::default();
         let dispute_id = 1u64;
         let winning_outcome = 1u32;
-        e.events()
-            .publish((Symbol::new(&e, "dispute_resolved"), dispute_id), winning_outcome);
+        e.events().publish(
+            (Symbol::new(&e, "dispute_resolved"), dispute_id),
+            winning_outcome,
+        );
         let events = e.events().get_all();
         // Topics: dispute_resolved, u64 (2)
         // Data: u32 (1)
@@ -138,8 +149,10 @@ mod tests {
         let e = Env::default();
         let min_total_weight = 200u32;
         let min_voters = 3u32;
-        e.events()
-            .publish((Symbol::new(&e, "quorum_set"),), (min_total_weight, min_voters));
+        e.events().publish(
+            (Symbol::new(&e, "quorum_set"),),
+            (min_total_weight, min_voters),
+        );
         let events = e.events().get_all();
         // Topics: quorum_set (1)
         // Data: u32, u32 (2)
