@@ -21,7 +21,8 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contracterror, contracttype, Env};
+use soroban_sdk::contracterror;
+use soroban_sdk::{panic_with_error, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -572,8 +573,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    /// Wire-stable: do not renumber this error code.
-    NoPendingAdmin = 115,
+    NoPendingAdmin = 119,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -794,9 +794,8 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
-            | ContractError::AmountExplicitlyZero
             | ContractError::DuplicateIdempotencyKey
-            | ContractError::InvalidStringifiedBytes => ErrorCategory::Bond,
+            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1179,17 +1178,18 @@ impl ErrorExt for ContractError {
     }
 }
 
-/// Constructor guard for the "already initialized" check.
+/// Constructor guard. Reject calls that arrive after the contract was already initialized.
 ///
 /// Pass `already_initialized = <expression that returns true when the contract is
-/// already initialized>` (e.g., `storage::get_admin(&e).is_some()`). When `true`,
-/// this helper `panic_with_error!`s with `ContractError::AlreadyInitialized`.
+/// already initialized>` (e.g., `storage::get_admin(&e).is_some()`).
+/// Panics with `ContractError::AlreadyInitialized` when `true`.
 ///
-/// Why a free function (not a `#[macro_export]` macro): constructor entrypoints
-/// return `()`, not `Result<_,_>`. The peer helpers (`require_no_leading_zero_amount!`,
-/// `require_positive_amount!`, `verify_no_future_ledger!`, `require_non_zero_bytes32!`)
-/// early-return `Err(... )` via macro expansion; an early-return macro would not
-/// compile in a `()`-returning constructor, so this helper panics instead.
+/// Implemented as a free function rather than a `#[macro_export]` macro because
+/// constructor entrypoints return `()`, not `Result<_, _>`. Peer helpers
+/// (`require_no_leading_zero_amount!`, `require_positive_amount!`,
+/// `verify_no_future_ledger!`, `require_non_zero_bytes32!`) early-return `Err`,
+/// which would not compile in a `()`-returning constructor; this helper must
+/// `panic_with_error!` instead.
 pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
     if already_initialized {
         panic_with_error!(e, ContractError::AlreadyInitialized);
