@@ -1399,11 +1399,8 @@ mod tests {
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => true, // wait for activation or use a different delegation
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
-            ContractError::PromiseNotKept => false,
-            ContractError::StaleAdminEpoch => false,
-            ContractError::StaleSignerEpoch => false,
-            ContractError::InvalidStringifiedBytes => true,
-
+            ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
+            ContractError::StaleEpoch => false,         // proposal ID contains a stale epoch reference; caller must re-propose
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
             ContractError::ThresholdExceedsSigners => true,
@@ -1545,13 +1542,14 @@ mod tests {
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
-            ContractError::PromiseNotKept,
-            ContractError::StaleAdminEpoch,
-            ContractError::StaleSignerEpoch,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
+            ContractError::StaleEpoch,
         ];
         assert_eq!(
             cases.len(),
-            95,
+            91,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

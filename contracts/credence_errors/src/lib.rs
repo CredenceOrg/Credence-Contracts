@@ -580,17 +580,10 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PromiseNotKept = 512,
 
-    /// Raised when an admin-path caller attempts to approve or execute a pause
-    /// proposal whose ID was derived under a previous (stale) epoch bucket.
-    /// Contracts: admin
+    /// Governance epoch reference in the proposal ID is stale.
+    /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
-    StaleAdminEpoch = 514,
-
-    /// Raised when a multisig/signer-path caller attempts to approve or execute
-    /// a pause proposal whose ID was derived under a previous (stale) epoch.
-    /// Contracts: multisig
-    /// Wire-stable: do not renumber this error code.
-    StaleSignerEpoch = 515,
+    StaleEpoch = 513,
 
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
@@ -857,7 +850,8 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationNotExpired
             | ContractError::DelegationInactive
             | ContractError::PayloadTooOld
-            | ContractError::PromiseNotKept => ErrorCategory::Delegation,
+            | ContractError::PromiseNotKept
+            | ContractError::StaleEpoch => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -1017,8 +1011,9 @@ impl ErrorExt for ContractError {
                 "Signed payload ledger_number is older than MAX_PAYLOAD_AGE_LEDGERS ledgers"
             }
             ContractError::PromiseNotKept => {
-                "Off-chain promise hash does not match on-chain execution"
+                "off-chain promise hash does not match on-chain execution"
             }
+            ContractError::StaleEpoch => "governance epoch reference is stale",
             ContractError::AmountMustBePositive => "Amount must be strictly positive",
             ContractError::ThresholdExceedsSigners => {
                 "Threshold cannot exceed the current signer count"

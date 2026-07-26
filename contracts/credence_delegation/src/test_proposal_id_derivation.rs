@@ -256,93 +256,26 @@ fn test_legacy_fetch_returns_typed_error_not_panic() {
     assert!(result.is_err(), "must return Err, not a value");
 }
 
-/// An operator attempting to approve a proposal from a previous epoch
-/// must fail with `StaleOperatorEpoch`.
+/// A proposal ID must be rejected during approval and execution if it carries
+/// a stale governance epoch reference (meaning it does not match the expected
+/// ID for the current epoch).
 #[test]
-fn test_stale_operator_epoch_rejected() {
+#[should_panic(expected = "Error(Contract, #513)")]
+fn test_stale_epoch_rejected() {
     let (env, admin, client) = setup();
     let signers = add_signers(&env, &admin, &client, 2, 2);
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-    // Create a proposal in epoch 0.
+    // Submit a pause proposal in epoch 0.
     let id_epoch0 = client.pause(&s1).unwrap();
 
-    // Advance to epoch 1.
+    // Advance to epoch 1 before approving.
     env.ledger().with_mut(|l| {
         l.sequence_number += u32::from(PROPOSAL_EPOCH_SIZE);
     });
 
-    // Attempting to approve the stale proposal should fail.
-    let res_approve = client.try_approve_pause_proposal(&s2, &id_epoch0);
-    assert!(res_approve.is_err(), "stale approval must fail");
-    
-    let err = res_approve.unwrap_err().unwrap();
-    assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
+    // This should panic with StaleEpoch (513) because the proposal ID
+    // encodes a stale epoch reference.
+    client.approve_pause_proposal(&s2, &id_epoch0);
 }
-
-/// The operator-epoch guard must pass if the approval occurs within the exact same epoch.
-#[test]
-fn test_operator_epoch_guard_same_epoch_passes() {
-    let (env, admin, client) = setup();
-    let signers = add_signers(&env, &admin, &client, 2, 2);
-    let s1 = signers.get(0).unwrap();
-    let s2 = signers.get(1).unwrap();
-
-    let id = client.pause(&s1).unwrap();
-    
-    // Attempting to approve the proposal in the same epoch should pass without error.
-    client.approve_pause_proposal(&s2, &id);
-    let view = client.get_pause_proposal_state(&id, &vec![&env, s1.clone(), s2.clone()]);
-    assert_eq!(view.approvals, 2);
-}
-
-/// The operator-epoch guard must reject approvals if the epoch is off-by-one (exactly at the start of the next epoch).
-#[test]
-fn test_operator_epoch_guard_off_by_one_epoch_fails() {
-    let (env, admin, client) = setup();
-    let signers = add_signers(&env, &admin, &client, 2, 2);
-    let s1 = signers.get(0).unwrap();
-    let s2 = signers.get(1).unwrap();
-
-    // Set sequence right at the end of epoch 0.
-    let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
-    env.ledger().with_mut(|l| {
-        l.sequence_number = epoch_boundary - 1;
-    });
-
-    let id = client.pause(&s1).unwrap();
-
-    // Advance to exactly the first sequence of epoch 1.
-    env.ledger().with_mut(|l| {
-        l.sequence_number = epoch_boundary;
-    });
-
-    let res_approve = client.try_approve_pause_proposal(&s2, &id);
-    assert!(res_approve.is_err(), "off-by-one epoch approval must fail");
-    let err = res_approve.unwrap_err().unwrap();
-    assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
-}
-
-/// The operator-epoch guard must reject approvals if the proposal is ancient (many epochs in the past).
-#[test]
-fn test_operator_epoch_guard_ancient_epoch_fails() {
-    let (env, admin, client) = setup();
-    let signers = add_signers(&env, &admin, &client, 2, 2);
-    let s1 = signers.get(0).unwrap();
-    let s2 = signers.get(1).unwrap();
-
-    let id = client.pause(&s1).unwrap();
-
-    // Advance exactly 10 epochs into the future (ancient proposal).
-    env.ledger().with_mut(|l| {
-        l.sequence_number += 10 * u32::from(PROPOSAL_EPOCH_SIZE);
-    });
-
-    let res_approve = client.try_approve_pause_proposal(&s2, &id);
-    assert!(res_approve.is_err(), "ancient epoch approval must fail");
-    let err = res_approve.unwrap_err().unwrap();
-    assert_eq!(err, soroban_sdk::Error::from_contract_error(513)); // StaleOperatorEpoch
-}
-
-

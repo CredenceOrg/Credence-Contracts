@@ -349,12 +349,14 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
-    let pause_action = match action {
+    let action_enum = match action {
         1 => PauseAction::Pause,
         2 => PauseAction::Unpause,
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
     };
-    require_matching_operator_epoch(e, pause_action, proposal_id);
+    if proposal_id != derive_proposal_id(e, action_enum) {
+        panic_with_error!(e, ContractError::StaleEpoch);
+    }
 
     record_approval(e, proposal_id, signer);
 
@@ -371,12 +373,14 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
-    let pause_action = match action {
+    let action_enum = match action {
         1 => PauseAction::Pause,
         2 => PauseAction::Unpause,
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
     };
-    require_matching_operator_epoch(e, pause_action, proposal_id);
+    if proposal_id != derive_proposal_id(e, action_enum) {
+        panic_with_error!(e, ContractError::StaleEpoch);
+    }
 
     let threshold: u32 = e
         .storage()
