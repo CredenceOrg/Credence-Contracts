@@ -1,23 +1,93 @@
 #!/usr/bin/env bash
-# check_wasm_size.sh - verify each contract wasm file is under size limit (default 64KB)
+# check_wasm_size.sh - verify each contract wasm file is under its size budget.
+#
+# Budgets are read from scripts/wasm-size-budget.toml (per-contract limits with
+# a default_kb fallback). Pass a single positional argument to override all
+# limits for a one-off check, e.g. ./scripts/check_wasm_size.sh 60
 set -euo pipefail
-MAX_KB=${1:-64}
-MAX_BYTES=$((MAX_KB * 1024))
-echo "Checking wasm size limit: ${MAX_KB}KB (${MAX_BYTES} bytes)"
-# Find all wasm files in target directory for workspace contracts
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BUDGET_FILE="${WASM_BUDGET_FILE:-$SCRIPT_DIR/wasm-size-budget.toml}"
+WASM_DIR="$REPO_ROOT/target/wasm32-unknown-unknown/release"
+GLOBAL_OVERRIDE_KB="${1:-}"
+
+read_default_kb() {
+  if [[ -n "$GLOBAL_OVERRIDE_KB" ]]; then
+    echo "$GLOBAL_OVERRIDE_KB"
+    return
+  fi
+  if [[ -f "$BUDGET_FILE" ]]; then
+    local val
+    val=$(grep -E '^default_kb[[:space:]]*=' "$BUDGET_FILE" | head -1 | sed -E 's/.*=[[:space:]]*([0-9]+).*/\1/')
+    if [[ -n "$val" ]]; then
+      echo "$val"
+      return
+    fi
+  fi
+  echo "64"
+}
+
+get_contract_limit_kb() {
+  local contract="$1"
+  local default_kb="$2"
+
+  if [[ -n "$GLOBAL_OVERRIDE_KB" ]]; then
+    echo "$GLOBAL_OVERRIDE_KB"
+    return
+  fi
+
+  if [[ ! -f "$BUDGET_FILE" ]]; then
+    echo "$default_kb"
+    return
+  fi
+
+  local limit
+  limit=$(awk -v name="$contract" '
+    /^\[contracts\]/ { in_section=1; next }
+    /^\[/ { in_section=0 }
+    in_section && $1 == name "=" {
+      gsub(/[^0-9]/, "", $3)
+      print $3
+      exit
+    }
+  ' "$BUDGET_FILE")
+
+  if [[ -n "$limit" ]]; then
+    echo "$limit"
+  else
+    echo "$default_kb"
+  fi
+}
+
+DEFAULT_KB="$(read_default_kb)"
+echo "Checking wasm size budgets (default ${DEFAULT_KB}KB; config: ${BUDGET_FILE})"
+
 shopt -s nullglob
-easy_wasm_files=(target/wasm32-unknown-unknown/release/*.wasm)
-if [ ${#easy_wasm_files[@]} -eq 0 ]; then
-  echo "[ERROR] No wasm files found in target/wasm32-unknown-unknown/release/"
+wasm_files=("$WASM_DIR"/*.wasm)
+if [ ${#wasm_files[@]} -eq 0 ]; then
+  echo "[ERROR] No wasm files found in ${WASM_DIR}/"
   exit 1
 fi
-for wasm in "${easy_wasm_files[@]}"; do
+
+failed=0
+for wasm in "${wasm_files[@]}"; do
+  contract="$(basename "$wasm" .wasm)"
+  limit_kb="$(get_contract_limit_kb "$contract" "$DEFAULT_KB")"
+  limit_bytes=$((limit_kb * 1024))
   size=$(wc -c < "$wasm")
-  if (( size > MAX_BYTES )); then
-    echo "[FAIL] $wasm size $(($size/1024))KB exceeds limit of ${MAX_KB}KB"
-    exit 1
+  size_kb=$((size / 1024))
+
+  if (( size > limit_bytes )); then
+    echo "[FAIL] ${contract}: ${size_kb}KB (${size} bytes) exceeds limit of ${limit_kb}KB"
+    failed=1
   else
-    echo "[PASS] $wasm size $(($size/1024))KB within limit"
+    echo "[PASS] ${contract}: ${size_kb}KB (${size} bytes) within limit of ${limit_kb}KB"
   fi
 done
+
+if (( failed != 0 )); then
+  exit 1
+fi
+
 exit 0

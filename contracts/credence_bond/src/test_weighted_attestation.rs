@@ -18,7 +18,7 @@ fn setup(
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(e, &contract_id);
     let admin = soroban_sdk::Address::generate(e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(e);
     client.register_attester(&attester);
     (client, admin, attester, contract_id)
@@ -99,7 +99,7 @@ fn get_attester_stake_default_zero() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
     let stake = e.as_contract(&contract_id, || {
@@ -129,7 +129,7 @@ fn set_attester_stake_negative_panics() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.set_attester_stake(&admin, &attester, &(-1i128));
 }
@@ -215,7 +215,7 @@ fn compute_weight_formula_floor_division() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -236,7 +236,7 @@ fn compute_weight_exact_boundary_no_remainder() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -258,7 +258,7 @@ fn weight_always_at_least_default() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -280,7 +280,7 @@ fn weight_never_exceeds_protocol_max() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -307,7 +307,7 @@ fn compute_weight_is_deterministic() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -331,7 +331,7 @@ fn weight_monotone_with_stake() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -393,7 +393,7 @@ fn regression_vectors_compute_weight() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -469,7 +469,7 @@ fn regression_equal_stake_equal_weight() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let attester_a = soroban_sdk::Address::generate(&e);
     let attester_b = soroban_sdk::Address::generate(&e);
@@ -502,7 +502,7 @@ fn regression_multiplier_equals_denominator() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -523,7 +523,7 @@ fn regression_unit_stake_full_multiplier() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -544,7 +544,7 @@ fn regression_config_max_zero_clamps_to_default() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -568,7 +568,7 @@ fn regression_weight_independent_of_attester_address() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let a1 = soroban_sdk::Address::generate(&e);
     let a2 = soroban_sdk::Address::generate(&e);
@@ -612,7 +612,7 @@ fn regression_floor_just_below_clean_multiple() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -634,7 +634,7 @@ fn regression_exact_clean_multiple() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -656,7 +656,7 @@ fn regression_protocol_cap_enforced_in_compute_weight() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     let attester = soroban_sdk::Address::generate(&e);
     client.register_attester(&attester);
 
@@ -684,7 +684,7 @@ fn regression_default_weight_config() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     let (mult, max) = client.get_weight_config();
     assert_eq!(
@@ -699,6 +699,111 @@ fn regression_default_weight_config() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Explicit clamp-boundary pinning (issue #663)
+//
+// These tests pin the exact lower and upper clamp thresholds of compute_weight
+// and re-assert the negative-stake rejection, so a refactor that shifts a
+// boundary by one is caught deterministically.
+// ---------------------------------------------------------------------------
+
+/// Helper: register an attester, set its stake/config, and compute its weight.
+fn weight_for(e: &Env, stake: i128, multiplier_bps: u32, config_max: u32) -> u32 {
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(e, &contract_id);
+    let admin = soroban_sdk::Address::generate(e);
+    client.initialize(&admin, &None);
+    let attester = soroban_sdk::Address::generate(e);
+    client.register_attester(&attester);
+    client.set_attester_stake(&admin, &attester, &stake);
+    client.set_weight_config(&admin, &multiplier_bps, &config_max);
+    e.as_contract(&contract_id, || {
+        weighted_attestation::compute_weight(e, &attester)
+    })
+}
+
+/// Lower clamp: a raw weight of exactly 0 pins to DEFAULT_ATTESTATION_WEIGHT.
+/// stake=1, mult=1 → floor(1/10_000)=0 → clamped up to 1.
+#[test]
+fn clamp_lower_bound_pins_at_default() {
+    use crate::types::attestation::DEFAULT_ATTESTATION_WEIGHT;
+    let e = Env::default();
+    assert_eq!(
+        weight_for(&e, 1, 1, 100_000),
+        DEFAULT_ATTESTATION_WEIGHT,
+        "raw weight 0 must clamp exactly to DEFAULT_ATTESTATION_WEIGHT"
+    );
+}
+
+/// Just above the lower clamp: the first stake that produces raw weight 1
+/// returns exactly DEFAULT_ATTESTATION_WEIGHT (no over-flooring).
+/// stake=10_000, mult=1 → floor(10_000/10_000)=1.
+#[test]
+fn clamp_lower_bound_first_unit_above_floor() {
+    use crate::types::attestation::DEFAULT_ATTESTATION_WEIGHT;
+    let e = Env::default();
+    assert_eq!(
+        weight_for(&e, 10_000, 1, 100_000),
+        DEFAULT_ATTESTATION_WEIGHT,
+        "raw weight 1 must equal DEFAULT_ATTESTATION_WEIGHT exactly"
+    );
+}
+
+/// Upper clamp at config_max: a raw weight above config_max pins to config_max
+/// exactly (config_max < MAX_ATTESTATION_WEIGHT, so config wins).
+/// stake=1_000_000, mult=100 → raw=10_000; config_max=5_000 → 5_000.
+#[test]
+fn clamp_upper_bound_pins_at_config_max() {
+    let e = Env::default();
+    assert_eq!(
+        weight_for(&e, 1_000_000, 100, 5_000),
+        5_000,
+        "weight above config_max must pin exactly to config_max"
+    );
+}
+
+/// Upper clamp exactly at config_max: a raw weight equal to config_max passes
+/// through unchanged (boundary is inclusive, not off-by-one).
+/// stake=500_000, mult=100 → raw=5_000 == config_max.
+#[test]
+fn clamp_upper_bound_exact_config_max_passes_through() {
+    let e = Env::default();
+    assert_eq!(
+        weight_for(&e, 500_000, 100, 5_000),
+        5_000,
+        "raw weight equal to config_max must pass through unchanged"
+    );
+}
+
+/// Host cap wins: when config_max > MAX_ATTESTATION_WEIGHT and the raw weight
+/// also exceeds the protocol cap, compute_weight pins to MAX_ATTESTATION_WEIGHT,
+/// not the (clamped-away) config value.
+#[test]
+fn clamp_upper_bound_host_cap_wins_over_config_max() {
+    let e = Env::default();
+    let safe_stake = (u64::MAX / 10_000) as i128;
+    assert_eq!(
+        weight_for(&e, safe_stake, 10_000, MAX_ATTESTATION_WEIGHT + 1),
+        MAX_ATTESTATION_WEIGHT,
+        "protocol cap must win when config_max exceeds MAX_ATTESTATION_WEIGHT"
+    );
+}
+
+/// Negative stake is rejected before any weight is computed.
+#[test]
+#[should_panic(expected = "attester stake cannot be negative")]
+fn clamp_set_attester_stake_rejects_negative() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+    let admin = soroban_sdk::Address::generate(&e);
+    client.initialize(&admin, &None);
+    let attester = soroban_sdk::Address::generate(&e);
+    client.set_attester_stake(&admin, &attester, &(-42i128));
+}
+
 /// Overwriting weight config replaces both fields atomically.
 #[test]
 fn regression_weight_config_overwrite_is_atomic() {
@@ -707,7 +812,7 @@ fn regression_weight_config_overwrite_is_atomic() {
     let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
     let admin = soroban_sdk::Address::generate(&e);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     client.set_weight_config(&admin, &500u32, &50_000u32);
     client.set_weight_config(&admin, &250u32, &25_000u32);

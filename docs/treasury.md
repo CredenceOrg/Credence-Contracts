@@ -31,14 +31,17 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 
 - **propose_withdrawal(proposer, recipient, amount)**  
   Creates a withdrawal proposal. Only a signer can propose. Amount must be positive and ≤ treasury balance.  
+  Sets `expires_at = proposed_at + ttl` (default TTL is 7 days).  
   Emits `treasury_withdrawal_proposed`.
 
 - **approve_withdrawal(approver, proposal_id)**  
   Adds the signer’s approval. Double approval by the same signer is a no-op.  
+  Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.  
   Emits `treasury_withdrawal_approved`.
 
 - **execute_withdrawal(proposal_id, min_amount_out)**  
   Callable by anyone once approval count ≥ threshold. Deducts from treasury and marks the proposal executed.  
+  Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.  
   
   **Withdrawal Guardrails:**
   - **Liquidity Floor**: Ensures remaining balance after withdrawal is ≥ `min_liquidity`. Reverts with "liquidity guard: withdrawal would breach minimum liquidity floor" if violated.
@@ -52,11 +55,13 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **get_balance_by_source(source)** — Balance attributed to `ProtocolFee` or `SlashedFunds` (cumulative received from that source).
 - **get_min_liquidity()** — Current minimum liquidity floor that must remain after withdrawals.
 - **set_min_liquidity(admin, min_liquidity)** — Admin only. Sets the minimum balance that must remain in the treasury after any withdrawal.
+- **set_proposal_ttl(admin, ttl)** — Admin only. Sets the proposal time-to-live in ledger seconds (default 7 days; pass `0` for no expiry).
+- **get_proposal_ttl()** — Current proposal TTL in ledger seconds.
 - **get_admin()** — Admin address.
 - **is_depositor(address)** — Whether the address can call `receive_fee`.
 - **is_signer(address)** — Whether the address can propose and approve withdrawals.
 - **get_threshold()** — Required number of approvals to execute.
-- **get_proposal(proposal_id)** — Proposal details (recipient, amount, proposer, executed).
+- **get_proposal(proposal_id)** — Proposal details (recipient, amount, proposer, proposed_at, expires_at, executed).
 - **get_approval_count(proposal_id)** — Current number of approvals.
 - **has_approved(proposal_id, signer)** — Whether the signer has approved the proposal.
 
@@ -70,6 +75,8 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **treasury_withdrawal_proposed** — (proposal_id, recipient, amount, proposer)
 - **treasury_withdrawal_approved** — (proposal_id, approver)
 - **treasury_withdrawal_executed** — (proposal_id, recipient, amount)
+- **treasury_proposal_expired** — (proposal_id)
+- **proposal_ttl_updated** — (ttl)
 
 ## Per-source accounting identity
 
@@ -108,5 +115,19 @@ across random deposit/withdrawal sequences (50 proptest cases with up to 20 acti
 - Threshold cannot exceed signer count; removing signers auto-caps threshold.
 - Amounts use checked arithmetic to avoid overflow/underflow.
 - Proposal execution is idempotent (executed flag prevents double spend).
+- Proposals expire after the configured TTL (default 7 days); approvals and execution are rejected once expired.
 - **Liquidity Floor Guardrail**: `min_liquidity` setting ensures treasury maintains minimum solvency after withdrawals.
 - **Slippage Protection**: `min_amount_out` parameter protects withdrawal executors from unfavorable settlement conditions.
+
+## Emergency rescue
+
+- **rescue_native(admin, to, amount)**  
+  Admin-only. Transfers *excess* tokens — those held by the contract beyond the internally accounted `TotalBalance` — to `to`.  
+  This allows recovery of accidentally sent or airdropped tokens without touching user/protocol funds.
+
+  **Excess-only bound**:
+  ```
+  excess = token_client.balance(contract) - TotalBalance
+  ```
+  `amount` must satisfy `0 < amount ≤ excess`. Any attempt to rescue accounted funds reverts with `InsufficientTreasuryBalance (#602)`.  
+  Emits `native_rescued` with `(to, amount, admin)` only after a successful transfer.

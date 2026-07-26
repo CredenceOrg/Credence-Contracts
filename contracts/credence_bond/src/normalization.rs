@@ -13,8 +13,9 @@
 //! - Maximum: 36 decimals (prevents overflow when scaling to i128)
 //! - Common: 6 (USDC), 8 (WBTC), 18 (ETH, DAI), 24 (some tokens)
 
+use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{panic_with_error, Address, Env};
 
 /// Target decimals for all internal accounting.
 pub const NORMALIZED_DECIMALS: u32 = 18;
@@ -26,19 +27,45 @@ pub const MAX_SUPPORTED_DECIMALS: u32 = 18;
 pub const MIN_SUPPORTED_DECIMALS: u32 = 0;
 
 /// Returns the scale factor and whether it's a multiplier (true) or divisor (false).
-/// 
+///
 /// For tokens with decimals < 18: multiply by 10^(18 - decimals)
 /// For tokens with decimals > 18: divide by 10^(decimals - 18)
 /// For tokens with decimals == 18: scale factor is 1 (no-op)
+pub fn require_non_zero_currency(e: &Env, sym: &soroban_sdk::String) {
+    let len = sym.len();
+    if len == 0 {
+        panic_with_error!(e, ContractError::InvalidCurrency);
+    }
+
+    let mut is_whitespace = true;
+    let mut buf = [0u8; 128];
+    let check_len = len.min(128) as usize;
+    sym.copy_into_slice(&mut buf[..check_len]);
+    for i in 0..check_len {
+        if buf[i] != b' ' && buf[i] != b'\t' && buf[i] != b'\n' && buf[i] != b'\r' {
+            is_whitespace = false;
+            break;
+        }
+    }
+    if is_whitespace {
+        panic_with_error!(e, ContractError::InvalidCurrency);
+    }
+}
+
+pub fn validate_supported_decimals(e: &Env, token: &Address) {
+    let decimals = TokenClient::new(e, token).decimals();
+
+    if decimals < MIN_SUPPORTED_DECIMALS || decimals > MAX_SUPPORTED_DECIMALS {
+        panic_with_error!(e, ContractError::UnsupportedDecimals);
+    }
+
+    let sym = TokenClient::new(e, token).symbol();
+    require_non_zero_currency(e, &sym);
+}
+
 pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
     let decimals = TokenClient::new(e, token).decimals();
-    
-    if decimals < MIN_SUPPORTED_DECIMALS || decimals > MAX_SUPPORTED_DECIMALS {
-        panic!(
-            "token decimals {} outside supported range [{}, {}]",
-            decimals, MIN_SUPPORTED_DECIMALS, MAX_SUPPORTED_DECIMALS
-        );
-    }
+    validate_supported_decimals(e, token);
 
     if decimals <= NORMALIZED_DECIMALS {
         let exponent = NORMALIZED_DECIMALS - decimals;
@@ -50,15 +77,15 @@ pub fn get_scale_info(e: &Env, token: &Address) -> (i128, bool) {
 }
 
 /// Normalizes a native token amount to the 18-decimal scale.
-/// 
+///
 /// # Arguments
 /// * `e` - Environment
 /// * `token` - Token address
 /// * `amount` - Native token amount (in token's native decimals)
-/// 
+///
 /// # Returns
 /// Normalized amount in 18-decimal format
-/// 
+///
 /// # Panics
 /// * If token decimals are outside supported range
 /// * If normalization causes overflow
@@ -66,26 +93,29 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if amount < 0 {
         panic!("bond amount cannot be negative");
     }
-    
+
     let (scale, is_multiplier) = get_scale_info(e, token);
     if is_multiplier {
-        amount.checked_mul(scale).expect("normalization overflow: amount * scale exceeds i128")
+        amount
+            .checked_mul(scale)
+            .expect("normalization overflow: amount * scale exceeds i128")
     } else {
-        amount.checked_div(scale)
+        amount
+            .checked_div(scale)
             .expect("normalization error: division by zero")
     }
 }
 
 /// Denormalizes a 18-decimal amount back to the native token scale.
-/// 
+///
 /// # Arguments
 /// * `e` - Environment
 /// * `token` - Token address
 /// * `amount` - Normalized amount in 18-decimal format
-/// 
+///
 /// # Returns
 /// Native token amount (in token's native decimals)
-/// 
+///
 /// # Panics
 /// * If token decimals are outside supported range
 /// * If denormalization causes overflow
@@ -93,31 +123,34 @@ pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if amount < 0 {
         panic!("cannot denormalize negative amount");
     }
-    
+
     let (scale, is_multiplier) = get_scale_info(e, token);
     if is_multiplier {
-        amount.checked_div(scale)
+        amount
+            .checked_div(scale)
             .expect("denormalization error: division by zero")
     } else {
-        amount.checked_mul(scale).expect("denormalization overflow: amount * scale exceeds i128")
+        amount
+            .checked_mul(scale)
+            .expect("denormalization overflow: amount * scale exceeds i128")
     }
 }
 
 /// Validates that an amount won't overflow when normalized.
 /// This is a pre-check before calling normalize().
-/// 
+///
 /// # Arguments
 /// * `e` - Environment
 /// * `token` - Token address
 /// * `amount` - Native token amount to validate
-/// 
+///
 /// # Returns
 /// true if the amount can be safely normalized
 pub fn can_normalize_safely(e: &Env, token: &Address, amount: i128) -> bool {
     if amount < 0 {
         return false;
     }
-    
+
     let (scale, is_multiplier) = get_scale_info(e, token);
     if is_multiplier {
         // Check if amount * scale would overflow

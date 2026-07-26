@@ -43,6 +43,10 @@ Create a delegation through a relayed, domain-separated payload. The same expiry
 
 Revoke an active delegation. Requires owner authorization. Panics if the delegation does not exist or is already revoked. Emits a `delegation_revoked` event.
 
+### `cleanup_expired(owner, delegate, delegation_type)`
+
+Remove an expired delegation storage entry. This function is permissionless (anyone can call it) to allow reclaiming storage rent once `expires_at` has passed. It panics if the delegation entry does not exist or is not yet expired. Emits a `delegation_cleaned` event.
+
 ### `get_delegation(owner, delegate, delegation_type) -> Delegation`
 
 Retrieve a stored delegation. Panics if not found.
@@ -59,6 +63,7 @@ Delegations expire at the exact `expires_at` timestamp. A record with `expires_a
 | ------------------ | ---------- | -------------------------- |
 | delegation_created | Delegation | A new delegation is stored |
 | delegation_revoked | Delegation | A delegation is revoked    |
+| delegation_cleaned | DelegationType | An expired delegation is removed from storage |
 
 ## Security
 
@@ -101,10 +106,6 @@ cargo build -p credence_delegation
 # Test
 cargo test -p credence_delegation
 ```
-
-## Known Simplifications
-
-Expired delegations are invalid and bounded at creation time, but they are not automatically cleaned up from storage. See [known-simplifications.md](known-simplifications.md#8-expired-delegations-are-not-auto-cleaned) for details and the production path.
 
 ## Cross-namespace nonce replay guarantee
 

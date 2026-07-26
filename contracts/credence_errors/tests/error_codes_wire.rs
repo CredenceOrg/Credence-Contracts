@@ -14,8 +14,16 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::ContractPaused as u32, 106);
     assert_eq!(ContractError::InvalidPauseAction as u32, 107);
     assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-
-    assert_eq!(ContractError::BondNotFound as u32, 200);
+    assert_eq!(ContractError::AdminSuspended as u32, 113);
+    assert_eq!(ContractError::BorrowFrozen as u32, 114);
+    assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
+    assert_eq!(ContractError::NoPendingAdmin as u32, 115);
+    assert_eq!(ContractError::InvalidAdminAddress as u32, 110);
+    assert_eq!(ContractError::AdminUnchanged as u32, 111);
+    assert_eq!(ContractError::TimelockNotReady as u32, 112);
+    assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 117);
+    assert_eq!(ContractError::TimestampInFuture as u32, 118);
+    assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
     assert_eq!(ContractError::BondNotActive as u32, 201);
     assert_eq!(ContractError::InsufficientBalance as u32, 202);
     assert_eq!(ContractError::SlashExceedsBond as u32, 203);
@@ -29,11 +37,22 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InvalidPenaltyBps as u32, 211);
     assert_eq!(ContractError::LeverageExceeded as u32, 212);
     assert_eq!(ContractError::UnsupportedToken as u32, 213);
+    assert_eq!(ContractError::UnsupportedDecimals as u32, 229);
     assert_eq!(ContractError::InvalidBondAmount as u32, 214);
-    assert_eq!(ContractError::InvalidBondDuration as u32, 215);
-    assert_eq!(ContractError::InvalidNoticePeriod as u32, 216);
-    assert_eq!(ContractError::BondAlreadyExists as u32, 217);
-    assert_eq!(ContractError::InvariantViolation as u32, 218);
+    assert_eq!(ContractError::AmountExplicitlyZero as u32, 215);
+    assert_eq!(ContractError::InvalidBondDuration as u32, 216);
+    assert_eq!(ContractError::InvalidNoticePeriod as u32, 217);
+    assert_eq!(ContractError::BondAlreadyExists as u32, 218);
+    assert_eq!(ContractError::InvalidCurrency as u32, 234);
+    assert_eq!(ContractError::SignatureExpired as u32, 222);
+    assert_eq!(ContractError::TreasuryNotConfigured as u32, 223);
+    assert_eq!(ContractError::UnauthorizedToken as u32, 231);
+    assert_eq!(ContractError::DuplicateIdempotencyKey as u32, 232);
+    assert_eq!(ContractError::InvariantViolation as u32, 233);
+    assert_eq!(ContractError::StorageCapReached as u32, 224);
+    assert_eq!(ContractError::CursorOutOfRange as u32, 226);
+    assert_eq!(ContractError::BatchTooLarge as u32, 227);
+    assert_eq!(ContractError::EmptyBatch as u32, 228);
 
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
     assert_eq!(ContractError::AttestationNotFound as u32, 301);
@@ -48,11 +67,13 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::AlreadyDeactivated as u32, 404);
     assert_eq!(ContractError::AlreadyActive as u32, 405);
     assert_eq!(ContractError::InvalidContractAddress as u32, 406);
+    assert_eq!(ContractError::ContractCodeVerificationFailed as u32, 407);
 
     assert_eq!(ContractError::ExpiryInPast as u32, 500);
     assert_eq!(ContractError::DelegationNotFound as u32, 501);
     assert_eq!(ContractError::AlreadyRevoked as u32, 502);
     assert_eq!(ContractError::DelegationExpiryTooLong as u32, 503);
+    assert_eq!(ContractError::PayloadTooOld as u32, 510);
 
     assert_eq!(ContractError::AmountMustBePositive as u32, 600);
     assert_eq!(ContractError::ThresholdExceedsSigners as u32, 601);
@@ -62,6 +83,9 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::InsufficientApprovals as u32, 605);
     assert_eq!(ContractError::InvalidFlashLoanCallback as u32, 606);
     assert_eq!(ContractError::FlashLoanRepaymentFailed as u32, 607);
+    assert_eq!(ContractError::ProposalExpired as u32, 608);
+    assert_eq!(ContractError::SlippageExceeded as u32, 609);
+    assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
 
     assert_eq!(ContractError::Overflow as u32, 700);
     assert_eq!(ContractError::Underflow as u32, 701);

@@ -9,13 +9,15 @@
 //! "not admin" error message.
 //!
 //! ## Design
-//! - **Partial Slashing**: Can slash any amount up to bonded_amount
-//! - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
-//! - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
-//! - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
-//! - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
+/// - **Partial Slashing**: Can slash any amount up to bonded_amount
+/// - **Full Slashing**: Can slash entire bond (capped at bonded_amount)
+/// - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
+/// - **Over-slash Protection**: Ensures slashed_amount never exceeds bonded_amount
+/// - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
 
-use soroban_sdk::{Address, Env, Symbol};
+use crate::{DataKey, IdentityBond};
+use credence_errors::ContractError;
+use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 
 /// Storage key for tracking accumulated slashed funds (for treasury transfer purposes).
 /// Not currently used for fund transfers in this implementation, but reserved for future use.
@@ -67,7 +69,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 ///
 /// Executes the slash with full validation:
 /// 1. Validates caller is admin (panics if not)
-/// 2. Computes available balance (bonded − already_slashed)
+/// 2. Computes available balance (bonded âˆ’ already_slashed)
 /// 3. Caps slash at available balance (prevents over-slash)
 /// 4. Updates bond state
 /// 5. Appends a normalized SlashRecord to persistent history
@@ -90,7 +92,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// - If arithmetic overflows (checked_add protection)
 ///
 /// # Security Notes
-/// - Slash is bounded by available balance (bonded − slashed), not just bonded
+/// - Slash is bounded by available balance (bonded âˆ’ slashed), not just bonded
 /// - Slashing is monotonic (always increases or stays same, never decreases)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 /// - Slasher receives 10% of slashed amount as reward (pull-payment)
@@ -111,7 +113,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         .get::<_, crate::IdentityBond>(&key)
         .unwrap_or_else(|| panic!("no bond"));
 
-    // 3. Available balance = bonded − already_slashed
+    // 3. Available balance = bonded âˆ’ already_slashed
     let available = bond
         .bonded_amount
         .checked_sub(bond.slashed_amount)
@@ -143,7 +145,14 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
         "invariant: slashed <= bonded"
     );
 
+    let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let old_tier = crate::tiered_bond::get_tier_for_amount(e, old_available);
+
     bond.slashed_amount = new_slashed;
+
+    let new_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
+    let new_tier = crate::tiered_bond::get_tier_for_amount(e, new_available);
+    crate::tiered_bond::emit_tier_change_if_needed(e, &bond.identity, old_tier, new_tier);
 
     // 5. Append normalized slash history record
     crate::slash_history::append_slash_history(
@@ -156,7 +165,9 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
 
     // 6. Add slashing reward claim for the admin (10% of slashed amount)
     if actual_slash_amount > 0 {
-        let reward_amount = actual_slash_amount / 10; // 10% reward
+        let reward_amount = actual_slash_amount
+            .checked_div(10)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow)); // 10% reward
         if reward_amount > 0 {
             let source_id = get_next_slash_id(e);
             crate::claims::add_pending_claim(
@@ -174,7 +185,18 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
     e.storage().instance().set(&key, &bond);
     crate::invariants::assert_self_consistent(e);
 
-    // 8. Emit slashing event for off-chain tracking
+    // 8. Transfer slashed funds to the configured treasury.
+    // This must happen after state is persisted so that any transfer failure
+    // rolls back only the token call (state is already written; Soroban's
+    // atomic tx model ensures full revert on any panic from here).
+    //
+    // The call reverts the transaction if no treasury is configured, ensuring
+    // the protocol never silently drops slashed capital.
+    if actual_slash_amount > 0 {
+        transfer_slashed_funds_to_treasury(e, actual_slash_amount);
+    }
+
+    // 9. Emit slashing event for off-chain tracking
     emit_slashing_event(e, &bond.identity, actual_slash_amount, bond.slashed_amount);
 
     // Emit v2 event with enhanced indexing for backward compatibility during migration
@@ -294,6 +316,33 @@ pub fn is_partial_slash(slash_amount: i128, bonded_amount: i128) -> bool {
     slash_amount < bonded_amount
 }
 
+/// Transfers `amount` tokens from this bond contract to the configured slash treasury.
+///
+/// Reads the treasury address from `DataKey::SlashTreasury`. If the key is absent,
+/// reverts with [`ContractError::TreasuryNotConfigured`] â€” the protocol must never
+/// silently drop slashed capital.
+///
+/// The transfer is classified as `FundSource::SlashedFunds` at the treasury level.
+/// Callers are responsible for only calling this with `amount > 0`.
+///
+/// # Panics
+/// - `ContractError::TreasuryNotConfigured` when no slash treasury is configured.
+/// - Any token-level panic propagated from the token transfer.
+fn transfer_slashed_funds_to_treasury(e: &Env, amount: i128) {
+    let treasury: Address = e
+        .storage()
+        .instance()
+        .get(&crate::DataKey::SlashTreasury)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::TreasuryNotConfigured));
+    let token_addr: Address = e
+        .storage()
+        .instance()
+        .get(&crate::DataKey::BondToken)
+        .unwrap_or_else(|| panic!("token not configured"));
+    let contract = e.current_contract_address();
+    soroban_sdk::token::TokenClient::new(e, &token_addr).transfer(&contract, &treasury, &amount);
+}
+
 /// NatSpec-style: Emits a slashing event for off-chain tracking and auditing.
 ///
 /// # Arguments
@@ -337,7 +386,19 @@ pub fn initialize_slashed_pool(e: &Env) {
         .set(&Symbol::new(e, KEY_SLASHED_FUNDS_POOL), &0_i128);
 }
 
+/// Wrapper that accepts an identity parameter for backward compatibility with fork variants.
+#[allow(dead_code)]
+pub fn slash_bond_with_identity(
+    e: &Env,
+    admin: &Address,
+    _identity: &Address,
+    slash_amount: i128,
+) -> crate::IdentityBond {
+    slash_bond(e, admin, slash_amount)
+}
+
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
 
@@ -353,7 +414,7 @@ mod tests {
         assert!(!is_fully_slashed(1000, 0));
         assert!(!is_fully_slashed(1000, 500));
         assert!(is_fully_slashed(1000, 1000));
-        assert!(is_fully_slashed(1000, 1500)); // Over-slashed
+        assert!(is_fully_slashed(1000, 1500));
     }
 
     #[test]
@@ -365,23 +426,10 @@ mod tests {
 
     #[test]
     fn test_available_balance_with_slashing() {
-        // Verify available balance calculation
         let available = get_available_balance(1000, 300);
         assert_eq!(available, 700);
 
-        // Fully slashed
         let available_full = get_available_balance(1000, 1000);
         assert_eq!(available_full, 0);
     }
-}
-
-/// Wrapper that accepts an identity parameter for backward compatibility with fork variants.
-#[allow(dead_code)]
-pub fn slash_bond_with_identity(
-    e: &Env,
-    admin: &Address,
-    _identity: &Address,
-    slash_amount: i128,
-) -> crate::IdentityBond {
-    slash_bond(e, admin, slash_amount)
 }

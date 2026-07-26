@@ -14,6 +14,7 @@ use crate::test_invariants::{
 use crate::{CredenceBond, CredenceBondClient, IdentityBond};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, String};
+use proptest::prelude::*;
 
 struct Ctx<'a> {
     env: Env,
@@ -30,7 +31,7 @@ fn setup() -> Ctx<'static> {
     let client = CredenceBondClient::new(&env, &contract);
     let admin = Address::generate(&env);
     let identity = Address::generate(&env);
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
     Ctx {
         env,
         client,
@@ -61,15 +62,15 @@ fn invariants_hold_through_full_lifecycle() {
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 2: after top_up
-    ctx.client.top_up(&5_000);
+    ctx.client.top_up(&identity, &5_000);
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 3: after extend_duration
-    ctx.client.extend_duration(&500);
+    ctx.client.extend_duration(&identity, &500);
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 4: after second top_up
-    ctx.client.top_up(&1);
+    ctx.client.top_up(&identity, &1);
     assert_all_invariants(&ctx.env, &ctx.contract);
 
     // Site 5: after slash
@@ -79,7 +80,7 @@ fn invariants_hold_through_full_lifecycle() {
 
     // Site 6: after withdraw (post lock-up)
     advance(&ctx.env, 5_000);
-    ctx.client.withdraw(&100);
+    ctx.client.withdraw(&identity, &100);
     assert_all_invariants(&ctx.env, &ctx.contract);
 }
 
@@ -134,7 +135,7 @@ fn invariants_hold_after_withdraw_request() {
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 14
 
     advance(&ctx.env, 50); // ensure a non-zero "requested at" timestamp
-    ctx.client.request_withdrawal();
+    ctx.client.request_withdrawal(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 15
 
     let bond = load_bond(&ctx.env, &ctx.contract);
@@ -151,7 +152,7 @@ fn invariants_hold_after_withdraw_request_then_slash() {
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 17
 
     advance(&ctx.env, 50);
-    ctx.client.request_withdrawal();
+    ctx.client.request_withdrawal(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 18
 
     advance(&ctx.env, 1);
@@ -172,7 +173,7 @@ fn invariants_hold_after_renew() {
 
     // Advance past the period end so renew_if_rolling renews the bond.
     advance(&ctx.env, 2_000);
-    ctx.client.renew_if_rolling();
+    ctx.client.renew_if_rolling(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 21
 
     let bond = load_bond(&ctx.env, &ctx.contract);
@@ -190,12 +191,12 @@ fn invariants_hold_after_request_then_renew_is_noop() {
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 23
 
     advance(&ctx.env, 50);
-    ctx.client.request_withdrawal();
+    ctx.client.request_withdrawal(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 24
 
     // With a pending request, renew_if_rolling is a no-op; invariants still hold.
     advance(&ctx.env, 2_000);
-    ctx.client.renew_if_rolling();
+    ctx.client.renew_if_rolling(&identity);
     assert_all_invariants(&ctx.env, &ctx.contract); // Site 25
 }
 
@@ -284,3 +285,60 @@ fn oversized_notice_period_is_detected() {
     bond.notice_period_duration = bond.bond_duration + 1;
     assert_notice_period_bounded(&bond);
 }
+
+#[derive(Clone, Debug)]
+enum Action {
+    Deposit(i128),
+    Withdraw(i128),
+}
+
+fn action_strategy() -> impl Strategy<Value = Action> {
+    prop_oneof![
+        // Happy paths
+        (1..10_000_i128).prop_map(Action::Deposit),
+        (1..10_000_i128).prop_map(Action::Withdraw),
+        // Sad paths (negative, zero)
+        (-1000..=0_i128).prop_map(Action::Deposit),
+        (-1000..=0_i128).prop_map(Action::Withdraw),
+        // Overflow paths
+        (i128::MAX - 1000..=i128::MAX).prop_map(Action::Deposit),
+    ]
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(50))]
+
+    #[test]
+    fn prop_random_deposit_withdraw_invariants(actions in proptest::collection::vec(action_strategy(), 1..20)) {
+        let ctx = setup();
+        
+        // Initial bond creation so we can deposit/withdraw
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ctx.client.create_bond(&ctx.identity, &1000, &86400, &false, &0);
+        }));
+        
+        assert_all_invariants(&ctx.env, &ctx.contract);
+        
+        for action in actions {
+            // Advance ledger to allow withdrawals (since bond_duration is 86400)
+            advance(&ctx.env, 100_000);
+            
+            match action {
+                Action::Deposit(amount) => {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        ctx.client.top_up(&ctx.identity, &amount);
+                    }));
+                }
+                Action::Withdraw(amount) => {
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        ctx.client.withdraw(&ctx.identity, &amount);
+                    }));
+                }
+            }
+            
+            // The invariant must hold regardless of whether the action succeeded or panicked
+            assert_all_invariants(&ctx.env, &ctx.contract);
+        }
+    }
+}
+

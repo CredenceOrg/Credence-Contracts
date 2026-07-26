@@ -8,11 +8,13 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{testutils::{Address as _, Events}, Address, Env, FromVal};
+use soroban_sdk::{
+    testutils::{Address as _, Events},
+    Address, Env, FromVal,
+};
 
 use crate::fee::{
-    get_protocol_fee_bps, set_protocol_fee_bps, BPS_DENOMINATOR,
-    DEFAULT_FEE_BPS, MAX_FEE_BPS,
+    get_protocol_fee_bps, set_protocol_fee_bps, BPS_DENOMINATOR, DEFAULT_FEE_BPS, MAX_FEE_BPS,
 };
 
 // ---------------------------------------------------------------------------
@@ -109,7 +111,11 @@ fn test_fee_update_overwrites_previous_value() {
     assert_eq!(get_protocol_fee_bps(&env), 100);
 
     set_protocol_fee_bps(&env, &admin, 300);
-    assert_eq!(get_protocol_fee_bps(&env), 300, "Second write should overwrite first");
+    assert_eq!(
+        get_protocol_fee_bps(&env),
+        300,
+        "Second write should overwrite first"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +191,10 @@ fn test_fee_update_from_default_emits_correct_previous() {
     let events = env.events().all();
     let (_, _topics, data) = events.last().unwrap();
     let (prev, next): (u32, u32) = <(u32, u32)>::from_val(&env, &data);
-    assert_eq!(prev, DEFAULT_FEE_BPS, "Previous should be DEFAULT_FEE_BPS when unset");
+    assert_eq!(
+        prev, DEFAULT_FEE_BPS,
+        "Previous should be DEFAULT_FEE_BPS when unset"
+    );
     assert_eq!(next, 500);
 }
 

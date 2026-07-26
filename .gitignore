@@ -3,10 +3,16 @@ node_modules/
 **/node_modules/
 **/test_snapshots
 **/test_snapshots/
+!contracts/credence_delegation/test_snapshots/
+!contracts/credence_delegation/test_snapshots/test_pausable_state/
 *.snap
+!contracts/credence_delegation/test_snapshots/test_pausable_state/*.snap
 *.snapshot
 *.local
 .DS_Store
 .env
 .env.*
 .cargo_home/
+
+CLAUDE.md
+plan.md

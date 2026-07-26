@@ -234,6 +234,28 @@ Reject a proposal. Only admin can reject.
 **Events:**
 - `proposal_rejected`
 
+#### `prune_expired_proposals(start_id, max_iter) -> u32`
+Prune expired proposals and their signature keys from storage to reclaim space. Bounded and permissionless.
+
+**Parameters:**
+- `start_id: u64` - Starting proposal ID to scan
+- `max_iter: u32` - Maximum number of proposal IDs to scan (capped at `MAX_ITER_HARD_CAP` = 200, defaults to `DEFAULT_MAX_ITER` = 50 if 0 is passed)
+
+**Returns:**
+- `u32` - Number of expired proposals successfully pruned in this batch execution
+
+**Panics:**
+- If the contract is paused
+
+**Events:**
+- `proposals_pruned`
+
+**Example:**
+```rust
+// Scan and prune up to 50 proposals starting from ID 100
+let pruned_count = client.prune_expired_proposals(&100_u64, &50_u32);
+```
+
 ### Query Functions
 
 #### `get_proposal(proposal_id) -> Proposal`

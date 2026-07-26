@@ -1,4 +1,4 @@
-//! Long horizon rolling bond renewal tests covering 10-year horizon and overflow safety.
+﻿//! Long horizon rolling bond renewal tests covering 10-year horizon and overflow safety.
 
 use crate::test_helpers;
 use crate::CredenceBondClient;
@@ -27,14 +27,18 @@ fn test_long_horizon_renewals() {
         // Advance just past the current period to trigger a renewal.
         let next_ts = e.ledger().timestamp() + bond_duration + 1;
         e.ledger().with_mut(|li| li.timestamp = next_ts);
-        let bond = client.renew_if_rolling();
+        let bond = client.renew_if_rolling(&identity);
         assert_eq!(bond.bond_start, next_ts);
         // Withdrawal request should still be zero.
         assert_eq!(bond.withdrawal_requested_at, 0);
         renewals += 1;
     }
     // Ensure we performed at least 40 renewals (actually far more).
-    assert!(renewals >= 40, "expected at least 40 renewals, got {}", renewals);
+    assert!(
+        renewals >= 40,
+        "expected at least 40 renewals, got {}",
+        renewals
+    );
 }
 
 /// Test that an overflow in the period calculation correctly panics.
@@ -53,5 +57,5 @@ fn test_renew_overflow_panic() {
     let next_ts = max_ts + bond_duration + 1;
     e.ledger().with_mut(|li| li.timestamp = next_ts);
     // This call should panic due to overflow in `is_period_ended`.
-    client.renew_if_rolling();
+    client.renew_if_rolling(&identity);
 }

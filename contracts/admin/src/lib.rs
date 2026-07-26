@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,15 +14,47 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests + the testutils feature
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 pub mod pausable;
 
 #[cfg(test)]
 mod test_ownership_transfer;
+#[cfg(test)]
+mod test_events_schema;
 
-use credence_errors::ContractError;
+use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{
+    contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Vec,
+};
+
+/// Signature domain identifier for the Admin contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "Admin";
 
 /// Admin role hierarchy levels
 #[contracttype]
@@ -49,6 +82,11 @@ pub struct AdminInfo {
     pub assigned_by: Address,
     /// Whether this admin is currently active
     pub active: bool,
+    /// Unix timestamp until which this admin is suspended (0 = not suspended).
+    /// While `e.ledger().timestamp() < suspended_until` the admin is treated
+    /// as inactive; the suspension expires automatically — no second transaction
+    /// is required.
+    pub suspended_until: u64,
 }
 
 /// Storage keys for the admin contract
@@ -82,11 +120,32 @@ enum DataKey {
     PendingOwner,
 }
 
+/// The zero/invalid address sentinel.
+///
+/// In Soroban the all-zero Ed25519 public key encodes to this strkey.
+/// Assigning a governance role to (or transferring ownership to) this
+/// address can permanently strand administration, so every privileged
+/// entrypoint that accepts a target `Address` MUST reject it.
+const INVALID_ADDRESS_SENTINEL: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 #[contract]
 pub struct AdminContract;
 
 #[contractimpl]
 impl AdminContract {
+    /// Return the contract version.
+    pub fn version(e: Env) -> String {
+        String::from_str(&e, credence_errors::VERSION)
+    }
+
     /// Initialize the admin contract with a super admin.
     ///
     /// # Arguments
@@ -101,9 +160,11 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_initialized` with the super admin address
     pub fn initialize(e: Env, super_admin: Address, min_admins: u32, max_admins: u32) {
-        if e.storage().instance().has(&DataKey::Initialized) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Initialized),
+        );
 
         if min_admins == 0 {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
@@ -113,7 +174,8 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
-        super_admin.require_auth();
+        super_admin
+            .require_auth_for_args((super_admin.clone(), min_admins, max_admins).into_val(&e));
 
         // Set configuration
         e.storage().instance().set(&DataKey::Initialized, &true);
@@ -137,6 +199,7 @@ impl AdminContract {
             assigned_at: e.ledger().timestamp(),
             assigned_by: super_admin.clone(), // Self-assigned for initialization
             active: true,
+            suspended_until: 0,
         };
 
         // Store admin info
@@ -191,10 +254,11 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_added` with the new admin information
     pub fn add_admin(e: Env, caller: Address, new_admin: Address, role: AdminRole) -> AdminInfo {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), new_admin.clone(), role).into_val(&e));
 
-        // Zero-address check
+        Self::require_valid_admin_address(&e, &new_admin);
 
         // Verify caller authorization
         Self::require_role_at_least(&e, &caller, Self::get_required_role_to_assign(role))
@@ -231,6 +295,7 @@ impl AdminContract {
             assigned_at: e.ledger().timestamp(),
             assigned_by: caller.clone(),
             active: true,
+            suspended_until: 0,
         };
 
         // Store admin info
@@ -284,8 +349,11 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_removed` with the removed admin information
     pub fn remove_admin(e: Env, caller: Address, admin_to_remove: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_to_remove.clone()).into_val(&e));
+
+        Self::require_valid_admin_address(&e, &admin_to_remove);
 
         // Get admin info
         let admin_info: AdminInfo = e
@@ -385,8 +453,12 @@ impl AdminContract {
         admin_address: Address,
         new_role: AdminRole,
     ) -> AdminInfo {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller
+            .require_auth_for_args((caller.clone(), admin_address.clone(), new_role).into_val(&e));
+
+        Self::require_valid_admin_address(&e, &admin_address);
 
         // Get current admin info
         let mut admin_info: AdminInfo = e
@@ -473,8 +545,11 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_deactivated` with the deactivated admin information
     pub fn deactivate_admin(e: Env, caller: Address, admin_address: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_address.clone()).into_val(&e));
+
+        Self::require_valid_admin_address(&e, &admin_address);
 
         let mut admin_info: AdminInfo = e
             .storage()
@@ -482,10 +557,9 @@ impl AdminContract {
             .get(&DataKey::AdminInfo(admin_address.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
-        // Verify caller authorization
+        // Verify caller authorization: caller must strictly outrank the target.
         let caller_role = Self::get_role(e.clone(), caller.clone());
-        // Allow deactivation when caller has the same role as the target.
-        if caller_role < admin_info.role {
+        if caller_role <= admin_info.role {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
@@ -520,8 +594,11 @@ impl AdminContract {
     /// # Events
     /// Emits `admin_reactivated` with the reactivated admin information
     pub fn reactivate_admin(e: Env, caller: Address, admin_address: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), admin_address.clone()).into_val(&e));
+
+        Self::require_valid_admin_address(&e, &admin_address);
 
         let mut admin_info: AdminInfo = e
             .storage()
@@ -555,10 +632,102 @@ impl AdminContract {
         );
     }
 
-    /// Propose a new owner for the contract (two-step ownership transfer).
+    /// Suspend an admin until a future ledger timestamp.
+    ///
+    /// While `e.ledger().timestamp() < until_ts` the admin is treated as
+    /// inactive by `is_admin` and `has_role_at_least`.  Once the timestamp
+    /// passes the admin is **automatically** effective again — no second
+    /// transaction is needed.
+    ///
+    /// Suspension is distinct from `deactivate_admin`: deactivation is
+    /// indefinite and requires an explicit `reactivate_admin` call, whereas
+    /// suspension is self-expiring.
     ///
     /// # Arguments
-    /// * `caller` - Address of the current owner proposing the transfer
+    /// * `caller`    - Address authorising the suspension (must have higher or
+    ///                 equal role to the target, same rules as `deactivate_admin`)
+    /// * `admin`     - Address of the admin to suspend
+    /// * `until_ts`  - Unix timestamp (seconds) after which the suspension
+    ///                 expires; must be strictly greater than the current ledger
+    ///                 timestamp
+    ///
+    /// # Panics
+    /// * `NotAdmin`          — caller or target is not a known admin
+    /// * `NotAdmin`          — caller role is strictly lower than target role
+    /// * `AdminSuspended`    — `until_ts` is not in the future
+    /// * `InvalidPauseAction` — suspending would drop active admins below `MinAdmins`
+    /// * `AlreadyDeactivated` — target admin is permanently deactivated
+    ///
+    /// # Events
+    /// Emits `admin_suspended` with `(admin_address, until_ts)`
+    pub fn suspend_admin(e: Env, caller: Address, admin: Address, until_ts: u64) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        caller.require_auth_for_args((caller.clone(), admin.clone(), until_ts).into_val(&e));
+
+        // until_ts must be in the future
+        if until_ts <= e.ledger().timestamp() {
+            panic_with_error!(&e, ContractError::AdminSuspended);
+        }
+
+        let mut admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(admin.clone()))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
+
+        // Cannot suspend a permanently deactivated admin
+        if !admin_info.active {
+            panic_with_error!(&e, ContractError::AlreadyDeactivated);
+        }
+
+        // Caller must have a role >= target's role (same rule as deactivate_admin)
+        let caller_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(caller.clone()))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
+        if caller_info.role < admin_info.role {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+
+        // MinAdmins guard: count currently-effective active admins
+        let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
+        let now = e.ledger().timestamp();
+        let all_admins: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminList)
+            .unwrap_or(Vec::new(&e));
+        let mut effective_active: u32 = 0;
+        for addr in all_admins.iter() {
+            if addr == admin {
+                continue; // exclude the target — they'll be suspended
+            }
+            if let Some(info) = e
+                .storage()
+                .instance()
+                .get::<_, AdminInfo>(&DataKey::AdminInfo(addr))
+            {
+                if info.active && now >= info.suspended_until {
+                    effective_active += 1;
+                }
+            }
+        }
+        if effective_active < min_admins {
+            panic_with_error!(&e, ContractError::InvalidPauseAction);
+        }
+
+        admin_info.suspended_until = until_ts;
+        e.storage()
+            .instance()
+            .set(&DataKey::AdminInfo(admin.clone()), &admin_info);
+
+        e.events()
+            .publish((Symbol::new(&e, "admin_suspended"),), (admin, until_ts));
+    }
+
+    /// Propose a new owner for the contract (two-step ownership transfer).
     /// * `new_owner` - Address of the proposed new owner
     ///
     /// # Panics
@@ -572,10 +741,11 @@ impl AdminContract {
     /// # Notes
     /// The ownership remains with the current owner until the new owner calls `accept_ownership`.
     pub fn transfer_ownership(e: Env, caller: Address, new_owner: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(), new_owner.clone()).into_val(&e));
 
-        // Zero-address check
+        Self::require_valid_admin_address(&e, &new_owner);
 
         // Get current owner
         let current_owner: Address = e
@@ -636,8 +806,9 @@ impl AdminContract {
     /// This function completes the two-step ownership transfer process.
     /// The caller must be the address that was previously set as pending owner.
     pub fn accept_ownership(e: Env, caller: Address) {
+        bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
-        caller.require_auth();
+        caller.require_auth_for_args((caller.clone(),).into_val(&e));
 
         // Get pending owner
         let pending_owner: Address = e
@@ -666,9 +837,21 @@ impl AdminContract {
         // Clear pending owner
         e.storage().instance().remove(&DataKey::PendingOwner);
 
+        // Emit admin rotated event with ledger sequence
+        let ledger_seq: u32 = e.ledger().sequence();
+        e.events().publish(
+            (
+                Symbol::new(&e, "admin_rotated"),
+                previous_owner.clone(),
+                pending_owner.clone(),
+            ),
+            ledger_seq,
+        );
+
+        // Emit original ownership transfer accepted event
         e.events().publish(
             (Symbol::new(&e, "ownership_transfer_accepted"),),
-            (previous_owner, pending_owner),
+            (previous_owner.clone(), pending_owner.clone()),
         );
     }
 
@@ -680,6 +863,7 @@ impl AdminContract {
     /// # Panics
     /// * If owner has not been set (contract not initialized)
     pub fn get_owner(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Owner)
@@ -691,6 +875,7 @@ impl AdminContract {
     /// # Returns
     /// `Some(address)` if there is a pending owner, `None` otherwise
     pub fn get_pending_owner(e: Env) -> Option<Address> {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::PendingOwner)
     }
 
@@ -705,6 +890,7 @@ impl AdminContract {
     /// # Panics
     /// * If admin_address is not an admin
     pub fn get_admin_info(e: Env, admin_address: Address) -> AdminInfo {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::AdminInfo(admin_address))
@@ -719,6 +905,7 @@ impl AdminContract {
     /// # Returns
     /// The admin role if the address is an admin, panics otherwise
     pub fn get_admin_role(e: Env, address: Address) -> AdminRole {
+        bump_instance_ttl(&e);
         let admin_info: AdminInfo = e
             .storage()
             .instance()
@@ -733,15 +920,21 @@ impl AdminContract {
     /// * `address` - Address to check
     ///
     /// # Returns
-    /// `true` if the address is an active admin, `false` otherwise
-    pub fn is_admin(e: Env, address: Address) -> bool {
+    /// `Role::Admin` if the address is an active admin, `Role::User` otherwise.
+    pub fn is_admin(e: Env, address: Address) -> Role {
         match e
             .storage()
             .instance()
             .get::<_, AdminInfo>(&DataKey::AdminInfo(address))
         {
-            Some(admin_info) => admin_info.active,
-            None => false,
+            Some(admin_info) => {
+                if admin_info.active && e.ledger().timestamp() >= admin_info.suspended_until {
+                    Role::Admin
+                } else {
+                    Role::User
+                }
+            }
+            None => Role::User,
         }
     }
 
@@ -752,16 +945,47 @@ impl AdminContract {
     /// * `required_role` - Minimum required role
     ///
     /// # Returns
-    /// `true` if the address has at least the required role, `false` otherwise
+    /// `true` if the address has at least the required role, `false` otherwise.
+    /// A suspended admin fails this check until `suspended_until` has passed.
     pub fn has_role_at_least(e: Env, address: Address, required_role: AdminRole) -> bool {
+        bump_instance_ttl(&e);
         match e
             .storage()
             .instance()
             .get::<_, AdminInfo>(&DataKey::AdminInfo(address))
         {
-            Some(admin_info) => admin_info.active && admin_info.role >= required_role,
+            Some(admin_info) => {
+                admin_info.active
+                    && e.ledger().timestamp() >= admin_info.suspended_until
+                    && admin_info.role >= required_role
+            }
             None => false,
         }
+    }
+
+    /// Historical role check: assert that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// Panics with [`ContractError::NotAdmin`] when `actor` is not a registered
+    /// admin or when their role is below the required level.
+    /// Panics with [`ContractError::RoleNotHeldAtLedger`] when the actor's role
+    /// was granted **after** `at_ledger`, meaning they were not authorised at
+    /// the time the signed action was created.
+    ///
+    /// See [`Self::require_role_at_ledger`] (private) for the full threat model.
+    ///
+    /// # Arguments
+    /// * `role`      - Minimum `AdminRole` that must have been held
+    /// * `actor`     - Address whose historical role is checked
+    /// * `at_ledger` - Unix timestamp (seconds) of the signed action
+    pub fn check_role_at_ledger(
+        e: Env,
+        role: AdminRole,
+        actor: Address,
+        at_ledger: u64,
+    ) {
+        bump_instance_ttl(&e);
+        Self::require_role_at_ledger(&e, role, &actor, at_ledger);
     }
 
     /// Get all admin addresses.
@@ -769,6 +993,7 @@ impl AdminContract {
     /// # Returns
     /// A `Vec` of all admin addresses
     pub fn get_all_admins(e: Env) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::AdminList)
@@ -783,6 +1008,7 @@ impl AdminContract {
     /// # Returns
     /// A `Vec` of admin addresses with the specified role
     pub fn get_admins_by_role(e: Env, role: AdminRole) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::RoleAdmins(role))
@@ -794,6 +1020,7 @@ impl AdminContract {
     /// # Returns
     /// The total count of admins
     pub fn get_admin_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         Self::get_all_admins(e).len()
     }
 
@@ -802,6 +1029,7 @@ impl AdminContract {
     /// # Returns
     /// The count of active admins
     pub fn get_active_admin_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         let all_admins = Self::get_all_admins(e.clone());
         let mut active_count = 0;
         for admin in all_admins.iter() {
@@ -823,6 +1051,7 @@ impl AdminContract {
     /// # Returns
     /// A tuple of (min_admins, max_admins)
     pub fn get_config(e: Env) -> (u32, u32) {
+        bump_instance_ttl(&e);
         let min_admins: u32 = e
             .storage()
             .instance()
@@ -840,6 +1069,7 @@ impl AdminContract {
 
     /// Get the role of an address (panics if not admin).
     pub fn get_role(e: Env, address: Address) -> AdminRole {
+        bump_instance_ttl(&e);
         let admin_info: AdminInfo = e
             .storage()
             .instance()
@@ -857,17 +1087,102 @@ impl AdminContract {
         }
     }
 
+    /// Require that the target address is not the zero/invalid sentinel
+    /// and is not the contract's own address.
+    ///
+    /// # Policy
+    /// An address is considered invalid when:
+    ///
+    /// 1. Its strkey encoding matches the all-zero Ed25519 public key
+    ///    (`GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABZKY`).
+    ///    This catches uninitialised/garbage strkeys.
+    /// 2. It equals the contract's own address.  Assigning a governance
+    ///    role to the contract itself can cause invariants to break.
+    ///
+    /// # Panics
+    /// * `ContractError::InvalidAdminAddress` if the address fails either check.
+    fn require_valid_admin_address(e: &Env, address: &Address) {
+        if address.to_string() == String::from_str(e, INVALID_ADDRESS_SENTINEL) {
+            panic_with_error!(e, ContractError::InvalidAdminAddress);
+        }
+        if address == &e.current_contract_address() {
+            panic_with_error!(e, ContractError::InvalidAdminAddress);
+        }
+    }
+
     /// Require that the caller has at least the specified role.
     fn require_role_at_least(
         e: &Env,
         caller: &Address,
         required_role: AdminRole,
     ) -> Result<(), ()> {
-        let caller_role = Self::get_role(e.clone(), caller.clone());
-        if caller_role >= required_role {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(caller.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+        if admin_info.active
+            && e.ledger().timestamp() >= admin_info.suspended_until
+            && admin_info.role >= required_role
+        {
             Ok(())
         } else {
             Err(())
+        }
+    }
+
+    /// Historical role check: verify that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// This is a **defence-in-depth** guard for delegated actions that carry
+    /// an off-chain signature produced at a past ledger. Without it an attacker
+    /// could:
+    ///
+    /// 1. Obtain a signature from an address that was *not yet* an admin at
+    ///    the time the signature was created.
+    /// 2. Wait until that address is later elevated, then replay the signed
+    ///    payload to authorise a historical action as if the signer had been
+    ///    an admin all along.
+    ///
+    /// By asserting `admin_info.assigned_at <= at_ledger` we ensure the role
+    /// assignment predates (or coincides with) the moment the signature covers.
+    ///
+    /// # Arguments
+    /// * `e`          - Soroban environment
+    /// * `role`       - Minimum `AdminRole` that must have been held
+    /// * `actor`      - Address whose historical role is checked
+    /// * `at_ledger`  - Ledger timestamp of the signed action
+    ///
+    /// # Errors
+    /// * [`ContractError::NotAdmin`] — `actor` is not a known admin at all.
+    /// * [`ContractError::RoleNotHeldAtLedger`] — `actor`'s role was assigned
+    ///   after `at_ledger`, meaning they were not yet authorised at that time.
+    ///
+    /// # Panics
+    /// Panics via [`panic_with_error!`] — compatible with Soroban's error
+    /// propagation model.
+    pub fn require_role_at_ledger(
+        e: &Env,
+        role: AdminRole,
+        actor: &Address,
+        at_ledger: u64,
+    ) {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(actor.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+
+        // The actor must have the required role level.
+        if admin_info.role < role {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        // The role must have been assigned at or before the ledger under review.
+        // If `assigned_at > at_ledger` the actor was not yet an admin when the
+        // action was signed, so the authorisation is invalid.
+        if admin_info.assigned_at > at_ledger {
+            panic_with_error!(e, ContractError::RoleNotHeldAtLedger);
         }
     }
 }
@@ -879,30 +1194,37 @@ mod test;
 #[contractimpl]
 impl AdminContract {
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         pausable::is_paused(&e)
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         pausable::unpause(&e, &caller)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
 }
@@ -914,10 +1236,19 @@ mod test_pausable;
 mod test_basic;
 
 #[cfg(test)]
-mod test_zero_address_working;
+mod test_zero_address;
 
 #[cfg(test)]
 mod test_immutable_config_simple;
 
 #[cfg(test)]
 mod test_authorization;
+
+#[cfg(test)]
+mod test_suspension;
+
+#[cfg(test)]
+mod test_auth_entrypoints;
+
+#[cfg(test)]
+mod test_require_role_at_least;

@@ -35,6 +35,8 @@
 //! `advance_keeper_cursor` validates that the new cursor equals the value
 //! returned by the last scan, preventing a keeper from skipping positions.
 
+use credence_errors::ContractError;
+use soroban_sdk::panic_with_error;
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
 use crate::DataKey;
@@ -128,7 +130,9 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
         }
 
         e.storage().instance().set(&active_key, &true);
-        let size = get_registry_size(e).checked_add(1).expect("registry size overflow");
+        let size = get_registry_size(e)
+            .checked_add(1)
+            .expect("registry size overflow");
         e.storage().instance().set(&ScanKey::RegistrySize, &size);
 
         e.events().publish(
@@ -145,7 +149,9 @@ pub fn register_bond_holder(e: &Env, identity: &Address) {
 
     e.storage().instance().set(&active_key, &true);
 
-    let size = get_registry_size(e).checked_add(1).expect("registry size overflow");
+    let size = get_registry_size(e)
+        .checked_add(1)
+        .expect("registry size overflow");
     e.storage().instance().set(&ScanKey::RegistrySize, &size);
 
     e.events().publish(
@@ -178,7 +184,9 @@ pub fn deregister_bond_holder(e: &Env, identity: &Address) {
 
         let size = get_registry_size(e);
         if size > 0 {
-            e.storage().instance().set(&ScanKey::RegistrySize, &(size - 1));
+            e.storage()
+                .instance()
+                .set(&ScanKey::RegistrySize, &(size - 1));
         }
 
         e.events().publish(
@@ -230,8 +238,7 @@ pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
         .len();
 
     // Allow reset to 0 (new pass) or forward advance within bounds
-    let valid =
-        next_cursor == 0 || (next_cursor > current && next_cursor <= registry_slots);
+    let valid = next_cursor == 0 || (next_cursor > current && next_cursor <= registry_slots);
     if !valid {
         panic!("keeper cursor: invalid advance");
     }
@@ -284,8 +291,14 @@ pub fn scan_liquidation_candidates(
     let registry_slots = registry.len();
     let active_registry_size = get_registry_size(e);
 
-    if cursor > registry_slots {
-        panic!("cursor out of range");
+    // Reject any cursor that is at or beyond the end of the registry.
+    // The one exception is cursor == 0 on an empty registry, which is the
+    // valid "nothing to scan" state. Using >= (not >) closes the gap where
+    // cursor == registry_slots was silently accepted and returned done=true,
+    // allowing a keeper to synthesize a completed-scan response without
+    // actually visiting any registry slots.
+    if registry_slots > 0 && cursor >= registry_slots {
+        panic_with_error!(e, ContractError::CursorOutOfRange);
     }
 
     // Cap max_iter to hard limit; use default if caller passes 0
@@ -313,11 +326,11 @@ pub fn scan_liquidation_candidates(
             continue;
         }
 
-        // Fetch bond state for this identity
+        // Pass the specific identity into the tuple variant key setup
         if let Some(bond) = e
             .storage()
             .instance()
-            .get::<_, crate::IdentityBond>(&DataKey::Bond)
+            .get::<_, crate::IdentityBond>(&DataKey::Bond(identity.clone()))
         {
             // Only consider active bonds
             if !bond.active {
@@ -331,10 +344,12 @@ pub fn scan_liquidation_candidates(
                 continue;
             }
 
-            // Check slash ratio: slashed / bonded >= min_slash_ratio_bps / 10000
-            let slash_ratio_bps = crate::math::ceil_div_i128(slashed * 10_000, bonded, "ratio overflow");
-            // Check slash ratio: slashed / bonded >= min_slash_ratio_bps / math::BPS_DENOMINATOR
-            let slash_ratio_bps = (slashed * crate::math::BPS_DENOMINATOR) / bonded;
+            // FIXED: Removed the shadowed computation variable and used checked math multiplication vectors safely
+            let slash_ratio_bps = slashed
+                .checked_mul(crate::math::BPS_DENOMINATOR)
+                .and_then(|v| v.checked_div(bonded))
+                .unwrap_or(0);
+
             if slash_ratio_bps >= min_slash_ratio_bps as i128 {
                 candidates.push_back(LiquidationCandidate {
                     identity,

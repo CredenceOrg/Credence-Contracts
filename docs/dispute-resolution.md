@@ -1,38 +1,83 @@
-# Dispute Resolution: Closure Invariants
+# Arbitration: Dispute Resolution
 
-This document describes terminal-state closure guarantees for the `dispute_resolution` contract.
+This document describes the dispute resolution lifecycle and quorum configuration for the `credence_arbitration` contract.
 
-## Closure API
+## Dispute Lifecycle
 
-- `resolve_dispute(closer: Address, dispute_id: u64)`
-- `expire_dispute(closer: Address, dispute_id: u64)`
+```
+Open → Voting → Resolving → Resolved
+  ↘        ↘         ↘
+  Cancelled  Cancelled  Tied
+```
 
-Both closure functions require explicit signer authorization from `closer` and enforce role checks.
+Valid transitions enforced by the status machine:
 
-## Authorized Closers
+| From      | To        | Trigger                                             |
+| --------- | --------- | --------------------------------------------------- |
+| Open      | Voting    | `create_dispute` (implicit)                         |
+| Open      | Cancelled | `cancel_dispute` (creator or admin)                 |
+| Voting    | Resolving | `resolve_dispute` (after voting ends)               |
+| Voting    | Cancelled | `cancel_dispute` (creator or admin)                 |
+| Resolving | Resolved  | `resolve_dispute` (after tally, clear winner)       |
+| Resolving | Tied      | `resolve_dispute` (after tally, tie or equal votes) |
 
-A dispute may be closed only by:
+## Tied vs. Resolved
 
-- the original `disputer`, or
-- the contract `admin` (when initialized)
+When `resolve_dispute` is called after the voting period ends:
 
-Any other caller is rejected with:
+- **Clear Winner**: Highest-weight outcome is unique → transitions to `Resolved` with `outcome = &lt;winning_outcome&gt;`
+- **Tie**: Two or more outcomes have equal highest weight → transitions to `Tied` with `outcome = 0`
 
-- `Error::Unauthorized` (`#6`)
+The `Tied` state makes tie ambiguity explicit. Outcome 0 is reserved (rejected by `vote` as `InvalidOutcome`), so a dispute in the `Tied` state with `outcome = 0` cannot be confused with a valid ruling. Consumers (e.g., slashing/settlement logic) must handle `Tied` separately from `Resolved`.
 
-## Terminal-State Invariants
+## Quorum Gate
 
-The contract enforces deterministic terminal state:
+The admin may set two quorum parameters via `set_quorum`:
 
-- No double-close: disputes in `Resolved` or `Expired` cannot be closed again (`Error::DisputeNotOpen`, `#3`)
-- No unauthorized close: closure attempts by non-disputer/non-admin fail (`Error::Unauthorized`, `#6`)
+- **`min_total_weight`** (`i128`) — minimum sum of vote weights required
+- **`min_voters`** (`u32`) — minimum number of distinct voters required
 
-These checks ensure a dispute transitions from `Open` to exactly one terminal state and remains immutable afterward.
+Both default to `0`, preserving legacy behaviour (no quorum gate).
 
-## Regression Coverage
+### Resolution flow with quorum
 
-Tests in `contracts/dispute_resolution/src/test.rs` cover:
+1. Voting period ends
+2. Quorum check (before the Resolving transition):
+   - Sum all vote weights across all outcomes
+   - Count distinct voters from `VoterCounter`
+   - If either threshold is unmet → emit `quorum_not_met` event, return `QuorumNotMet`
+   - Dispute **stays in Voting**; caller may retry after more votes are cast
+3. Transition to Resolving
+4. Tally votes → determine winner
+5. Transition to Resolved
 
-- unauthorized resolve attempts
-- unauthorized expire attempts
-- state immutability after failed second close
+### Error
+
+`ArbitrationError::QuorumNotMet` (13) — returned when quorum thresholds are not satisfied.
+
+### Events
+
+| Event            | Topics                           | Data                                                        | Trigger                               |
+| ---------------- | -------------------------------- | ----------------------------------------------------------- | ------------------------------------- |
+| `quorum_set`     | `("quorum_set",)`                | `(min_total_weight, min_voters)`                            | `set_quorum`                          |
+| `quorum_not_met` | `("quorum_not_met", dispute_id)` | `(total_weight, min_total_weight, voter_count, min_voters)` | `resolve_dispute` when quorum not met |
+
+## Admin Functions
+
+- `set_quorum(admin, min_total_weight, min_voters)` — requires admin auth
+- `get_quorum()` — returns `(min_total_weight, min_voters)`
+
+## Edge Cases
+
+- **Weight quorum met, voter quorum not met** → `QuorumNotMet`
+- **Voter quorum met, weight quorum not met** → `QuorumNotMet`
+- **Both met** → resolution proceeds
+- **Default (0, 0)** → legacy behaviour, no quorum gate
+- **Single voter under `min_voters`** → `QuorumNotMet`
+
+## Tests
+
+Quorum tests are in:
+
+- `contracts/arbitration/src/test.rs` — basic config + single-voter edge case
+- `contracts/arbitration/src/test_lifecycle.rs` — lifecycle integration tests for all quorum branches

@@ -4,6 +4,7 @@ use soroban_sdk::{Address, Env};
 #[cfg(test)]
 mod comprehensive_tests {
     use super::*;
+    use credence_errors::Role;
     use soroban_sdk::testutils::Address as _;
 
     fn create_contract() -> AdminContract {
@@ -57,9 +58,12 @@ mod comprehensive_tests {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
 
-        assert!(env.as_contract(&contract_address, || {
-            AdminContract::is_admin(env.clone(), super_admin.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract_address, || {
+                AdminContract::is_admin(env.clone(), super_admin.clone())
+            }),
+            Role::Admin
+        );
         assert_eq!(
             env.as_contract(&contract_address, || {
                 AdminContract::get_admin_role(env.clone(), super_admin.clone())
@@ -505,9 +509,12 @@ mod comprehensive_tests {
         });
         assert_eq!(after_active, 2);
 
-        assert!(!env.as_contract(&contract_address, || {
-            AdminContract::is_admin(env.clone(), admin.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract_address, || {
+                AdminContract::is_admin(env.clone(), admin.clone())
+            }),
+            Role::User
+        );
         assert!(!env.as_contract(&contract_address, || {
             AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Operator)
         }));
