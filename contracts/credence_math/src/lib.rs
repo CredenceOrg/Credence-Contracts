@@ -387,9 +387,7 @@ pub fn add_business_days(start: u64, business_days: u32) -> u64 {
     let mut ts = start;
     let mut remaining = business_days;
     while remaining > 0 {
-        ts = ts
-            .checked_add(SECS_PER_DAY)
-            .expect("add_business_days overflow");
+        ts = ts.checked_add(SECS_PER_DAY).expect("add_business_days overflow");
         if !is_weekend(ts) {
             remaining -= 1;
         }
@@ -913,6 +911,7 @@ mod tests {
 
     const SECS: u64 = super::SECS_PER_DAY;
 
+    /// Helper: build a Unix timestamp for a known weekday.
     /// 2024-01-01 00:00:00 UTC is a Monday (day_of_week == 1).
     const MON_2024_01_01: u64 = 1_704_067_200;
 
@@ -933,9 +932,11 @@ mod tests {
     fn is_weekend_saturday_sunday() {
         assert!(super::is_weekend(MON_2024_01_01 + 5 * SECS)); // Sat
         assert!(super::is_weekend(MON_2024_01_01 + 6 * SECS)); // Sun
-        assert!(!super::is_weekend(MON_2024_01_01)); // Mon
+        assert!(!super::is_weekend(MON_2024_01_01));            // Mon
         assert!(!super::is_weekend(MON_2024_01_01 + 4 * SECS)); // Fri
     }
+
+    // -- weekday inputs ---------------------------------------------------
 
     #[test]
     fn add_business_days_zero_returns_start() {
@@ -944,20 +945,20 @@ mod tests {
 
     #[test]
     fn add_one_business_day_from_monday_gives_tuesday() {
-        assert_eq!(
-            super::add_business_days(MON_2024_01_01, 1),
-            MON_2024_01_01 + SECS
-        );
+        // Monday + 1 -> Tuesday
+        assert_eq!(super::add_business_days(MON_2024_01_01, 1), MON_2024_01_01 + SECS);
     }
 
     #[test]
     fn add_one_business_day_from_friday_gives_next_monday() {
+        // Friday 2024-01-05 + 1 -> Monday 2024-01-08
         let fri = MON_2024_01_01 + 4 * SECS;
         assert_eq!(super::add_business_days(fri, 1), fri + 3 * SECS);
     }
 
     #[test]
     fn add_five_business_days_from_monday_gives_next_monday() {
+        // Mon + 5 -> next Mon
         assert_eq!(
             super::add_business_days(MON_2024_01_01, 5),
             MON_2024_01_01 + 7 * SECS
@@ -966,24 +967,30 @@ mod tests {
 
     #[test]
     fn add_two_business_days_from_wednesday_gives_friday() {
+        // Wednesday 2024-01-03 + 2 -> Friday 2024-01-05
         let wed = MON_2024_01_01 + 2 * SECS;
         assert_eq!(super::add_business_days(wed, 2), wed + 2 * SECS);
     }
 
     #[test]
     fn add_three_business_days_from_thursday_gives_next_tuesday() {
+        // Thursday 2024-01-04 + 3 -> Tue 2024-01-09
         let thu = MON_2024_01_01 + 3 * SECS;
         assert_eq!(super::add_business_days(thu, 3), thu + 5 * SECS);
     }
 
+    // -- weekend inputs ---------------------------------------------------
+
     #[test]
     fn add_business_days_from_saturday_skips_to_monday_then_counts() {
+        // Saturday 2024-01-06 + 1 -> Monday 2024-01-08
         let sat = MON_2024_01_01 + 5 * SECS;
         assert_eq!(super::add_business_days(sat, 1), sat + 2 * SECS);
     }
 
     #[test]
     fn add_business_days_from_sunday_skips_to_monday_then_counts() {
+        // Sunday 2024-01-07 + 1 -> Monday 2024-01-08
         let sun = MON_2024_01_01 + 6 * SECS;
         assert_eq!(super::add_business_days(sun, 1), sun + 1 * SECS);
     }
@@ -994,22 +1001,29 @@ mod tests {
         assert_eq!(super::add_business_days(sat, 0), sat);
     }
 
+    // -- month-boundary ---------------------------------------------------
+
     #[test]
     fn add_business_days_crosses_month_boundary() {
+        // Friday 2024-01-26 + 4 -> Wednesday 2024-01-31
         let fri_jan26 = MON_2024_01_01 + 25 * SECS;
         assert_eq!(super::day_of_week(fri_jan26), 5); // Friday
+        // Fri -> Mon(+3) -> Tue(+1) -> Wed(+1) = 4 business days
         assert_eq!(super::add_business_days(fri_jan26, 4), fri_jan26 + 6 * SECS);
     }
 
     #[test]
     fn add_business_days_from_end_of_february() {
+        // Thursday 2024-02-29 (leap year) + 3 -> Tuesday 2024-03-05
         let thu_feb29 = MON_2024_01_01 + 59 * SECS;
         assert_eq!(super::day_of_week(thu_feb29), 4); // Thursday
+        // Thu -> Fri(+1) -> Mon(+3) -> Tue(+1) = 3 business days
         assert_eq!(super::add_business_days(thu_feb29, 3), thu_feb29 + 5 * SECS);
     }
 
     #[test]
     fn add_business_days_from_month_end_crosses_weekend() {
+        // Friday 2024-02-23 + 2 -> Tuesday 2024-02-27
         let fri_feb23 = MON_2024_01_01 + (31 + 22) * SECS;
         assert_eq!(super::day_of_week(fri_feb23), 5); // Friday
         assert_eq!(super::add_business_days(fri_feb23, 2), fri_feb23 + 4 * SECS);
@@ -1017,6 +1031,7 @@ mod tests {
 
     #[test]
     fn add_multiple_weeks() {
+        // 10 business days from Monday = 2 full weeks = 14 calendar days
         assert_eq!(
             super::add_business_days(MON_2024_01_01, 10),
             MON_2024_01_01 + 14 * SECS
