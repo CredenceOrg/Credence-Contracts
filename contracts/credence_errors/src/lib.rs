@@ -655,6 +655,11 @@ pub enum ContractError {
     /// Contracts: math, bond
     /// Wire-stable: do not renumber this error code.
     DivisionByZero = 702,
+
+    /// Percentage splits do not sum to exactly 10 000 bps.
+    /// Contracts: math
+    /// Wire-stable: do not renumber this error code.
+    InvalidPercentSplit = 703,
 }
 
 /// @title  ErrorExt
@@ -790,7 +795,7 @@ impl ErrorExt for ContractError {
             | ContractError::SlippageExceeded
             | ContractError::TreasuryBeneficiaryMismatch => ErrorCategory::Treasury,
 
-            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero => {
+            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero | ContractError::InvalidPercentSplit => {
                 ErrorCategory::Arithmetic
             }
             ContractError::NoPendingAdmin
@@ -963,6 +968,7 @@ impl ErrorExt for ContractError {
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
+            ContractError::InvalidPercentSplit => "Percentage splits do not sum to exactly 10 000 bps",
         }
     }
 
@@ -1107,6 +1113,8 @@ impl ErrorExt for ContractError {
             // FATAL Treasury flashloan failures: callback contract misbehaved.
             ContractError::InvalidFlashLoanCallback => false, // bad magic value
             ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
+
+            ContractError::InvalidPercentSplit => true, // caller can provide valid splits
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow
