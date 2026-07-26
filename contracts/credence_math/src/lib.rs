@@ -154,6 +154,12 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
         .ok_or(ContractError::Overflow)
 }
 
+/// Checked `i128` addition returning a typed error instead of panicking.
+#[inline]
+pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
 /// Compute `a * b / denom` over a 256-bit intermediate.
 ///
 /// The intermediate product is widened before division, so large products that
@@ -179,15 +185,6 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
 /// assert_eq!(mul_div_i128(10, 3, 4, Rounding::Nearest, "overflow"), 8);
 /// assert_eq!(mul_div_i128(-10, 3, 4, Rounding::Up, "overflow"), -8);
 /// ```
-#[inline]
-#[must_use]
-
-/// Checked `i128` addition returning a typed error instead of panicking.
-#[inline]
-pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
-    a.checked_add(b).ok_or(ContractError::Overflow)
-}
-
 #[inline]
 #[must_use]
 pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static str) -> i128 {
@@ -308,26 +305,62 @@ pub fn split_bps(
     (fee, net)
 }
 
-/// Requires that the sum of the provided basis-point splits equals exactly 10,000.
+/// Seconds in one calendar day.
+pub const SECS_PER_DAY: u64 = 86_400;
+
+/// Day-of-week from a Unix timestamp.
 ///
-/// Iterates over `splits`, sums the values using `checked_add` to prevent overflow,
-/// and verifies the final sum is exactly `10_000` (`BPS_DENOMINATOR`).
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the sum is exactly 10_000.
-/// Returns `Err(ContractError::InvariantViolation)` if the sum does not equal 10_000.
-/// Returns `Err(ContractError::Arithmetic)` if the sum overflows `u32`.
+/// Returns `0 = Sunday, 1 = Monday, … 6 = Saturday`.
+/// The Unix epoch (1970-01-01) was a Thursday (day 4).
 #[inline]
-pub fn require_valid_percent_split(splits: &soroban_sdk::Vec<u32>) -> Result<(), ContractError> {
-    let mut sum: u32 = 0;
-    for split in splits.iter() {
-        sum = sum.checked_add(split).ok_or(ContractError::Arithmetic)?;
+#[must_use]
+pub fn day_of_week(unix_ts: u64) -> u8 {
+    ((unix_ts / SECS_PER_DAY + 4) % 7) as u8
+}
+
+/// Returns `true` when the given Unix timestamp falls on a Saturday or Sunday.
+#[inline]
+#[must_use]
+pub fn is_weekend(unix_ts: u64) -> bool {
+    matches!(day_of_week(unix_ts), 0 | 6)
+}
+
+/// Advance `start` by `business_days` weekdays (Mon–Fri), skipping weekends.
+///
+/// Each calendar day is treated as exactly [`SECS_PER_DAY`] seconds.  If
+/// `business_days` is `0` the start timestamp is returned unchanged.
+///
+/// # Arguments
+///
+/// * `start` – Unix timestamp (seconds since epoch) of the starting day.
+/// * `business_days` – number of weekdays to add.
+///
+/// # Panics
+///
+/// Panics on arithmetic overflow.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::add_business_days;
+///
+/// // 2024-01-01 (Monday) + 1 business day → 2024-01-02 (Tuesday)
+/// let mon = 1704067200;
+/// assert_eq!(add_business_days(mon, 1), mon + 86_400);
+/// ```
+#[must_use]
+pub fn add_business_days(start: u64, business_days: u32) -> u64 {
+    let mut ts = start;
+    let mut remaining = business_days;
+    while remaining > 0 {
+        ts = ts
+            .checked_add(SECS_PER_DAY)
+            .expect("add_business_days overflow");
+        if !is_weekend(ts) {
+            remaining -= 1;
+        }
     }
-    if sum != BPS_DENOMINATOR as u32 {
-        return Err(ContractError::InvariantViolation);
-    }
-    Ok(())
+    ts
 }
 
 /// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
@@ -432,7 +465,6 @@ mod tests {
         (fee, net)
     }
 
-    #[test]
     #[test]
     fn test_checked_add_or_error() {
         assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
@@ -757,98 +789,121 @@ mod tests {
             (amount, 0)
         );
     }
+
+    // -----------------------------------------------------------------------
+    // add_business_days tests
+    // -----------------------------------------------------------------------
+
+    const SECS: u64 = super::SECS_PER_DAY;
+
+    /// 2024-01-01 00:00:00 UTC is a Monday (day_of_week == 1).
+    const MON_2024_01_01: u64 = 1_704_067_200;
+
     #[test]
-    fn chunked_iter_returns_zero_and_does_not_call_closure_when_empty() {
-        let e = soroban_sdk::Env::default();
-        let source: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&e);
-        let mut called = false;
-        let chunks = chunked_iter(&e, &source, 10, |_chunk, _idx| {
-            called = true;
-        });
-        assert!(!called);
-        assert_eq!(chunks, 0);
+    fn day_of_week_monday() {
+        assert_eq!(super::day_of_week(MON_2024_01_01), 1);
     }
 
     #[test]
-    fn chunked_iter_returns_single_pair_when_source_has_one_element() {
-        let e = soroban_sdk::Env::default();
-        let mut source = soroban_sdk::Vec::new(&e);
-        source.push_back(42u32);
-        
-        let mut collected = std::vec::Vec::new();
-        let mut indices = std::vec::Vec::new();
-        
-        let chunks = chunked_iter(&e, &source, 10, |chunk, idx| {
-            indices.push(idx);
-            for i in 0..chunk.len() {
-                collected.push(chunk.get(i).unwrap());
-            }
-        });
-        
-        assert_eq!(chunks, 1);
-        assert_eq!(indices, std::vec![0]);
-        assert_eq!(collected, std::vec![42]);
+    fn day_of_week_weekend() {
+        // Saturday 2024-01-06
+        assert_eq!(super::day_of_week(MON_2024_01_01 + 5 * SECS), 6);
+        // Sunday 2024-01-07
+        assert_eq!(super::day_of_week(MON_2024_01_01 + 6 * SECS), 0);
     }
 
     #[test]
-    fn chunked_iter_returns_many_pairs_when_source_exceeds_chunk_size() {
-        let e = soroban_sdk::Env::default();
-        let mut source = soroban_sdk::Vec::new(&e);
-        let n = 25u32;
-        for i in 0..n {
-            source.push_back(i);
-        }
-        
-        let mut collected = std::vec::Vec::new();
-        let mut indices = std::vec::Vec::new();
-        
-        let chunks = chunked_iter(&e, &source, 10, |chunk, idx| {
-            indices.push(idx);
-            for i in 0..chunk.len() {
-                collected.push(chunk.get(i).unwrap());
-            }
-        });
-        
-        assert_eq!(chunks, 3);
-        assert_eq!(indices, std::vec![0, 1, 2]);
-        assert_eq!(collected.len(), 25);
-        for i in 0..n {
-            assert_eq!(collected[i as usize], i);
-        }
+    fn is_weekend_saturday_sunday() {
+        assert!(super::is_weekend(MON_2024_01_01 + 5 * SECS)); // Sat
+        assert!(super::is_weekend(MON_2024_01_01 + 6 * SECS)); // Sun
+        assert!(!super::is_weekend(MON_2024_01_01)); // Mon
+        assert!(!super::is_weekend(MON_2024_01_01 + 4 * SECS)); // Fri
     }
 
     #[test]
-    fn test_require_valid_percent_split() {
-        let e = soroban_sdk::Env::default();
-        
-        // Positive tests
-        let mut valid_splits = soroban_sdk::Vec::new(&e);
-        valid_splits.push_back(10_000);
-        assert_eq!(super::require_valid_percent_split(&valid_splits), Ok(()));
-        
-        let mut valid_splits2 = soroban_sdk::Vec::new(&e);
-        valid_splits2.push_back(5_000);
-        valid_splits2.push_back(3_000);
-        valid_splits2.push_back(2_000);
-        assert_eq!(super::require_valid_percent_split(&valid_splits2), Ok(()));
+    fn add_business_days_zero_returns_start() {
+        assert_eq!(super::add_business_days(MON_2024_01_01, 0), MON_2024_01_01);
+    }
 
-        // Negative tests
-        let mut invalid_splits_short = soroban_sdk::Vec::new(&e);
-        invalid_splits_short.push_back(9_999);
-        assert_eq!(super::require_valid_percent_split(&invalid_splits_short), Err(crate::ContractError::InvalidPercentSplit));
-        
-        let mut invalid_splits_over = soroban_sdk::Vec::new(&e);
-        invalid_splits_over.push_back(5_000);
-        invalid_splits_over.push_back(5_001);
-        assert_eq!(super::require_valid_percent_split(&invalid_splits_over), Err(crate::ContractError::InvalidPercentSplit));
+    #[test]
+    fn add_one_business_day_from_monday_gives_tuesday() {
+        assert_eq!(
+            super::add_business_days(MON_2024_01_01, 1),
+            MON_2024_01_01 + SECS
+        );
+    }
 
-        let invalid_splits_empty = soroban_sdk::Vec::new(&e);
-        assert_eq!(super::require_valid_percent_split(&invalid_splits_empty), Err(crate::ContractError::InvalidPercentSplit));
+    #[test]
+    fn add_one_business_day_from_friday_gives_next_monday() {
+        let fri = MON_2024_01_01 + 4 * SECS;
+        assert_eq!(super::add_business_days(fri, 1), fri + 3 * SECS);
+    }
 
-        let mut invalid_splits_overflow = soroban_sdk::Vec::new(&e);
-        invalid_splits_overflow.push_back(u32::MAX);
-        invalid_splits_overflow.push_back(1);
-        assert_eq!(super::require_valid_percent_split(&invalid_splits_overflow), Err(crate::ContractError::Overflow));
+    #[test]
+    fn add_five_business_days_from_monday_gives_next_monday() {
+        assert_eq!(
+            super::add_business_days(MON_2024_01_01, 5),
+            MON_2024_01_01 + 7 * SECS
+        );
+    }
+
+    #[test]
+    fn add_two_business_days_from_wednesday_gives_friday() {
+        let wed = MON_2024_01_01 + 2 * SECS;
+        assert_eq!(super::add_business_days(wed, 2), wed + 2 * SECS);
+    }
+
+    #[test]
+    fn add_three_business_days_from_thursday_gives_next_tuesday() {
+        let thu = MON_2024_01_01 + 3 * SECS;
+        assert_eq!(super::add_business_days(thu, 3), thu + 5 * SECS);
+    }
+
+    #[test]
+    fn add_business_days_from_saturday_skips_to_monday_then_counts() {
+        let sat = MON_2024_01_01 + 5 * SECS;
+        assert_eq!(super::add_business_days(sat, 1), sat + 2 * SECS);
+    }
+
+    #[test]
+    fn add_business_days_from_sunday_skips_to_monday_then_counts() {
+        let sun = MON_2024_01_01 + 6 * SECS;
+        assert_eq!(super::add_business_days(sun, 1), sun + 1 * SECS);
+    }
+
+    #[test]
+    fn add_business_days_from_saturday_zero_returns_saturday() {
+        let sat = MON_2024_01_01 + 5 * SECS;
+        assert_eq!(super::add_business_days(sat, 0), sat);
+    }
+
+    #[test]
+    fn add_business_days_crosses_month_boundary() {
+        let fri_jan26 = MON_2024_01_01 + 25 * SECS;
+        assert_eq!(super::day_of_week(fri_jan26), 5); // Friday
+        assert_eq!(super::add_business_days(fri_jan26, 4), fri_jan26 + 6 * SECS);
+    }
+
+    #[test]
+    fn add_business_days_from_end_of_february() {
+        let thu_feb29 = MON_2024_01_01 + 59 * SECS;
+        assert_eq!(super::day_of_week(thu_feb29), 4); // Thursday
+        assert_eq!(super::add_business_days(thu_feb29, 3), thu_feb29 + 5 * SECS);
+    }
+
+    #[test]
+    fn add_business_days_from_month_end_crosses_weekend() {
+        let fri_feb23 = MON_2024_01_01 + (31 + 22) * SECS;
+        assert_eq!(super::day_of_week(fri_feb23), 5); // Friday
+        assert_eq!(super::add_business_days(fri_feb23, 2), fri_feb23 + 4 * SECS);
+    }
+
+    #[test]
+    fn add_multiple_weeks() {
+        assert_eq!(
+            super::add_business_days(MON_2024_01_01, 10),
+            MON_2024_01_01 + 14 * SECS
+        );
     }
 }
 

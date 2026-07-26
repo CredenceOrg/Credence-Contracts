@@ -853,6 +853,8 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
+
+            ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
         }
     }
 
@@ -1149,11 +1151,6 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
-            // Terminal *state* (delegation already revoked or expired), not a
-            // *permission* problem: unlike NotSigner/NotAdmin, which the
-            // caller can resolve by switching signer/role, no retry with the
-            // same delegation will ever succeed.
-            ContractError::DelegationInactive => false,              // delegation revoked/expired; cannot be fixed by caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
 
             // --- Treasury (600-699): mostly caller-fixable ---
