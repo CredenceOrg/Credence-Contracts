@@ -47,7 +47,7 @@ fn test_set_token_with_accepted_token_succeeds() {
 
     // Set accepted tokens
     let mut accepted_tokens = Vec::new(&e);
-    accepted_tokens.push_back(accepted_token);
+    accepted_tokens.push_back(accepted_token.clone());
     client.set_accepted_tokens(&admin, &accepted_tokens);
 
     // Set an accepted token - should succeed

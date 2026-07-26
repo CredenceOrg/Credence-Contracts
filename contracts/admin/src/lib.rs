@@ -1156,7 +1156,7 @@ impl AdminContract {
     /// # Panics
     /// Panics via [`panic_with_error!`] — compatible with Soroban's error
     /// propagation model.
-    pub fn require_role_at_ledger(e: &Env, role: AdminRole, actor: &Address, at_ledger: u64) {
+    fn require_role_at_ledger(e: &Env, role: AdminRole, actor: &Address, at_ledger: u64) {
         let admin_info: AdminInfo = e
             .storage()
             .instance()
