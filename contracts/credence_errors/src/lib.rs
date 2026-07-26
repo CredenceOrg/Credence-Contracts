@@ -22,7 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
-use soroban_sdk::{Env, panic_with_error};
+use soroban_sdk::Env;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -329,6 +329,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BondAlreadyExists = 218,
 
+    /// Hex/base64 stringified bytes input is malformed or exceeds the length bound.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidStringifiedBytes = 230,
+
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
@@ -557,11 +562,17 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     PromiseNotKept = 512,
 
-    /// Raised when an operator attempts to approve or execute a proposal
-    /// from a previous (stale) epoch.
-    /// Contracts: delegation
+    /// Raised when an admin-path caller attempts to approve or execute a pause
+    /// proposal whose ID was derived under a previous (stale) epoch bucket.
+    /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
-    StaleOperatorEpoch = 513,
+    StaleAdminEpoch = 514,
+
+    /// Raised when a multisig/signer-path caller attempts to approve or execute
+    /// a pause proposal whose ID was derived under a previous (stale) epoch.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    StaleSignerEpoch = 515,
 
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
@@ -774,8 +785,8 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
-            | ContractError::InvalidMaxPauseSigners
-            | ContractError::MaxPauseSignersExceeded => ErrorCategory::Authorization,
+            | ContractError::StaleAdminEpoch
+            | ContractError::StaleSignerEpoch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -801,6 +812,8 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
@@ -922,7 +935,9 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
-            ContractError::SnapshotGenerationMismatch => "Pagination cursor from a different snapshot generation",
+            ContractError::InvalidStringifiedBytes => {
+                "Hex/base64 stringified bytes input is malformed or too long"
+            }
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -1045,7 +1060,12 @@ impl ErrorExt for ContractError {
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
-            ContractError::InvalidPercentSplit => "Percentage splits do not sum to exactly 10 000 bps",
+            ContractError::StaleAdminEpoch => {
+                "Admin pause proposal carries a stale epoch reference"
+            }
+            ContractError::StaleSignerEpoch => {
+                "Signer pause proposal carries a stale epoch reference"
+            }
         }
     }
 
@@ -1096,6 +1116,10 @@ impl ErrorExt for ContractError {
             ContractError::InvalidMaxPauseSigners => true,
             ContractError::MaxPauseSignersExceeded => true,
 
+            // Stale epoch proposals cannot be fixed by retry — re-propose in the
+            // current bucket.
+            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
+
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
             | ContractError::BondNotActive
@@ -1119,7 +1143,7 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
-            | ContractError::SnapshotGenerationMismatch
+            | ContractError::InvalidStringifiedBytes
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::InvalidStringifiedBytes
             | ContractError::BatchTooLarge         // reduce batch size
@@ -1286,45 +1310,23 @@ macro_rules! require_non_zero_bytes32 {
     };
 }
 
-/// Rejects the call when the current ledger timestamp is at or past
-/// the supplied `expires_at` value. Returns `SignatureExpired` when
-/// the expiry has been reached.
-#[macro_export]
-macro_rules! require_within_ttl {
-    ($env:expr, $expires_at:expr) => {
-        if $env.ledger().timestamp() >= $expires_at {
-            return Err($crate::ContractError::SignatureExpired);
-        }
-    };
-}
-
-/// Returns `true` when the supplied `expires_at` timestamp denotes a
-/// reached-or-past expiry. Treats `0` as never-expire.
-pub fn is_expired(e: &Env, expires_at: u64) -> bool {
-    expires_at != 0 && e.ledger().timestamp() >= expires_at
-}
-
-/// Panic-style helper: panics with the supplied `ContractError` when the
-/// `expires_at` has been reached. Use this in entrypoints that prefer
-/// `panic_with_error!` semantics.
-pub fn require_within_ttl_panic(e: &Env, expires_at: u64, err: ContractError) {
-    if is_expired(e, expires_at) {
-        panic_with_error!(e, err);
-    }
-}
-
-/// Result-style helper mirroring the `require_within_ttl!` macro.
-pub fn require_within_ttl_result(e: &Env, expires_at: u64) -> Result<(), ContractError> {
-    if is_expired(e, expires_at) {
-        return Err(ContractError::SignatureExpired);
-    }
-    Ok(())
-}
-
-/// Require the contract to be uninitialised. Panics with
-/// `ContractError::AlreadyInitialized` when `is_initialized` is true.
+/// Re-init prevention guard for Soroban contract constructors.
+///
+/// Every deployable contract must call this as the **first statement** in its
+/// `initialize` function, before any auth or storage writes. The guard panics
+/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
+/// already exists in instance storage, preventing a second caller from
+/// overwriting the admin and stealing the contract.
+///
+/// # Arguments
+/// * `e`              - Soroban environment (needed for typed error panic).
+/// * `is_initialized` - `true` when the sentinel key exists, meaning the
+///                      contract has already been initialized.
+///
+/// # Panics
+/// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
 pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
     if is_initialized {
-        panic_with_error!(e, ContractError::AlreadyInitialized);
+        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }

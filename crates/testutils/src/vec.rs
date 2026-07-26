@@ -1,7 +1,12 @@
+use soroban_sdk::{Env, TryFromVal, Vec as SorobanVec};
 use alloc::vec::Vec as StdVec;
 use soroban_sdk::{Env, Vec as SorobanVec};
 
-pub fn deduplicate_stable<T: PartialEq + Clone>(e: &Env, v: &SorobanVec<T>) -> SorobanVec<T> {
+pub fn deduplicate_stable<T>(e: &Env, v: &SorobanVec<T>) -> SorobanVec<T>
+where
+    T: PartialEq + Clone + TryFromVal<Env, soroban_sdk::Val>,
+    soroban_sdk::Val: TryFromVal<Env, T>,
+{
     let mut out: SorobanVec<T> = SorobanVec::new(e);
     let len = v.len();
     let mut i = 0u32;
