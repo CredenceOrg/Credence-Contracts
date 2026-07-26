@@ -21,7 +21,7 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::contracterror;
+use soroban_sdk::{contracterror, panic_with_error};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -541,7 +541,7 @@ pub enum ContractError {
 
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 118,
+    NoPendingAdmin = 115,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -746,7 +746,8 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
-            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
+            | ContractError::AmountExplicitlyZero
+            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1149,6 +1150,14 @@ macro_rules! require_positive_amount {
             return Err($crate::ContractError::AmountMustBePositive);
         }
     };
+}
+
+/// Panics with `ContractError::AlreadyInitialized` if `initialized` is true.
+/// Called at the top of every contract's `initialize` entrypoint.
+pub fn require_contract_uninitialized(e: &soroban_sdk::Env, initialized: bool) {
+    if initialized {
+        panic_with_error!(e, ContractError::AlreadyInitialized);
+    }
 }
 
 /// Rejects a caller-supplied timestamp that is strictly ahead of the

@@ -12,8 +12,8 @@
 //!    constant is reserved for future payload-level domain binding).
 
 use super::*;
-use soroban_sdk::{String, testutils::Address as _};
 use soroban_sdk::Env;
+use soroban_sdk::{testutils::Address as _, String};
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -740,7 +740,6 @@ fn test_mixed_execution_interleaving() {
 
     assert_eq!(client.get_nonce(&owner), 2);
 }
-
 
 #[test]
 #[should_panic(expected = "Error(Contract, #225)")] // DomainMismatch
