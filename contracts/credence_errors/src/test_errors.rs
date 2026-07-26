@@ -1332,6 +1332,7 @@ mod tests {
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => false, // delegation revoked/expired; cannot be fixed by caller
             ContractError::PayloadTooOld => true,       // re-sign with current ledger number
+            ContractError::PromiseNotKept => false,
 
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
@@ -1467,6 +1468,7 @@ mod tests {
             ContractError::CursorOutOfRange,
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
+            ContractError::PromiseNotKept,
             ContractError::Overflow,
             ContractError::Underflow,
             ContractError::DivisionByZero,
