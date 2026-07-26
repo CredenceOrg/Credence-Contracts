@@ -329,6 +329,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidCurrency = 234,
 
+    /// Migration is in progress; state mutations are temporarily paused.
+    /// Replaces: panic!("migration in progress")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 235,
+
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
     /// Contracts: bond
@@ -746,7 +752,8 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::InvariantViolation
-            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
+            | ContractError::AmountExplicitlyZero
+            | ContractError::MigrationInProgress => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -854,6 +861,7 @@ impl ErrorExt for ContractError {
             ContractError::BondAlreadyExists => "Bond already exists for this identity",
             ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
             ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
+            ContractError::MigrationInProgress => "Migration is in progress",
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
@@ -1033,6 +1041,7 @@ impl ErrorExt for ContractError {
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
+            | ContractError::MigrationInProgress
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
