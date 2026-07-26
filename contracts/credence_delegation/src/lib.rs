@@ -1148,4 +1148,4 @@ mod test_auth;
 mod test_payload_staleness;
 
 #[cfg(test)]
-mod test_verify_delegation_active;
+mod test_lease_signature;
