@@ -19,7 +19,7 @@ contracts/credence_bond/src/fee.rs::panic!( "CredenceError::FeeBpsExceedsMaximum
 contracts/credence_bond/src/lib.rs::panic!("bond is not eligible for liquidation: must be fully slashed or expired (non-rolling) without renewal")
 contracts/credence_bond/src/lib.rs::panic!("duplicate attester in batch")
 contracts/credence_bond/src/lib.rs::panic!("lock-up not expired; use withdraw_early")
-contracts/credence_bond/src/lib.rs::panic!("notice not started"); }
+contracts/credence_bond/src/lib.rs::panic!("notice not started")
 contracts/credence_bond/src/lib.rs::panic!("notice period not elapsed")
 contracts/credence_bond/src/lib.rs::panic!("withdrawal not requested")
 contracts/credence_bond/src/normalization.rs::panic!("bond amount cannot be negative")
