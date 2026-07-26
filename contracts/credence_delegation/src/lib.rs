@@ -1019,3 +1019,6 @@ mod test_verifier_dispatch;
 
 #[cfg(test)]
 mod test_auth;
+
+#[cfg(test)]
+mod test_require_matching_contract_id;

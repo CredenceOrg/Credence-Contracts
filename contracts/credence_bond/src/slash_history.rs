@@ -76,67 +76,6 @@ pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
     count
 }
 
-/// Return a bounded page of slash records for `identity`.
-///
-/// `limit` is silently clamped to [`crate::parameters::MAX_QUERY_LIMIT`] (200).
-/// Pass `0` to use the cap directly. Returns an empty vec when
-/// `offset >= get_slash_count(e, identity)`.
-///
-/// # Arguments
-/// * `e`        - Soroban environment
-/// * `identity` - Address whose slash history to page through
-/// * `offset`   - Zero-based start index within the slash-record sequence
-/// * `limit`    - Maximum records to return; clamped to `MAX_QUERY_LIMIT`
-///
-/// # Example — page through all records
-/// ```text
-/// let mut offset = 0u32;
-/// loop {
-///     let page = get_slash_history_page(e, &identity, offset, 50);
-///     if page.is_empty() { break; }
-///     offset += page.len();
-/// }
-/// ```
-#[must_use]
-pub fn get_slash_history_page(
-    e: &Env,
-    identity: &Address,
-    offset: u32,
-    limit: u32,
-) -> Vec<SlashRecord> {
-    use crate::parameters::MAX_QUERY_LIMIT;
-
-    let count = get_slash_count(e, identity);
-    let mut page = Vec::new(e);
-
-    if offset >= count {
-        return page;
-    }
-
-    let effective_limit = if limit == 0 {
-        MAX_QUERY_LIMIT
-    } else {
-        limit.min(MAX_QUERY_LIMIT)
-    };
-
-    let end = (offset + effective_limit).min(count);
-
-    for i in offset..end {
-        let key = SlashStorageKey::SlashRecord(identity.clone(), i);
-        if let Some(record) = e.storage().persistent().get(&key) {
-            page.push_back(record);
-            e.storage().persistent().extend_ttl(
-                &key,
-                crate::PERSISTENT_TTL_MAX / 2,
-                crate::PERSISTENT_TTL_MAX,
-            );
-            history.push_back(record);
-        }
-    }
-
-    page
-}
-
 // ============================================================================
 // Test/tooling helpers — excluded from release WASM
 // ============================================================================
