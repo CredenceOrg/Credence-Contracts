@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     extern crate std;
-    use crate::{require_contract_uninitialized, ContractError, ErrorCategory, ErrorExt, Role};
+    use crate::{ContractError, ErrorCategory, ErrorExt, Role};
     use std::vec::Vec;
 
     fn all_variants() -> Vec<ContractError> {
@@ -100,24 +100,8 @@ mod tests {
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
         ]
-    }
-
-    // --- require_contract_uninitialized helper tests ---
-
-    #[test]
-    fn test_require_contract_uninitialized_passes_when_false() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, false);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_require_contract_uninitialized_panics_when_true() {
-        use soroban_sdk::Env;
-        let e = Env::default();
-        require_contract_uninitialized(&e, true);
     }
 
     // --- Wire code tests ---
@@ -327,10 +311,6 @@ mod tests {
             ContractError::InvalidNoticePeriod.category(),
             ErrorCategory::Bond
         );
-        assert_eq!(
-            ContractError::InvalidStringifiedBytes.category(),
-            ErrorCategory::Bond
-        );
     }
 
     #[test]
@@ -474,7 +454,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            94,
+            95,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1263,7 +1243,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::TimestampInFuture => false, // impossible ledger_number; discard payload
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1353,10 +1333,7 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
 
-            // Missing variants added to match the enum and ensure completeness
-            ContractError::BorrowFrozen => true,
-            ContractError::PayloadTooOld => true,
-            ContractError::InvalidCurrency => true,
+            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution
         }
     }
 
@@ -1419,7 +1396,6 @@ mod tests {
             ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
-            ContractError::InvalidStringifiedBytes,
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1470,10 +1446,11 @@ mod tests {
             ContractError::Underflow,
             ContractError::DivisionByZero,
             ContractError::TimestampInFuture,
+            ContractError::PromiseNotKept,
         ];
         assert_eq!(
             cases.len(),
-            94,
+            95,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

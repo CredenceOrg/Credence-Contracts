@@ -100,7 +100,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     ("CursorOutOfRange", ContractError::CursorOutOfRange),
     ("BatchTooLarge", ContractError::BatchTooLarge),
     ("EmptyBatch", ContractError::EmptyBatch),
-    ("InvalidStringifiedBytes", ContractError::InvalidStringifiedBytes),
+    ("PromiseNotKept", ContractError::PromiseNotKept),
     // --- Shared Bond/Delegation payload mismatches ---
     // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
     ("DomainMismatch", ContractError::DomainMismatch),
@@ -217,7 +217,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 92;
+const ALL_VARIANTS_COUNT: usize = 93;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
