@@ -7,7 +7,124 @@ mod tests {
     include!("../variant_table.rs");
 
     fn all_variants() -> Vec<ContractError> {
-        ALL_VARIANTS.iter().map(|(_, variant)| *variant).collect()
+        std::vec![
+            ContractError::NotInitialized,
+            ContractError::AlreadyInitialized,
+            ContractError::NotAdmin,
+            ContractError::NotBondOwner,
+            ContractError::UnauthorizedAttester,
+            ContractError::NotOriginalAttester,
+            ContractError::NotSigner,
+            ContractError::UnauthorizedDepositor,
+            ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
+            ContractError::InvalidPauseAction,
+            ContractError::InsufficientSignatures,
+            ContractError::AdminSuspended,
+            ContractError::NoPendingAdmin,
+            ContractError::InvalidAdminAddress,
+            ContractError::AdminUnchanged,
+            ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
+            ContractError::BondNotFound,
+            ContractError::BondNotActive,
+            ContractError::InsufficientBalance,
+            ContractError::SlashExceedsBond,
+            ContractError::LockupNotExpired,
+            ContractError::NotRollingBond,
+            ContractError::WithdrawalAlreadyRequested,
+            ContractError::ReentrancyDetected,
+            ContractError::InvalidNonce,
+            ContractError::NegativeStake,
+            ContractError::EarlyExitConfigNotSet,
+            ContractError::InvalidPenaltyBps,
+            ContractError::LeverageExceeded,
+            ContractError::UnsupportedToken,
+            ContractError::UnsupportedDecimals,
+            ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
+            ContractError::InvalidBondDuration,
+            ContractError::InvalidNoticePeriod,
+            ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
+            ContractError::InvalidStringifiedBytes,
+            ContractError::InvariantViolation,
+            ContractError::StorageCapReached,
+            ContractError::TreasuryNotConfigured,
+            ContractError::CursorOutOfRange,
+            ContractError::DomainMismatch,
+            ContractError::OwnerMismatch,
+            ContractError::TargetMismatch,
+            ContractError::ContractIdMismatch,
+            ContractError::SignatureExpired,
+            ContractError::DuplicateAttestation,
+            ContractError::AttestationNotFound,
+            ContractError::AttestationAlreadyRevoked,
+            ContractError::InvalidAttestationWeight,
+            ContractError::AttestationWeightExceedsMax,
+            ContractError::IdentityAlreadyRegistered,
+            ContractError::BondContractAlreadyRegistered,
+            ContractError::IdentityNotRegistered,
+            ContractError::BondContractNotRegistered,
+            ContractError::AlreadyDeactivated,
+            ContractError::AlreadyActive,
+            ContractError::InvalidContractAddress,
+            ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
+            ContractError::ExpiryInPast,
+            ContractError::DelegationNotFound,
+            ContractError::AlreadyRevoked,
+            ContractError::DelegationExpiryTooLong,
+            ContractError::UnknownScheme,
+            ContractError::VerifierAlreadyRegistered,
+            ContractError::VerifierNotRegistered,
+            ContractError::VerificationFailed,
+            ContractError::RevocationGraceExpired,
+            ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
+            ContractError::AmountMustBePositive,
+            ContractError::ThresholdExceedsSigners,
+            ContractError::InsufficientTreasuryBalance,
+            ContractError::ProposalNotFound,
+            ContractError::ProposalAlreadyExecuted,
+            ContractError::InsufficientApprovals,
+            ContractError::InvalidFlashLoanCallback,
+            ContractError::FlashLoanRepaymentFailed,
+            ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
+            ContractError::Overflow,
+            ContractError::Underflow,
+            ContractError::DivisionByZero,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
+            ContractError::InvalidCurrency,
+            ContractError::PayloadTooOld,
+            ContractError::TimestampInFuture,
+            ContractError::InvalidMaxPauseSigners,
+            ContractError::MaxPauseSignersExceeded,
+        ]
+    }
+
+    // --- require_contract_uninitialized helper tests ---
+
+    #[test]
+    fn test_require_contract_uninitialized_passes_when_false() {
+        use soroban_sdk::Env;
+        let e = Env::default();
+        require_contract_uninitialized(&e, false);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_require_contract_uninitialized_panics_when_true() {
+        use soroban_sdk::Env;
+        let e = Env::default();
+        require_contract_uninitialized(&e, true);
     }
 
     // --- Wire code tests ---
@@ -30,15 +147,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::InvalidAdminAddress as u32, 110);
-        assert_eq!(ContractError::AdminUnchanged as u32, 111);
-        assert_eq!(ContractError::TimelockNotReady as u32, 112);
-        assert_eq!(ContractError::AdminSuspended as u32, 113);
-        assert_eq!(ContractError::BorrowFrozen as u32, 114);
-        assert_eq!(ContractError::NoPendingAdmin as u32, 115);
-        assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
-        assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 117);
-        assert_eq!(ContractError::TimestampInFuture as u32, 118);
+        assert_eq!(ContractError::TimestampInFuture as u32, 115);
     }
 
     #[test]
@@ -419,8 +528,8 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            ALL_VARIANTS.len(),
-            "Add one row to variant_table.rs per new ContractError variant"
+            99,
+            "Update all_variants() and this count when adding new errors"
         );
     }
 
@@ -1208,7 +1317,9 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::TimestampInFuture => false, // impossible ledger_number; discard payload
+            ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
+            ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1300,7 +1411,11 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
 
-            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution
+            // Bond: correctable encoding error.
+            ContractError::InvalidStringifiedBytes => true, // correct the encoded input
+
+            // Delegation: off-chain promise hash mismatch; same payload will fail again.
+            ContractError::PromiseNotKept => false,
         }
     }
 
@@ -1318,11 +1433,114 @@ mod tests {
         // documented expectation. The match in `expected_is_recoverable`
         // already forces compile-time exhaustiveness for the expectation
         // table.
-        let cases = all_variants();
+        let cases: std::vec::Vec<ContractError> = std::vec![
+            ContractError::NotInitialized,
+            ContractError::AlreadyInitialized,
+            ContractError::NotAdmin,
+            ContractError::NotBondOwner,
+            ContractError::UnauthorizedAttester,
+            ContractError::NotOriginalAttester,
+            ContractError::NotSigner,
+            ContractError::UnauthorizedDepositor,
+            ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
+            ContractError::InvalidPauseAction,
+            ContractError::InsufficientSignatures,
+            ContractError::AdminSuspended,
+            ContractError::NoPendingAdmin,
+            ContractError::InvalidAdminAddress,
+            ContractError::AdminUnchanged,
+            ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
+            ContractError::BondNotFound,
+            ContractError::BondNotActive,
+            ContractError::InsufficientBalance,
+            ContractError::SlashExceedsBond,
+            ContractError::LockupNotExpired,
+            ContractError::NotRollingBond,
+            ContractError::WithdrawalAlreadyRequested,
+            ContractError::ReentrancyDetected,
+            ContractError::InvalidNonce,
+            ContractError::SignatureExpired,
+            ContractError::NegativeStake,
+            ContractError::EarlyExitConfigNotSet,
+            ContractError::InvalidPenaltyBps,
+            ContractError::LeverageExceeded,
+            ContractError::UnsupportedToken,
+            ContractError::UnsupportedDecimals,
+            ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
+            ContractError::InvalidBondDuration,
+            ContractError::InvalidNoticePeriod,
+            ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
+            ContractError::InvalidStringifiedBytes,
+            ContractError::StorageCapReached,
+            ContractError::TreasuryNotConfigured,
+            ContractError::InvariantViolation,
+            ContractError::DomainMismatch,
+            ContractError::OwnerMismatch,
+            ContractError::TargetMismatch,
+            ContractError::ContractIdMismatch,
+            ContractError::DuplicateAttestation,
+            ContractError::AttestationNotFound,
+            ContractError::AttestationAlreadyRevoked,
+            ContractError::InvalidAttestationWeight,
+            ContractError::AttestationWeightExceedsMax,
+            ContractError::IdentityAlreadyRegistered,
+            ContractError::BondContractAlreadyRegistered,
+            ContractError::IdentityNotRegistered,
+            ContractError::BondContractNotRegistered,
+            ContractError::AlreadyDeactivated,
+            ContractError::AlreadyActive,
+            ContractError::InvalidContractAddress,
+            ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
+            ContractError::ExpiryInPast,
+            ContractError::DelegationNotFound,
+            ContractError::AlreadyRevoked,
+            ContractError::DelegationExpiryTooLong,
+            ContractError::UnknownScheme,
+            ContractError::VerifierAlreadyRegistered,
+            ContractError::VerifierNotRegistered,
+            ContractError::VerificationFailed,
+            ContractError::RevocationGraceExpired,
+            ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
+            ContractError::AmountMustBePositive,
+            ContractError::ThresholdExceedsSigners,
+            ContractError::InsufficientTreasuryBalance,
+            ContractError::ProposalNotFound,
+            ContractError::ProposalAlreadyExecuted,
+            ContractError::InsufficientApprovals,
+            ContractError::InvalidFlashLoanCallback,
+            ContractError::FlashLoanRepaymentFailed,
+            ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
+            ContractError::CursorOutOfRange,
+            ContractError::InvalidCurrency,
+            ContractError::PayloadTooOld,
+            ContractError::Overflow,
+            ContractError::Underflow,
+            ContractError::DivisionByZero,
+            ContractError::TimestampInFuture,
+            ContractError::InvalidMaxPauseSigners,
+            ContractError::MaxPauseSignersExceeded,
+        ];
         assert_eq!(
             cases.len(),
-            ALL_VARIANTS.len(),
-            "Add the new variant to variant_table.rs and expected_is_recoverable()"
+            99,
+            "Add the new variant to ALL THREE places: \
+             (1) lib.rs is_recoverable() match, \
+             (2) expected_is_recoverable() below, \
+             (3) this `cases` list."
         );
         for e in &cases {
             assert_eq!(

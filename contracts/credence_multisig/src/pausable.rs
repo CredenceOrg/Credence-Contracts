@@ -10,6 +10,50 @@ pub enum PauseAction {
     Unpause = 2,
 }
 
+/// Absolute ceiling on `MaxPauseSigners`, independent of what an admin
+/// configures. Bounds unmetered instance-storage growth from repeated
+/// `set_pause_signer(..., enabled: true)` calls.
+pub const MAX_PAUSE_SIGNERS_HARD_CAP: u32 = 1_000;
+
+/// Default cap on the number of registered pause signers when the admin
+/// has not configured one explicitly. Generous enough that no realistic
+/// existing signer set exceeds it — preserving current behavior for every
+/// deployment in practice — while still bounding unmetered growth.
+pub const DEFAULT_MAX_PAUSE_SIGNERS: u32 = 100;
+
+/// Read the configured cap on the number of pause signers, or the default
+/// if the admin has not configured one.
+pub fn get_max_pause_signers(e: &Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&DataKey::MaxPauseSigners)
+        .unwrap_or(DEFAULT_MAX_PAUSE_SIGNERS)
+}
+
+/// Configure the cap on the number of pause signers that can be
+/// registered. Admin-only.
+///
+/// # Errors
+/// `ContractError::InvalidMaxPauseSigners` when `max_signers` is `0` or
+/// exceeds [`MAX_PAUSE_SIGNERS_HARD_CAP`].
+pub fn set_max_pause_signers(e: &Env, admin: &Address, max_signers: u32) {
+    require_admin_auth(e, admin);
+
+    if max_signers == 0 || max_signers > MAX_PAUSE_SIGNERS_HARD_CAP {
+        panic_with_error!(e, ContractError::InvalidMaxPauseSigners);
+    }
+
+    let old = get_max_pause_signers(e);
+    e.storage()
+        .instance()
+        .set(&DataKey::MaxPauseSigners, &max_signers);
+
+    e.events().publish(
+        (Symbol::new(e, "max_pause_signers_set"),),
+        (old, max_signers),
+    );
+}
+
 fn require_admin_auth(e: &Env, admin: &Address) {
     let stored_admin: Address = e
         .storage()
@@ -43,12 +87,15 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
 
     if enabled {
         if !existing {
-            e.storage().instance().set(&key, &true);
             let count: u32 = e
                 .storage()
                 .instance()
                 .get(&DataKey::PauseSignerCount)
                 .unwrap_or(0);
+            if count >= get_max_pause_signers(e) {
+                panic_with_error!(e, ContractError::MaxPauseSignersExceeded);
+            }
+            e.storage().instance().set(&key, &true);
             e.storage()
                 .instance()
                 .set(&DataKey::PauseSignerCount, &count.saturating_add(1));

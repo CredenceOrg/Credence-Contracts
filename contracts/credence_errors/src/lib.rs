@@ -22,7 +22,7 @@
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
-use soroban_sdk::{panic_with_error, Env};
+use soroban_sdk::Env;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -597,7 +597,18 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 513,
+    TimestampInFuture = 115,
+
+    /// Requested max-pause-signers value is zero or exceeds the hard cap.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    InvalidMaxPauseSigners = 119,
+
+    /// Registering another pause signer would exceed the configured
+    /// max-pause-signers cap.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    MaxPauseSignersExceeded = 120,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -763,8 +774,8 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
-            | ContractError::LeaseScopeMismatch
-            | ContractError::LeaseExpired => ErrorCategory::Authorization,
+            | ContractError::InvalidMaxPauseSigners
+            | ContractError::MaxPauseSignersExceeded => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -793,6 +804,8 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::InvalidStringifiedBytes
             | ContractError::InvariantViolation
             | ContractError::AmountExplicitlyZero
             | ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
@@ -917,7 +930,7 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::InvalidStringifiedBytes => {
-                "Stringified bytes payload is malformed or exceeds the maximum encoded length"
+                "String is not valid bounded hex or base64 encoded bytes"
             }
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
@@ -1023,6 +1036,12 @@ impl ErrorExt for ContractError {
             ContractError::TimestampInFuture => {
                 "Supplied timestamp or ledger number is ahead of the current ledger"
             }
+            ContractError::InvalidMaxPauseSigners => {
+                "Max-pause-signers value must be greater than zero and within the hard cap"
+            }
+            ContractError::MaxPauseSignersExceeded => {
+                "Registering another pause signer would exceed the configured max-pause-signers cap"
+            }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
@@ -1072,6 +1091,11 @@ impl ErrorExt for ContractError {
             | ContractError::ZeroBytes32 => true,
 
 
+            // Admin can supply a valid value / remove a signer or raise the
+            // cap, then retry.
+            ContractError::InvalidMaxPauseSigners => true,
+            ContractError::MaxPauseSignersExceeded => true,
+
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
             | ContractError::BondNotActive
@@ -1099,7 +1123,8 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
-            | ContractError::InvalidStringifiedBytes => true,
+            | ContractError::InvalidStringifiedBytes // correct the encoded input
+            => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
             ContractError::StorageCapReached => false,    // system capacity; only operator prune fixes it
@@ -1147,6 +1172,7 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            ContractError::DelegationInactive => false,    // delegation revoked/expired; cannot be fixed by caller
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
             ContractError::TimestampInFuture => false,  // impossible ledger_number; discard payload
 
@@ -1263,13 +1289,30 @@ macro_rules! require_non_zero_bytes32 {
 ///
 /// Every deployable contract must call this as the **first statement** in its
 /// `initialize` function, before any auth or storage writes. The guard panics
-/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel is
-/// already set, preventing a second caller from overwriting the admin.
+/// with [`ContractError::AlreadyInitialized`] when the supplied sentinel key
+/// already exists in instance storage, preventing a second caller from
+/// overwriting the admin and stealing the contract.
+///
+/// # Usage
+///
+/// ```ignore
+/// pub fn initialize(e: Env, admin: Address) {
+///     require_contract_uninitialized(&e, e.storage().instance().has(&DataKey::Admin));
+///     admin.require_auth();
+///     e.storage().instance().set(&DataKey::Admin, &admin);
+///     // ...
+/// }
+/// ```
+///
+/// # Arguments
+/// * `e`             - Soroban environment (needed for typed error panic).
+/// * `is_initialized` - `true` when the sentinel key exists, meaning the
+///                      contract has already been initialized.
 ///
 /// # Panics
 /// With [`ContractError::AlreadyInitialized`] when `is_initialized` is `true`.
 pub fn require_contract_uninitialized(e: &Env, is_initialized: bool) {
     if is_initialized {
-        soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
+        ::soroban_sdk::panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }

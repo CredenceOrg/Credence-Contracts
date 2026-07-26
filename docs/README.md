@@ -25,6 +25,7 @@ This directory contains all design docs, API references, and operational guides 
 |---|---|---|
 | [credence-bond.md](credence-bond.md) | Integrator | High-level overview of the identity bond contract |
 | [credence_bond_api.md](credence_bond_api.md) | Integrator | Complete API reference (entrypoints, types, errors) |
+| [BOND_ISSUANCE.md](BOND_ISSUANCE.md) | Contributor | Who can call `create_bond`/`top_up` and the conditions enforced |
 | [bond-state-transitions.md](bond-state-transitions.md) | Contributor | State machine for bond lifecycle |
 | [tier-system.md](tier-system.md) | Contributor / Operator | Auto-upgrade/downgrade tier logic |
 | [rolling-bonds.md](rolling-bonds.md) | Integrator | `request_withdrawal` / `renew_if_rolling` flow |
