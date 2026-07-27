@@ -387,8 +387,11 @@ fn attestation_revoked_v1_emits_id_and_attester() {
     let payload = soroban_sdk::String::from_str(&e, "kyc:verified");
 
     client.register_attester(&attester);
+    // First call uses nonce `0` so the next pending nonce for this attester
+    // becomes `1` — pass the literal instead of `att.timestamp + 1`, which
+    // would jump to a far future nonce and fail `nonce::consume_nonce`.
     let att = client.add_attestation(&attester, &subject, &payload, &0_u64);
-    client.revoke_attestation(&attester, &att.id, &att.timestamp + 1);
+    client.revoke_attestation(&attester, &att.id, &1_u64);
 
     let v1 = find_event(
         &e,
