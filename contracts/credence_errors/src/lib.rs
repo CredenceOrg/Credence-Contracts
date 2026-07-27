@@ -631,7 +631,12 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 120,
+    MaxPauseSignersExceeded = 124,
+
+    /// A contract migration is in progress; mutations are blocked.
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 125,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -807,6 +812,7 @@ impl ErrorExt for ContractError {
             | ContractError::MaxPauseSignersExceeded
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
+            | ContractError::OutsideBusinessHours
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
             | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
@@ -1095,6 +1101,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPercentSplit => {
                 "Percentage splits do not sum to exactly 10,000 basis points"
             }
+            ContractError::OutsideBusinessHours => {
+                "Operation scheduled outside UTC business hours (Mon-Fri 09:00-17:00)"
+            }
         }
     }
 
@@ -1140,7 +1149,10 @@ impl ErrorExt for ContractError {
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
-            | ContractError::LeaseExpired => true,
+            | ContractError::LeaseExpired
+            | ContractError::OutsideBusinessHours   // retry during business hours
+            | ContractError::MigrationInProgress     // wait for migration to complete
+            => true,
 
 
             // Admin can supply a valid value / remove a signer or raise the
@@ -1339,13 +1351,13 @@ macro_rules! require_no_leading_zero_amount {
     };
 }
 
-/// Requires that an i128 amount is strictly positive (> 0), returning
-/// `ContractError::AmountMustBePositive` if not.
+/// Requires that an i128 amount is strictly positive (> 0), panicking
+/// with `ContractError::AmountMustBePositive` if not.
 #[macro_export]
 macro_rules! require_positive_amount {
     ($env:expr, $amount:expr) => {
         if $amount <= 0 {
-            return Err($crate::ContractError::AmountMustBePositive);
+            panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
         }
     };
 }
