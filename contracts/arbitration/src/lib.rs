@@ -764,3 +764,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_events_schema;
+
+#[cfg(test)]
+mod test_dispute_guard;
