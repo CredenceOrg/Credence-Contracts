@@ -1,0 +1,16 @@
+[package]
+name = "fixed_duration_bond"
+version = "0.1.0"
+edition = "2021"
+description = "Fixed-duration bond contract for Credence — lock USDC for a predetermined time period"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+credence_errors = { path = "../credence_errors" }
+credence_math = { path = "../credence_math" }
+soroban-sdk = "22.0"
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
