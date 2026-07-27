@@ -1027,14 +1027,7 @@ impl CredenceDelegation {
     }
 
     fn require_admin(e: &Env, admin: &Address) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if admin != &stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        credence_errors::require_admin!(e, admin, DataKey::Admin);
     }
 
     fn revocation_grace_period(e: &Env) -> u64 {

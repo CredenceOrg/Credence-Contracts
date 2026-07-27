@@ -120,14 +120,7 @@ fn require_valid_penalty_bps(e: &Env, bps: u32) {
 }
 
 fn require_admin(e: &Env, caller: &Address) {
-    let stored: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if *caller != stored {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
+    credence_errors::require_admin!(e, caller, DataKey::Admin);
 }
 
 /// Load the token address from storage, panicking if not initialized.

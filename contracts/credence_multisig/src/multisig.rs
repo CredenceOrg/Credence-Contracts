@@ -674,15 +674,7 @@ impl CredenceMultiSig {
     // ==================== Internal Helpers ====================
 
     fn require_admin(e: &Env, admin: &Address) {
-        admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != *admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        credence_errors::require_admin!(e, admin, DataKey::Admin);
     }
 
     fn require_signer(e: &Env, signer: &Address) {
