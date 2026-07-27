@@ -23,7 +23,7 @@ fn test_create_bond_success() {
 
     let identity = Address::generate(&e);
     let amount = 1000_i128;
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
 
     let bond = client.create_bond(&identity, &amount, &duration);
 
@@ -45,7 +45,7 @@ fn test_create_bond_zero_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &0_i128, &86400_u64);
+    let bond = client.create_bond(&identity, &0_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     assert_eq!(bond.bonded_amount, 0);
     assert!(bond.active);
@@ -62,7 +62,7 @@ fn test_create_bond_negative_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &(-100_i128), &86400_u64);
+    let bond = client.create_bond(&identity, &(-100_i128), &credence_math::Timestamp::SECONDS_PER_DAY);
 
     assert_eq!(bond.bonded_amount, -100);
 }
@@ -112,7 +112,7 @@ fn test_supply_cap_enforcement_below_cap() {
     client.set_supply_cap(&admin, &cap);
 
     // Create bond below cap - should succeed
-    let bond = client.create_bond(&identity, &5000_i128, &86400_u64);
+    let bond = client.create_bond(&identity, &5000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, 5000_i128);
     assert_eq!(client.get_total_supply(), 5000_i128);
 }
@@ -134,7 +134,7 @@ fn test_supply_cap_enforcement_above_cap() {
     client.set_supply_cap(&admin, &cap);
 
     // Create bond above cap - should fail
-    client.create_bond(&identity, &15000_i128, &86400_u64);
+    client.create_bond(&identity, &15000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -151,12 +151,12 @@ fn test_supply_cap_with_multiple_bonds() {
     client.set_supply_cap(&admin, &cap);
 
     // Create first bond - should succeed
-    let bond1 = client.create_bond(&identity, &6000_i128, &86400_u64);
+    let bond1 = client.create_bond(&identity, &6000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond1.bonded_amount, 6000_i128);
     assert_eq!(client.get_total_supply(), 6000_i128);
 
     // Create second bond that would exceed cap - should fail
-    client.create_bond(&identity, &5000_i128, &86400_u64);
+    client.create_bond(&identity, &5000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -172,7 +172,7 @@ fn test_supply_cap_no_cap() {
     // Don't set cap (defaults to 0 = no cap)
 
     // Create bond without cap - should succeed
-    let bond = client.create_bond(&identity, &50000_i128, &86400_u64);
+    let bond = client.create_bond(&identity, &50000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, 50000_i128);
     assert_eq!(client.get_total_supply(), 50000_i128);
 }
@@ -191,7 +191,7 @@ fn test_supply_cap_withdrawal_reduces_supply() {
     client.set_supply_cap(&admin, &cap);
 
     // Create bond
-    let _bond = client.create_bond(&identity, &8000_i128, &86400_u64);
+    let _bond = client.create_bond(&identity, &8000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(client.get_total_supply(), 8000_i128);
 
     // Withdraw some amount
@@ -199,7 +199,7 @@ fn test_supply_cap_withdrawal_reduces_supply() {
     assert_eq!(client.get_total_supply(), 5000_i128);
 
     // Should be able to create new bond up to cap again
-    let bond2 = client.create_bond(&identity, &4000_i128, &86400_u64);
+    let bond2 = client.create_bond(&identity, &4000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond2.bonded_amount, 4000_i128);
     assert_eq!(client.get_total_supply(), 9000_i128);
 }
@@ -216,7 +216,7 @@ fn test_create_bond_max_amount() {
 
     let identity = Address::generate(&e);
     let max_amount = i128::MAX;
-    let bond = client.create_bond(&identity, &max_amount, &86400_u64);
+    let bond = client.create_bond(&identity, &max_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     assert_eq!(bond.bonded_amount, max_amount);
 }
@@ -288,7 +288,7 @@ fn test_create_bond_duplicate() {
     let identity = Address::generate(&e);
 
     // Create first bond
-    let bond1 = client.create_bond(&identity, &1000_i128, &86400_u64);
+    let bond1 = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond1.bonded_amount, 1000);
 
     // Create second bond (overwrites first)
@@ -314,7 +314,7 @@ fn test_create_bond_different_identities() {
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
 
-    client.create_bond(&identity1, &1000_i128, &86400_u64);
+    client.create_bond(&identity1, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
     let _bond2 = client.create_bond(&identity2, &2000_i128, &172800_u64);
 
     // Due to single bond storage, only the last bond is stored
@@ -376,7 +376,7 @@ fn test_create_bond_min_positive_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &1_i128, &86400_u64);
+    let bond = client.create_bond(&identity, &1_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     assert_eq!(bond.bonded_amount, 1);
     assert!(bond.active);
@@ -394,7 +394,7 @@ fn test_create_bond_usdc_amount() {
 
     let identity = Address::generate(&e);
     let usdc_amount = 1000_000000_i128; // 1000 USDC with 6 decimals
-    let bond = client.create_bond(&identity, &usdc_amount, &86400_u64);
+    let bond = client.create_bond(&identity, &usdc_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     assert_eq!(bond.bonded_amount, usdc_amount);
 }
@@ -410,7 +410,7 @@ fn test_create_bond_timestamp() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &1000_i128, &86400_u64);
+    let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // bond_start should be set to ledger timestamp (can be 0 in test env)
     let ledger_time = e.ledger().timestamp();
@@ -431,7 +431,7 @@ fn test_create_bond_sequential() {
 
     for i in 1..=5 {
         let amount = i * 1000;
-        let bond = client.create_bond(&identity, &amount, &86400_u64);
+        let bond = client.create_bond(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY);
         assert_eq!(bond.bonded_amount, amount);
     }
 

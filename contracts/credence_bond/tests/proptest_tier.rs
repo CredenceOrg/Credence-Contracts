@@ -67,7 +67,7 @@ impl Arbitrary for BondAction {
             // Durations must be valid: [MIN_BOND_DURATION (86_400), MAX_BOND_DURATION (31_536_000)]
             (
                 amount_strategy.clone(),
-                86400u64..31536000u64,
+                credence_math::Timestamp::SECONDS_PER_DAYu64..31536000u64,
                 any::<bool>()
             )
                 .prop_flat_map(|(amount, duration, is_rolling)| {

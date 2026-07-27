@@ -172,7 +172,7 @@ mod test {
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
         let delegation_type = DelegationType::Attestation;
-        let expires_at = 86400_u64;
+        let expires_at = credence_math::Timestamp::SECONDS_PER_DAY;
         let domain = DomainTag::Delegate;
         let nonce = 0_u64;
         let scheme = 0_u32;
@@ -214,7 +214,7 @@ mod test {
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
         let delegation_type = DelegationType::Attestation;
-        let expires_at = 86400_u64;
+        let expires_at = credence_math::Timestamp::SECONDS_PER_DAY;
         let domain = DomainTag::Delegate;
         let nonce = 0_u64;
         let scheme = 0_u32;
@@ -258,7 +258,7 @@ mod test {
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
         let delegation_type = DelegationType::Attestation;
-        let expires_at = 86400_u64;
+        let expires_at = credence_math::Timestamp::SECONDS_PER_DAY;
         let nonce = 0_u64;
         let scheme = 0_u32;
         let ledger_number = 100_u32;
@@ -298,7 +298,7 @@ mod test {
         let e = setup();
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
-        let expires_at = 86400_u64;
+        let expires_at = credence_math::Timestamp::SECONDS_PER_DAY;
         let domain = DomainTag::Delegate;
         let nonce = 0_u64;
         let scheme = 0_u32;
