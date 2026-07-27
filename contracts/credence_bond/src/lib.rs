@@ -7,6 +7,7 @@
 mod batch;
 mod claims;
 mod early_exit_penalty;
+pub mod fee;
 pub mod emergency;
 mod emergency_drain;
 mod events;
