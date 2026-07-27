@@ -305,7 +305,7 @@ fn future_ledger_number_is_rejected() {
         nonce: 0,
         scheme: 0,
         ledger_number: future_ledger,
-        signature_domain: soroban_sdk::String::from_str(&e, "CredenceDelegation"),
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let result = client.try_execute_delegated_delegate(
