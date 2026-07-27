@@ -37,6 +37,10 @@ mod weighted_attestation;
 mod test_weighted_attestation_rounding;
 
 #[cfg(test)]
+#[path = "fuzz/test_slashing_tier_invariants.rs"]
+mod test_slashing_tier_invariants;
+
+#[cfg(test)]
 mod test_weighted_attestation;
 
 #[cfg(test)]
