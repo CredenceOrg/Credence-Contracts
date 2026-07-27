@@ -13,7 +13,9 @@ use crate::CredenceBondClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::Address;
-use soroban_sdk::Env;const DAY: u64 = credence_math::Timestamp::SECONDS_PER_DAY;
+use soroban_sdk::Env;
+
+const DAY: u64 = credence_math::Timestamp::SECONDS_PER_DAY;
 
 /// Token moves from `identity` to the bond contract on `create_bond`.
 #[test]
@@ -325,67 +327,66 @@ fn test_withdraw_zero_amount_rejected_at_validation() {
 }
 
 /// `withdraw` reverts atomically when the underlying token transfer fails.
-/// We wire a ChaosToken as the bond token and arm it to make outbound
-/// transfers fail; the entire withdraw transaction must abort and the bond
-/// state's `bonded_amount` must NOT be decremented (atomic rollback).
-mod failing_outbound_token {
-    use super::*;
+/// We wire a `ChaosToken` (from `crate::chaos_token`) as the bond token and
+/// arm it to make every outbound `transfer` revert. The bond's storage
+/// mirrors the canonical "all or nothing" transactional guarantee: a
+/// failing outbound transfer must NOT decrement `bonded_amount`.
+#[test]
+fn test_withdraw_reverts_atomically_when_token_transfer_fails() {
     use crate::chaos_token::{ChaosToken, ChaosTokenClient};
 
-    #[test]
-    fn test_withdraw_reverts_atomically_when_token_transfer_fails() {
-        let e = Env::default();
-        e.ledger().with_mut(|li| li.timestamp = 1_000);
-        e.mock_all_auths();
-        let contract_id = e.register(crate::CredenceBond, ());
-        let client = CredenceBondClient::new(&e, &contract_id);
-        e.mock_all_auths();
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1_000);
+    e.mock_all_auths();
 
-        let e = Env::default();
-        e.ledger().with_mut(|li| li.timestamp = 1_000);
-        let client = CredenceBondClient::new(&e, &contract_id);
+    let contract_id = e.register(crate::CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+    let admin = Address::generate(&e);
+    let identity = Address::generate(&e);
 
-        let token_id = e.register(ChaosToken, ());
-        let chaos = ChaosTokenClient::new(&e, &token_id);
-        chaos.mint(&identity, &10_000_i128);
+    client.initialize(&admin, &None);
 
-        let token = soroban_sdk::token::TokenClient::new(&e, &token_id);
-        let expiration = e.ledger().sequence().saturating_add(10_000);
-        token.approve(&identity, &contract_id, &10_000, &expiration);
+    let token_id = e.register(ChaosToken, ());
+    let chaos = ChaosTokenClient::new(&e, &token_id);
+    chaos.mint(&identity, &10_000_i128);
 
-        let mut accepted = soroban_sdk::Vec::new(&e);
-        accepted.push_back(token_id.clone());
-        client.set_accepted_tokens(&admin, &accepted);
-        client.set_token(&admin, &token_id);
+    let token = soroban_sdk::token::TokenClient::new(&e, &token_id);
+    let expiration = e.ledger().sequence().saturating_add(10_000);
+    token.approve(&identity, &contract_id, &10_000, &expiration);
 
-        client.create_bond(&identity, &5_000, &DAY, &false, &0_u64);
-        assert_eq!(client.get_identity_state().bonded_amount, 5_000);
+    let mut accepted = soroban_sdk::Vec::new(&e);
+    accepted.push_back(token_id.clone());
+    client.set_accepted_tokens(&admin, &accepted);
+    client.set_token(&admin, &token_id);
 
-        // Arm ChaosToken to fail any outbound token transfer.
-        chaos.set_fail_transfer(&true);
+    client.create_bond(&identity, &5_000, &DAY, &false, &0_u64);
+    assert_eq!(client.get_identity_state().bonded_amount, 5_000);
 
-        e.ledger().with_mut(|li| li.timestamp = 1_000 + DAY + 1);
+    // Arm ChaosToken to fail any outbound token transfer.
+    chaos.set_fail_transfer(&true);
 
-        let snapshot = client.get_identity_state();
+    e.ledger().with_mut(|li| li.timestamp = 1_000 + DAY + 1);
 
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.withdraw(&identity, &1_000);
-        }));
-        assert!(
-            result.is_err(),
-            "withdraw must panic when underlying token transfer fails"
-        );
+    let snapshot = client.get_identity_state();
 
-        let after = client.get_identity_state();
-        assert_eq!(
-            after.bonded_amount, snapshot.bonded_amount,
-            "transaction failure must NOT have mutated bonded_amount"
-        );
-        assert_eq!(
-            after.slashed_amount, snapshot.slashed_amount,
-            "transaction failure must NOT have mutated slashed_amount"
-        );
-    }
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.withdraw(&identity, &1_000);
+    }));
+    assert!(
+        result.is_err(),
+        "withdraw must panic when underlying token transfer fails"
+    );
+
+    let after = client.get_identity_state();
+    assert_eq!(
+        after.bonded_amount, snapshot.bonded_amount,
+        "transaction failure must NOT have mutated bonded_amount"
+    );
+    assert_eq!(
+        after.slashed_amount, snapshot.slashed_amount,
+        "transaction failure must NOT have mutated slashed_amount"
+    );
+    let _ = contract_id; // silence unused when only client is referenced
 }
 
 /// Phantom-balance mode: when no token has been configured via
