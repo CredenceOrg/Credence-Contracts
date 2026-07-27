@@ -46,14 +46,31 @@ fn test_expire_claims_no_expired() {
             ClaimType::VerifierReward,
             1000,
             1,
-            Some(Symbol::new(&env, "test1")),
+            Some(Symbol::new(&env, "normal_expiry")),
         );
+        let no_expiry_claim = PendingClaim {
+            claim_id: 999,
+            claim_type: ClaimType::VerifierReward,
+            amount: 500,
+            created_at: now,
+            expires_at: 0,
+            source_id: 2,
+            metadata: Symbol::new(&env, "no_expiry"),
+            processed: false,
+        };
+        let mut claims_vec = claims::get_pending_claims(&env, &user);
+        claims_vec.push_back(no_expiry_claim);
+        env.storage()
+            .persistent()
+            .set(&crate::DataKey::PendingClaims(user.clone()), &claims_vec);
+
+        env.ledger().set_timestamp(now + 31 * 24 * 60 * 60);
         let pruned = claims::expire_claims_bounded(&env, &user, 50);
-        assert_eq!(pruned, 0);
+        assert_eq!(pruned, 1);
         let claims_vec = claims::get_pending_claims(&env, &user);
         assert_eq!(claims_vec.len(), 1);
-        let _ = now;
-    });
+        assert_eq!(claims_vec.get(0).unwrap().expires_at, 0);
+    }
 }
 
 #[test]
