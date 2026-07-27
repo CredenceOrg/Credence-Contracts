@@ -158,6 +158,7 @@ pub struct CredenceBond;
 #[contractimpl]
 impl CredenceBond {
     pub fn initialize(e: Env, admin: Address) {
+        Self::require_not_paused(&e);
         credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
         storage::set_admin(&e, &admin);
     }
@@ -898,6 +899,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
@@ -1009,6 +1011,7 @@ impl CredenceBond {
         attestation_data: String,
         nonce: u64,
     ) -> Attestation {
+        Self::require_not_paused(&e);
         // auth: tree shape [Attester] -> [Bond::add_attestation]; may be delegated.
         attester.require_auth();
 
@@ -1089,6 +1092,7 @@ impl CredenceBond {
         subject: Address,
         items: Vec<AttestationBatchItem>,
     ) -> Vec<Attestation> {
+        Self::require_not_paused(&e);
         let n = items.len();
         crate::validation::verify_batch_size(&e, n, MAX_BATCH_ATTESTATION_SIZE);
 
@@ -1226,6 +1230,7 @@ impl CredenceBond {
 
     /// Revoke an attestation (only the original attester can revoke). Requires correct nonce.
     pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
+        Self::require_not_paused(&e);
         attester.require_auth();
         nonce::consume_nonce(&e, &attester, nonce);
 
@@ -1326,6 +1331,7 @@ impl CredenceBond {
 
     /// Set attester stake (admin only).
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         guards::require_admin(&e, &admin);
         weighted_attestation::set_attester_stake(&e, &attester, amount);
@@ -1333,6 +1339,7 @@ impl CredenceBond {
 
     /// Set weight config: multiplier_bps, max_weight. Admin only.
     pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         guards::require_admin(&e, &admin);
         weighted_attestation::set_weight_config(&e, multiplier_bps, max_weight);
@@ -1638,6 +1645,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         slashing::slash_bond(&e, &admin, amount)
     }
 
@@ -2212,6 +2220,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/batch-operations.md`](../../../docs/batch-operations.md)
     pub fn expire_claims(e: Env, user: Address, max_iter: u32) -> u32 {
+        Self::require_not_paused(&e);
         claims::expire_claims_bounded(&e, &user, max_iter)
     }
 
