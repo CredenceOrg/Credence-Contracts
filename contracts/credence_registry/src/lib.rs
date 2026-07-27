@@ -889,3 +889,14 @@ mod tests {
         );
     }
 }
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceRegistry {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
+    }
+}
