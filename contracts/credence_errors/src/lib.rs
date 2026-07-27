@@ -631,18 +631,19 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 120,
+    MaxPauseSignersExceeded = 125,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
     CrossContractCallerMismatch = 123,
 
-    /// A storage migration is currently in progress; state mutations are not
-    /// permitted until the migration completes.
-    /// Contracts: bond
+    /// A state migration is currently in progress; retry after it completes.
+    /// Emitted when a contract entry-point is called while an in-flight migration
+    /// holds the schema lock. Callers should back off and retry.
+    /// Contracts: bond, registry, delegation
     /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
+    MigrationInProgress = 124,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -936,6 +937,9 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
+            ContractError::OutsideBusinessHours => {
+                "Operation is not permitted outside UTC business hours (Mon-Fri 09:00-17:00)"
+            }
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1170,6 +1174,12 @@ impl ErrorExt for ContractError {
 
             // Cross-contract caller mismatch is a security halt; do not retry.
             ContractError::CrossContractCallerMismatch => false,
+
+            // Migration in progress — caller waits for the migration to complete, then retries.
+            ContractError::MigrationInProgress => true,
+
+            // OutsideBusinessHours — caller retries after the next business-hours window opens.
+            ContractError::OutsideBusinessHours => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1477,5 +1487,44 @@ macro_rules! require_non_zero_bytes32 {
 pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Address) {
     if caller != expected {
         panic_with_error!(e, ContractError::CrossContractCallerMismatch);
+    }
+}
+
+/// Panics with `ContractError::OutsideBusinessHours` (code 120) if the
+/// supplied Unix timestamp `ts` does not fall within UTC business hours:
+/// Monday–Friday, 09:00–17:00 UTC (exclusive of Saturday and Sunday).
+///
+/// This guard is intended for admin / timelock entry-points that must only
+/// execute during regulated trading windows. Pass `e.ledger().timestamp()`
+/// as `ts` to check the current on-chain wall-clock time.
+///
+/// # Algorithm
+/// Unix epoch day-zero (1970-01-01) is a **Thursday** (weekday index 3 when
+/// Monday = 0). The weekday of a timestamp is derived from:
+///
+/// ```text
+/// day_index = ((ts / 86400) + 3) % 7   // 0 = Mon … 6 = Sun
+/// ```
+///
+/// Business hours are 09:00:00 – 16:59:59 UTC, i.e.
+/// `seconds_in_day ∈ [32400, 61199]`.
+///
+/// # Panics
+/// Panics with `ContractError::OutsideBusinessHours` when `ts` is on a
+/// Saturday (day_index = 5), Sunday (day_index = 6), before 09:00, or
+/// at/after 17:00 UTC.
+pub fn require_within_business_hours(e: &Env, ts: u64) {
+    // Day-of-week: 0 = Monday, …, 4 = Friday, 5 = Saturday, 6 = Sunday.
+    // Epoch day 0 (1970-01-01) was a Thursday → offset of 3.
+    let day_of_week = ((ts / 86_400).wrapping_add(3)) % 7;
+    let seconds_in_day = ts % 86_400;
+
+    // Weekend check (Saturday = 5, Sunday = 6).
+    if day_of_week >= 5 {
+        panic_with_error!(e, ContractError::OutsideBusinessHours);
+    }
+    // Business hours: 09:00:00 (32400s) to 16:59:59 (61199s) inclusive.
+    if seconds_in_day < 32_400 || seconds_in_day > 61_199 {
+        panic_with_error!(e, ContractError::OutsideBusinessHours);
     }
 }

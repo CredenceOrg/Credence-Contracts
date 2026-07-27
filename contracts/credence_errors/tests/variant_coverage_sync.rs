@@ -6,6 +6,11 @@
 //! values (e.g. 94 vs 96). The shared `variant_table.rs` is authoritative;
 //! these tests fail if parallel counters reappear.
 
+// These integration tests use assert_eq! with format messages for diagnostics.
+// The disallowed_macros lint targets production contract code; test harnesses
+// are explicitly exempted.
+#![allow(clippy::disallowed_macros)]
+
 use credence_errors::ContractError;
 
 include!("../variant_table.rs");
@@ -14,7 +19,7 @@ include!("../variant_table.rs");
 fn variant_table_length_is_the_canonical_generation() {
     assert_eq!(
         ALL_VARIANTS.len(),
-        96,
+        110,
         "Add one row to `variant_table.rs` per new `ContractError` variant; \
          do not maintain separate manual counts in other test files.",
     );

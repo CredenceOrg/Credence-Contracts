@@ -136,8 +136,8 @@ mod tests {
 
     #[test]
     fn test_require_within_business_hours_passes() {
-        use soroban_sdk::Env;
         use crate::require_within_business_hours;
+        use soroban_sdk::Env;
         let e = Env::default();
         // Thursday 1970-01-01 10:00:00 UTC = 36000
         require_within_business_hours(&e, 36_000);
@@ -148,8 +148,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "HostError: Error(Contract, #120)")]
     fn test_require_within_business_hours_panics_on_weekend() {
-        use soroban_sdk::Env;
         use crate::require_within_business_hours;
+        use soroban_sdk::Env;
         let e = Env::default();
         // Saturday 1970-01-03 12:00:00 UTC = 2 * 86400 + 43200 = 216000
         require_within_business_hours(&e, 216_000);
@@ -158,8 +158,8 @@ mod tests {
     #[test]
     #[should_panic(expected = "HostError: Error(Contract, #120)")]
     fn test_require_within_business_hours_panics_outside_hours() {
-        use soroban_sdk::Env;
         use crate::require_within_business_hours;
+        use soroban_sdk::Env;
         let e = Env::default();
         // Thursday 1970-01-01 08:59:59 UTC = 32399
         require_within_business_hours(&e, 32_399);
@@ -1355,8 +1355,9 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::LeaseSignerMismatch => true, // call with matching lease signer
-            ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::MigrationInProgress => true, // wait for migration to complete
+            ContractError::OutsideBusinessHours => true, // retry after business-hours window opens
+            ContractError::TimestampInFuture => true,   // caller can correct timestamp
             ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
             ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
             ContractError::LeaseScopeMismatch => true,
@@ -1394,10 +1395,10 @@ mod tests {
             ContractError::InvariantViolation => false, // post-write drift
             ContractError::SnapshotGenerationMismatch => false,
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
-            ContractError::DomainMismatch => false,     // payload binding
-            ContractError::BatchTooLarge => true,       // reduce batch size
-            ContractError::EmptyBatch => true,          // supply at least one item
-            ContractError::InvalidCurrency => true,     // supply a valid currency
+            ContractError::DomainMismatch => false,       // payload binding
+            ContractError::BatchTooLarge => true,         // reduce batch size
+            ContractError::EmptyBatch => true,            // supply at least one item
+            ContractError::InvalidCurrency => true,       // supply a valid currency
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
             ContractError::ContractIdMismatch => false,
@@ -1432,7 +1433,7 @@ mod tests {
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
             ContractError::DelegationInactive => false,
-            ContractError::PayloadTooOld => true,      // re-sign with current ledger number
+            ContractError::PayloadTooOld => true, // re-sign with current ledger number
             ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution; same input will fail
             ContractError::StaleEpoch => false, // proposal ID contains a stale epoch reference; caller must re-propose
             // Treasury: state/caller fixes; fatal cases are callback failures.
@@ -1474,113 +1475,132 @@ mod tests {
         // documented expectation. The match in `expected_is_recoverable`
         // already forces compile-time exhaustiveness for the expectation
         // table.
+        // Canonical list of all 110 variants, one entry each, in numeric wire-code
+        // order matching `variant_table.rs`. No duplicates. Adding a new variant
+        // to `lib.rs` requires adding it here AND in `expected_is_recoverable`.
         let cases: std::vec::Vec<ContractError> = std::vec![
-            ContractError::NotInitialized,
-            ContractError::AlreadyInitialized,
-            ContractError::NotAdmin,
-            ContractError::NotBondOwner,
-            ContractError::UnauthorizedAttester,
-            ContractError::NotOriginalAttester,
-            ContractError::NotSigner,
-            ContractError::UnauthorizedDepositor,
-            ContractError::ContractPaused,
-            ContractError::BorrowFrozen,
-            ContractError::InvalidPauseAction,
-            ContractError::InsufficientSignatures,
-            ContractError::AdminSuspended,
-            ContractError::NoPendingAdmin,
-            ContractError::InvalidAdminAddress,
-            ContractError::AdminUnchanged,
-            ContractError::TimelockNotReady,
-            ContractError::EmergencyDrainNotPermitted,
-            ContractError::RoleNotHeldAtLedger,
-            ContractError::ZeroBytes32,
-            ContractError::LeaseSignerMismatch,
-            ContractError::BondNotFound,
-            ContractError::BondNotActive,
-            ContractError::InsufficientBalance,
-            ContractError::SlashExceedsBond,
-            ContractError::LockupNotExpired,
-            ContractError::NotRollingBond,
-            ContractError::WithdrawalAlreadyRequested,
-            ContractError::ReentrancyDetected,
-            ContractError::InvalidNonce,
-            ContractError::SignatureExpired,
-            ContractError::NegativeStake,
-            ContractError::EarlyExitConfigNotSet,
-            ContractError::InvalidPenaltyBps,
-            ContractError::LeverageExceeded,
-            ContractError::UnsupportedToken,
-            ContractError::UnsupportedDecimals,
-            ContractError::InvalidBondAmount,
-            ContractError::AmountExplicitlyZero,
-            ContractError::InvalidBondDuration,
-            ContractError::InvalidNoticePeriod,
-            ContractError::BondAlreadyExists,
-            ContractError::UnauthorizedToken,
-            ContractError::DuplicateIdempotencyKey,
-            ContractError::BatchTooLarge,
-            ContractError::EmptyBatch,
-            ContractError::StorageCapReached,
-            ContractError::TreasuryNotConfigured,
-            ContractError::InvariantViolation,
-            ContractError::DomainMismatch,
-            ContractError::OwnerMismatch,
-            ContractError::TargetMismatch,
-            ContractError::ContractIdMismatch,
-            ContractError::DuplicateAttestation,
-            ContractError::AttestationNotFound,
-            ContractError::AttestationAlreadyRevoked,
-            ContractError::InvalidAttestationWeight,
-            ContractError::AttestationWeightExceedsMax,
-            ContractError::IdentityAlreadyRegistered,
-            ContractError::BondContractAlreadyRegistered,
-            ContractError::IdentityNotRegistered,
-            ContractError::BondContractNotRegistered,
-            ContractError::AlreadyDeactivated,
-            ContractError::AlreadyActive,
-            ContractError::InvalidContractAddress,
-            ContractError::ContractCodeVerificationFailed,
-            ContractError::UnsupportedInterface,
-            ContractError::ExpiryInPast,
-            ContractError::DelegationNotFound,
-            ContractError::AlreadyRevoked,
-            ContractError::DelegationExpiryTooLong,
-            ContractError::UnknownScheme,
-            ContractError::VerifierAlreadyRegistered,
-            ContractError::VerifierNotRegistered,
-            ContractError::VerificationFailed,
-            ContractError::RevocationGraceExpired,
-            ContractError::DelegationNotExpired,
-            ContractError::DelegationInactive,
-            ContractError::PromiseNotKept,
-            ContractError::AmountMustBePositive,
-            ContractError::ThresholdExceedsSigners,
-            ContractError::InsufficientTreasuryBalance,
-            ContractError::ProposalNotFound,
-            ContractError::ProposalAlreadyExecuted,
-            ContractError::InsufficientApprovals,
-            ContractError::InvalidFlashLoanCallback,
-            ContractError::FlashLoanRepaymentFailed,
-            ContractError::ProposalExpired,
-            ContractError::SlippageExceeded,
-            ContractError::TreasuryBeneficiaryMismatch,
-            ContractError::CursorOutOfRange,
-            ContractError::InvalidCurrency,
-            ContractError::PayloadTooOld,
-            ContractError::PromiseNotKept,
-            ContractError::Overflow,
-            ContractError::Underflow,
-            ContractError::DivisionByZero,
-            ContractError::TimestampInFuture,
-            ContractError::BorrowFrozen,
-            ContractError::PayloadTooOld,
-            ContractError::InvalidCurrency,
-            ContractError::StaleEpoch,
+            // --- Initialization (1-99) ---
+            ContractError::NotInitialized,     // 1
+            ContractError::AlreadyInitialized, // 2
+            // --- Authorization (100-199) ---
+            ContractError::NotAdmin,                    // 100
+            ContractError::NotBondOwner,                // 101
+            ContractError::UnauthorizedAttester,        // 102
+            ContractError::NotOriginalAttester,         // 103
+            ContractError::NotSigner,                   // 104
+            ContractError::UnauthorizedDepositor,       // 105
+            ContractError::ContractPaused,              // 106
+            ContractError::InvalidPauseAction,          // 107
+            ContractError::InsufficientSignatures,      // 108
+            ContractError::ZeroBytes32,                 // 109
+            ContractError::InvalidAdminAddress,         // 110
+            ContractError::AdminUnchanged,              // 111
+            ContractError::TimelockNotReady,            // 112
+            ContractError::AdminSuspended,              // 113
+            ContractError::BorrowFrozen,                // 114
+            ContractError::NoPendingAdmin,              // 115
+            ContractError::RoleNotHeldAtLedger,         // 116
+            ContractError::EmergencyDrainNotPermitted,  // 117
+            ContractError::TimestampInFuture,           // 118
+            ContractError::InvalidMaxPauseSigners,      // 119
+            ContractError::OutsideBusinessHours,        // 120
+            ContractError::LeaseScopeMismatch,          // 121
+            ContractError::LeaseExpired,                // 122
+            ContractError::CrossContractCallerMismatch, // 123
+            ContractError::MigrationInProgress,         // 124
+            ContractError::MaxPauseSignersExceeded,     // 125
+            // --- Bond (200-299) ---
+            ContractError::BondNotFound,               // 200
+            ContractError::BondNotActive,              // 201
+            ContractError::InsufficientBalance,        // 202
+            ContractError::SlashExceedsBond,           // 203
+            ContractError::LockupNotExpired,           // 204
+            ContractError::NotRollingBond,             // 205
+            ContractError::WithdrawalAlreadyRequested, // 206
+            ContractError::ReentrancyDetected,         // 207
+            ContractError::InvalidNonce,               // 208
+            ContractError::NegativeStake,              // 209
+            ContractError::EarlyExitConfigNotSet,      // 210
+            ContractError::InvalidPenaltyBps,          // 211
+            ContractError::LeverageExceeded,           // 212
+            ContractError::UnsupportedToken,           // 213
+            ContractError::InvalidBondAmount,          // 214
+            ContractError::AmountExplicitlyZero,       // 215
+            ContractError::InvalidBondDuration,        // 216
+            ContractError::InvalidNoticePeriod,        // 217
+            ContractError::BondAlreadyExists,          // 218
+            ContractError::OwnerMismatch,              // 219
+            ContractError::TargetMismatch,             // 220
+            ContractError::ContractIdMismatch,         // 221
+            ContractError::SignatureExpired,           // 222
+            ContractError::TreasuryNotConfigured,      // 223
+            ContractError::StorageCapReached,          // 224
+            ContractError::DomainMismatch,             // 225
+            ContractError::CursorOutOfRange,           // 226
+            ContractError::BatchTooLarge,              // 227
+            ContractError::EmptyBatch,                 // 228
+            ContractError::UnsupportedDecimals,        // 229
+            ContractError::InvalidStringifiedBytes,    // 230
+            ContractError::UnauthorizedToken,          // 231
+            ContractError::DuplicateIdempotencyKey,    // 232
+            ContractError::InvariantViolation,         // 233
+            ContractError::InvalidCurrency,            // 234
+            ContractError::SnapshotGenerationMismatch, // 235
+            // --- Attestation (300-399) ---
+            ContractError::DuplicateAttestation,        // 300
+            ContractError::AttestationNotFound,         // 301
+            ContractError::AttestationAlreadyRevoked,   // 302
+            ContractError::InvalidAttestationWeight,    // 303
+            ContractError::AttestationWeightExceedsMax, // 304
+            // --- Registry (400-499) ---
+            ContractError::IdentityAlreadyRegistered, // 400
+            ContractError::BondContractAlreadyRegistered, // 401
+            ContractError::IdentityNotRegistered,     // 402
+            ContractError::BondContractNotRegistered, // 403
+            ContractError::AlreadyDeactivated,        // 404
+            ContractError::AlreadyActive,             // 405
+            ContractError::InvalidContractAddress,    // 406
+            ContractError::ContractCodeVerificationFailed, // 407
+            ContractError::UnsupportedInterface,      // 408
+            // --- Delegation (500-599) ---
+            ContractError::ExpiryInPast,              // 500
+            ContractError::DelegationNotFound,        // 501
+            ContractError::AlreadyRevoked,            // 502
+            ContractError::DelegationExpiryTooLong,   // 503
+            ContractError::UnknownScheme,             // 504
+            ContractError::VerifierAlreadyRegistered, // 505
+            ContractError::VerifierNotRegistered,     // 506
+            ContractError::VerificationFailed,        // 507
+            ContractError::RevocationGraceExpired,    // 508
+            ContractError::DelegationNotExpired,      // 509
+            ContractError::PayloadTooOld,             // 510
+            ContractError::DelegationInactive,        // 511
+            ContractError::PromiseNotKept,            // 512
+            ContractError::StaleEpoch,                // 513
+            ContractError::StaleAdminEpoch,           // 514
+            ContractError::StaleSignerEpoch,          // 515
+            // --- Treasury (600-699) ---
+            ContractError::AmountMustBePositive,        // 600
+            ContractError::ThresholdExceedsSigners,     // 601
+            ContractError::InsufficientTreasuryBalance, // 602
+            ContractError::ProposalNotFound,            // 603
+            ContractError::ProposalAlreadyExecuted,     // 604
+            ContractError::InsufficientApprovals,       // 605
+            ContractError::InvalidFlashLoanCallback,    // 606
+            ContractError::FlashLoanRepaymentFailed,    // 607
+            ContractError::ProposalExpired,             // 608
+            ContractError::SlippageExceeded,            // 609
+            ContractError::TreasuryBeneficiaryMismatch, // 610
+            ContractError::CorridorNotRegistered,       // 611
+            // --- Arithmetic (700-799) ---
+            ContractError::Overflow,            // 700
+            ContractError::Underflow,           // 701
+            ContractError::DivisionByZero,      // 702
+            ContractError::InvalidPercentSplit, // 703
         ];
         assert_eq!(
             cases.len(),
-            101,
+            110,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
