@@ -1151,6 +1151,39 @@ macro_rules! require_positive_amount {
     };
 }
 
+/// Rejects a caller-supplied ledger sequence number that is strictly ahead of
+/// the current on-chain ledger sequence.
+///
+/// # Threat being mitigated
+///
+/// Without this check, an attacker can submit a payload with a far-future
+/// `ledger_number` field. When the staleness check uses `current.saturating_sub(signed_at)`,
+/// a future value yields 0 (due to saturation), making the payload appear perpetually
+/// fresh and bypassing the entire staleness window.
+///
+/// # Arguments
+///
+/// * `e` - The Soroban environment
+/// * `ledger_number` - The claimed ledger sequence number from the payload
+///
+/// # Panics
+///
+/// Panics with `ContractError::TimestampInFuture` when `ledger_number > e.ledger().sequence()`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use credence_errors::verify_no_future_ledger;
+/// 
+/// verify_no_future_ledger(&env, payload.ledger_number);
+/// ```
+pub fn verify_no_future_ledger(e: &soroban_sdk::Env, ledger_number: u32) {
+    let current_sequence = e.ledger().sequence();
+    if ledger_number > current_sequence {
+        soroban_sdk::panic_with_error!(e, ContractError::TimestampInFuture);
+    }
+}
+
 /// Rejects a caller-supplied timestamp that is strictly ahead of the
 /// current on-chain ledger timestamp.
 ///
