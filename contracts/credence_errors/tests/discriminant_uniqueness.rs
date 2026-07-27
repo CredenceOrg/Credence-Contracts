@@ -16,225 +16,26 @@
 //! [`docs/error-codes-wire.md`]: ../../../docs/error-codes-wire.md
 //! [`docs/errors.md`]: ../../../docs/errors.md
 
+// These integration tests use assert_eq! with format messages for diagnostics.
+// The disallowed_macros lint targets production contract code; test harnesses
+// are explicitly exempted.
+#![allow(clippy::disallowed_macros)]
+
 use credence_errors::ContractError;
 
-/// Every `ContractError` variant, one row per name, in numeric-code order
-/// within each category block. The discriminant-uniqueness test iterates
-/// over this table and fails on the first duplicate numeric code it finds.
-const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
-    // --- Initialization (1-99) ---
-    ("NotInitialized", ContractError::NotInitialized),
-    ("AlreadyInitialized", ContractError::AlreadyInitialized),
-    // --- Authorization (100-199) ---
-    ("NoPendingAdmin", ContractError::NoPendingAdmin),
-    ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
-    ("AdminUnchanged", ContractError::AdminUnchanged),
-    ("TimelockNotReady", ContractError::TimelockNotReady),
-    ("AdminSuspended", ContractError::AdminSuspended),
-    (
-        "EmergencyDrainNotPermitted",
-        ContractError::EmergencyDrainNotPermitted,
-    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
-    ("OutsideBusinessHours", ContractError::OutsideBusinessHours),
-    ("TimestampInFuture", ContractError::TimestampInFuture),
-    (
-        "InvalidMaxPauseSigners",
-        ContractError::InvalidMaxPauseSigners,
-    ),
-    (
-        "MaxPauseSignersExceeded",
-        ContractError::MaxPauseSignersExceeded,
-    ),
-    ("ZeroBytes32", ContractError::ZeroBytes32),
-    ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch),
-    ("NotAdmin", ContractError::NotAdmin),
-    ("NotBondOwner", ContractError::NotBondOwner),
-    ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
-    ("NotOriginalAttester", ContractError::NotOriginalAttester),
-    ("NotSigner", ContractError::NotSigner),
-    (
-        "UnauthorizedDepositor",
-        ContractError::UnauthorizedDepositor,
-    ),
-    ("ContractPaused", ContractError::ContractPaused),
-    ("BorrowFrozen", ContractError::BorrowFrozen),
-    ("InvalidPauseAction", ContractError::InvalidPauseAction),
-    (
-        "InsufficientSignatures",
-        ContractError::InsufficientSignatures,
-    ),
-    // --- Bond (200-299) ---
-    ("BondNotFound", ContractError::BondNotFound),
-    ("BondNotActive", ContractError::BondNotActive),
-    ("InsufficientBalance", ContractError::InsufficientBalance),
-    ("SlashExceedsBond", ContractError::SlashExceedsBond),
-    ("StorageCapReached", ContractError::StorageCapReached),
-    ("LockupNotExpired", ContractError::LockupNotExpired),
-    ("NotRollingBond", ContractError::NotRollingBond),
-    (
-        "WithdrawalAlreadyRequested",
-        ContractError::WithdrawalAlreadyRequested,
-    ),
-    ("ReentrancyDetected", ContractError::ReentrancyDetected),
-    ("InvalidNonce", ContractError::InvalidNonce),
-    ("SignatureExpired", ContractError::SignatureExpired),
-    ("NegativeStake", ContractError::NegativeStake),
-    (
-        "EarlyExitConfigNotSet",
-        ContractError::EarlyExitConfigNotSet,
-    ),
-    ("InvalidPenaltyBps", ContractError::InvalidPenaltyBps),
-    ("LeverageExceeded", ContractError::LeverageExceeded),
-    ("UnsupportedToken", ContractError::UnsupportedToken),
-    ("UnsupportedDecimals", ContractError::UnsupportedDecimals),
-    ("InvalidBondAmount", ContractError::InvalidBondAmount),
-    ("AmountExplicitlyZero", ContractError::AmountExplicitlyZero),
-    ("InvalidBondDuration", ContractError::InvalidBondDuration),
-    ("InvalidNoticePeriod", ContractError::InvalidNoticePeriod),
-    ("BondAlreadyExists", ContractError::BondAlreadyExists),
-    // Codes 218, 219, 220, 221 — see shared Bond/Delegation block below.
-    ("UnauthorizedToken", ContractError::UnauthorizedToken),
-    (
-        "DuplicateIdempotencyKey",
-        ContractError::DuplicateIdempotencyKey,
-    ),
-    ("InvariantViolation", ContractError::InvariantViolation),
-    ("InvalidCurrency", ContractError::InvalidCurrency),
-    (
-        "TreasuryNotConfigured",
-        ContractError::TreasuryNotConfigured,
-    ),
-    ("CursorOutOfRange", ContractError::CursorOutOfRange),
-    ("BatchTooLarge", ContractError::BatchTooLarge),
-    ("EmptyBatch", ContractError::EmptyBatch),
-    // --- Shared Bond/Delegation payload mismatches ---
-    // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
-    ("DomainMismatch", ContractError::DomainMismatch),
-    ("OwnerMismatch", ContractError::OwnerMismatch),
-    ("TargetMismatch", ContractError::TargetMismatch),
-    ("ContractIdMismatch", ContractError::ContractIdMismatch),
-    // --- Attestation (300-399) ---
-    ("DuplicateAttestation", ContractError::DuplicateAttestation),
-    ("AttestationNotFound", ContractError::AttestationNotFound),
-    (
-        "AttestationAlreadyRevoked",
-        ContractError::AttestationAlreadyRevoked,
-    ),
-    (
-        "InvalidAttestationWeight",
-        ContractError::InvalidAttestationWeight,
-    ),
-    (
-        "AttestationWeightExceedsMax",
-        ContractError::AttestationWeightExceedsMax,
-    ),
-    // --- Registry (400-499) ---
-    (
-        "IdentityAlreadyRegistered",
-        ContractError::IdentityAlreadyRegistered,
-    ),
-    (
-        "BondContractAlreadyRegistered",
-        ContractError::BondContractAlreadyRegistered,
-    ),
-    (
-        "IdentityNotRegistered",
-        ContractError::IdentityNotRegistered,
-    ),
-    (
-        "BondContractNotRegistered",
-        ContractError::BondContractNotRegistered,
-    ),
-    ("AlreadyDeactivated", ContractError::AlreadyDeactivated),
-    ("AlreadyActive", ContractError::AlreadyActive),
-    (
-        "InvalidContractAddress",
-        ContractError::InvalidContractAddress,
-    ),
-    (
-        "ContractCodeVerificationFailed",
-        ContractError::ContractCodeVerificationFailed,
-    ),
-    ("UnsupportedInterface", ContractError::UnsupportedInterface),
-    // --- Delegation (500-599) ---
-    ("ExpiryInPast", ContractError::ExpiryInPast),
-    ("DelegationNotFound", ContractError::DelegationNotFound),
-    ("AlreadyRevoked", ContractError::AlreadyRevoked),
-    (
-        "DelegationExpiryTooLong",
-        ContractError::DelegationExpiryTooLong,
-    ),
-    ("UnknownScheme", ContractError::UnknownScheme),
-    (
-        "VerifierAlreadyRegistered",
-        ContractError::VerifierAlreadyRegistered,
-    ),
-    (
-        "VerifierNotRegistered",
-        ContractError::VerifierNotRegistered,
-    ),
-    ("VerificationFailed", ContractError::VerificationFailed),
-    (
-        "RevocationGraceExpired",
-        ContractError::RevocationGraceExpired,
-    ),
-    ("DelegationNotExpired", ContractError::DelegationNotExpired),
-    ("DelegationInactive", ContractError::DelegationInactive),
-    ("PayloadTooOld", ContractError::PayloadTooOld),
-    ("PromiseNotKept", ContractError::PromiseNotKept),
-    ("StaleAdminEpoch", ContractError::StaleAdminEpoch),
-    ("StaleSignerEpoch", ContractError::StaleSignerEpoch),
-    // --- Treasury (600-699) ---
-    ("AmountMustBePositive", ContractError::AmountMustBePositive),
-    (
-        "ThresholdExceedsSigners",
-        ContractError::ThresholdExceedsSigners,
-    ),
-    (
-        "InsufficientTreasuryBalance",
-        ContractError::InsufficientTreasuryBalance,
-    ),
-    ("ProposalNotFound", ContractError::ProposalNotFound),
-    (
-        "ProposalAlreadyExecuted",
-        ContractError::ProposalAlreadyExecuted,
-    ),
-    (
-        "InsufficientApprovals",
-        ContractError::InsufficientApprovals,
-    ),
-    (
-        "InvalidFlashLoanCallback",
-        ContractError::InvalidFlashLoanCallback,
-    ),
-    (
-        "FlashLoanRepaymentFailed",
-        ContractError::FlashLoanRepaymentFailed,
-    ),
-    ("ProposalExpired", ContractError::ProposalExpired),
-    ("SlippageExceeded", ContractError::SlippageExceeded),
-    (
-        "TreasuryBeneficiaryMismatch",
-        ContractError::TreasuryBeneficiaryMismatch,
-    ),
-    // --- Arithmetic (700-799) ---
-    ("Overflow", ContractError::Overflow),
-    ("Underflow", ContractError::Underflow),
-    ("DivisionByZero", ContractError::DivisionByZero),
-];
+// Canonical list of all variants, imported from the single source of truth.
+include!("../variant_table.rs");
 
-/// N_i128 :: Number of entries to assert in `ALL_VARIANTS`. Bumped manually
-/// when a new variant is added. The mismatch asserting test below fails the
-/// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
-/// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 101;
+/// N :: Number of variants asserted to exist. Bumped here whenever a new
+/// `ContractError` variant is added; must always equal `ALL_VARIANTS.len()`.
+/// Enforced by `all_variants_count_is_consistent_with_enum_definition` below.
+const ALL_VARIANTS_COUNT: usize = 110;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
-    // O(n^2) check via `Vec::contains` — `n` is ~85 so this is cheap
-    // (single-digit µs). We do not use a `BTreeSet` because that requires
-    // pulling in `std::collections` machinery that must remain invisible
-    // to the rest of the crate.
+    // O(n²) check via `Vec::contains` — n ≈ 110 so this runs in single-digit µs.
+    // We do not use a `BTreeSet` to avoid pulling in `std::collections` machinery
+    // that must remain invisible to the rest of the crate.
     let mut seen: std::vec::Vec<u32> = std::vec::Vec::with_capacity(ALL_VARIANTS.len());
     for (name, variant) in ALL_VARIANTS {
         let code = *variant as u32;
@@ -254,10 +55,9 @@ fn every_contract_error_variant_has_a_unique_u32_discriminant() {
 
 #[test]
 fn variant_names_are_unique_in_the_coverage_list() {
-    // Sad-path regression for the case where `src/lib.rs` declares a
-    // variant twice (or two PRs add near-identical names) and the
-    // contributor's `ALL_VARIANTS` table accidentally lists the same
-    // name twice — masking a real bug behind a single passed row.
+    // Sad-path regression for the case where two PRs add near-identical names
+    // and the contributor accidentally lists the same name twice in
+    // `variant_table.rs` — masking a real bug behind a single passed row.
     let mut seen: std::vec::Vec<&'static str> = std::vec::Vec::with_capacity(ALL_VARIANTS.len());
     for (name, _) in ALL_VARIANTS {
         assert!(
@@ -271,31 +71,21 @@ fn variant_names_are_unique_in_the_coverage_list() {
 }
 
 #[test]
-fn discriminant_codes_fit_their_documentated_category_range() {
+fn discriminant_codes_fit_their_documented_category_range() {
     // Belt-and-suspenders guard: `every_contract_error_variant_has_a...`
     // catches same-code collisions; this test catches *cross-category*
     // leakage — e.g. someone adding an Authorization variant that
-    // accidentally lands in the Bond range. We check the interval
-    // ownership here, treating the doc-comment block ranges in
-    // `src/lib.rs` (`Error Code Layout`) as authoritative.
+    // accidentally lands in the Bond range.
     //
-    // NOTE: payload-mismatch variants (DomainMismatch/OwnerMismatch/
-    // TargetMismatch/ContractIdMismatch) intentionally live in the
-    // 200-299 Bond/Numeric range despite being Delegation-categorised;
-    // the Catalog of variants in `docs/errors.md` lists them in the
-    // 200-299 row. Update the catalog and this range table together.
-    const RANGES: &[(std::ops::RangeInclusive<u32>, &'static str)] = &[
+    // NOTE: StaleAdminEpoch (514) and StaleSignerEpoch (515) have wire codes
+    // in the 500-599 Delegation range but are categorised as Authorization
+    // in `ErrorExt::category()`. The range check here uses the wire code,
+    // not the semantic category, so they pass under 500-599.
+    // Similarly DomainMismatch (225), OwnerMismatch (219), TargetMismatch (220),
+    // ContractIdMismatch (221) have wire codes in the 200-299 Bond range.
+    const RANGES: &[(std::ops::RangeInclusive<u32>, &str)] = &[
         (1..=99, "Initialization"),
-        // Authorization (100-199) is split in `lib.rs` between two
-        // logical groups (standard 100-108 and Admin Transfer 109-112,
-        // with the additional authorization errors following them). Both belong to the
-        // Authorization category per `ErrorExt::category()`.
         (100..=199, "Authorization"),
-        // `DomainMismatch = 225`, `OwnerMismatch = 219`,
-        // `TargetMismatch = 220`, `ContractIdMismatch = 221` are in
-        // the Bond category despite being Delegation-categorised
-        // semantically. Keep the 200-299 interval as the source of
-        // truth for wire-stability purposes.
         (200..=299, "Bond"),
         (300..=399, "Attestation"),
         (400..=499, "Registry"),
@@ -321,7 +111,7 @@ fn discriminant_codes_fit_their_documentated_category_range() {
 #[test]
 fn all_variants_count_is_consistent_with_enum_definition() {
     // Forcing function: `variant_table.rs` is the single generation counter.
-    // Parallel manually-bumped constants in other files caused 94-vs-96 drift.
+    // Bumping only one parallel count while the enum grows causes silent drift.
     assert_eq!(
         ALL_VARIANTS.len(),
         ALL_VARIANTS_COUNT,
@@ -332,14 +122,13 @@ fn all_variants_count_is_consistent_with_enum_definition() {
 #[test]
 #[should_panic(expected = "DISCRIMINANT COLLISION DETECTED")]
 fn discriminant_collision_panic_message_mentions_diagnostic() {
-    // Explicit sad-path test: an artificial collision must surface the
-    // same diagnostic string that the production code path emits, so ops
-    // engineers searching CI logs can find the cause without reading
-    // test outputs. We construct the collision INLINE — independent of
-    // any particular state of `lib.rs` — so this test stays useful both
-    // before and after the discriminant-collision fix PR lands.
+    // Explicit sad-path test: an artificial collision must surface the same
+    // diagnostic string that the production code path emits, so engineers
+    // searching CI logs can find the cause without reading test outputs.
+    // We construct the collision INLINE — independent of any particular state
+    // of `lib.rs` — so this test stays useful before and after collision fixes.
     let synthetic: std::vec::Vec<(&'static str, u32)> =
-        std::vec![("SyntheticA", 999_001_u32), ("SyntheticB", 999_001_u32),];
+        std::vec![("SyntheticA", 999_001_u32), ("SyntheticB", 999_001_u32)];
     let mut seen: std::vec::Vec<u32> = std::vec::Vec::with_capacity(synthetic.len());
     for (name, code) in synthetic {
         if seen.contains(&code) {
