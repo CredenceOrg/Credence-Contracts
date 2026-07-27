@@ -157,7 +157,7 @@ pub enum ContractError {
     /// Raised by `require_no_ongoing_migration`.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
+    MigrationInProgress = 124,
 
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
@@ -176,7 +176,7 @@ pub enum ContractError {
     /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
     /// Contracts: admin, timelock
     /// Wire-stable: do not renumber this error code.
-    OutsideBusinessHours = 124,
+    OutsideBusinessHours = 120,
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
@@ -650,13 +650,6 @@ pub enum ContractError {
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
     CrossContractCallerMismatch = 123,
-
-    /// A state migration is currently in progress; retry after it completes.
-    /// Emitted when a contract entry-point is called while an in-flight migration
-    /// holds the schema lock. Callers should back off and retry.
-    /// Contracts: bond, registry, delegation
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 124,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -1397,52 +1390,30 @@ macro_rules! require_positive_amount {
     };
 }
 
-/// Rejects a caller-supplied ledger sequence number that is strictly ahead of
-/// the current on-chain ledger sequence.
+/// Rejects a caller-supplied ledger sequence number or timestamp that is
+/// strictly ahead of the current on-chain value.
 ///
 /// # Threat being mitigated
 ///
 /// Without this check, an attacker can submit a payload with a far-future
-/// `ledger_number` field. When the staleness check uses `current.saturating_sub(signed_at)`,
-/// a future value yields 0 (due to saturation), making the payload appear perpetually
-/// fresh and bypassing the entire staleness window.
+/// `ledger_number` or `timestamp` field. When the staleness check uses
+/// `current.saturating_sub(signed_at)`, a future value yields 0 (due to
+/// saturation), making the payload appear perpetually fresh and bypassing the
+/// entire staleness window.
 ///
 /// # Arguments
 ///
 /// * `e` - The Soroban environment
-/// * `ledger_number` - The claimed ledger sequence number from the payload
+/// * `ledger_number` - The claimed ledger sequence number or timestamp from the payload
 ///
 /// # Panics
 ///
-/// Panics with `ContractError::TimestampInFuture` when `ledger_number > e.ledger().sequence()`.
-///
-/// # Examples
-///
-/// ```ignore
-/// use credence_errors::verify_no_future_ledger;
-/// 
-/// verify_no_future_ledger(&env, payload.ledger_number);
-/// ```
-pub fn verify_no_future_ledger(e: &soroban_sdk::Env, ledger_number: u32) {
-    let current_sequence = e.ledger().sequence();
+/// Panics with `ContractError::TimestampInFuture` when the supplied value is
+/// greater than the current ledger sequence or timestamp.
+pub fn verify_no_future_ledger(e: &Env, ledger_number: impl Into<u64>) {
+    let ledger_number = ledger_number.into();
+    let current_sequence = u64::from(e.ledger().sequence());
     if ledger_number > current_sequence {
-        soroban_sdk::panic_with_error!(e, ContractError::TimestampInFuture);
-    }
-}
-
-/// Rejects a caller-supplied timestamp that is strictly ahead of the
-/// current on-chain ledger timestamp.
-///
-/// Returns `ContractError::TimestampInFuture` when `$t` exceeds
-/// `env.ledger().timestamp()`, preventing the contract from accepting
-/// values that could only originate from the future.
-///
-/// # Panics
-///
-/// Panics with [`ContractError::TimestampInFuture`] when `t` is strictly
-/// greater than the current ledger timestamp.
-pub fn verify_no_future_ledger(e: &Env, t: u64) {
-    if t > e.ledger().timestamp() {
         e.panic_with_error(ContractError::TimestampInFuture);
     }
 }
