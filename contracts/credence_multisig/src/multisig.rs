@@ -395,7 +395,11 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        crate::require_within_ttl_panic(&e, proposal.expires_at, ContractError::ProposalAlreadyExecuted);
+        crate::require_within_ttl_panic(
+            &e,
+            proposal.expires_at,
+            ContractError::ProposalAlreadyExecuted,
+        );
 
         let already_signed = e
             .storage()

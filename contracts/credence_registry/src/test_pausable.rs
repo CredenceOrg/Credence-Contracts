@@ -89,7 +89,10 @@ mod pausable_tests {
         // Propose pause — not yet executed, so contract is still not paused
         let pid = client.pause(&s1).unwrap();
         let state = client.get_pause_state();
-        assert!(!state.is_paused, "contract should not be paused before threshold met");
+        assert!(
+            !state.is_paused,
+            "contract should not be paused before threshold met"
+        );
 
         // Second signer approves, then execute — now the contract pauses
         client.approve_pause_proposal(&s2, &pid);
@@ -108,7 +111,10 @@ mod pausable_tests {
         client.approve_pause_proposal(&s2, &pid2);
         client.execute_pause_proposal(&pid2);
         let state = client.get_pause_state();
-        assert!(!state.is_paused, "contract should be unpaused after execution");
+        assert!(
+            !state.is_paused,
+            "contract should be unpaused after execution"
+        );
     }
 
     #[test]
@@ -124,7 +130,9 @@ mod pausable_tests {
         let identity = Address::generate(&_e);
         let bond_contract = Address::generate(&_e);
         assert!(
-            client.try_register(&identity, &bond_contract, &false).is_err(),
+            client
+                .try_register(&identity, &bond_contract, &false)
+                .is_err(),
             "register should fail when paused"
         );
         assert!(
