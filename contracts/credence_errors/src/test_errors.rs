@@ -1113,33 +1113,33 @@ mod tests {
         test_positive().unwrap();
     }
 
+    fn apply_leading_zero_guard(amount: Option<i128>) -> Result<(), ContractError> {
+        let _e = soroban_sdk::Env::default();
+        crate::require_no_leading_zero_amount!(&_e, amount);
+        Ok(())
+    }
+
     #[test]
-    fn test_require_no_leading_zero_amount_macro() {
-        // Test that Some(0) returns AmountExplicitlyZero error
-        use soroban_sdk::Env;
+    fn leading_zero_guard_accepts_unset_amount() {
+        assert_eq!(apply_leading_zero_guard(None), Ok(()));
+    }
 
-        fn test_zero() -> Result<(), ContractError> {
-            let e = Env::default();
-            crate::require_no_leading_zero_amount!(&e, Some(0_i128));
-            Ok(())
-        }
-        assert_eq!(test_zero(), Err(ContractError::AmountExplicitlyZero));
+    #[test]
+    fn leading_zero_guard_rejects_explicit_zero() {
+        assert_eq!(
+            apply_leading_zero_guard(Some(0)),
+            Err(ContractError::AmountExplicitlyZero)
+        );
+    }
 
-        // Test that Some(positive) passes
-        fn test_positive() -> Result<(), ContractError> {
-            let e = Env::default();
-            crate::require_no_leading_zero_amount!(&e, Some(100_i128));
-            Ok(())
-        }
-        test_positive().unwrap();
+    #[test]
+    fn leading_zero_guard_accepts_positive_amount() {
+        assert_eq!(apply_leading_zero_guard(Some(100)), Ok(()));
+    }
 
-        // Test that None passes (not set)
-        fn test_none() -> Result<(), ContractError> {
-            let e = Env::default();
-            crate::require_no_leading_zero_amount!(&e, None::<i128>);
-            Ok(())
-        }
-        test_none().unwrap();
+    #[test]
+    fn leading_zero_guard_accepts_negative_amount() {
+        assert_eq!(apply_leading_zero_guard(Some(-100)), Ok(()));
     }
 
     fn mock_receive_fee(amount: i128, authorized: bool) -> Result<(), ContractError> {
