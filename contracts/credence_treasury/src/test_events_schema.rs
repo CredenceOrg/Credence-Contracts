@@ -15,11 +15,7 @@ mod tests {
     ) {
         assert_eq!(events.len(), 1, "Expected exactly one event");
         let (_contract, topics, _data) = events.get_unchecked(0);
-        assert_eq!(
-            topics.len(),
-            expected_topics_len,
-            "Topics length mismatch"
-        );
+        assert_eq!(topics.len(), expected_topics_len, "Topics length mismatch");
         // data is a Val; we can't easily check its len here without decoding
         // but we verify topics count which is the primary schema contract
         let _ = expected_data_len;

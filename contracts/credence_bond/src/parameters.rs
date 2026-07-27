@@ -868,5 +868,3 @@ fn validate_governance_approval(
         panic!("governance approval category mismatch");
     }
 }
-
-

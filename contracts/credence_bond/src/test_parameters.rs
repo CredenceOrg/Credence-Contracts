@@ -264,7 +264,10 @@ fn test_set_attestation_fee_bps_min_plus_one_accepted() {
     let (client, admin) = setup(&e);
 
     client.set_attestation_fee_bps(&admin, &(MIN_ATTESTATION_FEE_BPS + 1));
-    assert_eq!(client.get_attestation_fee_bps(), MIN_ATTESTATION_FEE_BPS + 1);
+    assert_eq!(
+        client.get_attestation_fee_bps(),
+        MIN_ATTESTATION_FEE_BPS + 1
+    );
 }
 
 #[test]
@@ -274,7 +277,10 @@ fn test_set_attestation_fee_bps_max_minus_one_accepted() {
     let (client, admin) = setup(&e);
 
     client.set_attestation_fee_bps(&admin, &(MAX_ATTESTATION_FEE_BPS - 1));
-    assert_eq!(client.get_attestation_fee_bps(), MAX_ATTESTATION_FEE_BPS - 1);
+    assert_eq!(
+        client.get_attestation_fee_bps(),
+        MAX_ATTESTATION_FEE_BPS - 1
+    );
 }
 
 #[test]
@@ -759,7 +765,10 @@ fn test_all_parameters_independent() {
     // Verify all are set correctly
     assert_eq!(client.get_protocol_fee_bps(), 75);
     assert_eq!(client.get_attestation_fee_bps(), 15);
-    assert_eq!(client.get_withdrawal_cooldown_secs(), credence_math::Timestamp::SECONDS_PER_DAY);
+    assert_eq!(
+        client.get_withdrawal_cooldown_secs(),
+        credence_math::Timestamp::SECONDS_PER_DAY
+    );
     assert_eq!(client.get_slash_cooldown_secs(), 43200);
     assert_eq!(client.get_bronze_threshold(), 200_000_000);
     assert_eq!(client.get_silver_threshold(), 2_000_000_000);
@@ -1243,11 +1252,14 @@ fn test_all_parameter_events_have_correct_categories() {
 
     // Check categories are set correctly, but here we just verify event count
     let events = e.events().all();
-    let param_events: Vec<_> = events.iter().filter(|(_, topics, _)| {
-        Symbol::try_from_val(&e, &topics.get(0).unwrap())
-            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
-            .unwrap_or(false)
-    }).collect();
+    let param_events: Vec<_> = events
+        .iter()
+        .filter(|(_, topics, _)| {
+            Symbol::try_from_val(&e, &topics.get(0).unwrap())
+                .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+                .unwrap_or(false)
+        })
+        .collect();
     assert_eq!(param_events.len(), 9, "expected 9 param_updated events");
 }
 

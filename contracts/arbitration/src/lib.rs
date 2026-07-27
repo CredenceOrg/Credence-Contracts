@@ -759,7 +759,7 @@ impl CredenceArbitration {
         admin.require_auth();
 
         e.storage().instance().set(&DataKey::Admin, &new_admin);
-        
+
         e.events().publish(
             (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
             (admin, new_admin),

@@ -162,7 +162,7 @@ fn test_expire_claims_skips_no_expiry() {
         let claims_vec = claims::get_pending_claims(&env, &user);
         assert_eq!(claims_vec.len(), 1);
         assert_eq!(claims_vec.get(0).unwrap().expires_at, 0);
-    }
+    });
 }
 
 #[test]

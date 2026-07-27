@@ -11,6 +11,8 @@ on:
       - Cargo.toml
       - Cargo.lock
       - contracts/**
+      - crates/**
+      - scripts/**
       - .github/workflows/contracts-tests.yml
   pull_request:
     branches:
@@ -21,6 +23,8 @@ on:
       - Cargo.toml
       - Cargo.lock
       - contracts/**
+      - crates/**
+      - scripts/**
       - .github/workflows/contracts-tests.yml
   workflow_dispatch:
 
@@ -43,6 +47,12 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Test soroban-sdk pin checker
+        run: python3 -m unittest scripts.tests.test_check_soroban_sdk_pin
+
+      - name: Verify soroban-sdk pin
+        run: python3 scripts/check_soroban_sdk_pin.py
 
       - name: Run workspace tests
         run: cargo test --workspace
