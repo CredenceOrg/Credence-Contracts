@@ -433,17 +433,34 @@ pub fn emit_upgrade_admin_transfer_cancelled(e: &Env, admin: &Address, pending_a
     let data = pending_admin.clone();
     e.events().publish(topics, data);
 }
-/// Emitted when a protocol parameter is updated.
+/// Emitted when a governance-controlled protocol parameter is updated.
 ///
 /// # Topics (Indexed)
-/// * `Symbol` - "param_updated"
-/// * `Symbol` - Parameter Key (e.g., "leverage")
-/// * `Symbol` - Category (e.g., "risk")
-/// * `Address` - Admin who performed the update
+/// * `Symbol` (event type) - `"param_updated"`
+/// * `Symbol` (key) - Canonical parameter key (e.g., `"fee_prot"`, `"th_brnz"`, `"max_lev"`)
+/// * `Symbol` (category) - Parameter category (e.g., `"fee"`, `"cooldown"`, `"tier"`, `"risk"`)
+/// * `Address` (admin) - Governance address that authorised the change
 ///
 /// # Data
-/// * `i128` - Old value
-/// * `i128` - New value
+/// * `i128` - Old value (before the update)
+/// * `i128` - New value (after the update)
+///
+/// # Indexer guidance
+/// The event topics are designed so indexers can filter by:
+/// - **All parameter changes** — match topic[0] = `"param_updated"`
+/// - **Changes in a category** — match topic[2] = `Symbol("fee")` etc.
+/// - **Changes to a specific parameter** — match topic[1] = `Symbol("fee_prot")` etc.
+/// - **Changes by a specific admin** — match topic[3] = `Address`
+///
+/// The data payload carries `(old_value, new_value)` normalised to `i128`.
+/// Values that are stored natively as `u32` or `u64` are cast to `i128` and
+/// are guaranteed to fit (max stored value << i128::MAX).
+///
+/// # Replay semantics
+/// A replayer applies `new_value` to its local parameter state for the given
+/// `key`. The `old_value` is informational; replay order is the authoritative
+/// sequence of updates. Exactly one event is emitted per successful
+/// governance-aware setter call.
 #[allow(dead_code)]
 pub fn emit_parameter_updated(
     e: &Env,

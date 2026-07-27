@@ -98,6 +98,14 @@ mod test_rolling_notice;
 #[cfg(test)]
 mod fee_tests;
 
+/// Tests for `parameters.rs`: governance access control, bounds, event emission, approval invariants.
+#[cfg(test)]
+mod test_parameters;
+
+/// Tests for max-leverage parameter: bounds enforcement, admin access, bond-creation integration.
+#[cfg(test)]
+mod test_max_leverage;
+
 #[cfg(test)]
 mod test_migration_guard;
 
@@ -763,6 +771,161 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::NotAdmin);
         }
         parameters::set_borrow_frozen(&e, &admin, frozen);
+    }
+
+    // ==================== Protocol Parameters (Governance-Controlled) ====================
+
+    pub fn get_protocol_fee_bps(e: Env) -> u32 {
+        parameters::get_protocol_fee_bps(&e)
+    }
+    pub fn set_protocol_fee_bps(e: Env, admin: Address, value: u32) {
+        Self::require_not_paused(&e);
+        parameters::set_protocol_fee_bps(&e, &admin, value)
+    }
+    pub fn set_protocol_fee_bps_appr(
+        e: Env,
+        admin: Address,
+        value: u32,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_protocol_fee_bps_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_attestation_fee_bps(e: Env) -> u32 {
+        parameters::get_attestation_fee_bps(&e)
+    }
+    pub fn set_attestation_fee_bps(e: Env, admin: Address, value: u32) {
+        Self::require_not_paused(&e);
+        parameters::set_attestation_fee_bps(&e, &admin, value)
+    }
+    pub fn set_attestation_fee_bps_appr(
+        e: Env,
+        admin: Address,
+        value: u32,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_attestation_fee_bps_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_withdrawal_cooldown_secs(e: Env) -> u64 {
+        parameters::get_withdrawal_cooldown_secs(&e)
+    }
+    pub fn set_withdrawal_cooldown_secs(e: Env, admin: Address, value: u64) {
+        Self::require_not_paused(&e);
+        parameters::set_withdrawal_cooldown_secs(&e, &admin, value)
+    }
+    pub fn set_withdrawal_cd_secs_appr(
+        e: Env,
+        admin: Address,
+        value: u64,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_withdrawal_cooldown_secs_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_slash_cooldown_secs(e: Env) -> u64 {
+        parameters::get_slash_cooldown_secs(&e)
+    }
+    pub fn set_slash_cooldown_secs(e: Env, admin: Address, value: u64) {
+        Self::require_not_paused(&e);
+        parameters::set_slash_cooldown_secs(&e, &admin, value)
+    }
+    pub fn set_slash_cd_secs_appr(
+        e: Env,
+        admin: Address,
+        value: u64,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_slash_cooldown_secs_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_bronze_threshold(e: Env) -> i128 {
+        parameters::get_bronze_threshold(&e)
+    }
+    pub fn set_bronze_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_bronze_threshold(&e, &admin, value)
+    }
+    pub fn set_bronze_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_bronze_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_silver_threshold(e: Env) -> i128 {
+        parameters::get_silver_threshold(&e)
+    }
+    pub fn set_silver_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_silver_threshold(&e, &admin, value)
+    }
+    pub fn set_silver_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_silver_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_gold_threshold(e: Env) -> i128 {
+        parameters::get_gold_threshold(&e)
+    }
+    pub fn set_gold_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_gold_threshold(&e, &admin, value)
+    }
+    pub fn set_gold_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_gold_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_platinum_threshold(e: Env) -> i128 {
+        parameters::get_platinum_threshold(&e)
+    }
+    pub fn set_platinum_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_platinum_threshold(&e, &admin, value)
+    }
+    pub fn set_platinum_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_platinum_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_max_leverage(e: Env) -> u32 {
+        parameters::get_max_leverage(&e)
+    }
+    pub fn set_max_leverage(e: Env, admin: Address, value: u32) {
+        Self::require_not_paused(&e);
+        parameters::set_max_leverage(&e, &admin, value)
+    }
+    pub fn set_max_leverage_appr(
+        e: Env,
+        admin: Address,
+        value: u32,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_max_leverage_with_approval(&e, &admin, value, &approval)
     }
 
     /// Register an authorized attester.
