@@ -27,7 +27,9 @@ use soroban_sdk::panic_with_error;
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Vec};
 pub mod idempotency;
 pub mod storage;
-use storage::{bump_instance_ttl, DataKey, RegistryEntry};
+
+pub use storage::RegistryEntry;
+use storage::{bump_instance_ttl, DataKey};
 
 /// Signature domain identifier for the CredenceRegistry contract.
 #[allow(dead_code)]
