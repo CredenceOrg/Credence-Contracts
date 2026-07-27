@@ -28,7 +28,7 @@ pub fn require_no_ongoing_migration(e: &Env, status: MigrationStatus) {
 /// The migration is idempotent and safe to call on every read; it only writes
 /// when a bond is present.
 pub fn migrate_v1_to_v2(e: &Env) {
-    let key = DataKey::Bond;
+    let key = DataKey::Bond(identity.clone());
     if let Some(old_bond) = e.storage().instance().get::<DataKey, IdentityBond>(&key) {
         e.storage().instance().set(&key, &old_bond);
     }

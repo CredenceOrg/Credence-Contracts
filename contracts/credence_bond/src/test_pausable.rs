@@ -114,7 +114,7 @@ fn test_pause_allows_reads() {
     let _ = client.get_drain_eta();
     let _ = client.get_latest_drain_id();
     let _ = client.is_paused();
-    let _ = client.get_identity_state();
+    let _ = client.get_identity_state(&identity);
     let _ = client.get_tier();
 }
 

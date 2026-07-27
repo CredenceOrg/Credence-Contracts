@@ -150,7 +150,7 @@ fn test_fully_slashed_bond_tier() {
     // Fully slash the bond
     client.slash(&admin, &TIER_GOLD_MAX);
 
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.slashed_amount, TIER_GOLD_MAX);
     assert_eq!(state.bonded_amount, TIER_GOLD_MAX);
 

@@ -46,7 +46,7 @@ impl CredenceBond {
             withdrawal_requested_at: 0,
             notice_period_duration,
         };
-        let key = DataKey::Bond;
+        let key = DataKey::Bond(identity.clone());
         e.storage().instance().set(&key, &bond);
         bond
     }
@@ -54,7 +54,7 @@ impl CredenceBond {
     pub fn get_identity_state(e: Env) -> IdentityBond {
         e.storage()
             .instance()
-            .get::<_, IdentityBond>(&DataKey::Bond)
+            .get::<_, IdentityBond>(&DataKey::Bond(identity.clone()))
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound))
     }
 
@@ -69,7 +69,7 @@ impl CredenceBond {
     }
 
     pub fn slash(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+        let key = DataKey::Bond(identity.clone());
         let mut bond = e
             .storage()
             .instance()
@@ -86,7 +86,7 @@ impl CredenceBond {
     }
 
     pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+        let key = DataKey::Bond(identity.clone());
         let mut bond = e
             .storage()
             .instance()

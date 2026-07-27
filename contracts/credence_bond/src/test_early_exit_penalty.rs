@@ -108,7 +108,7 @@ fn test_early_exit_emits_penalty_event() {
     });
     assert!(found, "early_exit_penalty event was not emitted");
 
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.bonded_amount, 800);
 }
 
@@ -132,7 +132,7 @@ fn test_early_exit_fails_without_config_and_reverts_state() {
     client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let token_client = TokenClient::new(&e, &token_id);
-    let before_bond = client.get_identity_state();
+    let before_bond = client.get_identity_state(&identity);
     let before_identity = token_client.balance(&identity);
     let before_contract = token_client.balance(&bond_contract_id);
 
@@ -142,7 +142,7 @@ fn test_early_exit_fails_without_config_and_reverts_state() {
         "withdraw_early must revert when early-exit treasury is unset"
     );
 
-    let after_bond = client.get_identity_state();
+    let after_bond = client.get_identity_state(&identity);
     assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
     assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
     assert_eq!(token_client.balance(&identity), before_identity);

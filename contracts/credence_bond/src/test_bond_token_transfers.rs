@@ -72,7 +72,7 @@ fn test_top_up_pulls_usdc_from_identity() {
     );
 
     // Storage mirrors token movement: bonded_amount increased by the same delta.
-    let bond_after = client.get_identity_state();
+    let bond_after = client.get_identity_state(&identity);
     assert_eq!(bond_after.bonded_amount, 1_500);
 }
 
@@ -108,7 +108,7 @@ fn test_withdraw_pushes_usdc_to_identity() {
     );
 
     // Storage mirrors token movement: bonded_amount decreased by the same delta.
-    let bond_after = client.get_identity_state();
+    let bond_after = client.get_identity_state(&identity);
     assert_eq!(bond_after.bonded_amount, 2_000 - amount);
 }
 
@@ -156,7 +156,7 @@ fn test_withdraw_early_splits_usdc_between_treasury_and_identity() {
     );
 
     // Storage mirrors token movement: bonded_amount decreased by the gross.
-    let bond_after = client.get_identity_state();
+    let bond_after = client.get_identity_state(&identity);
     assert_eq!(bond_after.bonded_amount, 10_000 - gross);
 }
 
@@ -199,7 +199,7 @@ fn test_withdraw_early_treasury_equals_caller_identity_gets_gross() {
         "bond contract must lose the gross amount"
     );
 
-    let bond_after = client.get_identity_state();
+    let bond_after = client.get_identity_state(&identity);
     assert_eq!(bond_after.bonded_amount, 10_000 - gross);
 }
 
@@ -220,23 +220,23 @@ fn test_full_lifecycle_token_balance_matches_storage() {
     // Step 1: create_bond(5_000) — pull 5_000 from identity into contract.
     client.create_bond(&identity, &5_000, &DAY, &false, &0_u64);
     assert_eq!(token.balance(&bond_contract), 5_000);
-    assert_eq!(client.get_identity_state().bonded_amount, 5_000);
+    assert_eq!(client.get_identity_state(&identity).bonded_amount, 5_000);
 
     // Step 2: top_up(2_000) — pull 2_000 more from identity into contract.
     client.top_up(&identity, &2_000);
     assert_eq!(token.balance(&bond_contract), 7_000);
-    assert_eq!(client.get_identity_state().bonded_amount, 7_000);
+    assert_eq!(client.get_identity_state(&identity).bonded_amount, 7_000);
 
     // Step 3: withdraw(1_000) — push 1_000 from contract to identity.
     e.ledger().with_mut(|li| li.timestamp = 1_000 + DAY + 1);
     client.withdraw(&identity, &1_000);
     assert_eq!(token.balance(&bond_contract), 6_000);
-    assert_eq!(client.get_identity_state().bonded_amount, 6_000);
+    assert_eq!(client.get_identity_state(&identity).bonded_amount, 6_000);
 
     // Custody invariant: the bond contract holds exactly `bonded_amount`.
     assert_eq!(
         token.balance(&bond_contract),
-        client.get_identity_state().bonded_amount,
+        client.get_identity_state(&identity).bonded_amount,
         "token.balance(bond_contract) must equal bonded_amount (no slash)"
     );
 }
@@ -273,7 +273,7 @@ fn test_slash_only_marks_state_does_not_move_tokens() {
     // Step 3: canonical `slash` only marks `slashed_amount` in storage;
     // tokens are NOT moved out of the bond contract at this step.
     client.slash(&admin, &2_000);
-    let after_slash = client.get_identity_state();
+    let after_slash = client.get_identity_state(&identity);
     assert_eq!(after_slash.bonded_amount, 7_000);
     assert_eq!(after_slash.slashed_amount, 2_000);
 
@@ -303,7 +303,7 @@ fn test_withdraw_zero_amount_rejected_at_validation() {
     let token = TokenClient::new(&e, &token_id);
     let before_identity = token.balance(&identity);
     let before_contract = token.balance(&bond_contract);
-    let before_state = client.get_identity_state();
+    let before_state = client.get_identity_state(&identity);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.withdraw(&identity, &0_i128);
@@ -313,7 +313,7 @@ fn test_withdraw_zero_amount_rejected_at_validation() {
         "withdraw(amount = 0) must panic at validation"
     );
 
-    let after_state = client.get_identity_state();
+    let after_state = client.get_identity_state(&identity);
     assert_eq!(
         token.balance(&identity),
         before_identity,
@@ -360,14 +360,14 @@ fn test_withdraw_reverts_atomically_when_token_transfer_fails() {
     client.set_token(&admin, &token_id);
 
     client.create_bond(&identity, &5_000, &DAY, &false, &0_u64);
-    assert_eq!(client.get_identity_state().bonded_amount, 5_000);
+    assert_eq!(client.get_identity_state(&identity).bonded_amount, 5_000);
 
     // Arm ChaosToken to fail any outbound token transfer.
     chaos.set_fail_transfer(&true);
 
     e.ledger().with_mut(|li| li.timestamp = 1_000 + DAY + 1);
 
-    let snapshot = client.get_identity_state();
+    let snapshot = client.get_identity_state(&identity);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.withdraw(&identity, &1_000);
@@ -377,7 +377,7 @@ fn test_withdraw_reverts_atomically_when_token_transfer_fails() {
         "withdraw must panic when underlying token transfer fails"
     );
 
-    let after = client.get_identity_state();
+    let after = client.get_identity_state(&identity);
     assert_eq!(
         after.bonded_amount, snapshot.bonded_amount,
         "transaction failure must NOT have mutated bonded_amount"
@@ -413,7 +413,7 @@ fn test_phantom_balance_mode_succeeds_without_token_configuration() {
     let bond = client.create_bond(&identity, &1_000, &DAY, &false, &0_u64);
     assert_eq!(bond.bonded_amount, 1_000, "phantom-mode create_bond must succeed");
     assert_eq!(
-        client.get_identity_state().bonded_amount,
+        client.get_identity_state(&identity).bonded_amount,
         1_000,
         "phantom-mode create_bond must persist the new bond"
     );
