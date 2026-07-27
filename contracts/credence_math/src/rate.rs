@@ -9,11 +9,11 @@ pub struct Rate {
 }
 
 impl Rate {
-    /// Compound the rate over `periods` periods.
+    /// Compound the given rate (in bps) over `periods` periods.
     /// Returns the compounded multiplier scaled by 10_000 (i.e., 10_000 = 1.0x).
-    pub fn compound(&self, periods: u32) -> i128 {
+    pub fn compound(rate: u32, periods: u32) -> i128 {
         let mut multiplier: i128 = 10_000;
-        let factor = 10_000_i128 + self.bps as i128;
+        let factor = 10_000_i128 + rate as i128;
         for _ in 0..periods {
             multiplier = mul_div_i128(multiplier, factor, 10_000, Rounding::Down, "compound overflow");
         }
@@ -33,15 +33,14 @@ mod proptests {
             period_a in 0..256u32,
             period_b in 0..256u32
         ) {
-            let rate = Rate { bps };
             let (min_period, max_period) = if period_a <= period_b {
                 (period_a, period_b)
             } else {
                 (period_b, period_a)
             };
             
-            let val_min = rate.compound(min_period);
-            let val_max = rate.compound(max_period);
+            let val_min = Rate::compound(bps, min_period);
+            let val_max = Rate::compound(bps, max_period);
             
             prop_assert!(val_max >= val_min, "More periods should yield higher or equal compounded rate");
         }

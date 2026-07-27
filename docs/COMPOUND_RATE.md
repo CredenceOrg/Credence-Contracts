@@ -8,7 +8,7 @@ This document explains how interest and penalty rates compound over time within 
 
 Our compounding logic relies on iterative multiplication using `mul_div_i128`. We do not use floating-point math, exponentiation (`f64::powf`), or approximations like Taylor series. 
 
-Instead, the `compound(periods: u32) -> i128` function in the `credence_math` crate computes the exact compounded multiplier over `n` periods iteratively.
+Instead, the `compound(rate: u32, periods: u32) -> i128` function in the `credence_math` crate computes the exact compounded multiplier over `n` periods iteratively.
 
 ### Concrete Example
 
@@ -41,10 +41,8 @@ Here is an example of applying a compounded rate during a state transition, such
 use credence_math::{Rate, mul_div_i128, Rounding};
 
 pub fn apply_late_penalty(amount: i128, days_late: u32, penalty_bps: u32) -> i128 {
-    let rate = Rate { bps: penalty_bps };
-    
     // 1. Get the compounded multiplier (scaled by 10_000)
-    let compounded_multiplier = rate.compound(days_late);
+    let compounded_multiplier = Rate::compound(penalty_bps, days_late);
     
     // 2. Apply it to the principal amount
     mul_div_i128(amount, compounded_multiplier, 10_000, Rounding::Down, "apply penalty")
