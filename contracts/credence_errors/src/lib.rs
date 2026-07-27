@@ -645,11 +645,8 @@ pub enum ContractError {
 
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
-    /// Originally code 125; renumbered to 127 pre-deployment to resolve a
-    /// duplicate-variant collision with `MigrationInProgress`. Off-chain
-    /// consumers must reference by name (`ContractError::MaxPauseSignersExceeded`),
-    /// not by code value.
-    MaxPauseSignersExceeded = 127,
+    /// Wire-stable: do not renumber this error code.
+    MaxPauseSignersExceeded = 120,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -1390,7 +1387,7 @@ macro_rules! require_positive_amount {
 ///
 /// Panics with [`ContractError::TimestampInFuture`] when `t` is strictly
 /// greater than the current ledger timestamp.
-pub fn verify_no_future_ledger(e: &Env, t: u64) {
+pub fn verify_no_future_timestamp(e: &Env, t: u64) {
     if t > e.ledger().timestamp() {
         e.panic_with_error(ContractError::TimestampInFuture);
     }

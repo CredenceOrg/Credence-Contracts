@@ -258,3 +258,24 @@ fn do_unpause(e: &Env, proposal_id: Option<u64>) {
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);
 }
+
+// ============================================================================
+// Governance-Controlled Borrow Freeze Helpers
+// ============================================================================
+
+/// Returns `true` when new borrows/increases are frozen.
+#[must_use]
+pub fn is_borrow_frozen(e: &Env) -> bool {
+    crate::parameters::is_borrow_frozen(e)
+}
+
+/// Panics with `BorrowFrozen` if borrows are currently frozen.
+pub fn require_not_borrow_frozen(e: &Env) {
+    crate::parameters::require_not_borrow_frozen(e);
+}
+
+/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
+pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    crate::parameters::set_borrow_frozen(e, admin, frozen);
+}
+

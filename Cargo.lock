@@ -955,7 +955,6 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "credence_math",
- "interfaces",
  "soroban-sdk",
 ]
 
