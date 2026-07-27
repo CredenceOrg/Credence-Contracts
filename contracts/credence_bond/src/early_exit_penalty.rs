@@ -13,7 +13,7 @@ pub struct EarlyExitConfig {
 
 pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
     if penalty_bps > BPS_DENOMINATOR as u32 {
-        panic!("penalty_bps must be <= {}", BPS_DENOMINATOR);
+        panic!("penalty_bps must be <= 10000");
     }
     let key = DataKey::EarlyExitConfig;
     e.storage().instance().set(
