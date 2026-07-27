@@ -50,6 +50,8 @@ pub enum ArbitrationError {
     /// Dispute is in an active state (Open, Voting, or Resolving) and the
     /// requested operation requires an inactive state (Resolved, Cancelled, or Tied).
     DisputeActive = 16,
+    /// A creator already has an unresolved dispute in progress and cannot open another.
+    OngoingDispute = 17,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
