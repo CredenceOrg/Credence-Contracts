@@ -135,7 +135,7 @@ def parse_mod_graph(root_file: Path):
         reachable.add(file)
         if not unconditional:
             test_gated.add(file)
-        lines = file.read_text().splitlines()
+        lines = file.read_text(encoding="utf-8", errors="ignore").splitlines()
         n = len(lines)
         i = 0
         while i < n:
@@ -230,7 +230,7 @@ def scan() -> list:
             continue
         reachable, test_gated = parse_mod_graph(lib)
         for rs in sorted(f for f in reachable if f not in test_gated):
-            masked = mask_cfg_test_blocks(rs.read_text())
+            masked = mask_cfg_test_blocks(rs.read_text(encoding="utf-8", errors="ignore"))
             all_results.extend(find_panics_in_text(masked, str(rs.relative_to(ROOT))))
     return sorted(all_results)
 
