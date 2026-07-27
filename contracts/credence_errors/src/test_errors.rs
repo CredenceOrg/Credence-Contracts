@@ -3,6 +3,7 @@ mod tests {
     extern crate std;
     use crate::{ContractError, ErrorCategory, ErrorExt, Role};
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::panic_with_error;
     use std::vec::Vec;
 
     include!("../variant_table.rs");
@@ -1373,13 +1374,12 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::MigrationInProgress => true, // wait for migration to complete
-            ContractError::OutsideBusinessHours => true, // retry after business-hours window opens
             ContractError::TimestampInFuture => true,   // caller can correct timestamp
             ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
             ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
             ContractError::LeaseScopeMismatch => true,
             ContractError::LeaseExpired => true,
+            ContractError::LeaseSignerMismatch => true, // correct the lease signer
             ContractError::CrossContractCallerMismatch => false,
             ContractError::RoleRequired => true,
             ContractError::StaleAdminEpoch => false,
@@ -1759,6 +1759,78 @@ mod tests {
         let e = Env::default();
         let now = e.ledger().timestamp();
         crate::verify_no_future_ledger(&e, now + 1);
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_accepts_past_timestamp() {
+        use soroban_sdk::testutils::Ledger as _;
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        e.ledger().with_mut(|li| {
+            li.sequence_number = 1000;
+        });
+        let current = e.ledger().sequence();
+        crate::verify_no_future_ledger(&e, u64::from(current - 1));
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_accepts_past_ledger_sequence() {
+        use soroban_sdk::testutils::Ledger as _;
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        e.ledger().with_mut(|li| {
+            li.sequence_number = 1000;
+        });
+        let current = e.ledger().sequence();
+        crate::verify_no_future_ledger(&e, current - 1);
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_accepts_current_ledger_sequence() {
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        let current = e.ledger().sequence();
+        crate::verify_no_future_ledger(&e, current);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #118)")]
+    fn test_verify_no_future_ledger_rejects_future_ledger_sequence() {
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        let current = e.ledger().sequence();
+        crate::verify_no_future_ledger(&e, current + 1);
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_accepts_zero_timestamp() {
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        crate::verify_no_future_ledger(&e, 0u64);
+    }
+
+    #[test]
+    fn test_verify_no_future_ledger_sequence_macro_accepts_current() {
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        let current = e.ledger().sequence();
+        crate::verify_no_future_ledger_sequence!(&e, current);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #118)")]
+    fn test_verify_no_future_ledger_sequence_macro_rejects_future() {
+        use soroban_sdk::Env;
+
+        let e = Env::default();
+        let current = e.ledger().sequence();
+        crate::verify_no_future_ledger_sequence!(&e, current + 1);
     }
 
     #[test]
