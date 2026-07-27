@@ -126,6 +126,10 @@ mod test_max_leverage;
 #[cfg(test)]
 mod test_migration_guard;
 
+/// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
+#[cfg(test)]
+mod test_same_ledger_liquidation_guard;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
@@ -1137,6 +1141,13 @@ impl CredenceBond {
         bump_instance_ttl(&e);
         let tier = tiered_bond::get_tier_for_amount(&e, amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
+        // Issue #996: same-ledger sequencing guard — record this ledger sequence
+        // so that any subsequent same-ledger slash via `slashing::slash_bond` is
+        // blocked by `same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase`.
+        // Writing the recorder AFTER the bond + invariants check ensures we never
+        // trip the guard on an aborted or fixture-only flow: a Soroban tx is
+        // atomic, so a panic in `assert_self_consistent` reverts this write too.
+        crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -1977,6 +1988,10 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+        // Issue #996: same-ledger sequencing guard — record this ledger
+        // sequence so that any subsequent same-ledger slash is blocked by
+        // `same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase`.
+        crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
