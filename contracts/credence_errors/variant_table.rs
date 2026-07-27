@@ -39,6 +39,10 @@ pub const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
         "InsufficientSignatures",
         ContractError::InsufficientSignatures,
     ),
+    (
+        "MigrationInProgress",
+        ContractError::MigrationInProgress,
+    ),
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound),
     ("BondNotActive", ContractError::BondNotActive),

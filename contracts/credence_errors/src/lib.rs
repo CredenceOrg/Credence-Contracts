@@ -631,7 +631,13 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 120,
+    MaxPauseSignersExceeded = 124,
+
+    /// A contract state migration is in progress; state-changing calls are
+    /// rejected until it completes.
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 125,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -896,6 +902,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
+            | ContractError::OutsideBusinessHours
             | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
@@ -929,6 +936,7 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
+            ContractError::OutsideBusinessHours => "Operation attempted outside permitted business hours",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1140,7 +1148,9 @@ impl ErrorExt for ContractError {
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
-            | ContractError::LeaseExpired => true,
+            | ContractError::LeaseExpired
+            | ContractError::OutsideBusinessHours   // retry within business hours
+            | ContractError::MigrationInProgress => true, // retry after migration completes
 
 
             // Admin can supply a valid value / remove a signer or raise the
