@@ -229,6 +229,51 @@ pub fn emit_bond_slashed_v2(
     e.events().publish(topics, data);
 }
 
+/// Emitted when a bond crosses a tier threshold (v1).
+///
+/// # Topics
+/// * `Symbol` - `"tier_changed"`
+///
+/// # Data
+/// * `Address` - The identity whose tier changed
+/// * [`crate::BondTier`] - The new tier after the transition
+///
+/// @deprecated Use [`emit_tier_changed_v2`] for indexer-friendly old/new tier and timestamp
+#[allow(dead_code)]
+pub fn emit_tier_changed(e: &Env, identity: &Address, new_tier: crate::BondTier) {
+    let topics = (Symbol::new(e, "tier_changed"),);
+    let data = (identity.clone(), new_tier);
+    e.events().publish(topics, data);
+}
+
+/// Emitted when a bond crosses a tier threshold (v2).
+///
+/// # Topics (Indexed)
+/// * `Symbol` - `"tier_changed_v2"`
+/// * `Address` - The identity whose tier changed (indexed for per-identity queries)
+///
+/// # Data
+/// * [`crate::BondTier`] - Tier before the transition
+/// * [`crate::BondTier`] - Tier after the transition
+/// * `u64` - Ledger timestamp when the transition occurred
+///
+/// # Replay semantics
+/// Tier is derived from `bonded_amount`; indexers should treat this as an
+/// informational audit trail. Reconstruct current tier from the latest bond
+/// balance event or by recomputing from `bonded_amount`.
+#[allow(dead_code)]
+pub fn emit_tier_changed_v2(
+    e: &Env,
+    identity: &Address,
+    old_tier: crate::BondTier,
+    new_tier: crate::BondTier,
+    timestamp: u64,
+) {
+    let topics = (Symbol::new(e, "tier_changed_v2"), identity.clone());
+    let data = (old_tier, new_tier, timestamp);
+    e.events().publish(topics, data);
+}
+
 /// Emitted when a bond is slashed by an admin.
 ///
 /// # Topics

@@ -367,3 +367,88 @@ fn test_event_schema_compatibility() {
         "Should emit equal number of old and new events"
     );
 }
+
+#[test]
+fn test_tier_changed_v2_event_on_create_bond() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let identity = Address::generate(&e);
+
+    client.initialize(&admin, &None);
+
+    let token_addr = e.register(test_helpers::MockStellarAsset, ());
+    let token_admin_client = StellarAssetClient::new(&e, &token_addr);
+    let token_client = TokenClient::new(&e, &token_addr);
+
+    let bond_amount = crate::tiered_bond::TIER_BRONZE_MAX + 1;
+    token_admin_client.mint(&identity, &bond_amount);
+    token_client.approve(&identity, &contract_id, &bond_amount, &99999_u32);
+    client.set_token(&admin, &token_addr);
+
+    let ts_before = e.ledger().timestamp();
+    client.create_bond_with_rolling(
+        &identity,
+        &bond_amount,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+
+    let events = e.events().all();
+
+    let v1_events: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "tier_changed")
+        })
+        .collect();
+
+    let v2_events: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
+                    == Symbol::new(&e, "tier_changed_v2")
+        })
+        .collect();
+
+    assert_eq!(v1_events.len(), 1, "Bronze→Silver must emit tier_changed");
+    assert_eq!(
+        v2_events.len(),
+        1,
+        "Bronze→Silver must emit tier_changed_v2"
+    );
+
+    let v1_data = <(Address, crate::BondTier)>::from_val(&e, &v1_events[0].2);
+    assert_eq!(v1_data.0, identity);
+    assert!(
+        core::mem::discriminant(&v1_data.1) == core::mem::discriminant(&crate::BondTier::Silver)
+    );
+
+    let v2_event = &v2_events[0];
+    assert_eq!(
+        Symbol::from_val(&e, &v2_event.1.get(0).unwrap()),
+        Symbol::new(&e, "tier_changed_v2")
+    );
+    assert_eq!(
+        Address::from_val(&e, &v2_event.1.get(1).unwrap()),
+        identity
+    );
+    let v2_data = <(crate::BondTier, crate::BondTier, u64)>::from_val(&e, &v2_event.2);
+    assert!(
+        core::mem::discriminant(&v2_data.0) == core::mem::discriminant(&crate::BondTier::Bronze)
+    );
+    assert!(
+        core::mem::discriminant(&v2_data.1) == core::mem::discriminant(&crate::BondTier::Silver)
+    );
+    assert!(
+        v2_data.2 >= ts_before,
+        "tier_changed_v2 timestamp must reflect ledger time"
+    );
+}

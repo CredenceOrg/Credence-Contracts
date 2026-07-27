@@ -2,9 +2,9 @@
 //!
 //! Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
 
-/// Tiered Bond System
-///
-/// Assigns identity tiers (Bronze, Silver, Gold, Platinum) based on bonded amount thresholds.
+use crate::events;
+use crate::BondTier;
+use soroban_sdk::{Address, Env};
 
 pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000;
 pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000;
@@ -50,7 +50,7 @@ pub(crate) fn tier_rank(t: &BondTier) -> u8 {
 /// when a bond crosses a tier threshold.
 pub fn emit_tier_change_if_needed(
     e: &Env,
-    identity: &soroban_sdk::Address,
+    identity: &Address,
     old_tier: BondTier,
     new_tier: BondTier,
 ) {
@@ -58,15 +58,7 @@ pub fn emit_tier_change_if_needed(
         return;
     }
 
-    // v1: identity, new_tier
-    e.events().publish(
-        (Symbol::new(e, "tier_changed"),),
-        (identity.clone(), new_tier.clone()),
-    );
-
-    // v2: indexed identity topic + (old_tier, new_tier, timestamp) data
-    e.events().publish(
-        (Symbol::new(e, "tier_changed_v2"), identity.clone()),
-        (old_tier, new_tier, e.ledger().timestamp()),
-    );
+    let timestamp = e.ledger().timestamp();
+    events::emit_tier_changed(e, identity, new_tier.clone());
+    events::emit_tier_changed_v2(e, identity, old_tier, new_tier, timestamp);
 }
