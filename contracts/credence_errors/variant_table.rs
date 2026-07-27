@@ -13,32 +13,38 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("NotInitialized", ContractError::NotInitialized),           // 1
     ("AlreadyInitialized", ContractError::AlreadyInitialized),   // 2
     // --- Authorization (100-199) ---
-    ("NotAdmin", ContractError::NotAdmin),                                   // 100
-    ("NotBondOwner", ContractError::NotBondOwner),                           // 101
-    ("UnauthorizedAttester", ContractError::UnauthorizedAttester),           // 102
-    ("NotOriginalAttester", ContractError::NotOriginalAttester),             // 103
-    ("NotSigner", ContractError::NotSigner),                                 // 104
-    ("UnauthorizedDepositor", ContractError::UnauthorizedDepositor),         // 105
-    ("ContractPaused", ContractError::ContractPaused),                       // 106
-    ("InvalidPauseAction", ContractError::InvalidPauseAction),               // 107
-    ("InsufficientSignatures", ContractError::InsufficientSignatures),       // 108
-    ("ZeroBytes32", ContractError::ZeroBytes32),                             // 109
-    ("InvalidAdminAddress", ContractError::InvalidAdminAddress),             // 110
-    ("AdminUnchanged", ContractError::AdminUnchanged),                       // 111
-    ("TimelockNotReady", ContractError::TimelockNotReady),                   // 112
-    ("AdminSuspended", ContractError::AdminSuspended),                       // 113
-    ("BorrowFrozen", ContractError::BorrowFrozen),                           // 114
-    ("NoPendingAdmin", ContractError::NoPendingAdmin),                       // 115
-    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),             // 116
-    ("EmergencyDrainNotPermitted", ContractError::EmergencyDrainNotPermitted), // 117
-    ("TimestampInFuture", ContractError::TimestampInFuture),                 // 118
-    ("InvalidMaxPauseSigners", ContractError::InvalidMaxPauseSigners),       // 119
-    ("OutsideBusinessHours", ContractError::OutsideBusinessHours),           // 120
-    ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),               // 121
-    ("LeaseExpired", ContractError::LeaseExpired),                           // 122
-    ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch), // 123
-    ("MigrationInProgress", ContractError::MigrationInProgress),             // 124
-    ("MaxPauseSignersExceeded", ContractError::MaxPauseSignersExceeded),     // 125
+    ("NoPendingAdmin", ContractError::NoPendingAdmin),
+    ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
+    ("AdminUnchanged", ContractError::AdminUnchanged),
+    ("TimelockNotReady", ContractError::TimelockNotReady),
+    ("AdminSuspended", ContractError::AdminSuspended),
+    ("BorrowFrozen", ContractError::BorrowFrozen),
+    (
+        "EmergencyDrainNotPermitted",
+        ContractError::EmergencyDrainNotPermitted,
+    ),
+    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
+    ("TimestampInFuture", ContractError::TimestampInFuture),
+    ("ZeroBytes32", ContractError::ZeroBytes32),
+    ("NotAdmin", ContractError::NotAdmin),
+    ("NotBondOwner", ContractError::NotBondOwner),
+    ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
+    ("NotOriginalAttester", ContractError::NotOriginalAttester),
+    ("NotSigner", ContractError::NotSigner),
+    (
+        "UnauthorizedDepositor",
+        ContractError::UnauthorizedDepositor,
+    ),
+    ("ContractPaused", ContractError::ContractPaused),
+    ("InvalidPauseAction", ContractError::InvalidPauseAction),
+    (
+        "InsufficientSignatures",
+        ContractError::InsufficientSignatures,
+    ),
+    (
+        "MigrationInProgress",
+        ContractError::MigrationInProgress,
+    ),
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound),                           // 200
     ("BondNotActive", ContractError::BondNotActive),                         // 201

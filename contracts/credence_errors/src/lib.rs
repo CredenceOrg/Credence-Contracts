@@ -648,7 +648,8 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     MaxPauseSignersExceeded = 124,
 
-    /// A contract migration is in progress; mutations are blocked.
+    /// A contract state migration is in progress; state-changing calls are
+    /// rejected until it completes.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
     MigrationInProgress = 125,
@@ -918,6 +919,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
+            | ContractError::OutsideBusinessHours
             | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
@@ -955,6 +957,7 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
+            ContractError::OutsideBusinessHours => "Operation attempted outside permitted business hours",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1175,9 +1178,8 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::OutsideBusinessHours   // retry during business hours
-            | ContractError::MigrationInProgress     // wait for migration to complete
-            => true,
+            | ContractError::OutsideBusinessHours   // retry within business hours
+            | ContractError::MigrationInProgress => true, // retry after migration completes
 
 
             // Admin can supply a valid value / remove a signer or raise the
