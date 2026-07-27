@@ -169,7 +169,7 @@ pub enum ContractError {
     /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
     /// Contracts: admin, timelock
     /// Wire-stable: do not renumber this error code.
-    OutsideBusinessHours = 120,
+    OutsideBusinessHours = 124,
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
@@ -638,6 +638,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     CrossContractCallerMismatch = 123,
 
+    /// A storage migration is currently in progress; state mutations are not
+    /// permitted until the migration completes.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 125,
+
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -809,7 +815,8 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseExpired
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch
+            | ContractError::OutsideBusinessHours => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -1077,6 +1084,9 @@ impl ErrorExt for ContractError {
             ContractError::CrossContractCallerMismatch => {
                 "Cross-contract caller does not match the configured partner address"
             }
+            ContractError::OutsideBusinessHours => {
+                "Scheduled operation is outside permitted UTC business hours (Mon-Fri 09:00-17:00)"
+            }
             ContractError::InvalidMaxPauseSigners => {
                 "Max-pause-signers value must be greater than zero and within the hard cap"
             }
@@ -1147,6 +1157,12 @@ impl ErrorExt for ContractError {
             // cap, then retry.
             ContractError::InvalidMaxPauseSigners => true,
             ContractError::MaxPauseSignersExceeded => true,
+
+            // Retry after the business-hours window opens.
+            ContractError::OutsideBusinessHours => true,
+
+            // MigrationInProgress: wait for migration to complete, then retry.
+            ContractError::MigrationInProgress => true,
 
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.

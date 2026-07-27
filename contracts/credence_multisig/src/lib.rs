@@ -50,7 +50,8 @@ pub use credence_errors::{is_expired, require_within_ttl_panic};
 pub use multisig::*;
 
 #[cfg(test)]
-// mod test_multisig; // pre-existing SDK-22 / proptest compile breaks; excluded so signer-epoch suite can run
+mod test_multisig;
+#[cfg(test)]
 mod test_pausable;
 #[cfg(test)]
 mod test_signer_epoch_guard;
