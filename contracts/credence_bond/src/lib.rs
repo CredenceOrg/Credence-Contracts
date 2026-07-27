@@ -1647,6 +1647,13 @@ impl CredenceBond {
     /// - `ContractError::Overflow` if arithmetic overflows.
     /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
     ///   the gross withdrawal exactly into treasury penalty plus identity payout.
+    /// - `ContractError::ReentrancyDetected` when called re-entrantly.
+    ///
+    /// # Security
+    ///
+    /// Uses the application-level reentrancy guard to prevent reentrancy via
+    /// malicious token transfer callbacks. State is committed before any external
+    /// token transfer (CEI pattern).
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
         let key = DataKey::Bond;
@@ -1666,10 +1673,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::LockupNotExpired);
         }
 
-        let cfg = early_exit_penalty::get_config(&e).unwrap_or_else(|_| {
-            Self::release_lock(&e);
-            panic_with_error!(&e, ContractError::EarlyExitConfigNotSet)
-        });
+        let cfg = early_exit_penalty::get_config(&e)
+            .unwrap_or_else(|_| panic_with_error!(&e, ContractError::EarlyExitConfigNotSet));
         let penalty_bps = cfg.penalty_bps;
 
         let remaining = end.saturating_sub(now);
@@ -1691,6 +1696,9 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::InvariantViolation);
         }
 
+        // ── Acquire reentrancy lock before state mutations ──
+        Self::acquire_lock(&e);
+
         // Emit event before transfers for audit trail consistency
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &cfg.treasury);
 
@@ -1703,7 +1711,6 @@ impl CredenceBond {
             .checked_sub(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
         if bond.slashed_amount > bond.bonded_amount {
-            Self::release_lock(&e);
             panic_with_error!(e, ContractError::SlashExceedsBond);
         }
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
@@ -1822,6 +1829,13 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::BondNotFound` when no bond exists.
     /// - `ContractError::Overflow` when the addition would overflow `i128`.
+    /// - `ContractError::ReentrancyDetected` when called re-entrantly.
+    ///
+    /// # Security
+    ///
+    /// Uses the application-level reentrancy guard to prevent reentrancy via
+    /// malicious token transfer callbacks during the token pull from the user's
+    /// wallet. State is committed after the token transfer completes.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
@@ -1831,6 +1845,9 @@ impl CredenceBond {
         parameters::require_not_borrow_frozen(&e);
         let key = DataKey::Bond;
         let mut bond: IdentityBond = guards::load_bond(&e);
+
+        // ── Acquire reentrancy lock before external token calls ──
+        Self::acquire_lock(&e);
 
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &bond.identity, amount);
@@ -1856,6 +1873,8 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+
+        Self::release_lock(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
