@@ -509,6 +509,7 @@ name = "credence_arbitration"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -518,6 +519,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "credence_math",
+ "interfaces",
  "proptest",
  "soroban-sdk",
  "timelock",
@@ -559,6 +561,7 @@ name = "credence_multisig"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "proptest",
  "soroban-sdk",
 ]
@@ -568,7 +571,9 @@ name = "credence_registry"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
+ "timelock",
 ]
 
 [[package]]
@@ -577,8 +582,10 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "interfaces",
  "proptest",
  "soroban-sdk",
+ "timelock",
 ]
 
 [[package]]
@@ -948,6 +955,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "credence_math",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -1497,6 +1505,13 @@ dependencies = [
  "serde",
  "similar",
  "tempfile",
+]
+
+[[package]]
+name = "interfaces"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -2828,6 +2843,7 @@ name = "templates"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -2914,6 +2930,7 @@ name = "timelock"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 

@@ -186,6 +186,24 @@ impl TemplateContract {
             .get(&DataKey::Admin)
             .expect("not initialized")
     }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        e.events().publish((Symbol::new(&e, "admin_transferred"),), (current_admin, new_admin));
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for TemplateContract {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
+    }
 }
 
 // ---------------------------------------------------------------------------

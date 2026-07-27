@@ -3081,3 +3081,15 @@ mod test_grace_window;
 /// Tests for the batch_transfer entrypoint (issue #917).
 #[cfg(test)]
 mod test_batch_transfer;
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceBond {
+    fn get_admin(e: Env) -> Address {
+        storage::get_admin(&e).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        let current_admin = storage::get_admin(&e).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        Self::transfer_admin(e, current_admin, new_admin);
+    }
+}
