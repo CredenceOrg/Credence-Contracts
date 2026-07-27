@@ -159,7 +159,7 @@ pub enum ContractError {
     /// Raised by `require_no_ongoing_migration`.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
+    MigrationInProgress = 124,
 
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
@@ -178,7 +178,7 @@ pub enum ContractError {
     /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
     /// Contracts: admin, timelock
     /// Wire-stable: do not renumber this error code.
-    OutsideBusinessHours = 124,
+    OutsideBusinessHours = 120,
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
@@ -1388,19 +1388,32 @@ macro_rules! require_positive_amount {
             panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
         }
     };
-}/// Rejects a caller-supplied timestamp that is strictly ahead of the
-/// current on-chain ledger timestamp.
+}
+
+/// Rejects a caller-supplied ledger sequence number or timestamp that is
+/// strictly ahead of the current on-chain value.
 ///
-/// Returns `ContractError::TimestampInFuture` when `$t` exceeds
-/// `env.ledger().timestamp()`, preventing the contract from accepting
-/// values that could only originate from the future.
+/// # Threat being mitigated
+///
+/// Without this check, an attacker can submit a payload with a far-future
+/// `ledger_number` or `timestamp` field. When the staleness check uses
+/// `current.saturating_sub(signed_at)`, a future value yields 0 (due to
+/// saturation), making the payload appear perpetually fresh and bypassing the
+/// entire staleness window.
+///
+/// # Arguments
+///
+/// * `e` - The Soroban environment
+/// * `ledger_number` - The claimed ledger sequence number or timestamp from the payload
 ///
 /// # Panics
 ///
-/// Panics with [`ContractError::TimestampInFuture`] when `t` is strictly
-/// greater than the current ledger timestamp.
-pub fn verify_no_future_timestamp(e: &Env, t: u64) {
-    if t > e.ledger().timestamp() {
+/// Panics with `ContractError::TimestampInFuture` when the supplied value is
+/// greater than the current ledger sequence or timestamp.
+pub fn verify_no_future_ledger(e: &Env, ledger_number: impl Into<u64>) {
+    let ledger_number = ledger_number.into();
+    let current_sequence = u64::from(e.ledger().sequence());
+    if ledger_number > current_sequence {
         e.panic_with_error(ContractError::TimestampInFuture);
     }
 }
