@@ -657,7 +657,7 @@ fn test_execute_already_executed() {
 }
 
 #[test]
-#[should_panic(expected = "operation already executed")]
+#[should_panic(expected = "Error(Contract, #604)")]
 fn test_execute_duplicate_operation() {
     let e = Env::default();
     let (client, admin, signers) = setup(&e);
