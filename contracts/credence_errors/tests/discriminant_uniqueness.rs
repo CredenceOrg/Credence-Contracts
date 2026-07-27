@@ -16,12 +16,15 @@
 //! [`docs/error-codes-wire.md`]: ../../../docs/error-codes-wire.md
 //! [`docs/errors.md`]: ../../../docs/errors.md
 
+// Off-chain test binary, not deployed WASM (issue #713 exemption).
+#![allow(clippy::disallowed_macros)]
+
 use credence_errors::ContractError;
 
 /// Every `ContractError` variant, one row per name, in numeric-code order
 /// within each category block. The discriminant-uniqueness test iterates
 /// over this table and fails on the first duplicate numeric code it finds.
-const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
+const ALL_VARIANTS: &[(&str, ContractError)] = &[
     // --- Initialization (1-99) ---
     ("NotInitialized", ContractError::NotInitialized),
     ("AlreadyInitialized", ContractError::AlreadyInitialized),
@@ -34,6 +37,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     (
         "EmergencyDrainNotPermitted",
         ContractError::EmergencyDrainNotPermitted,
+    ),
     ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
     ("OutsideBusinessHours", ContractError::OutsideBusinessHours),
     ("TimestampInFuture", ContractError::TimestampInFuture),
@@ -46,6 +50,10 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
         ContractError::MaxPauseSignersExceeded,
     ),
     ("ZeroBytes32", ContractError::ZeroBytes32),
+    ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),
+    ("LeaseExpired", ContractError::LeaseExpired),
+    ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch),
+    ("MigrationInProgress", ContractError::MigrationInProgress),
     ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch),
     ("NotAdmin", ContractError::NotAdmin),
     ("NotBondOwner", ContractError::NotBondOwner),
@@ -227,7 +235,7 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 101;
+const ALL_VARIANTS_COUNT: usize = 106;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
@@ -284,7 +292,7 @@ fn discriminant_codes_fit_their_documentated_category_range() {
     // 200-299 Bond/Numeric range despite being Delegation-categorised;
     // the Catalog of variants in `docs/errors.md` lists them in the
     // 200-299 row. Update the catalog and this range table together.
-    const RANGES: &[(std::ops::RangeInclusive<u32>, &'static str)] = &[
+    const RANGES: &[(std::ops::RangeInclusive<u32>, &str)] = &[
         (1..=99, "Initialization"),
         // Authorization (100-199) is split in `lib.rs` between two
         // logical groups (standard 100-108 and Admin Transfer 109-112,

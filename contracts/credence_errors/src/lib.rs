@@ -152,6 +152,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractPaused = 106,
 
+    /// A storage migration is currently in progress; state mutations are
+    /// rejected until it completes.
+    /// Raised by `require_no_ongoing_migration`.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 125,
+
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
@@ -169,7 +176,7 @@ pub enum ContractError {
     /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
     /// Contracts: admin, timelock
     /// Wire-stable: do not renumber this error code.
-    OutsideBusinessHours = 120,
+    OutsideBusinessHours = 124,
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
@@ -205,6 +212,12 @@ pub enum ContractError {
     /// Contracts: general-purpose (lease auth)
     /// Wire-stable: do not renumber this error code.
     LeaseExpired = 122,
+
+    /// Caller is not the required lease signer.
+    /// Raised by `require_matching_lease_signer` when `lease.signer != caller`.
+    /// Contracts: delegation
+    /// Wire-stable: do not renumber this error code.
+    LeaseSignerMismatch = 126,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -807,8 +820,10 @@ impl ErrorExt for ContractError {
             | ContractError::MaxPauseSignersExceeded
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
+            | ContractError::LeaseSignerMismatch
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
+            | ContractError::OutsideBusinessHours
             | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
@@ -918,6 +933,10 @@ impl ErrorExt for ContractError {
             }
             ContractError::ContractPaused => "Contract is paused",
             ContractError::MigrationInProgress => "Migration in progress",
+            ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
+            ContractError::OutsideBusinessHours => {
+                "Scheduled operation falls outside UTC business hours (Mon-Fri 09:00-17:00)"
+            }
             ContractError::BorrowFrozen => "Borrows are frozen: new bond creation and top-ups are not allowed",
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
@@ -1127,7 +1146,9 @@ impl ErrorExt for ContractError {
             | ContractError::NotSigner
             | ContractError::UnauthorizedDepositor
             | ContractError::ContractPaused         // wait for unpause
+            | ContractError::MigrationInProgress    // wait for migration to finish
             | ContractError::BorrowFrozen           // wait for unfreeze
+            | ContractError::OutsideBusinessHours   // retry within business hours
             | ContractError::InvalidPauseAction     // correct action byte
             | ContractError::InsufficientSignatures // gather more approvals
             | ContractError::AdminSuspended         // wait for suspension
@@ -1140,7 +1161,8 @@ impl ErrorExt for ContractError {
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
-            | ContractError::LeaseExpired => true,
+            | ContractError::LeaseExpired
+            | ContractError::LeaseSignerMismatch => true, // call with matching lease signer
 
 
             // Admin can supply a valid value / remove a signer or raise the
@@ -1428,5 +1450,45 @@ macro_rules! require_non_zero_bytes32 {
 pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Address) {
     if caller != expected {
         panic_with_error!(e, ContractError::CrossContractCallerMismatch);
+    }
+}
+
+/// Validates that the provided lease signer address matches the calling actor.
+///
+/// Defence-in-depth guard for lease-gated operations: without it, an actor
+/// who obtains a valid lease object could invoke lease-gated operations as a
+/// different actor, bypassing the intended delegation boundary.
+///
+/// # Panics
+/// Panics with `ContractError::LeaseSignerMismatch` (code 126) if
+/// `lease != actor`.
+#[inline]
+pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) {
+    if lease != actor {
+        panic_with_error!(e, ContractError::LeaseSignerMismatch);
+    }
+}
+
+/// Validates that the provided timestamp (seconds since UNIX epoch) falls
+/// within UTC business hours (Monday-Friday, 09:00:00 to 16:59:59).
+///
+/// # Panics
+/// Panics with `ContractError::OutsideBusinessHours` (code 124) if it does
+/// not.
+#[inline]
+pub fn require_within_business_hours(e: &Env, t: u64) {
+    let days_since_epoch = t / 86_400;
+    // 1970-01-01 was a Thursday.
+    // 0 = Thu, 1 = Fri, 2 = Sat, 3 = Sun, 4 = Mon, 5 = Tue, 6 = Wed
+    let weekday_shifted = days_since_epoch % 7;
+    let is_weekend = weekday_shifted == 2 || weekday_shifted == 3;
+
+    let time_of_day = t % 86_400;
+    // 09:00:00 = 32_400
+    // 17:00:00 = 61_200
+    let is_business_time = time_of_day >= 32_400 && time_of_day < 61_200;
+
+    if is_weekend || !is_business_time {
+        panic_with_error!(e, ContractError::OutsideBusinessHours);
     }
 }

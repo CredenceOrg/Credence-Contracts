@@ -146,7 +146,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Contract, #120)")]
+    #[should_panic(expected = "HostError: Error(Contract, #124)")]
     fn test_require_within_business_hours_panics_on_weekend() {
         use soroban_sdk::Env;
         use crate::require_within_business_hours;
@@ -156,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Contract, #120)")]
+    #[should_panic(expected = "HostError: Error(Contract, #124)")]
     fn test_require_within_business_hours_panics_outside_hours() {
         use soroban_sdk::Env;
         use crate::require_within_business_hours;
@@ -1342,7 +1342,9 @@ mod tests {
             ContractError::NotSigner => true,
             ContractError::UnauthorizedDepositor => true,
             ContractError::ContractPaused => true, // wait for unpause
+            ContractError::MigrationInProgress => true, // wait for migration to finish
             ContractError::BorrowFrozen => true,   // wait for unfreeze
+            ContractError::OutsideBusinessHours => true, // retry within business hours
             ContractError::InvalidPauseAction => true,
             ContractError::InsufficientSignatures => true, // gather more sigs
             ContractError::AdminSuspended => true,         // wait for suspension
@@ -1577,10 +1579,12 @@ mod tests {
             ContractError::PayloadTooOld,
             ContractError::InvalidCurrency,
             ContractError::StaleEpoch,
+            ContractError::MigrationInProgress,
+            ContractError::OutsideBusinessHours,
         ];
         assert_eq!(
             cases.len(),
-            101,
+            104,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

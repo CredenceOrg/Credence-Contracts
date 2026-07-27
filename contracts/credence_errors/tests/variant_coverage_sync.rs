@@ -6,6 +6,9 @@
 //! values (e.g. 94 vs 96). The shared `variant_table.rs` is authoritative;
 //! these tests fail if parallel counters reappear.
 
+// Off-chain test binary, not deployed WASM (issue #713 exemption).
+#![allow(clippy::disallowed_macros)]
+
 use credence_errors::ContractError;
 
 include!("../variant_table.rs");

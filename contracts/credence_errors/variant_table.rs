@@ -6,7 +6,7 @@
 
 /// Every `ContractError` variant, one row per name, in numeric-code order
 /// within each category block.
-pub const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
+pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     // --- Initialization (1-99) ---
     ("NotInitialized", ContractError::NotInitialized),
     ("AlreadyInitialized", ContractError::AlreadyInitialized),
