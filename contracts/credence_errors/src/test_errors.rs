@@ -138,24 +138,35 @@ mod tests {
         );
     }
 
-    // --- require_matching_lease_signer helper tests ---
-
     #[test]
-    fn test_require_matching_lease_signer_passes_when_equal() {
-        use soroban_sdk::{Address, Env};
+    fn test_require_within_business_hours_passes() {
+        use soroban_sdk::Env;
+        use crate::require_within_business_hours;
         let e = Env::default();
-        let addr = Address::generate(&e);
-        require_matching_lease_signer(&e, &addr, &addr);
+        // Thursday 1970-01-01 10:00:00 UTC = 36000
+        require_within_business_hours(&e, 36_000);
+        // Friday 1970-01-02 16:59:59 UTC = 86400 + 61199 = 147599
+        require_within_business_hours(&e, 147_599);
     }
 
     #[test]
-    #[should_panic]
-    fn test_require_matching_lease_signer_panics_when_different() {
-        use soroban_sdk::{Address, Env};
+    #[should_panic(expected = "HostError: Error(Contract, #120)")]
+    fn test_require_within_business_hours_panics_on_weekend() {
+        use soroban_sdk::Env;
+        use crate::require_within_business_hours;
         let e = Env::default();
-        let addr1 = Address::generate(&e);
-        let addr2 = Address::generate(&e);
-        require_matching_lease_signer(&e, &addr1, &addr2);
+        // Saturday 1970-01-03 12:00:00 UTC = 2 * 86400 + 43200 = 216000
+        require_within_business_hours(&e, 216_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Contract, #120)")]
+    fn test_require_within_business_hours_panics_outside_hours() {
+        use soroban_sdk::Env;
+        use crate::require_within_business_hours;
+        let e = Env::default();
+        // Thursday 1970-01-01 08:59:59 UTC = 32399
+        require_within_business_hours(&e, 32_399);
     }
 
     // --- Wire code tests ---

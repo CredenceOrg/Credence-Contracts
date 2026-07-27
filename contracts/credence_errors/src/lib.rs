@@ -166,10 +166,10 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RoleNotHeldAtLedger = 116,
 
-    /// Cannot mutate state while a migration is in progress.
-    /// Contracts: bond
+    /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
+    /// Contracts: admin, timelock
     /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 118,
+    OutsideBusinessHours = 120,
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
@@ -1114,7 +1114,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
-            | ContractError::LeaseSignerMismatch
+            | ContractError::OutsideBusinessHours
             | ContractError::ZeroBytes32 => true,
 
 

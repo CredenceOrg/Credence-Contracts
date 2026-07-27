@@ -34,8 +34,8 @@ const ALL_VARIANTS: &[(&'static str, ContractError)] = &[
     (
         "EmergencyDrainNotPermitted",
         ContractError::EmergencyDrainNotPermitted,
-    ),
     ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
+    ("OutsideBusinessHours", ContractError::OutsideBusinessHours),
     ("TimestampInFuture", ContractError::TimestampInFuture),
     (
         "InvalidMaxPauseSigners",
