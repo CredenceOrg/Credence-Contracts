@@ -17,6 +17,7 @@ This directory contains all design docs, API references, and operational guides 
 | [BYTES32_CANONICALISATION.md](BYTES32_CANONICALISATION.md) | Contributor / Integrator | Canonicalisation rules for BytesN<32> and zero value rejection |
 | [TIME_UNITS.md](TIME_UNITS.md) | Contributor | Time representation (seconds, days, epochs) and mocking time in tests |
 | [ADMIN_EPOCHS.md](ADMIN_EPOCHS.md) | Contributor | Admin pause-proposal epochs: motivation, bumping cadence, stale-epoch guard |
+| [SIGNER_EPOCHS.md](SIGNER_EPOCHS.md) | Contributor | Multisig signer pause-proposal epochs: motivation, bumping cadence, `StaleSignerEpoch` guard |
 
 ## Bond Contract (`credence_bond`)
 
