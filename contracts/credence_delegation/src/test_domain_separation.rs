@@ -988,3 +988,67 @@ fn invalidate_nonce_range_burns_delegation_window_without_cross_namespace_leakag
     );
     assert_eq!(client.get_nonce(&owner), 6);
 }
+
+// ---------------------------------------------------------------------------
+// Signature domain constant uniqueness
+// ---------------------------------------------------------------------------
+
+#[test]
+fn signature_domain_constant_is_non_empty() {
+    assert!(!SIGNATURE_DOMAIN.is_empty());
+}
+
+#[test]
+fn signature_domain_constant_is_unique_to_delegation() {
+    // This constant must differ from other Credence contracts to prevent
+    // cross-contract signature replay.
+    assert_ne!(SIGNATURE_DOMAIN, "CredenceBond");
+    assert_ne!(SIGNATURE_DOMAIN, "CredenceTreasury");
+    assert_ne!(SIGNATURE_DOMAIN, "CredenceRegistry");
+}
+
+// ---------------------------------------------------------------------------
+// require_matching_contract_id explicit test
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "Error(Contract, #221)")] // ContractIdMismatch
+fn require_matching_contract_id_rejects_wrong_contract() {
+    let (e, client, _) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+    let other_contract = Address::generate(&e);
+
+    // Build a payload with a contract_id that differs from the current contract
+    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &other_contract, 0);
+
+    // This must panic with ContractIdMismatch
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &payload,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #221)")] // ContractIdMismatch
+fn require_matching_contract_id_rejects_zero_address() {
+    let (e, client, _) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+    let zero_contract = Address::from_str(&e, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+
+    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &zero_contract, 0);
+
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &payload,
+    );
+}
