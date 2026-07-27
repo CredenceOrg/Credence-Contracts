@@ -644,19 +644,12 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 125,
+    MaxPauseSignersExceeded = 120,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
     CrossContractCallerMismatch = 123,
-
-    /// A state migration is currently in progress; retry after it completes.
-    /// Emitted when a contract entry-point is called while an in-flight migration
-    /// holds the schema lock. Callers should back off and retry.
-    /// Contracts: bond, registry, delegation
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 124,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -1441,7 +1434,7 @@ pub fn verify_no_future_ledger(e: &soroban_sdk::Env, ledger_number: u32) {
 ///
 /// Panics with [`ContractError::TimestampInFuture`] when `t` is strictly
 /// greater than the current ledger timestamp.
-pub fn verify_no_future_ledger(e: &Env, t: u64) {
+pub fn verify_no_future_timestamp(e: &Env, t: u64) {
     if t > e.ledger().timestamp() {
         e.panic_with_error(ContractError::TimestampInFuture);
     }
