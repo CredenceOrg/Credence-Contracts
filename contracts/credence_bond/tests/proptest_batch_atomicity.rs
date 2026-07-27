@@ -2,6 +2,7 @@
 
 //! # Proptest: Batch Atomicity 
 //!
+
 //! Property-based tests that lock in the **between-batch invariant** for the
 //! `add_attestation_batch` entrypoint of `credence_bond`.
 //!
