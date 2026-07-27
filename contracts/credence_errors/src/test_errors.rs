@@ -138,6 +138,26 @@ mod tests {
         );
     }
 
+    // --- require_matching_lease_signer helper tests ---
+
+    #[test]
+    fn test_require_matching_lease_signer_passes_when_equal() {
+        use soroban_sdk::{Address, Env};
+        let e = Env::default();
+        let addr = Address::generate(&e);
+        require_matching_lease_signer(&e, &addr, &addr);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_require_matching_lease_signer_panics_when_different() {
+        use soroban_sdk::{Address, Env};
+        let e = Env::default();
+        let addr1 = Address::generate(&e);
+        let addr2 = Address::generate(&e);
+        require_matching_lease_signer(&e, &addr1, &addr2);
+    }
+
     // --- Wire code tests ---
 
     #[test]
@@ -1328,6 +1348,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
+            ContractError::LeaseSignerMismatch => true, // call with matching lease signer
             ContractError::TimestampInFuture => true, // caller can correct timestamp
             ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
             ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
@@ -1464,6 +1485,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,

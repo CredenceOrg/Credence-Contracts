@@ -1114,6 +1114,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
+            | ContractError::LeaseSignerMismatch
             | ContractError::ZeroBytes32 => true,
 
 
