@@ -37,6 +37,9 @@ mod weighted_attestation;
 mod test_weighted_attestation_rounding;
 
 #[cfg(test)]
+mod test_weighted_attestation;
+
+#[cfg(test)]
 #[path = "fuzz/test_normalization_invariant.rs"]
 mod test_normalization_invariant;
 
