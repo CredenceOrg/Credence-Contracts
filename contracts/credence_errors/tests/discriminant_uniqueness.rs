@@ -16,20 +16,226 @@
 //! [`docs/error-codes-wire.md`]: ../../../docs/error-codes-wire.md
 //! [`docs/errors.md`]: ../../../docs/errors.md
 
-// These integration tests use assert_eq! with format messages for diagnostics.
-// The disallowed_macros lint targets production contract code; test harnesses
-// are explicitly exempted.
+// Off-chain test binary, not deployed WASM (issue #713 exemption).
 #![allow(clippy::disallowed_macros)]
 
 use credence_errors::ContractError;
 
-// Canonical list of all variants, imported from the single source of truth.
-include!("../variant_table.rs");
+/// Every `ContractError` variant, one row per name, in numeric-code order
+/// within each category block. The discriminant-uniqueness test iterates
+/// over this table and fails on the first duplicate numeric code it finds.
+const ALL_VARIANTS: &[(&str, ContractError)] = &[
+    // --- Initialization (1-99) ---
+    ("NotInitialized", ContractError::NotInitialized),
+    ("AlreadyInitialized", ContractError::AlreadyInitialized),
+    // --- Authorization (100-199) ---
+    ("NoPendingAdmin", ContractError::NoPendingAdmin),
+    ("InvalidAdminAddress", ContractError::InvalidAdminAddress),
+    ("AdminUnchanged", ContractError::AdminUnchanged),
+    ("TimelockNotReady", ContractError::TimelockNotReady),
+    ("AdminSuspended", ContractError::AdminSuspended),
+    (
+        "EmergencyDrainNotPermitted",
+        ContractError::EmergencyDrainNotPermitted,
+    ),
+    ("RoleNotHeldAtLedger", ContractError::RoleNotHeldAtLedger),
+    ("OutsideBusinessHours", ContractError::OutsideBusinessHours),
+    ("TimestampInFuture", ContractError::TimestampInFuture),
+    (
+        "InvalidMaxPauseSigners",
+        ContractError::InvalidMaxPauseSigners,
+    ),
+    (
+        "MaxPauseSignersExceeded",
+        ContractError::MaxPauseSignersExceeded,
+    ),
+    ("ZeroBytes32", ContractError::ZeroBytes32),
+    ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),
+    ("LeaseExpired", ContractError::LeaseExpired),
+    ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch),
+    ("MigrationInProgress", ContractError::MigrationInProgress),
+    ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch),
+    ("NotAdmin", ContractError::NotAdmin),
+    ("NotBondOwner", ContractError::NotBondOwner),
+    ("UnauthorizedAttester", ContractError::UnauthorizedAttester),
+    ("NotOriginalAttester", ContractError::NotOriginalAttester),
+    ("NotSigner", ContractError::NotSigner),
+    (
+        "UnauthorizedDepositor",
+        ContractError::UnauthorizedDepositor,
+    ),
+    ("ContractPaused", ContractError::ContractPaused),
+    ("BorrowFrozen", ContractError::BorrowFrozen),
+    ("InvalidPauseAction", ContractError::InvalidPauseAction),
+    (
+        "InsufficientSignatures",
+        ContractError::InsufficientSignatures,
+    ),
+    // --- Bond (200-299) ---
+    ("BondNotFound", ContractError::BondNotFound),
+    ("BondNotActive", ContractError::BondNotActive),
+    ("InsufficientBalance", ContractError::InsufficientBalance),
+    ("SlashExceedsBond", ContractError::SlashExceedsBond),
+    ("StorageCapReached", ContractError::StorageCapReached),
+    ("LockupNotExpired", ContractError::LockupNotExpired),
+    ("NotRollingBond", ContractError::NotRollingBond),
+    (
+        "WithdrawalAlreadyRequested",
+        ContractError::WithdrawalAlreadyRequested,
+    ),
+    ("ReentrancyDetected", ContractError::ReentrancyDetected),
+    ("InvalidNonce", ContractError::InvalidNonce),
+    ("SignatureExpired", ContractError::SignatureExpired),
+    ("NegativeStake", ContractError::NegativeStake),
+    (
+        "EarlyExitConfigNotSet",
+        ContractError::EarlyExitConfigNotSet,
+    ),
+    ("InvalidPenaltyBps", ContractError::InvalidPenaltyBps),
+    ("LeverageExceeded", ContractError::LeverageExceeded),
+    ("UnsupportedToken", ContractError::UnsupportedToken),
+    ("UnsupportedDecimals", ContractError::UnsupportedDecimals),
+    ("InvalidBondAmount", ContractError::InvalidBondAmount),
+    ("AmountExplicitlyZero", ContractError::AmountExplicitlyZero),
+    ("InvalidBondDuration", ContractError::InvalidBondDuration),
+    ("InvalidNoticePeriod", ContractError::InvalidNoticePeriod),
+    ("BondAlreadyExists", ContractError::BondAlreadyExists),
+    // Codes 218, 219, 220, 221 — see shared Bond/Delegation block below.
+    ("UnauthorizedToken", ContractError::UnauthorizedToken),
+    (
+        "DuplicateIdempotencyKey",
+        ContractError::DuplicateIdempotencyKey,
+    ),
+    ("InvariantViolation", ContractError::InvariantViolation),
+    ("InvalidCurrency", ContractError::InvalidCurrency),
+    (
+        "TreasuryNotConfigured",
+        ContractError::TreasuryNotConfigured,
+    ),
+    ("CursorOutOfRange", ContractError::CursorOutOfRange),
+    ("BatchTooLarge", ContractError::BatchTooLarge),
+    ("EmptyBatch", ContractError::EmptyBatch),
+    // --- Shared Bond/Delegation payload mismatches ---
+    // Numeric codes 219, 220, 221, 225 per `lib.rs` doc-comment.
+    ("DomainMismatch", ContractError::DomainMismatch),
+    ("OwnerMismatch", ContractError::OwnerMismatch),
+    ("TargetMismatch", ContractError::TargetMismatch),
+    ("ContractIdMismatch", ContractError::ContractIdMismatch),
+    // --- Attestation (300-399) ---
+    ("DuplicateAttestation", ContractError::DuplicateAttestation),
+    ("AttestationNotFound", ContractError::AttestationNotFound),
+    (
+        "AttestationAlreadyRevoked",
+        ContractError::AttestationAlreadyRevoked,
+    ),
+    (
+        "InvalidAttestationWeight",
+        ContractError::InvalidAttestationWeight,
+    ),
+    (
+        "AttestationWeightExceedsMax",
+        ContractError::AttestationWeightExceedsMax,
+    ),
+    // --- Registry (400-499) ---
+    (
+        "IdentityAlreadyRegistered",
+        ContractError::IdentityAlreadyRegistered,
+    ),
+    (
+        "BondContractAlreadyRegistered",
+        ContractError::BondContractAlreadyRegistered,
+    ),
+    (
+        "IdentityNotRegistered",
+        ContractError::IdentityNotRegistered,
+    ),
+    (
+        "BondContractNotRegistered",
+        ContractError::BondContractNotRegistered,
+    ),
+    ("AlreadyDeactivated", ContractError::AlreadyDeactivated),
+    ("AlreadyActive", ContractError::AlreadyActive),
+    (
+        "InvalidContractAddress",
+        ContractError::InvalidContractAddress,
+    ),
+    (
+        "ContractCodeVerificationFailed",
+        ContractError::ContractCodeVerificationFailed,
+    ),
+    ("UnsupportedInterface", ContractError::UnsupportedInterface),
+    // --- Delegation (500-599) ---
+    ("ExpiryInPast", ContractError::ExpiryInPast),
+    ("DelegationNotFound", ContractError::DelegationNotFound),
+    ("AlreadyRevoked", ContractError::AlreadyRevoked),
+    (
+        "DelegationExpiryTooLong",
+        ContractError::DelegationExpiryTooLong,
+    ),
+    ("UnknownScheme", ContractError::UnknownScheme),
+    (
+        "VerifierAlreadyRegistered",
+        ContractError::VerifierAlreadyRegistered,
+    ),
+    (
+        "VerifierNotRegistered",
+        ContractError::VerifierNotRegistered,
+    ),
+    ("VerificationFailed", ContractError::VerificationFailed),
+    (
+        "RevocationGraceExpired",
+        ContractError::RevocationGraceExpired,
+    ),
+    ("DelegationNotExpired", ContractError::DelegationNotExpired),
+    ("DelegationInactive", ContractError::DelegationInactive),
+    ("PayloadTooOld", ContractError::PayloadTooOld),
+    ("PromiseNotKept", ContractError::PromiseNotKept),
+    ("StaleAdminEpoch", ContractError::StaleAdminEpoch),
+    ("StaleSignerEpoch", ContractError::StaleSignerEpoch),
+    // --- Treasury (600-699) ---
+    ("AmountMustBePositive", ContractError::AmountMustBePositive),
+    (
+        "ThresholdExceedsSigners",
+        ContractError::ThresholdExceedsSigners,
+    ),
+    (
+        "InsufficientTreasuryBalance",
+        ContractError::InsufficientTreasuryBalance,
+    ),
+    ("ProposalNotFound", ContractError::ProposalNotFound),
+    (
+        "ProposalAlreadyExecuted",
+        ContractError::ProposalAlreadyExecuted,
+    ),
+    (
+        "InsufficientApprovals",
+        ContractError::InsufficientApprovals,
+    ),
+    (
+        "InvalidFlashLoanCallback",
+        ContractError::InvalidFlashLoanCallback,
+    ),
+    (
+        "FlashLoanRepaymentFailed",
+        ContractError::FlashLoanRepaymentFailed,
+    ),
+    ("ProposalExpired", ContractError::ProposalExpired),
+    ("SlippageExceeded", ContractError::SlippageExceeded),
+    (
+        "TreasuryBeneficiaryMismatch",
+        ContractError::TreasuryBeneficiaryMismatch,
+    ),
+    // --- Arithmetic (700-799) ---
+    ("Overflow", ContractError::Overflow),
+    ("Underflow", ContractError::Underflow),
+    ("DivisionByZero", ContractError::DivisionByZero),
+];
 
-/// N :: Number of variants asserted to exist. Bumped here whenever a new
-/// `ContractError` variant is added; must always equal `ALL_VARIANTS.len()`.
-/// Enforced by `all_variants_count_is_consistent_with_enum_definition` below.
-const ALL_VARIANTS_COUNT: usize = 110;
+/// N_i128 :: Number of entries to assert in `ALL_VARIANTS`. Bumped manually
+/// when a new variant is added. The mismatch asserting test below fails the
+/// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
+/// but forgets this file — and vice-versa.
+const ALL_VARIANTS_COUNT: usize = 106;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {
@@ -77,12 +283,11 @@ fn discriminant_codes_fit_their_documented_category_range() {
     // leakage — e.g. someone adding an Authorization variant that
     // accidentally lands in the Bond range.
     //
-    // NOTE: StaleAdminEpoch (514) and StaleSignerEpoch (515) have wire codes
-    // in the 500-599 Delegation range but are categorised as Authorization
-    // in `ErrorExt::category()`. The range check here uses the wire code,
-    // not the semantic category, so they pass under 500-599.
-    // Similarly DomainMismatch (225), OwnerMismatch (219), TargetMismatch (220),
-    // ContractIdMismatch (221) have wire codes in the 200-299 Bond range.
+    // NOTE: payload-mismatch variants (DomainMismatch/OwnerMismatch/
+    // TargetMismatch/ContractIdMismatch) intentionally live in the
+    // 200-299 Bond/Numeric range despite being Delegation-categorised;
+    // the Catalog of variants in `docs/errors.md` lists them in the
+    // 200-299 row. Update the catalog and this range table together.
     const RANGES: &[(std::ops::RangeInclusive<u32>, &str)] = &[
         (1..=99, "Initialization"),
         (100..=199, "Authorization"),
