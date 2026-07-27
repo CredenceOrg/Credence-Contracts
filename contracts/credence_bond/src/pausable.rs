@@ -11,15 +11,7 @@ pub enum PauseAction {
 }
 
 fn require_admin_auth(e: &Env, admin: &Address) {
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
-    if stored_admin != *admin {
-        panic!("not admin");
-    }
-    admin.require_auth();
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 pub fn is_paused(e: &Env) -> bool {

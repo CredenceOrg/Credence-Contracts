@@ -35,14 +35,7 @@ use crate::{bump_instance_ttl, DataKey, IdentityBond};
 /// }
 /// ```
 pub fn require_admin(e: &Env, admin: &Address) {
-    let stored: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 /// Load the bond from instance storage and bump the TTL.
