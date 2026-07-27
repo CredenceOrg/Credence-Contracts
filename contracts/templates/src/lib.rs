@@ -17,8 +17,7 @@
 //! Canonical starting point for new Soroban contracts in this workspace.
 //!
 //! ## Patterns demonstrated
-//! - `#![no_std]`
-//! - `#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
+//! - `#![no_std]` + `#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
 //! - `DataKey` enum for typed storage
 //! - `#[contracttype]` structs for on-chain data
 //! - Admin-gated initialisation (panic-on-reinit guard)
@@ -142,7 +141,7 @@ impl TemplateContract {
             .expect("record not found");
 
         // Reference expiry pattern: reject and purge on read if expired
-        if crate::is_expired(&e, record.expires_at) {
+        if credence_errors::is_expired(&e, record.expires_at) {
             e.storage().instance().remove(&DataKey::Record(owner));
             panic_with_error!(&e, ContractError::SignatureExpired);
         }
@@ -157,7 +156,7 @@ impl TemplateContract {
             .instance()
             .get::<_, Record>(&DataKey::Record(owner.clone()))
         {
-            if crate::is_expired(&e, record.expires_at) {
+            if credence_errors::is_expired(&e, record.expires_at) {
                 e.storage().instance().remove(&DataKey::Record(owner));
                 return false;
             }
@@ -174,7 +173,7 @@ impl TemplateContract {
             .instance()
             .get::<_, Record>(&DataKey::Record(owner))
         {
-            return crate::is_expired(&e, record.expires_at);
+            return credence_errors::is_expired(&e, record.expires_at);
         }
         false
     }
