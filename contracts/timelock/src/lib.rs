@@ -257,6 +257,9 @@ impl TimelockContract {
 }
 
 #[cfg(test)]
+mod test_timelock;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::{
