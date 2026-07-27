@@ -75,6 +75,7 @@ Maintainer review and routine contributor support hours are documented in
 ## Helpers
 
 - **`testutils::deduplicate_stable`**: a small stable dedup helper that removes duplicates while preserving first-seen order for Soroban `Vec` and `alloc::vec::Vec` (available from the `testutils` crate).
+- **`testutils::pair_iter`**: iterates over consecutive `(this, next)` pairs in a Soroban `Vec<T>`, returning an `alloc::vec::Vec<(T, T)>` with `n − 1` entries for a vector of length `n`. Useful for asserting monotonicity, ordering, or transition guards in tests.
 
 ## Security scanning
 
