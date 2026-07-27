@@ -38,7 +38,7 @@
 //! - Attestations, parameter changes ✅ unaffected
 //! - Withdraw (bonded → liquid) ✅ unaffected, even in the same ledger
 //!
-//! See [`crate::docs::same_ledger_sequencing`] for the policy note and the
+//! See `../../docs/same-ledger-sequencing.md` for the policy note and the
 //! threat model justification.
 
 use crate::DataKey;

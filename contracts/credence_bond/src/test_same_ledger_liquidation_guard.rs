@@ -86,22 +86,21 @@ fn test_guard_allows_after_ledger_advance() {
 // ----------------------------------------------------------------------------
 
 /// THREAT: T-024 (anti-bond sandwich).  The most common attack pattern:
-/// caller front-runs a top-up by sending an `create_bond + slash` pair into
-/// the same Soroban ledger entry.  The guard rejects the second action.
-///
-/// We exercise the storage-key surface directly because `setup_with_token`
-/// already calls `create_bond` which records the increase.  Calling the
-/// guard on the SAME ledger (without advancing) trips the panic.
+/// caller front-runs a top-up by sending a `create_bond + slash` pair into
+/// the same Soroban ledger entry.  The wired canonical `create_bond`
+/// records its ledger sequence, so the slash guard trips.
 #[test]
 #[should_panic(expected = "slash blocked: collateral increased in this ledger")]
 fn test_create_bond_records_then_same_ledger_slash_blocked() {
     let e = Env::default();
-    let handles = test_helpers::setup_with_token(&e);
+    let (client, _admin, identity, _token, _id) = test_helpers::setup_with_token(&e);
 
-    // `setup_with_token` issues `create_bond` which, on #996 wiring,
-    // calls `record_collateral_increase` at the end.  The current ledger
-    // sequence still matches the recorded one → the guard trips.
-    let _ = handles;
+    // `setup_with_token` does NOT itself create a bond — invoke the
+    // canonical entry point.  This triggers the wired recorder at the end
+    // of `create_bond`; the current ledger still matches the just-recorded
+    // one so the guard trips below.
+    client.create_bond(&identity, &10_000_i128, &86_400_u64, &false, &0_u64);
+
     require_slash_allowed_after_collateral_increase(&e);
 }
 
@@ -110,9 +109,11 @@ fn test_create_bond_records_then_same_ledger_slash_blocked() {
 #[test]
 fn test_create_bond_then_advance_then_slash_allowed() {
     let e = Env::default();
-    let _handles = test_helpers::setup_with_token(&e);
+    let (client, _admin, identity, _token, _id) = test_helpers::setup_with_token(&e);
 
-    // `create_bond` ran in this helper and recorded an increase on this ledger.
+    client.create_bond(&identity, &10_000_i128, &86_400_u64, &false, &0_u64);
+
+    // `create_bond` recorded the current ledger sequence.  Sanity-check.
     let recorded = last_collateral_increase_ledger(&e).unwrap();
     assert_eq!(recorded, e.ledger().sequence());
 
@@ -121,7 +122,8 @@ fn test_create_bond_then_advance_then_slash_allowed() {
     require_slash_allowed_after_collateral_increase(&e);
 
     // Sanity: the recorded ledger is still the OLD one (we did not re-record).
-    let _ = last_collateral_increase_ledger(&e).unwrap();
+    let still_recorded = last_collateral_increase_ledger(&e).unwrap();
+    assert!(still_recorded < e.ledger().sequence());
 }
 
 // ----------------------------------------------------------------------------
