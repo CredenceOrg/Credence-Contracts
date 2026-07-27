@@ -207,11 +207,11 @@ pub const MAX_BOND_DURATION: u64 = 31_536_000;
 /// * `duration` - The bond duration in seconds to validate.
 ///
 /// # Panics
-/// * `"bond duration too short: minimum is 86400 seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
+/// * `"bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
 /// * `"bond duration too long: maximum is 31536000 seconds (365 days)"` if `duration` > `MAX_BOND_DURATION`
 pub fn validate_bond_duration(duration: u64) {
     if duration < MIN_BOND_DURATION {
-        panic!("bond duration too short: minimum is 86400 seconds (1 day)");
+        panic!("bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)");
     }
     if duration > MAX_BOND_DURATION {
         panic!("bond duration too long: maximum is 31536000 seconds (365 days)");

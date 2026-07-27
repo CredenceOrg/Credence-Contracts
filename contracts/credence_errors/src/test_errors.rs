@@ -2,6 +2,7 @@
 mod tests {
     extern crate std;
     use crate::{ContractError, ErrorCategory, ErrorExt, Role};
+    use soroban_sdk::testutils::Address as _;
     use std::vec::Vec;
 
     include!("../variant_table.rs");
@@ -106,10 +107,8 @@ mod tests {
             ContractError::InvalidCurrency,
             ContractError::PayloadTooOld,
             ContractError::TimestampInFuture,
-            ContractError::PromiseNotKept,
             ContractError::StaleAdminEpoch,
             ContractError::StaleSignerEpoch,
-            ContractError::InvalidStringifiedBytes,
         ]
     }
 
@@ -132,10 +131,38 @@ mod tests {
             Ok(())
         }
         let e = soroban_sdk::Env::default();
-        assert_eq!(
-            call(&e),
-            Err(ContractError::AlreadyInitialized)
-        );
+        assert_eq!(call(&e), Err(ContractError::AlreadyInitialized));
+    }
+
+    #[test]
+    fn test_require_within_business_hours_passes() {
+        use soroban_sdk::Env;
+        use crate::require_within_business_hours;
+        let e = Env::default();
+        // Thursday 1970-01-01 10:00:00 UTC = 36000
+        require_within_business_hours(&e, 36_000);
+        // Friday 1970-01-02 16:59:59 UTC = 86400 + 61199 = 147599
+        require_within_business_hours(&e, 147_599);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Contract, #120)")]
+    fn test_require_within_business_hours_panics_on_weekend() {
+        use soroban_sdk::Env;
+        use crate::require_within_business_hours;
+        let e = Env::default();
+        // Saturday 1970-01-03 12:00:00 UTC = 2 * 86400 + 43200 = 216000
+        require_within_business_hours(&e, 216_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "HostError: Error(Contract, #120)")]
+    fn test_require_within_business_hours_panics_outside_hours() {
+        use soroban_sdk::Env;
+        use crate::require_within_business_hours;
+        let e = Env::default();
+        // Thursday 1970-01-01 08:59:59 UTC = 32399
+        require_within_business_hours(&e, 32_399);
     }
 
     // --- Wire code tests ---
@@ -158,7 +185,7 @@ mod tests {
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::TimestampInFuture as u32, 119);
+        assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
     #[test]
@@ -539,7 +566,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            98,
+            100,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1328,9 +1355,15 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
+            ContractError::LeaseSignerMismatch => true, // call with matching lease signer
             ContractError::TimestampInFuture => true, // caller can correct timestamp
             ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
             ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
+            ContractError::LeaseScopeMismatch => true,
+            ContractError::LeaseExpired => true,
+            ContractError::CrossContractCallerMismatch => false,
+            ContractError::StaleAdminEpoch => false,
+            ContractError::StaleSignerEpoch => false,
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1359,6 +1392,7 @@ mod tests {
             ContractError::DuplicateIdempotencyKey => true,
             ContractError::InvalidStringifiedBytes => true,
             ContractError::InvariantViolation => false, // post-write drift
+            ContractError::SnapshotGenerationMismatch => false,
             ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
             ContractError::DomainMismatch => false,     // payload binding
             ContractError::BatchTooLarge => true,       // reduce batch size
@@ -1397,10 +1431,10 @@ mod tests {
             ContractError::VerificationFailed => false, // crypto failure
             ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
             ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::DelegationInactive => true, // wait for activation or use a different delegation
-            ContractError::PayloadTooOld => true,       // re-sign with current ledger number
-            ContractError::PromiseNotKept => false,     // off-chain promise hash does not match on-chain execution; same input will fail
-            ContractError::StaleEpoch => false,         // proposal ID contains a stale epoch reference; caller must re-propose
+            ContractError::DelegationInactive => false,
+            ContractError::PayloadTooOld => true,      // re-sign with current ledger number
+            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution; same input will fail
+            ContractError::StaleEpoch => false, // proposal ID contains a stale epoch reference; caller must re-propose
             // Treasury: state/caller fixes; fatal cases are callback failures.
             ContractError::AmountMustBePositive => true,
             ContractError::ThresholdExceedsSigners => true,
@@ -1422,10 +1456,7 @@ mod tests {
             ContractError::Overflow => false,
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
-
-            // Missing variants added to match the enum and ensure completeness
-            ContractError::PromiseNotKept => false,
-            ContractError::InvalidStringifiedBytes => true,
+            ContractError::InvalidPercentSplit => true,
         }
     }
 
@@ -1464,6 +1495,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
             ContractError::InsufficientBalance,
@@ -1489,7 +1521,6 @@ mod tests {
             ContractError::DuplicateIdempotencyKey,
             ContractError::BatchTooLarge,
             ContractError::EmptyBatch,
-
             ContractError::StorageCapReached,
             ContractError::TreasuryNotConfigured,
             ContractError::InvariantViolation,
@@ -1549,7 +1580,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            91,
+            101,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1695,7 +1726,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "ContractError::TimestampInFuture")]
+    #[should_panic(expected = "Error(Contract, #118)")]
     fn test_verify_no_future_ledger_rejects_future() {
         use soroban_sdk::Env;
 
@@ -1745,16 +1776,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected = "Error(Contract, #123)")]
     fn test_require_matching_contract_id_mismatch_returns_error() {
         use soroban_sdk::{Address, Env};
 
-        fn test_mismatch() -> Result<(), ContractError> {
-            let e = Env::default();
-            let caller = Address::generate(&e);
-            let expected = Address::generate(&e);
-            crate::require_matching_contract_id(&e, &caller, &expected);
-            Ok(())
-        }
-        assert_eq!(test_mismatch(), Err(ContractError::CrossContractCallerMismatch));
+        let e = Env::default();
+        let caller = Address::generate(&e);
+        let expected = Address::generate(&e);
+        crate::require_matching_contract_id(&e, &caller, &expected);
     }
 }

@@ -1,4 +1,4 @@
-﻿//! Comprehensive unit tests for slashing functionality with 95%+ coverage.
+//! Comprehensive unit tests for slashing functionality with 95%+ coverage.
 //!
 //! Test categories:
 //! 1. Basic slashing operations
@@ -63,7 +63,7 @@ fn setup_with_bond_max_mint(
 #[test]
 fn test_slash_basic_success() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &300_i128);
 
@@ -75,7 +75,7 @@ fn test_slash_basic_success() {
 #[test]
 fn test_slash_small_amount() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 10000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &1_i128);
 
@@ -86,7 +86,7 @@ fn test_slash_small_amount() {
 #[test]
 fn test_slash_exact_half() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &500_i128);
 
@@ -97,7 +97,7 @@ fn test_slash_exact_half() {
 #[test]
 fn test_slash_entire_amount() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &1000_i128);
 
@@ -115,10 +115,10 @@ fn test_slash_entire_amount() {
 #[should_panic(expected = "not admin")]
 fn test_slash_unauthorized_rejection() {
     let e = Env::default();
-    let (_client, _admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (_client, _admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let (client, _admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     let other = Address::generate(&e);
     client.slash(&other, &100_i128);
 }
@@ -127,7 +127,7 @@ fn test_slash_unauthorized_rejection() {
 #[should_panic(expected = "not admin")]
 fn test_slash_unauthorized_different_address() {
     let e = Env::default();
-    let (client, _admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, _admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let attacker1 = Address::generate(&e);
     let attacker2 = Address::generate(&e);
@@ -140,7 +140,7 @@ fn test_slash_unauthorized_different_address() {
 #[should_panic(expected = "not admin")]
 fn test_slash_identity_cannot_slash_own_bond() {
     let e = Env::default();
-    let (client, _admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, _admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Identity tries to slash their own bond (not authorized)
     client.slash(&identity, &100_i128);
@@ -155,7 +155,7 @@ fn test_slash_identity_cannot_slash_own_bond() {
 #[test]
 fn test_slash_over_amount_capped() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &2000_i128);
 
@@ -167,7 +167,7 @@ fn test_slash_over_amount_capped() {
 #[test]
 fn test_slash_way_over_amount_capped() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &5_000_i128);
 
@@ -179,7 +179,7 @@ fn test_slash_way_over_amount_capped() {
 #[test]
 fn test_slash_max_i128_capped() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &i128::MAX);
 
@@ -195,7 +195,7 @@ fn test_slash_max_i128_capped() {
 #[test]
 fn test_slash_zero_amount() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &0_i128);
 
@@ -209,12 +209,12 @@ fn test_slash_overflow_prevention() {
     // After fully slashing, further slashes are no-ops (actual_slash = 0).
     let e = Env::default();
     let (client, admin, _identity) =
-        setup_with_bond_max_mint(&e, crate::validation::MAX_BOND_AMOUNT, 86400_u64);
+        setup_with_bond_max_mint(&e, crate::validation::MAX_BOND_AMOUNT, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &crate::validation::MAX_BOND_AMOUNT);
     assert_eq!(bond.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
 
-    // Further slash is capped at available (0) — no overflow, no panic
+    // Further slash is capped at available (0) � no overflow, no panic
     let bond2 = client.slash(&admin, &i128::MAX);
     assert_eq!(bond2.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
 }
@@ -223,7 +223,7 @@ fn test_slash_overflow_prevention() {
 fn test_slash_on_very_large_bond() {
     let e = Env::default();
     let (client, admin, _identity) =
-        setup_with_bond_max_mint(&e, crate::validation::MAX_BOND_AMOUNT, 86400_u64);
+        setup_with_bond_max_mint(&e, crate::validation::MAX_BOND_AMOUNT, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &(crate::validation::MAX_BOND_AMOUNT / 4));
 
@@ -237,7 +237,7 @@ fn test_slash_on_very_large_bond() {
 #[test]
 fn test_slash_history_single_slash() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &200_i128);
     let bond = client.get_identity_state();
@@ -249,7 +249,7 @@ fn test_slash_history_single_slash() {
 #[test]
 fn test_slash_history_cumulative() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond1 = client.slash(&admin, &200_i128);
     assert_eq!(bond1.slashed_amount, 200);
@@ -264,7 +264,7 @@ fn test_slash_history_cumulative() {
 #[test]
 fn test_slash_multiple_accumulate() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 10000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Linear accumulation: 1000 + 2000 + 3000 + 4000 + 5000
     // But capped at bonded_amount (10000)
@@ -283,7 +283,7 @@ fn test_slash_multiple_accumulate() {
 #[test]
 fn test_slash_does_not_affect_other_fields() {
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let original_bond = client.get_identity_state();
     let original_bonded = original_bond.bonded_amount;
@@ -306,7 +306,7 @@ fn test_slash_does_not_affect_other_fields() {
 #[test]
 fn test_slash_event_emitted_basic() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let _bond = client.slash(&admin, &250_i128);
 
@@ -318,7 +318,7 @@ fn test_slash_event_emitted_basic() {
 #[test]
 fn test_slash_event_contains_correct_event_data() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond1 = client.slash(&admin, &100_i128);
     assert_eq!(bond1.slashed_amount, 100);
@@ -331,7 +331,7 @@ fn test_slash_event_contains_correct_event_data() {
 #[test]
 fn test_slash_multiple_events() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Each slash emits an event
     for i in 1..=3 {
@@ -349,7 +349,7 @@ fn test_withdraw_after_slash_respects_available() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &400_i128);
     e.ledger().with_mut(|li| li.timestamp = 86401);
@@ -362,7 +362,7 @@ fn test_withdraw_when_fully_slashed() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
 
     // Fully slash the bond
@@ -378,7 +378,7 @@ fn test_withdraw_exact_available_balance() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &400_i128);
     e.ledger().with_mut(|li| li.timestamp = 86401);
@@ -392,7 +392,7 @@ fn test_slash_then_withdraw_then_slash_again() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
 
     // Slash, withdraw, slash again
@@ -413,7 +413,7 @@ fn test_slash_after_partial_withdrawal() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     // Withdraw first
     e.ledger().with_mut(|li| li.timestamp = 86401);
@@ -438,7 +438,7 @@ fn test_slash_after_partial_withdrawal() {
 #[test]
 fn test_cumulative_slash_with_capping() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     // First slash: 600 (cumulative = 600)
     client.slash(&admin, &600_i128);
@@ -452,7 +452,7 @@ fn test_cumulative_slash_with_capping() {
 #[test]
 fn test_cumulative_slash_incremental() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 10000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash 10% at a time
     for i in 1..=10 {
@@ -464,7 +464,7 @@ fn test_cumulative_slash_incremental() {
 #[test]
 fn test_full_slash_prevents_further_slashing() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Fully slash
     client.slash(&admin, &1000_i128);
@@ -479,7 +479,7 @@ fn test_full_slash_prevents_further_slashing() {
 fn test_slash_large_amounts() {
     let e = Env::default();
     let large_amount = 1_000_000_000_000_i128;
-    let (client, admin, _identity) = setup_with_bond(&e, large_amount, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, large_amount, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let bond1 = client.slash(&admin, &(large_amount / 4));
     assert_eq!(bond1.slashed_amount, large_amount / 4);
@@ -497,7 +497,7 @@ fn test_slash_large_amounts() {
 #[test]
 fn test_slash_state_persists() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &300_i128);
     let bond1 = client.get_identity_state();
@@ -511,7 +511,7 @@ fn test_slash_state_persists() {
 #[test]
 fn test_slash_result_matches_get_state() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let slash_result = client.slash(&admin, &250_i128);
     let state = client.get_identity_state();
@@ -528,7 +528,7 @@ fn test_slash_result_matches_get_state() {
 #[should_panic(expected = "not admin")]
 fn test_error_message_not_admin() {
     let e = Env::default();
-    let (client, _admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, _admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     let random = Address::generate(&e);
     client.slash(&random, &100_i128);
@@ -545,20 +545,20 @@ fn test_error_message_no_bond() {
 }
 
 // ============================================================================
-// Category 11: Available-Balance Bound (slash ≤ bonded − slashed)
+// Category 11: Available-Balance Bound (slash = bonded - slashed)
 // ============================================================================
 
 #[test]
 fn test_slash_capped_at_available_not_bonded() {
     // After a partial slash, the cap is on remaining available, not total bonded.
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
-    // First slash: 600 → available becomes 400
+    // First slash: 600 ? available becomes 400
     client.slash(&admin, &600_i128);
     assert_eq!(client.get_identity_state().slashed_amount, 600);
 
-    // Second slash: request 500, but only 400 available → capped at 400
+    // Second slash: request 500, but only 400 available ? capped at 400
     let bond = client.slash(&admin, &500_i128);
     assert_eq!(bond.slashed_amount, 1000);
 }
@@ -566,12 +566,12 @@ fn test_slash_capped_at_available_not_bonded() {
 #[test]
 fn test_slash_zero_available_is_noop() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &1000_i128);
     assert_eq!(client.get_identity_state().slashed_amount, 1000);
 
-    // Available = 0 → any further slash is a no-op
+    // Available = 0 ? any further slash is a no-op
     let bond = client.slash(&admin, &1_i128);
     assert_eq!(bond.slashed_amount, 1000);
 }
@@ -579,7 +579,7 @@ fn test_slash_zero_available_is_noop() {
 #[test]
 fn test_slash_available_decreases_after_each_slash() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &200_i128); // available: 800
     client.slash(&admin, &300_i128); // available: 500
@@ -595,11 +595,11 @@ fn test_slash_after_withdraw_respects_new_available() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 0);
     let (client, admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     e.ledger().with_mut(|li| li.timestamp = 86401);
     client.withdraw(&identity, &400_i128); // bonded = 600, slashed = 0, available = 600
     test_helpers::advance_ledger_sequence(&e);
-    // Slash 700 → capped at 600
+    // Slash 700 ? capped at 600
     let bond = client.slash(&admin, &700_i128);
     assert_eq!(bond.bonded_amount, 600);
     assert_eq!(bond.slashed_amount, 600);
@@ -612,7 +612,7 @@ fn test_slash_after_withdraw_respects_new_available() {
 #[test]
 fn test_slash_history_count_increments() {
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &100_i128);
     client.slash(&admin, &200_i128);
@@ -625,7 +625,7 @@ fn test_slash_history_count_increments() {
 fn test_slash_history_record_fields() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 5000);
-    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &300_i128);
 
@@ -639,7 +639,7 @@ fn test_slash_history_record_fields() {
 #[test]
 fn test_slash_history_total_slashed_after_accumulates() {
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &100_i128);
     client.slash(&admin, &200_i128);
@@ -654,7 +654,7 @@ fn test_slash_history_total_slashed_after_accumulates() {
 fn test_slash_history_capped_slash_records_actual_amount() {
     // When a slash is capped at available, the record stores the actual (capped) amount.
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &800_i128); // available: 200
     client.slash(&admin, &500_i128); // capped at 200
@@ -668,7 +668,7 @@ fn test_slash_history_capped_slash_records_actual_amount() {
 fn test_slash_history_zero_slash_no_record() {
     // A zero slash produces a record with slash_amount = 0 (no-op but still recorded).
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     client.slash(&admin, &0_i128);
 
@@ -682,7 +682,7 @@ fn test_slash_history_zero_slash_no_record() {
 #[test]
 fn test_slash_history_get_all_records() {
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, 86400_u64);
+    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
     for i in 1_i128..=5 {
         client.slash(&admin, &(i * 100));
@@ -704,12 +704,12 @@ fn test_slash_history_get_all_records() {
 #[should_panic]
 fn test_slash_reverts_when_treasury_not_configured() {
     let e = Env::default();
-    // Use setup_with_token directly — no set_slash_treasury call.
+    // Use setup_with_token directly � no set_slash_treasury call.
     let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
 
-    // No treasury configured → must panic.
+    // No treasury configured ? must panic.
     client.slash(&admin, &300_i128);
 }
 
@@ -721,7 +721,7 @@ fn test_slash_transfers_to_treasury() {
 
     let treasury = Address::generate(&e);
     client.set_slash_treasury(&admin, &treasury);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
 
     use soroban_sdk::token::TokenClient;
@@ -759,7 +759,7 @@ fn test_slashed_funds_transfer_to_configured_destination() {
     client.set_slash_treasury(&admin, &destination);
 
     // Create bond with bonded_amount=1000, and slash 250 (should not be capped).
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
 
     use soroban_sdk::token::TokenClient;
@@ -795,7 +795,7 @@ fn test_unauthorized_slash_does_not_transfer_tokens() {
     let destination = Address::generate(&e);
     client.set_slash_treasury(&admin, &destination);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
 
     use soroban_sdk::token::TokenClient;
@@ -827,9 +827,9 @@ fn test_unauthorized_slash_does_not_transfer_tokens() {
 #[test]
 fn test_slash_reward_checked_div_preserves_value() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1_000_000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1_000_000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
-    // Slash 1_000 → reward = 100 (1_000 / 10)
+    // Slash 1_000 ? reward = 100 (1_000 / 10)
     let bond = client.slash(&admin, &1_000_i128);
     // Bond state is consistent; the reward claim was created without panicking.
     assert_eq!(bond.slashed_amount, 1_000);
@@ -840,9 +840,9 @@ fn test_slash_reward_checked_div_preserves_value() {
 #[test]
 fn test_slash_reward_zero_dividend_no_panic() {
     let e = Env::default();
-    let (client, admin, _identity) = setup_with_bond(&e, 1_000_i128, 86400_u64);
+    let (client, admin, _identity) = setup_with_bond(&e, 1_000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
 
-    // Slash 0 → actual_slash_amount = 0 → reward branch is skipped entirely.
+    // Slash 0 ? actual_slash_amount = 0 ? reward branch is skipped entirely.
     let bond = client.slash(&admin, &0_i128);
     assert_eq!(bond.slashed_amount, 0);
 }

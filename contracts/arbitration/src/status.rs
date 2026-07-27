@@ -47,8 +47,9 @@ pub enum ArbitrationError {
     QuorumNotMet = 13,
     /// The actual outcome does not match the promised outcome.
     PromiseNotKept = 15,
-    /// A creator already has an unresolved dispute in progress.
-    OngoingDispute = 16,
+    /// Dispute is in an active state (Open, Voting, or Resolving) and the
+    /// requested operation requires an inactive state (Resolved, Cancelled, or Tied).
+    DisputeActive = 16,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -66,6 +67,26 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
         Ok(())
     } else {
         Err(ArbitrationError::InvalidTransition)
+    }
+}
+
+/// Check whether a dispute status is considered "active" (operations should be blocked).
+pub fn is_dispute_active(status: DisputeStatus) -> bool {
+    matches!(
+        status,
+        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving
+    )
+}
+
+/// Require that a dispute's status is inactive (Resolved, Cancelled, or Tied).
+///
+/// Active disputes (Open, Voting, Resolving) block lease-modifying operations;
+/// resolved disputes allow them to proceed.
+pub fn require_dispute_inactive(status: DisputeStatus) -> Result<(), ArbitrationError> {
+    if is_dispute_active(status) {
+        Err(ArbitrationError::DisputeActive)
+    } else {
+        Ok(())
     }
 }
 

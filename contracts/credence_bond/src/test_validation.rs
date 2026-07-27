@@ -78,13 +78,13 @@ fn test_create_bond_with_valid_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Test with minimum valid amount
-    let bond = client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
+    let bond = client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT);
     assert!(bond.active);
 
     // Test with the largest amount allowed under the default leverage cap.
     let leverage_valid_amount = DEFAULT_MAX_LEVERAGE as i128 * MIN_BOND_AMOUNT;
-    let bond2 = client.create_bond(&identity, &leverage_valid_amount, &86400_u64);
+    let bond2 = client.create_bond(&identity, &leverage_valid_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond2.bonded_amount, leverage_valid_amount);
     assert!(bond2.active);
 }
@@ -95,7 +95,7 @@ fn test_create_bond_with_amount_below_minimum() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &(MIN_BOND_AMOUNT - 1), &86400_u64);
+    client.create_bond(&identity, &(MIN_BOND_AMOUNT - 1), &credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn test_create_bond_with_zero_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &0_i128, &86400_u64);
+    client.create_bond(&identity, &0_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn test_create_bond_with_negative_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &(-1000_i128), &86400_u64);
+    client.create_bond(&identity, &(-1000_i128), &credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn test_create_bond_with_amount_above_maximum() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &(MAX_BOND_AMOUNT + 1), &86400_u64);
+    client.create_bond(&identity, &(MAX_BOND_AMOUNT + 1), &credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 // ============================================================================
@@ -135,7 +135,7 @@ fn test_top_up_with_valid_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
+    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Top up with valid amount
     let bond = client.top_up(&identity, &1000); // 1 additional unit
@@ -150,7 +150,7 @@ fn test_top_up_with_zero_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
+    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Try to top up with zero amount
     client.top_up(&identity, &0_i128);
@@ -163,7 +163,7 @@ fn test_top_up_with_negative_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
+    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Try to top up with negative amount
     client.top_up(&identity, &(-1000_i128));
@@ -216,7 +216,7 @@ fn test_create_bond_then_top_up_valid_scenario() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create bond with minimum amount
-    let bond = client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
+    let bond = client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT);
 
     // Top up with valid amount
@@ -235,7 +235,7 @@ fn test_create_bond_with_min_amount_then_invalid_top_up() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create bond with minimum amount
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &86400_u64);
+    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Try to top up with zero (should fail)
     client.top_up(&identity, &0_i128);

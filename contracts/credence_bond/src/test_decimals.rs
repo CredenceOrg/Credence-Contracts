@@ -73,7 +73,7 @@ fn test_tier_silver_with_6_decimals() {
 
     // 1000 tokens in 6 decimals = 1,000,000,000
     let amount = 1_000_000_000;
-    let bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     // Silver tier starts at 1000 tokens (normalized: 10^21)
     assert_eq!(client.get_tier(), BondTier::Silver);
@@ -87,7 +87,7 @@ fn test_tier_silver_with_18_decimals() {
 
     // 1000 tokens in 18 decimals = 1,000 * 10^18
     let amount = 1_000_000_000_000_000_000_000;
-    let bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     assert_eq!(client.get_tier(), BondTier::Silver);
     assert_eq!(bond.bonded_amount, 1_000_000_000_000_000_000_000);
@@ -100,7 +100,7 @@ fn test_tier_silver_with_8_decimals() {
 
     // 1000 tokens in 8 decimals = 1000 * 10^8
     let amount = 100_000_000_000;
-    let _bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let _bond = client.create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     assert_eq!(client.get_tier(), BondTier::Silver);
 }
@@ -111,7 +111,7 @@ fn test_unsupported_decimals_returns_typed_error() {
     let (client, _admin, identity, _token) = setup_with_decimals(&e, 24);
 
     let amount = 1_000_000_000;
-    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), ContractError::UnsupportedDecimals);
@@ -123,7 +123,7 @@ fn test_withdraw_correct_amount_6_decimals() {
     let (client, _admin, identity, _token) = setup_with_decimals(&e, 6);
 
     let amount = 1_000_000_000; // 1000 tokens
-    client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    client.create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     // Fast forward
     e.ledger().with_mut(|l| l.timestamp = 100_000);
@@ -143,7 +143,7 @@ fn test_validation_bounds_18_decimals() {
 
     // Min bond in tests is 1000 normalized units
     let too_small = 999;
-    client.create_bond_with_rolling(&identity, &too_small, &86400, &false, &0);
+    client.create_bond_with_rolling(&identity, &too_small, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn test_create_bond_empty_symbol_rejected() {
     });
 
     let amount = 1_000_000_000_000_000_000_000;
-    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), ContractError::InvalidCurrency);
 }
@@ -177,7 +177,7 @@ fn test_create_bond_whitespace_symbol_rejected() {
     });
 
     let amount = 1_000_000_000_000_000_000_000;
-    let result = client.try_create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let result = client.try_create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), ContractError::InvalidCurrency);
 }
@@ -195,6 +195,6 @@ fn test_create_bond_valid_symbol_accepted() {
     });
 
     let amount = 1_000_000_000_000_000_000_000;
-    let bond = client.create_bond_with_rolling(&identity, &amount, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
     assert!(bond.active);
 }

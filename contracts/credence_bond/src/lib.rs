@@ -95,6 +95,9 @@ mod test_rolling_notice;
 #[cfg(test)]
 mod fee_tests;
 
+#[cfg(test)]
+mod test_migration_guard;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
@@ -456,6 +459,8 @@ pub enum DataKey {
     IdempotencyKey(Bytes),
     /// Flag indicating if borrowing operations are frozen. Value: `bool`.
     BorrowFrozen,
+    /// Executed upgrade hashes to prevent replay. Value: `bool`.
+    ExecutedOp(soroban_sdk::BytesN<32>),
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -878,8 +883,8 @@ impl CredenceBond {
     /// let identity = Address::generate(&e);
     /// client.initialize(&admin, &None);
     ///
-    /// // Fixed-duration bond: 1000 tokens locked for 86400 seconds
-    /// let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    /// // Fixed-duration bond: 1000 tokens locked for credence_math::Timestamp::SECONDS_PER_DAY seconds
+    /// let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     /// assert!(bond.active);
     /// assert_eq!(bond.bonded_amount, 1000);
     /// assert_eq!(bond.slashed_amount, 0);

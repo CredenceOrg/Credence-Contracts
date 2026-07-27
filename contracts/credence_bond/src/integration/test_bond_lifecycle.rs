@@ -1,4 +1,4 @@
-﻿//! Integration tests covering full bond lifecycle: create, top-up, slash, withdraw.
+//! Integration tests covering full bond lifecycle: create, top-up, slash, withdraw.
 //! Verifies state consistency and happy path / edge scenarios.
 
 #![cfg(test)]
@@ -26,7 +26,7 @@ fn test_lifecycle_create_then_withdraw() {
     let e = Env::default();
     let (client, _admin, identity) = setup(&e);
     let amount = 1000_i128;
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &amount, &duration, &false, &0_u64);
     let state = client.get_identity_state();
     assert_eq!(state.bonded_amount, amount);
@@ -46,7 +46,7 @@ fn test_lifecycle_create_then_withdraw() {
 fn test_lifecycle_create_topup_withdraw() {
     let e = Env::default();
     let (client, _admin, identity) = setup(&e);
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &1000_i128, &duration, &false, &0_u64);
     let after_topup = client.top_up(&identity, &1000_i128);
     assert_eq!(after_topup.bonded_amount, 2000);
@@ -63,7 +63,7 @@ fn test_lifecycle_create_topup_withdraw() {
 fn test_lifecycle_slash_then_withdraw_remaining() {
     let e = Env::default();
     let (client, admin, identity) = setup(&e);
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &1000_i128, &duration, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
     let after_slash = client.slash(&admin, &400_i128);
@@ -83,7 +83,7 @@ fn test_lifecycle_slash_then_withdraw_remaining() {
 fn test_lifecycle_create_topup_slash_withdraw() {
     let e = Env::default();
     let (client, admin, identity) = setup(&e);
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &1000_i128, &duration, &false, &0_u64);
     client.top_up(&identity, &1000_i128);
     client.slash(&admin, &300_i128);
@@ -103,7 +103,7 @@ fn test_lifecycle_create_topup_slash_withdraw() {
 fn test_lifecycle_state_consistency() {
     let e = Env::default();
     let (client, admin, identity) = setup(&e);
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &2000_i128, &duration, &false, &0_u64);
     let s1 = client.get_identity_state();
     let s2 = client.get_identity_state();
@@ -129,10 +129,10 @@ fn test_lifecycle_state_consistency() {
 fn test_lifecycle_extend_duration() {
     let e = Env::default();
     let (client, _admin, identity) = setup(&e);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     let before = client.get_identity_state();
-    client.extend_duration(&identity, &86400_u64);
+    client.extend_duration(&identity, &credence_math::Timestamp::SECONDS_PER_DAY);
     let after = client.get_identity_state();
-    assert_eq!(after.bond_duration, before.bond_duration + 86400);
+    assert_eq!(after.bond_duration, before.bond_duration + credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(after.bonded_amount, before.bonded_amount);
 }

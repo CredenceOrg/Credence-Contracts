@@ -1,4 +1,4 @@
-//! Signer-epoch guard tests (issue #839).
+//! Signer-epoch guard tests (issue #838).
 //!
 //! Locks same / off-by-one / ancient boundaries for
 //! `require_matching_signer_epoch` on the multisig pause path.
@@ -93,4 +93,25 @@ fn test_signer_epoch_guard_ancient_epoch_fails() {
     assert!(res.is_err(), "ancient epoch approval must fail");
     let err = res.unwrap_err().unwrap();
     assert_eq!(err, soroban_sdk::Error::from_contract_error(515)); // StaleSignerEpoch
+}
+
+#[test]
+fn test_signer_epoch_guard_rejects_stale_execution() {
+    let (env, client, admin) = setup();
+    let signers = add_pause_signers(&env, &client, &admin, 2, 2);
+    let s1 = signers.get(0).unwrap();
+    let s2 = signers.get(1).unwrap();
+
+    let id = client.pause(&s1).unwrap();
+    client.approve_pause_proposal(&s2, &id);
+
+    env.ledger().with_mut(|l| {
+        l.sequence_number += u32::from(PROPOSAL_EPOCH_SIZE);
+    });
+
+    let res = client.try_execute_pause_proposal(&id);
+    assert!(res.is_err(), "stale proposal execution must fail");
+    let err = res.unwrap_err().unwrap();
+    assert_eq!(err, soroban_sdk::Error::from_contract_error(515));
+    assert!(!client.is_paused());
 }

@@ -1,4 +1,4 @@
-﻿#![cfg(test)]
+#![cfg(test)]
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
@@ -41,7 +41,7 @@ fn test_increase_bond_success_transfers_and_updates_storage() {
     // Approve enough for both create_bond (1000) and top_up (500)
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let before_user = token_client.balance(&identity);
     let before_contract = token_client.balance(&contract_id);
@@ -80,7 +80,7 @@ fn test_increase_bond_fails_for_non_owner() {
     token_client.approve(&identity, &contract_id, &1000_i128, &1000_u32);
     token_client.approve(&stranger, &contract_id, &500_i128, &1000_u32);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     client.top_up(&identity, &500_i128);
 }
@@ -94,7 +94,7 @@ fn test_increase_bond_rejects_zero_amount() {
     // Approve for create_bond
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     client.top_up(&identity, &0_i128);
 }
 
@@ -106,7 +106,7 @@ fn test_increase_bond_overflow_protection() {
 
     // First create a bond with a normal amount
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     // Now try to increase by i128::MAX - this should cause overflow
     token_client.approve(&identity, &contract_id, &i128::MAX, &1000_u32);
@@ -123,7 +123,7 @@ fn test_increase_bond_fails_without_allowance() {
     // Approve for create_bond only
     token_client.approve(&identity, &contract_id, &1000_i128, &1000_u32);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     // No approval for top_up - should fail
     client.top_up(&identity, &500_i128);
@@ -137,7 +137,7 @@ fn test_increase_bond_emits_event() {
     // Approve for create_bond (1000) and top_up (250)
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let _ = client.top_up(&identity, &250_i128);
 
@@ -174,7 +174,7 @@ fn test_increase_bond_preserves_other_fields() {
     token_client.approve(&identity, &contract_id, &2000_i128, &1000_u32);
 
     let original =
-        client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &true, &7200_u64);
+        client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &7200_u64);
 
     let updated = client.top_up(&identity, &150_i128);
 
@@ -195,7 +195,7 @@ fn test_increase_bond_preserves_other_fields() {
     assert_eq!(updated.bonded_amount, 1150_i128);
 }
 
-// ── lifecycle edge-cases (issue #284) ────────────────────────────────────────
+// -- lifecycle edge-cases (issue #284) ----------------------------------------
 
 /// top-up preserves bond_start and bond_duration (time fields must not change).
 #[test]
@@ -243,7 +243,7 @@ fn test_increase_bond_preserves_rolling_fields() {
     );
 }
 
-/// top-up respects supply cap — pushing total over cap must panic.
+/// top-up respects supply cap � pushing total over cap must panic.
 #[test]
 #[should_panic(expected = "supply cap exceeded")]
 fn test_increase_bond_respects_supply_cap() {
@@ -252,10 +252,10 @@ fn test_increase_bond_respects_supply_cap() {
 
     token_client.approve(&identity, &contract_id, &5_000_i128, &1_000_u32);
     let admin = soroban_sdk::Address::generate(&e);
-    // Re-initialize with admin to set cap — use mock_all_auths already active
+    // Re-initialize with admin to set cap � use mock_all_auths already active
     client.set_supply_cap(&admin, &1_200_i128);
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
-    // total=1_000, cap=1_200 → top-up of 300 would push to 1_300 > 1_200
+    // total=1_000, cap=1_200 ? top-up of 300 would push to 1_300 > 1_200
     client.top_up(&identity, &300_i128);
 }
 
