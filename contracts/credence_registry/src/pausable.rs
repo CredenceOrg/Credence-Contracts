@@ -1,7 +1,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
 
-use crate::DataKey;
+use crate::storage::DataKey;
 
 /// Read-only snapshot of the contract's current pause state, for
 /// off-chain monitoring and operator dashboards.
