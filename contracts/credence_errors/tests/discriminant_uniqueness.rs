@@ -54,7 +54,10 @@ const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("LeaseExpired", ContractError::LeaseExpired),
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch),
     ("MigrationInProgress", ContractError::MigrationInProgress),
-    ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch),
+    (
+        "CrossContractCallerMismatch",
+        ContractError::CrossContractCallerMismatch,
+    ),
     ("NotAdmin", ContractError::NotAdmin),
     ("NotBondOwner", ContractError::NotBondOwner),
     ("UnauthorizedAttester", ContractError::UnauthorizedAttester),

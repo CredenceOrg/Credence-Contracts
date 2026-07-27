@@ -53,6 +53,10 @@ pub mod types;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 mod test_unauthorized_token;
+/// Real on-chain USDC transfer integration tests for create_bond/top_up/
+/// withdraw/withdraw_early, plus the custody invariant test.
+#[cfg(test)]
+mod test_bond_token_transfers;
 #[cfg(test)]
 mod test_events_schema;
 #[cfg(test)]
@@ -1063,6 +1067,26 @@ impl CredenceBond {
     /// assert_eq!(bond.slashed_amount, 0);
     /// assert!(!bond.is_rolling);
     /// ```
+    /// Create a new bond for an identity, escrowing real USDC tokens.
+    ///
+    /// Authority: `identity` must authorize the call.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token)
+    /// (storage key [`DataKey::BondToken`]), this entry point pulls `amount`
+    /// USDC from `identity` into the bond contract by calling
+    /// [`token_integration::transfer_into_contract`]. The caller must have
+    /// pre-approved the bond contract for at least `amount`. Fee-on-transfer
+    /// tokens are rejected by the balance-delta guard.
+    ///
+    /// If no token is configured (phantom-balance deployment) the entry
+    /// point only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The `IdentityBond` storage entry, `LastCollateralIncreaseLedger`,
+    /// tier events, and self-consistency invariants are all written **before**
+    /// the external `transfer_from` so a hostile token contract cannot
+    /// re-enter and double-spend against a stale pre-deposit state.
     pub fn create_bond(
         e: Env,
         identity: Address,
@@ -1583,6 +1607,31 @@ impl CredenceBond {
     }
 
     /// Withdraw from bond after lock-up period has ended.
+    /// Withdraw `amount` USDC from a bond after lock-up has ended.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// this entry point pushes `amount` USDC from the bond contract back to
+    /// `identity` via [`token_integration::transfer_from_contract`]
+    /// (`try_transfer` with a balance-delta guard that rejects fee-on-
+    /// transfer tokens). The bond contract must hold at least `amount` USDC;
+    /// any shortfall aborts the entire transaction (atomic rollback).
+    ///
+    /// Without a configured token the entry point operates in phantom-
+    /// balance mode and only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The reduced `IdentityBond` storage entry is written **before** the
+    /// external `transfer` so a hostile token contract cannot re-enter and
+    /// double-spend against a post-withdrawal snapshot.
+    ///
+    /// # Errors
+    /// - `InvalidBondAmount` when `amount <= 0`.
+    /// - `LockupNotExpired` when called before the bond's lock-up end (use
+    ///   `withdraw_early` instead to exit early with a penalty).
+    /// - `InsufficientBalance` when `amount > bonded_amount - slashed_amount`.
+    /// - `SlashExceedsBond` when the subtraction would leave
+    ///   `slashed_amount > bonded_amount`.
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize withdrawals.
@@ -1635,13 +1684,57 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(&e, new_available);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
+        // Persist the reduced bond state (Effects) before the external
+        // token transfer (Interactions). See the function-level
+        // `# Checks–Effects–Interactions` docstring for the threat
+        // classification that motivates this ordering.
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+
+        // Custody: push `amount` USDC back to the bond owner after
+        // lock-up. Gated by `has_token()` so phantom-balance deployments
+        // (no `DataKey::BondToken` configured) still record the on-paper
+        // withdrawal without performing an on-token move.
+        if token_integration::has_token(&e) {
+            token_integration::transfer_from_contract(&e, &bond.identity, amount);
+        }
+
         invariants::assert_self_consistent(&e);
         bond
     }
 
     /// Withdraw before lock-up end; applies a time-decayed penalty.
+    ///
+    /// Errors:
+    /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
+    ///   configuration exists. The call will revert instead of silently dropping
+    ///   the penalty amount.
+    /// - `ContractError::Underflow` if arithmetic underflows.
+    /// - `ContractError::Overflow` if arithmetic overflows.
+    /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
+    ///   the gross withdrawal exactly into treasury penalty plus identity payout.
+    /// Withdraw before lock-up end; applies a time-decayed penalty.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// the gross withdrawn amount is split on-chain:
+    ///
+    /// - `penalty` is pushed to the early-exit treasury via
+    ///   [`token_integration::transfer_from_contract_with_source`] with
+    ///   `FundSource::ProtocolFee`, emitting `bond_fund_transfer`.
+    /// - `net_amount = amount - penalty` is pushed back to the bond owner
+    ///   via [`token_integration::transfer_from_contract`].
+    ///
+    /// Both transfers use the balance-delta guard so fee-on-transfer tokens
+    /// are rejected. The bond contract must hold at least `amount` USDC; any
+    /// shortfall aborts the entire transaction. Without a configured token
+    /// the entry point operates in phantom-balance mode and only mutates the
+    /// [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The reduced `IdentityBond` storage entry is written **before** any
+    /// external transfers so a hostile token contract cannot re-enter and
+    /// double-spend against a post-withdrawal snapshot.
     ///
     /// Errors:
     /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
@@ -1828,6 +1921,23 @@ impl CredenceBond {
     /// - `ContractError::Overflow` when the addition would overflow `i128`.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
+    /// Top up an existing bond for `identity`, escrowing additional USDC.
+    ///
+    /// Authority: `identity` must authorize the call.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// this entry point pulls `amount` USDC from `identity` into the bond
+    /// contract via [`token_integration::transfer_into_contract`] (allowance
+    /// pre-check + balance-delta fee-on-transfer guard). The caller must have
+    /// pre-approved the bond contract for at least `amount`. Without a
+    /// configured token the entry point operates in phantom-balance mode
+    /// and only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The `IdentityBond` storage entry and tier events are updated **before**
+    /// the external `transfer_from` so a re-entering token contract cannot
+    /// observe stale state.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize top-ups.

@@ -453,7 +453,10 @@ fn test_operator_top_up_allows_withdrawal() {
     let result = std::panic::catch_unwind(|| {
         client.execute_withdrawal(&id, &0);
     });
-    assert!(result.is_err(), "withdrawal should have failed due to floor breach");
+    assert!(
+        result.is_err(),
+        "withdrawal should have failed due to floor breach"
+    );
 
     // Operator (admin) tops up the treasury
     client.receive_fee(&admin, &2_000, &FundSource::ProtocolFee);
@@ -476,4 +479,3 @@ fn test_operator_top_up_prevents_withdrawal() {
     client.approve_withdrawal(&signer, &id);
     client.execute_withdrawal(&id, &0);
 }
-
