@@ -111,7 +111,7 @@ fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
 fn require_matching_operator_epoch(e: &Env, action: PauseAction, ep: u64) {
     let expected_id = derive_proposal_id(e, action);
     if ep != expected_id {
-        panic_with_error!(e, ContractError::StaleOperatorEpoch);
+        panic_with_error!(e, ContractError::StaleEpoch);
     }
 }
 

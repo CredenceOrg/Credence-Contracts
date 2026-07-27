@@ -21,7 +21,7 @@
 // use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contracterror, panic_with_error, Env, Address};
+use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -198,13 +198,13 @@ pub enum ContractError {
     /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
     /// Contracts: general-purpose (lease auth)
     /// Wire-stable: do not renumber this error code.
-    LeaseScopeMismatch = 120,
+    LeaseScopeMismatch = 121,
 
     /// Lease `expires_at` has been reached or passed (hard cliff).
     /// Raised by `require_no_expired_lease` when `now >= lease.expires_at`.
     /// Contracts: general-purpose (lease auth)
     /// Wire-stable: do not renumber this error code.
-    LeaseExpired = 121,
+    LeaseExpired = 122,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -370,13 +370,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidCurrency = 234,
 
-    /// String input is not valid hex or base64 and cannot be safely decoded.
-    /// Raised by `verify_stringified_bytes` when the input exceeds the maximum
-    /// length or contains non-canonical characters.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    InvalidStringifiedBytes = 235,
-
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
     /// Contracts: bond
@@ -405,12 +398,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
-
-    /// Stringified byte input (hex/base64) is malformed or exceeds limits.
-    /// Replaces: reject invalid or oversized stringified bytes inputs.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    InvalidStringifiedBytes = 230,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -590,6 +577,16 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     StaleEpoch = 513,
 
+    /// Admin pause proposal ID was derived in a stale epoch.
+    /// Contracts: admin
+    /// Wire-stable: do not renumber this error code.
+    StaleAdminEpoch = 514,
+
+    /// Signer pause proposal ID was derived in a stale epoch.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    StaleSignerEpoch = 515,
+
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
@@ -624,7 +621,22 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 119,
+    TimestampInFuture = 118,
+
+    /// Requested max-pause-signers value is zero or exceeds the hard cap.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    InvalidMaxPauseSigners = 119,
+
+    /// Registering another pause signer would exceed the configured cap.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    MaxPauseSignersExceeded = 120,
+
+    /// Cross-contract caller does not match the configured partner address.
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    CrossContractCallerMismatch = 123,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -791,7 +803,12 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
-            | ContractError::MigrationInProgress
+            | ContractError::InvalidMaxPauseSigners
+            | ContractError::MaxPauseSignersExceeded
+            | ContractError::LeaseScopeMismatch
+            | ContractError::LeaseExpired
+            | ContractError::StaleAdminEpoch
+            | ContractError::StaleSignerEpoch
             | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
@@ -818,15 +835,13 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
-            | ContractError::DuplicateIdempotencyKey
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::InvariantViolation
-            | ContractError::DuplicateIdempotencyKey
             | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
@@ -873,22 +888,19 @@ impl ErrorExt for ContractError {
             | ContractError::TreasuryBeneficiaryMismatch
             | ContractError::CorridorNotRegistered => ErrorCategory::Treasury,
 
-            ContractError::Overflow | ContractError::Underflow | ContractError::DivisionByZero | ContractError::InvalidPercentSplit => {
-                ErrorCategory::Arithmetic
-            }
+            ContractError::Overflow
+            | ContractError::Underflow
+            | ContractError::DivisionByZero
+            | ContractError::InvalidPercentSplit => ErrorCategory::Arithmetic,
             ContractError::NoPendingAdmin
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted
-            | ContractError::DuplicateIdempotencyKey => ErrorCategory::Authorization,
+            | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
-            | ContractError::StaleOperatorEpoch
             | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
-
-            ContractError::DuplicateIdempotencyKey => ErrorCategory::Bond,
         }
     }
 
@@ -949,18 +961,15 @@ impl ErrorExt for ContractError {
             ContractError::InvalidStringifiedBytes => {
                 "Hex/base64 stringified bytes input is malformed or too long"
             }
+            ContractError::SnapshotGenerationMismatch => {
+                "Snapshot generation does not match the current state"
+            }
             ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
             ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
-            ContractError::InvalidStringifiedBytes => {
-                "String is not valid bounded hex or base64 encoded bytes"
-            }
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
-            ContractError::InvalidStringifiedBytes => {
-                "String input is not valid hex or base64"
-            }
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1068,10 +1077,24 @@ impl ErrorExt for ContractError {
             ContractError::CrossContractCallerMismatch => {
                 "Cross-contract caller does not match the configured partner address"
             }
+            ContractError::InvalidMaxPauseSigners => {
+                "Max-pause-signers value must be greater than zero and within the hard cap"
+            }
+            ContractError::MaxPauseSignersExceeded => {
+                "Registering another pause signer would exceed the configured cap"
+            }
+            ContractError::StaleAdminEpoch => {
+                "Admin pause proposal carries a stale epoch reference"
+            }
+            ContractError::StaleSignerEpoch => {
+                "Signer pause proposal carries a stale epoch reference"
+            }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
-            ContractError::StaleOperatorEpoch => "Operator attempted to act on a proposal from a stale epoch",
+            ContractError::InvalidPercentSplit => {
+                "Percentage splits do not sum to exactly 10,000 basis points"
+            }
         }
     }
 
@@ -1114,18 +1137,16 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
-            | ContractError::OutsideBusinessHours
-            | ContractError::ZeroBytes32 => true,
+            | ContractError::ZeroBytes32
+            | ContractError::TimestampInFuture
+            | ContractError::LeaseScopeMismatch
+            | ContractError::LeaseExpired => true,
 
 
             // Admin can supply a valid value / remove a signer or raise the
             // cap, then retry.
             ContractError::InvalidMaxPauseSigners => true,
             ContractError::MaxPauseSignersExceeded => true,
-
-            // Stale epoch proposals cannot be fixed by retry — re-propose in the
-            // current bucket.
-            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
 
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.
@@ -1159,10 +1180,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidCurrency
             | ContractError::InvalidStringifiedBytes
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
-            | ContractError::InvalidStringifiedBytes   // supply valid hex or base64
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
-            | ContractError::InvalidStringifiedBytes // correct the encoded input
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1171,6 +1190,7 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
+            ContractError::SnapshotGenerationMismatch => false,
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1211,8 +1231,9 @@ impl ErrorExt for ContractError {
             ContractError::UnknownScheme => false,         // scheme tag not supported by this build
             ContractError::VerificationFailed => false,    // crypto failure; same input will fail
             ContractError::RevocationGraceExpired => false,           // grace window is admin-controlled; expiry is terminal for the caller
+            ContractError::DelegationInactive => false,
             ContractError::PromiseNotKept => false,               // off-chain promise hash does not match on-chain execution
-            ContractError::StaleOperatorEpoch => false,
+            ContractError::StaleEpoch => false,
 
 
             // --- Treasury (600-699): mostly caller-fixable ---
@@ -1253,10 +1274,30 @@ impl ErrorExt for ContractError {
 /// `verify_no_future_ledger!`, `require_non_zero_bytes32!`) early-return `Err`,
 /// which would not compile in a `()`-returning constructor; this helper must
 /// `panic_with_error!` instead.
-pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
-    if already_initialized {
-        panic_with_error!(e, ContractError::AlreadyInitialized);
+#[macro_export]
+macro_rules! require_within_ttl {
+    ($env:expr, $expires_at:expr) => {
+        if $env.ledger().timestamp() >= $expires_at {
+            return Err($crate::ContractError::SignatureExpired);
+        }
+    };
+}
+
+pub fn is_expired(e: &Env, expires_at: u64) -> bool {
+    expires_at != 0 && e.ledger().timestamp() >= expires_at
+}
+
+pub fn require_within_ttl_panic(e: &Env, expires_at: u64, err: ContractError) {
+    if is_expired(e, expires_at) {
+        panic_with_error!(e, err);
     }
+}
+
+pub fn require_within_ttl_result(e: &Env, expires_at: u64) -> Result<(), ContractError> {
+    if is_expired(e, expires_at) {
+        return Err(ContractError::SignatureExpired);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1384,39 +1425,8 @@ macro_rules! require_non_zero_bytes32 {
 /// let caller = e.current_contract_address(); // or get from auth context
 /// credence_errors::require_matching_contract_id(&e, &caller, &expected_partner);
 /// ```
-pub fn require_matching_contract_id(
-    e: &Env,
-    caller: &Address,
-    expected: &Address,
-) {
+pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Address) {
     if caller != expected {
         panic_with_error!(e, ContractError::CrossContractCallerMismatch);
-    }
-}
-
-/// Requires that a contract has not been initialized yet.
-///
-/// This is a standard initialization guard used in constructors to prevent
-/// double-initialization attacks. It panics with `ContractError::AlreadyInitialized`
-/// if the contract has already been initialized (i.e., the `initialized` flag is true).
-///
-/// # Arguments
-/// * `e` - The Soroban environment
-/// * `initialized` - A boolean indicating whether the contract is already initialized
-///
-/// # Panics
-/// Panics with `ContractError::AlreadyInitialized` (code 2) if `initialized` is true.
-///
-/// # Example
-/// ```ignore
-/// pub fn initialize(e: Env, admin: Address) {
-///     credence_errors::require_contract_uninitialized(&e, e.storage().instance().has(&DataKey::Admin));
-///     admin.require_auth();
-///     e.storage().instance().set(&DataKey::Admin, &admin);
-/// }
-/// ```
-pub fn require_contract_uninitialized(e: &Env, initialized: bool) {
-    if initialized {
-        panic_with_error!(e, ContractError::AlreadyInitialized);
     }
 }

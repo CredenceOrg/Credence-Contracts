@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
+use soroban_sdk::{panic_with_error, Address, Bytes, Env, String, Symbol};
 
 use crate::multisig::DataKey;
 
@@ -10,8 +10,38 @@ pub enum PauseAction {
     Unpause = 2,
 }
 
+/// Absolute ceiling on the configured pause-signer count.
+pub const MAX_PAUSE_SIGNERS_HARD_CAP: u32 = 1_000;
+
+/// Default pause-signer cap when no explicit value is configured.
+pub const DEFAULT_MAX_PAUSE_SIGNERS: u32 = 100;
+
 /// Number of ledger sequences per signer pause-proposal epoch bucket.
 pub const PROPOSAL_EPOCH_SIZE: u32 = 100;
+
+pub fn get_max_pause_signers(e: &Env) -> u32 {
+    e.storage()
+        .instance()
+        .get(&DataKey::MaxPauseSigners)
+        .unwrap_or(DEFAULT_MAX_PAUSE_SIGNERS)
+}
+
+pub fn set_max_pause_signers(e: &Env, admin: &Address, max_signers: u32) {
+    require_admin_auth(e, admin);
+
+    if max_signers == 0 || max_signers > MAX_PAUSE_SIGNERS_HARD_CAP {
+        panic_with_error!(e, ContractError::InvalidMaxPauseSigners);
+    }
+
+    let old = get_max_pause_signers(e);
+    e.storage()
+        .instance()
+        .set(&DataKey::MaxPauseSigners, &max_signers);
+    e.events().publish(
+        (Symbol::new(e, "max_pause_signers_set"),),
+        (old, max_signers),
+    );
+}
 
 fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
     let epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
@@ -36,11 +66,24 @@ fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
     u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
 }
 
-fn require_matching_signer_epoch(e: &Env, action: PauseAction, ep: u64) {
-    let expected_id = derive_proposal_id(e, action);
+fn require_matching_signer_epoch(e: &Env, ep: u64) -> u32 {
+    let action: u32 = e
+        .storage()
+        .instance()
+        .get(&DataKey::PauseProposal(ep))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+    let action_kind = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+
+    let expected_id = derive_proposal_id(e, action_kind);
     if ep != expected_id {
         panic_with_error!(e, ContractError::StaleSignerEpoch);
     }
+
+    action
 }
 
 fn require_admin_auth(e: &Env, admin: &Address) {
@@ -224,19 +267,7 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     require_pause_signer(e, signer);
-
-    let action: u32 = e
-        .storage()
-        .instance()
-        .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
-
-    let pause_action = match action {
-        1 => PauseAction::Pause,
-        2 => PauseAction::Unpause,
-        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
-    };
-    require_matching_signer_epoch(e, pause_action, proposal_id);
+    require_matching_signer_epoch(e, proposal_id);
 
     record_approval(e, proposal_id, signer);
 
@@ -247,18 +278,7 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
 }
 
 pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
-    let action: u32 = e
-        .storage()
-        .instance()
-        .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
-
-    let pause_action = match action {
-        1 => PauseAction::Pause,
-        2 => PauseAction::Unpause,
-        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
-    };
-    require_matching_signer_epoch(e, pause_action, proposal_id);
+    let action = require_matching_signer_epoch(e, proposal_id);
 
     let threshold: u32 = e
         .storage()

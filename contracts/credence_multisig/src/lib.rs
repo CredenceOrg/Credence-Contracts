@@ -46,6 +46,7 @@ const SIGNATURE_DOMAIN: &str = "CredenceMultisig";
 pub mod multisig;
 pub mod pausable;
 
+pub use credence_errors::{is_expired, require_within_ttl_panic};
 pub use multisig::*;
 
 #[cfg(test)]
