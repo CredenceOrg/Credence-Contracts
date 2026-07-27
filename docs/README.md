@@ -142,7 +142,9 @@ This directory contains all design docs, API references, and operational guides 
 
 ## Contributing
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for code style, testing requirements, and PR process.
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for code style, testing requirements,
+and PR process. Maintainer review and routine contributor support hours are
+defined in [BUSINESS_HOURS.md](BUSINESS_HOURS.md).
 
 ## Quick Links
 
