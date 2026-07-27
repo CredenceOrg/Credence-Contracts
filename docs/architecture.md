@@ -381,6 +381,7 @@ See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
 ## Cross-Crate Relationships
 
 For a detailed visual mapping of dynamic interactions, callbacks, token custody pathways, and authentication entrypoints, see the [Cross-Contract Call Graph & Authorization Flow](cross-contract-call-graph.md).
+For sanctioned client libraries to interact with these contracts, see [API_CLIENTS.md](API_CLIENTS.md).
 
 ```
 credence_bond
