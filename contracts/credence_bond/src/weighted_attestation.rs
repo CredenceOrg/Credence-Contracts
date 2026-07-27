@@ -23,6 +23,7 @@ pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
     e.storage()
         .instance()
         .set(&DataKey::AttesterStake(attester.clone()), &amount);
+    crate::bump_instance_ttl(e);
 }
 
 #[allow(dead_code)]
@@ -45,6 +46,7 @@ pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
         max_weight,
     };
     e.storage().instance().set(&key, &new_config);
+    crate::bump_instance_ttl(e);
 
     e.events().publish(
         (Symbol::new(e, "weight_config_set"),),
@@ -63,6 +65,7 @@ pub fn get_weight_config(e: &Env) -> (u32, u32) {
         multiplier_bps: 0,
         max_weight: DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT,
     });
+    crate::bump_instance_ttl(e);
     (config.multiplier_bps, config.max_weight)
 }
 
@@ -73,6 +76,7 @@ pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
         .instance()
         .get(&DataKey::AttesterStake(attester.clone()))
         .unwrap_or(0);
+    crate::bump_instance_ttl(e);
 
     let raw_weight = stake
         .saturating_mul(multiplier_bps as i128)

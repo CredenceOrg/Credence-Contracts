@@ -70,12 +70,20 @@ pub enum DataKey {
     GraceWindow,
 }
 
-const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+/// Maximum bond duration in seconds (365 days).
+pub(crate) const MAX_BOND_DURATION_SECONDS: u64 = 31_536_000;
+/// Soroban ledger TTLs are expressed in ledgers; assume a 5s ledger cadence.
+const SECONDS_PER_LEDGER: u64 = 5;
+/// Keep instance-storage entries alive for the full maximum bond duration.
+pub(crate) const STORAGE_TTL_EXTEND_TO: u32 =
+    (MAX_BOND_DURATION_SECONDS / SECONDS_PER_LEDGER) as u32;
+/// Extend from the halfway point to the full configured lifetime.
+pub(crate) const STORAGE_TTL_THRESHOLD: u32 = STORAGE_TTL_EXTEND_TO / 2;
 
-fn bump_instance_ttl(e: &Env) {
+pub(crate) fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
-        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+        .extend_ttl(STORAGE_TTL_THRESHOLD, STORAGE_TTL_EXTEND_TO);
 }
 
 #[contract]
@@ -263,6 +271,7 @@ impl CredenceBond {
             .unwrap_or(Vec::new(&e));
         attestations.push_back(id);
         e.storage().instance().set(&subject_key, &attestations);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "attestation_added"), subject.clone()),
@@ -385,6 +394,7 @@ impl CredenceBond {
         }
         bond.withdrawal_requested_at = e.ledger().timestamp();
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e);
         e.events().publish(
             (Symbol::new(&e, "withdrawal_requested"),),
             (bond.identity.clone(), bond.withdrawal_requested_at),
@@ -591,6 +601,8 @@ impl CredenceBond {
             notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
+        bump_instance_ttl(&e);
+        bump_instance_ttl(&e);
 
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
@@ -732,6 +744,7 @@ pub fn create_bond(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
 
     #[test]
     fn is_valid_bond_positive_amount() {
@@ -883,5 +896,86 @@ mod tests {
     fn create_bond_duration_checked_before_notice() {
         let err = create_bond(100, 0, 0, true, 0).unwrap_err();
         assert_eq!(err, ContractError::InvalidBondDuration);
+    }
+
+    #[test]
+    fn bond_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let identity = Address::generate(&e);
+        client.initialize(&admin);
+
+        client.create_bond(&identity, &50_i128, &MAX_BOND_DURATION_SECONDS as u64, &false, &0_u64);
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let bond = client.get_identity_state();
+        assert_eq!(bond.bonded_amount, 50);
+        assert_eq!(bond.identity, identity);
+    }
+
+    #[test]
+    fn attestation_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let attester = Address::generate(&e);
+        client.initialize(&admin);
+        client.register_attester(&attester);
+
+        let subject = Address::generate(&e);
+        let attestation = crate::test_attestation::add(
+            &client,
+            &e,
+            &contract_id,
+            &attester,
+            &subject,
+            "ttl",
+        );
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let loaded = client.get_attestation(&attestation.id);
+        assert_eq!(loaded.id, attestation.id);
+        assert_eq!(loaded.identity, subject);
+    }
+
+    #[test]
+    fn attester_stake_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let attester = Address::generate(&e);
+        client.initialize(&admin);
+        client.register_attester(&attester);
+
+        weighted_attestation::set_attester_stake(&e.as_contract(&contract_id, || e.clone()), &attester, 123);
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let weight = weighted_attestation::compute_weight(&e.as_contract(&contract_id, || e.clone()), &attester);
+        assert_eq!(weight, 123u32);
     }
 }

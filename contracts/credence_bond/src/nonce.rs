@@ -1,7 +1,9 @@
 //! Nonce tracking for replay prevention in the credence bond contract.
-//! 
-//! Safety buffer added on top of the nonce TTL.
-const MIN_NONCE_TTL: u32 = 518_400;
+//!
+//! Nonces remain alive long enough to survive the bond lifecycle and any
+//! recovery flows without falling out of storage.
+const NONCE_TTL_THRESHOLD: u32 = 259_200;
+const NONCE_TTL_EXTEND_TO: u32 = 518_400;
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -126,6 +128,8 @@ pub fn validate_and_consume_with_grace(
     consume_nonce(e, identity, nonce);
 }
 
-fn bump_nonce_ttl(e: &Env, key: &DataKey, _ttl: u32) {
-    e.storage().instance().extend_ttl(MIN_NONCE_TTL, MIN_NONCE_TTL * 2);
+fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
+    e.storage()
+        .instance()
+        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
 }
