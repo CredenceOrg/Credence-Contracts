@@ -6,6 +6,8 @@
 
 The timelock crate enforces a mandatory delay for high-impact administrative changes. It is intended to give the community time to react before an operation becomes executable.
 
+This page highlights the current queue, execute, and cancel flow so operators and backends can reason about the timelock lifecycle without reading the implementation.
+
 ## Entrypoints
 
 | Entrypoint | Required role | Notes |

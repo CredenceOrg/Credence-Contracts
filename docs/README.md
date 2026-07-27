@@ -10,7 +10,7 @@ This directory contains all design docs, API references, and operational guides 
 
 ## Per-crate entrypoint guides
 
-These compact pages list the main public entrypoints, required roles, and backend integration notes for each contract crate.
+These compact pages list the main public entrypoints, required roles, and backend integration notes for each contract crate. They are intended to be quick review aids for contributors and downstream integrators.
 
 - [credence-bond.md](credence-bond.md)
 - [credence-delegation.md](credence-delegation.md)

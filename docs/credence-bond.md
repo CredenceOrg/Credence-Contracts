@@ -6,6 +6,8 @@
 
 The bond crate is the core collateral and lifecycle contract for Credence identities. It records bond state, enforces the owner-authenticated lifecycle transitions, and exposes the admin-only slashing path used by governance.
 
+This page is intentionally scoped to the public entrypoints and integration concerns that matter most to integrators and operators reviewing the crate.
+
 ## Entrypoints
 
 | Entrypoint | Required role | Notes |

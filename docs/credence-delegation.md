@@ -6,6 +6,8 @@
 
 The delegation crate enables owners to grant limited authority to another address and to execute delegated actions through a relayer. The contract couples direct and relayed flows under the same replay-protection model so a backend can safely relay signed payloads.
 
+This page focuses on the main entrypoints that integrators need to understand when wiring delegation into a backend or UI.
+
 ## Entrypoints
 
 | Entrypoint | Required role | Notes |
