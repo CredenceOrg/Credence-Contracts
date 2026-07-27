@@ -1,6 +1,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
+use crate::math::BPS_DENOMINATOR;
 use crate::DataKey;
 
 #[contracttype]
@@ -10,12 +11,9 @@ pub struct EarlyExitConfig {
     pub penalty_bps: u32,
 }
 
-const MAX_PENALTY_BPS: u32 = 10_000;
-const PENALTY_BASIS_POINTS_DENOMINATOR: i128 = 10_000;
-
 pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
-    if penalty_bps > MAX_PENALTY_BPS {
-        panic!("penalty_bps must be <= 10000");
+    if penalty_bps > BPS_DENOMINATOR as u32 {
+        panic!("penalty_bps must be <= {}", BPS_DENOMINATOR);
     }
     let key = DataKey::EarlyExitConfig;
     e.storage().instance().set(
@@ -47,7 +45,7 @@ pub fn calculate_penalty(amount: i128, remaining: u64, duration: u64, penalty_bp
     let charge = amount
         .checked_mul(penalty_bps as i128)
         .unwrap_or(0)
-        .checked_div(PENALTY_BASIS_POINTS_DENOMINATOR)
+        .checked_div(BPS_DENOMINATOR)
         .unwrap_or(0);
     charge
         .checked_mul(remaining as i128)
