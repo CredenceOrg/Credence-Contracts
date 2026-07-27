@@ -4,10 +4,21 @@
 //! with role-based access control and explicit authorization checks.
 //!
 //! ## Features
-//! - Role-based upgrade authorization
-//! - Explicit upgrade authorization with custom errors
-//! - Proxy compatibility safeguards
-//! - Upgrade history tracking
+//! - Role-based upgrade authorization (`UpgradeRole::Upgrader` vs `UpgradeRole::Proposer`)
+//! - Two-step upgrade admin transfer with mandatory 24-hour timelock and 7-day expiry
+//! - Proposal creation, multi-sig approval, and execution tracking
+//! - Replay prevention via implementation WASM SHA-256 hash tracking
+//! - Explicit upgrade authorization checks (`require_upgrade_auth`, `require_upgrade_admin`)
+//!
+//! ## Required Authorization Checks Before Upgrade Execution
+//!
+//! 1. **Caller Authentication**: `executor.require_auth()` cryptographic check.
+//! 2. **Role Authorization**: `require_upgrade_auth(e, executor)` verifies active `UpgradeRole::Upgrader` status and checks expiration (`expires_at`).
+//! 3. **Governance Approval** (if proposal ID given): Validates proposal is in `Approved` status with required approvals accumulated and matching implementation.
+//! 4. **Implementation Safeguards**: Ensures new implementation is non-identical to current implementation and has not been executed previously (SHA-256 replay guard).
+//! 5. **Admin Rotation Timelock**: Admin rotation requires two-step transfer (`transfer_upgrade_admin`, `accept_upgrade_admin`) with a 24-hour timelock.
+//!
+//! See `docs/bond-upgrade-auth-checklist.md` for the complete pre-upgrade operational checklist.
 
 #![allow(dead_code)]
 
@@ -161,12 +172,12 @@ pub struct UpgradeRecord {
 /// # Panics
 /// * If contract is already initialized
 pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
-    if e.storage()
-        .instance()
-        .has(&DataKey::Upgrade(UpgradeKey::Admin))
-    {
-        panic!("upgrade authorization already initialized");
-    }
+    credence_errors::require_contract_uninitialized(
+        e,
+        e.storage()
+            .instance()
+            .has(&DataKey::Upgrade(UpgradeKey::Admin)),
+    );
 
     // Set upgrade admin
     e.storage()
@@ -602,6 +613,20 @@ pub fn execute_upgrade(
         panic!("same implementation");
     }
 
+    // Replay guard check: Ensure this new implementation hash hasn't been executed before
+    use soroban_sdk::xdr::ToXdr;
+    let mut hash_input = Bytes::new(e);
+    hash_input.append(&new_implementation.to_xdr(e));
+    let op_hash: soroban_sdk::BytesN<32> = e.crypto().sha256(&hash_input).into();
+
+    if e.storage()
+        .instance()
+        .get(&DataKey::ExecutedOp(op_hash.clone()))
+        .unwrap_or(false)
+    {
+        soroban_sdk::panic_with_error!(e, credence_errors::ContractError::ProposalAlreadyExecuted);
+    }
+
     // Record upgrade in history
     let record = UpgradeRecord {
         old_implementation: current_impl,
@@ -626,6 +651,9 @@ pub fn execute_upgrade(
         &DataKey::Upgrade(UpgradeKey::Implementation),
         new_implementation,
     );
+    
+    // Mark the implementation hash as executed
+    e.storage().instance().set(&DataKey::ExecutedOp(op_hash), &true);
 
     events::emit_upgrade_executed(e, executor, new_implementation, proposal_id);
 }

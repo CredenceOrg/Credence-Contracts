@@ -31,8 +31,11 @@
 use super::*;
 use credence_errors::ContractError;
 use domain::MAX_PAYLOAD_AGE_LEDGERS;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::Env;
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    String,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -75,6 +78,7 @@ fn delegate_payload(
         nonce,
         scheme: 0,
         ledger_number: signed_at_sequence,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -139,14 +143,13 @@ fn exactly_at_limit_delegate_is_accepted() {
 
     let payload = delegate_payload(&e, &owner, &delegate, &client.address, 0, signed_at);
 
-    client
-        .execute_delegated_delegate(
-            &owner,
-            &delegate,
-            &DelegationType::Attestation,
-            &expires_at(&e),
-            &payload,
-        );
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expires_at(&e),
+        &payload,
+    );
     // If we reach here the delegation was accepted.
 }
 
@@ -200,6 +203,7 @@ fn stale_revoke_is_rejected() {
         nonce: 1, // nonce was consumed by delegate() above
         scheme: 0,
         ledger_number: signed_at,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let result = client.try_execute_delegated_revoke(
@@ -248,6 +252,7 @@ fn stale_revoke_attest_is_rejected() {
         nonce: 1,
         scheme: 0,
         ledger_number: signed_at,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let result = client.try_execute_delegated_revoke_attest(&attester, &subject, &payload);
@@ -257,5 +262,68 @@ fn stale_revoke_attest_is_rejected() {
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ContractError::PayloadTooOld as u32),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// verify_no_future_ledger — negative test (issue #797)
+// ---------------------------------------------------------------------------
+
+/// A payload whose `ledger_number` exceeds the current ledger sequence MUST be
+/// rejected with `TimestampInFuture` (code 511).
+///
+/// ## Why this test was failing before the fix
+///
+/// `check_payload_age` previously used `current.saturating_sub(signed_at)`,
+/// which yields **0** when `signed_at > current`.  0 is never greater than
+/// `MAX_PAYLOAD_AGE_LEDGERS` (200), so the payload silently appeared "fresh"
+/// and was accepted.  An attacker could therefore submit a payload with a far-
+/// future `ledger_number` and have it accepted unconditionally, bypassing the
+/// entire staleness window.
+///
+/// ## After the fix
+///
+/// `check_payload_age` now calls `verify_no_future_ledger(e, signed_at)`
+/// before the subtraction.  This surfaces `TimestampInFuture` (511) for any
+/// `signed_at > current_sequence`, closing the gap.
+#[test]
+fn future_ledger_number_is_rejected() {
+    let (e, client) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+
+    // Build a payload whose ledger_number is 100 ledgers AHEAD of the
+    // current sequence (impossible under normal operation).
+    let current_sequence = e.ledger().sequence();
+    let future_ledger = current_sequence + 100;
+
+    let payload = DelegatedActionPayload {
+        domain: DomainTag::Delegate,
+        owner: owner.clone(),
+        target: delegate.clone(),
+        contract_id: client.address.clone(),
+        nonce: 0,
+        scheme: 0,
+        ledger_number: future_ledger,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
+    };
+
+    let result = client.try_execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expires_at(&e),
+        &payload,
+    );
+
+    assert!(
+        result.is_err(),
+        "a payload with a future ledger_number must be rejected"
+    );
+    let err = result.unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::TimestampInFuture as u32),
+        "rejection must surface as TimestampInFuture (code 511)"
     );
 }

@@ -1,25 +1,29 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-#[cfg(any(test, feature = "testutils"))]
+
+#[cfg(test)]
 mod batch;
 mod claims;
 mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
 mod events;
-pub mod fee;
+mod guards;
 mod invariants;
 pub mod iter_chunks;
 mod leverage;
 mod math;
 mod migration;
-mod normalization;
 mod nonce;
+mod normalization;
 mod parameters;
+mod pausable;
 mod rolling_bond;
 mod safe_token;
 mod same_ledger_liquidation_guard;
+mod storage;
 mod slash_history;
 mod slashing;
 mod tiered_bond;
@@ -33,16 +37,36 @@ mod weighted_attestation;
 mod test_weighted_attestation_rounding;
 
 #[cfg(test)]
+#[path = "fuzz/test_slashing_tier_invariants.rs"]
+mod test_slashing_tier_invariants;
+
+#[cfg(test)]
+mod test_weighted_attestation;
+
+#[cfg(test)]
 #[path = "fuzz/test_normalization_invariant.rs"]
 mod test_normalization_invariant;
 
 #[path = "types/mod.rs"]
 pub mod types;
 
+/// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 mod test_unauthorized_token;
+/// Real on-chain USDC transfer integration tests for create_bond/top_up/
+/// withdraw/withdraw_early, plus the custody invariant test.
+#[cfg(test)]
+mod test_bond_token_transfers;
 #[cfg(test)]
 mod test_events_schema;
+#[cfg(test)]
+mod test_events_v2;
+#[cfg(test)]
+mod test_events;
+#[cfg(test)]
+mod test_validation;
+#[cfg(test)]
+mod test_zero_address;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
@@ -70,12 +94,17 @@ mod test_liquidate;
 #[cfg(test)]
 mod test_claim_expiry_sweep;
 
-/// Tests for paginated reads — attestations, slash history, and pending claims.
-#[cfg(test)]
-mod test_pagination;
 /// Authentication boundary tests — every non-view fn must require an auth'd address.
 #[cfg(test)]
 mod test_auth;
+/// Tests for paginated reads — attestations, slash history, and pending claims.
+#[cfg(test)]
+mod test_pagination;
+
+/// Regression tests codifying the deterministic-ordering guarantee for every
+/// list-returning read (no duplicates, no omissions, stable key order).
+#[cfg(test)]
+mod test_ordering_guarantees;
 
 /// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
 #[cfg(test)]
@@ -85,6 +114,21 @@ mod test_rolling_notice;
 /// setter round-trip and event payload verification (issue #665).
 #[cfg(test)]
 mod fee_tests;
+
+/// Tests for `parameters.rs`: governance access control, bounds, event emission, approval invariants.
+#[cfg(test)]
+mod test_parameters;
+
+/// Tests for max-leverage parameter: bounds enforcement, admin access, bond-creation integration.
+#[cfg(test)]
+mod test_max_leverage;
+
+#[cfg(test)]
+mod test_migration_guard;
+
+/// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
+#[cfg(test)]
+mod test_same_ledger_liquidation_guard;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -146,15 +190,19 @@ pub struct CredenceBond;
 #[contractimpl]
 impl CredenceBond {
     pub fn initialize(e: Env, admin: Address) {
-        if storage::get_admin(&e).is_some() {
-            panic!("already initialized");
-        }
+        Self::require_not_paused(&e);
+        credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
         storage::set_admin(&e, &admin);
+    }
+
+    fn require_not_paused(e: &Env) {
+        pausable::require_not_paused(e);
     }
 
     /// Set the set of accepted token addresses.
     /// Only callable by admin.
     pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         if Some(admin) != storage::get_admin(&e) {
             panic_with_error!(e, ContractError::NotAdmin);
@@ -172,6 +220,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> Result<Bond, ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
 
         if storage::has_bond(&e, &identity) {
@@ -198,6 +247,7 @@ impl CredenceBond {
 
     /// Increases the bonded amount for an existing bond.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         if !is_valid_bond(amount) {
             return Err(ContractError::InvalidBondAmount);
@@ -217,6 +267,7 @@ impl CredenceBond {
 
     /// Extends the duration of an existing bond.
     pub fn extend_duration(e: Env, identity: Address, extra_duration: u64) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         let mut bond = storage::get_bond(&e, &identity)?;
         
@@ -229,6 +280,7 @@ impl CredenceBond {
     }
 
     pub fn request_withdrawal(e: Env, identity: Address) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         let mut bond = storage::get_bond(&e, &identity)?;
         if !bond.is_rolling {
@@ -243,6 +295,7 @@ impl CredenceBond {
     }
 
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         identity.require_auth();
         acquire_lock(&e);
         
@@ -272,6 +325,7 @@ impl CredenceBond {
     }
 
     pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
         admin.require_auth();
         if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
 
@@ -340,6 +394,17 @@ pub struct AttestationBatchItem {
     pub nonce: u64,
 }
 
+/// Maximum number of transfers allowed in a single batch operation.
+pub const MAX_BATCH_TRANSFER_SIZE: u32 = 50;
+
+/// Input item for a batch transfer operation.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct BatchTransferItem {
+    pub recipient: Address,
+    pub amount: i128,
+}
+
 // Re-export attestation type for external callers.
 pub use types::Attestation;
 
@@ -357,6 +422,14 @@ pub use types::Attestation;
 #[derive(Clone)]
 pub enum DataKey {
     Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
     Bond,
     Attester(Address),
     Attestation(u64),
@@ -404,10 +477,23 @@ pub enum DataKey {
     /// Value: `Address`. When absent, `slash()` reverts with
     /// `ContractError::TreasuryNotConfigured`.
     SlashTreasury,
+    // --- Pausable functionality variants ---
+    /// Authorized pause signers. Key: `Address`, Value: `bool`.
+    PauseSigner(Address),
+    /// Individual pause approval by signer and proposal. Value: `bool`.
+    PauseApproval(u64, Address),
+    /// Count of approvals for a pause proposal. Value: `u32`.
+    PauseApprovalCount(u64),
+    /// Pause proposal details. Value: `(bool, u64)` - (action, expires_at).
+    PauseProposal(u64),
     /// Idempotency key for externally-triggered admin operations. Value: `bool`.
     /// Used to prevent duplicate submissions from webhook retries. The key is
     /// computed as SHA256(actor_address || operation_name || salt_bytes).
     IdempotencyKey(Bytes),
+    /// Flag indicating if borrowing operations are frozen. Value: `bool`.
+    BorrowFrozen,
+    /// Executed upgrade hashes to prevent replay. Value: `bool`.
+    ExecutedOp(soroban_sdk::BytesN<32>),
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -450,15 +536,20 @@ pub struct TierThresholds {
     pub gold_max: i128,
 }
 
-const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+/// Maximum bond duration in seconds (365 days).
+pub(crate) const MAX_BOND_DURATION_SECONDS: u64 = 31_536_000;
+/// Soroban ledger TTLs are expressed in ledgers; assume a 5s ledger cadence.
+const SECONDS_PER_LEDGER: u64 = 5;
+/// Keep instance-storage entries alive for the full maximum bond duration.
+pub(crate) const STORAGE_TTL_EXTEND_TO: u32 =
+    (MAX_BOND_DURATION_SECONDS / SECONDS_PER_LEDGER) as u32;
+/// Extend from the halfway point to the full configured lifetime.
+pub(crate) const STORAGE_TTL_THRESHOLD: u32 = STORAGE_TTL_EXTEND_TO / 2;
 
-/// Maximum persistent entry TTL (~6 months at 5 s/ledger; Soroban network cap).
-pub(crate) const PERSISTENT_TTL_MAX: u32 = 3_110_400;
-
-fn bump_instance_ttl(e: &Env) {
+pub(crate) fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
-        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+        .extend_ttl(STORAGE_TTL_THRESHOLD, STORAGE_TTL_EXTEND_TO);
 }
 
 /// Reason symbols for [`CredenceBond::liquidate`].
@@ -466,8 +557,7 @@ fn bump_instance_ttl(e: &Env) {
 /// Tiny enum used as the topic value when emitting `bond_liquidated`. Both
 /// variants are encoded as `Symbol`s: `"fully_slashed"` or `"expired_unrenewed"`.
 /// Stored as constants here so test code can refer to the canonical strings
-/// instead of re-deriving them. Excluded from release WASM.
-#[cfg(any(test, feature = "testutils"))]
+/// instead of re-deriving them.
 pub mod liquidation_reason {
     /// Bond has been fully slashed (`slashed_amount >= bonded_amount`).
     pub const FULLY_SLASHED: &str = "fully_slashed";
@@ -532,23 +622,28 @@ pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
-    /// Acquire reentrancy lock to prevent double-spend during token operations.
-    ///
-    /// Errors:
-    /// - `ContractError::ReentrancyDetected` if a settle operation is already in progress.
-    fn acquire_lock(e: &Env) {
-        let key = DataKey::SettlingFlag;
-        if e.storage().instance().has(&key) {
-            panic_with_error!(e, ContractError::ReentrancyDetected);
-        }
-        e.storage().instance().set(&key, &true);
+    fn require_not_paused(e: &Env) {
+        pausable::require_not_paused(e);
     }
 
-    /// Release reentrancy lock after external token operations complete.
-    fn release_lock(e: &Env) {
-        let key = DataKey::SettlingFlag;
-        e.storage().instance().remove(&key);
+    /// Set the set of accepted token addresses.
+    /// Only callable by admin.
+    pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if admin != stored_admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        crate::validation::require_non_empty_vec(&e, &accepted_tokens);
+        storage::set_accepted_tokens(&e, &accepted_tokens);
     }
+
+
 
     /// Return the contract version.
     pub fn version(e: Env) -> String {
@@ -562,6 +657,11 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn initialize(e: Env, admin: Address, registry: Option<Address>) {
+        Self::require_not_paused(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
@@ -580,6 +680,7 @@ impl CredenceBond {
 
     /// Initialize and attempt trustless self-registration with a registry.
     pub fn initialize_with_registry(e: Env, admin: Address, registry: Address) {
+        Self::require_not_paused(&e);
         Self::initialize(e.clone(), admin, Some(registry));
     }
 
@@ -589,6 +690,7 @@ impl CredenceBond {
     /// - `ContractError::NotInitialized` when admin is not set.
     /// - `ContractError::NotAdmin` when caller is not the configured admin.
     pub fn set_token(e: Env, admin: Address, token: Address) {
+        Self::require_not_paused(&e);
         token_integration::set_token(&e, &admin, &token);
     }
 
@@ -671,15 +773,9 @@ impl CredenceBond {
     /// client.set_early_exit_config(&admin, &treasury, &500_u32);
     /// ```
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
+        Self::require_not_paused(&e);
         admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
 
@@ -690,6 +786,7 @@ impl CredenceBond {
 
     /// Set whether borrows are frozen.
     pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -699,7 +796,162 @@ impl CredenceBond {
         if stored_admin != admin {
             panic_with_error!(e, ContractError::NotAdmin);
         }
-        parameters::set_borrow_frozen(&e, frozen);
+        parameters::set_borrow_frozen(&e, &admin, frozen);
+    }
+
+    // ==================== Protocol Parameters (Governance-Controlled) ====================
+
+    pub fn get_protocol_fee_bps(e: Env) -> u32 {
+        parameters::get_protocol_fee_bps(&e)
+    }
+    pub fn set_protocol_fee_bps(e: Env, admin: Address, value: u32) {
+        Self::require_not_paused(&e);
+        parameters::set_protocol_fee_bps(&e, &admin, value)
+    }
+    pub fn set_protocol_fee_bps_appr(
+        e: Env,
+        admin: Address,
+        value: u32,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_protocol_fee_bps_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_attestation_fee_bps(e: Env) -> u32 {
+        parameters::get_attestation_fee_bps(&e)
+    }
+    pub fn set_attestation_fee_bps(e: Env, admin: Address, value: u32) {
+        Self::require_not_paused(&e);
+        parameters::set_attestation_fee_bps(&e, &admin, value)
+    }
+    pub fn set_attestation_fee_bps_appr(
+        e: Env,
+        admin: Address,
+        value: u32,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_attestation_fee_bps_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_withdrawal_cooldown_secs(e: Env) -> u64 {
+        parameters::get_withdrawal_cooldown_secs(&e)
+    }
+    pub fn set_withdrawal_cooldown_secs(e: Env, admin: Address, value: u64) {
+        Self::require_not_paused(&e);
+        parameters::set_withdrawal_cooldown_secs(&e, &admin, value)
+    }
+    pub fn set_withdrawal_cd_secs_appr(
+        e: Env,
+        admin: Address,
+        value: u64,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_withdrawal_cooldown_secs_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_slash_cooldown_secs(e: Env) -> u64 {
+        parameters::get_slash_cooldown_secs(&e)
+    }
+    pub fn set_slash_cooldown_secs(e: Env, admin: Address, value: u64) {
+        Self::require_not_paused(&e);
+        parameters::set_slash_cooldown_secs(&e, &admin, value)
+    }
+    pub fn set_slash_cd_secs_appr(
+        e: Env,
+        admin: Address,
+        value: u64,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_slash_cooldown_secs_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_bronze_threshold(e: Env) -> i128 {
+        parameters::get_bronze_threshold(&e)
+    }
+    pub fn set_bronze_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_bronze_threshold(&e, &admin, value)
+    }
+    pub fn set_bronze_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_bronze_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_silver_threshold(e: Env) -> i128 {
+        parameters::get_silver_threshold(&e)
+    }
+    pub fn set_silver_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_silver_threshold(&e, &admin, value)
+    }
+    pub fn set_silver_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_silver_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_gold_threshold(e: Env) -> i128 {
+        parameters::get_gold_threshold(&e)
+    }
+    pub fn set_gold_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_gold_threshold(&e, &admin, value)
+    }
+    pub fn set_gold_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_gold_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_platinum_threshold(e: Env) -> i128 {
+        parameters::get_platinum_threshold(&e)
+    }
+    pub fn set_platinum_threshold(e: Env, admin: Address, value: i128) {
+        Self::require_not_paused(&e);
+        parameters::set_platinum_threshold(&e, &admin, value)
+    }
+    pub fn set_platinum_threshold_appr(
+        e: Env,
+        admin: Address,
+        value: i128,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_platinum_threshold_with_approval(&e, &admin, value, &approval)
+    }
+
+    pub fn get_max_leverage(e: Env) -> u32 {
+        parameters::get_max_leverage(&e)
+    }
+    pub fn set_max_leverage(e: Env, admin: Address, value: u32) {
+        Self::require_not_paused(&e);
+        parameters::set_max_leverage(&e, &admin, value)
+    }
+    pub fn set_max_leverage_appr(
+        e: Env,
+        admin: Address,
+        value: u32,
+        approval: parameters::GovernanceApproval,
+    ) {
+        Self::require_not_paused(&e);
+        parameters::set_max_leverage_with_approval(&e, &admin, value, &approval)
     }
 
     /// Register an authorized attester.
@@ -724,6 +976,7 @@ impl CredenceBond {
     /// assert!(client.is_attester(&attester));
     /// ```
     pub fn register_attester(e: Env, attester: Address) {
+        Self::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -761,6 +1014,7 @@ impl CredenceBond {
     /// assert!(!client.is_attester(&attester));
     /// ```
     pub fn unregister_attester(e: Env, attester: Address) {
+        Self::require_not_paused(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -822,13 +1076,33 @@ impl CredenceBond {
     /// let identity = Address::generate(&e);
     /// client.initialize(&admin, &None);
     ///
-    /// // Fixed-duration bond: 1000 tokens locked for 86400 seconds
-    /// let bond = client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    /// // Fixed-duration bond: 1000 tokens locked for credence_math::Timestamp::SECONDS_PER_DAY seconds
+    /// let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     /// assert!(bond.active);
     /// assert_eq!(bond.bonded_amount, 1000);
     /// assert_eq!(bond.slashed_amount, 0);
     /// assert!(!bond.is_rolling);
     /// ```
+    /// Create a new bond for an identity, escrowing real USDC tokens.
+    ///
+    /// Authority: `identity` must authorize the call.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token)
+    /// (storage key [`DataKey::BondToken`]), this entry point pulls `amount`
+    /// USDC from `identity` into the bond contract by calling
+    /// [`token_integration::transfer_into_contract`]. The caller must have
+    /// pre-approved the bond contract for at least `amount`. Fee-on-transfer
+    /// tokens are rejected by the balance-delta guard.
+    ///
+    /// If no token is configured (phantom-balance deployment) the entry
+    /// point only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The `IdentityBond` storage entry, `LastCollateralIncreaseLedger`,
+    /// tier events, and self-consistency invariants are all written **before**
+    /// the external `transfer_from` so a hostile token contract cannot
+    /// re-enter and double-spend against a stale pre-deposit state.
     pub fn create_bond(
         e: Env,
         identity: Address,
@@ -837,6 +1111,7 @@ impl CredenceBond {
         is_rolling: bool,
         notice_period_duration: u64,
     ) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
@@ -871,6 +1146,13 @@ impl CredenceBond {
         bump_instance_ttl(&e);
         let tier = tiered_bond::get_tier_for_amount(&e, amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
+        // Issue #996: same-ledger sequencing guard — record this ledger sequence
+        // so that any subsequent same-ledger slash via `slashing::slash_bond` is
+        // blocked by `same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase`.
+        // Writing the recorder AFTER the bond + invariants check ensures we never
+        // trip the guard on an aborted or fixture-only flow: a Soroban tx is
+        // atomic, so a panic in `assert_self_consistent` reverts this write too.
+        crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -905,13 +1187,7 @@ impl CredenceBond {
     pub fn get_identity_state(e: Env) -> IdentityBond {
         // Ensure storage is migrated from v1 to v2 before accessing bond state
         migration::migrate_v1_to_v2(&e);
-        let key = DataKey::Bond;
-        let bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let bond: IdentityBond = guards::load_bond(&e);
         bond
     }
 
@@ -954,6 +1230,7 @@ impl CredenceBond {
         attestation_data: String,
         nonce: u64,
     ) -> Attestation {
+        Self::require_not_paused(&e);
         // auth: tree shape [Attester] -> [Bond::add_attestation]; may be delegated.
         attester.require_auth();
 
@@ -1009,6 +1286,7 @@ impl CredenceBond {
             .unwrap_or(Vec::new(&e));
         attestations.push_back(id);
         e.storage().instance().set(&subject_key, &attestations);
+        bump_instance_ttl(&e);
 
         let count_key = DataKey::SubjectAttestationCount(subject.clone());
         let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
@@ -1034,6 +1312,7 @@ impl CredenceBond {
         subject: Address,
         items: Vec<AttestationBatchItem>,
     ) -> Vec<Attestation> {
+        Self::require_not_paused(&e);
         let n = items.len();
         crate::validation::verify_batch_size(&e, n, MAX_BATCH_ATTESTATION_SIZE);
 
@@ -1171,6 +1450,7 @@ impl CredenceBond {
 
     /// Revoke an attestation (only the original attester can revoke). Requires correct nonce.
     pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
+        Self::require_not_paused(&e);
         attester.require_auth();
         nonce::consume_nonce(&e, &attester, nonce);
 
@@ -1256,122 +1536,6 @@ impl CredenceBond {
         v
     }
 
-    /// Return a bounded page of attestation IDs for a subject.
-    ///
-    /// The `limit` argument is silently clamped to
-    /// `parameters::MAX_QUERY_LIMIT` (200), so a single call can never
-    /// iterate unbounded state and exhaust the Soroban instruction budget.
-    /// Pass `0` for `limit` to use the cap directly.
-    ///
-    /// # Arguments
-    /// * `subject` - The attested identity to query
-    /// * `offset`  - Zero-based start index within the attestation-ID list
-    /// * `limit`   - Max IDs to return; silently clamped to `MAX_QUERY_LIMIT`
-    ///
-    /// # Returns
-    /// A `Vec<u64>` of at most `min(limit, MAX_QUERY_LIMIT)` attestation IDs
-    /// beginning at `offset`. Returns an empty vec when `offset >= total`.
-    ///
-    /// # Example — page through all IDs
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let subject = Address::generate(&e);
-    /// client.initialize(&admin, &None);
-    ///
-    /// let mut offset = 0u32;
-    /// loop {
-    ///     let page = client.get_subject_attestations_page(&subject, &offset, &50_u32);
-    ///     if page.is_empty() { break; }
-    ///     offset += page.len() as u32;
-    /// }
-    /// ```
-    pub fn get_subject_attestations_page(
-        e: Env,
-        subject: Address,
-        offset: u32,
-        limit: u32,
-    ) -> Vec<u64> {
-        let key = DataKey::SubjectAttestations(subject);
-        let all: Vec<u64> = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| Vec::new(&e));
-        bump_instance_ttl(&e);
-
-        let total = all.len();
-        let mut page = Vec::new(&e);
-
-        if offset >= total {
-            return page;
-        }
-
-        let effective_limit = if limit == 0 {
-            parameters::MAX_QUERY_LIMIT
-        } else {
-            limit.min(parameters::MAX_QUERY_LIMIT)
-        };
-
-        let end = (offset + effective_limit).min(total);
-        for i in offset..end {
-            page.push_back(all.get(i).unwrap());
-        }
-        page
-    }
-
-    /// Return a bounded page of slash records for an identity.
-    ///
-    /// The `limit` argument is silently clamped to
-    /// `parameters::MAX_QUERY_LIMIT` (200). Pass `0` to use the cap directly.
-    ///
-    /// # Arguments
-    /// * `identity` - Address whose slash history to read
-    /// * `offset`   - Zero-based start index
-    /// * `limit`    - Max records to return; clamped to `MAX_QUERY_LIMIT`
-    ///
-    /// # Returns
-    /// A `Vec<SlashRecord>` of at most `min(limit, MAX_QUERY_LIMIT)` entries.
-    /// Returns an empty vec when `offset >= total slash count`.
-    ///
-    /// # Example — page through all slash records
-    /// ```no_run
-    /// use credence_bond::{CredenceBond, CredenceBondClient};
-    /// use soroban_sdk::{Env, Address};
-    /// use soroban_sdk::testutils::Address as _;
-    ///
-    /// let e = Env::default();
-    /// e.mock_all_auths();
-    /// let contract_id = e.register(CredenceBond, ());
-    /// let client = CredenceBondClient::new(&e, &contract_id);
-    /// let admin = Address::generate(&e);
-    /// let identity = Address::generate(&e);
-    /// client.initialize(&admin, &None);
-    ///
-    /// let mut offset = 0u32;
-    /// loop {
-    ///     let page = client.get_slash_history_page(&identity, &offset, &50_u32);
-    ///     if page.is_empty() { break; }
-    ///     offset += page.len() as u32;
-    /// }
-    /// ```
-    pub fn get_slash_history_page(
-        e: Env,
-        identity: Address,
-        offset: u32,
-        limit: u32,
-    ) -> Vec<slash_history::SlashRecord> {
-        bump_instance_ttl(&e);
-        slash_history::get_slash_history_page(&e, &identity, offset, limit)
-    }
-
     /// Get attestation count for a subject (identity). O(1).
     pub fn get_subject_attestation_count(e: Env, subject: Address) -> u32 {
         let key = DataKey::SubjectAttestationCount(subject);
@@ -1385,86 +1549,19 @@ impl CredenceBond {
         nonce::get_nonce(&e, &identity)
     }
 
-    /// Returns the configured signed-action grace window in seconds.
-    ///
-    /// Returns `0` when unset (the default), which means strict deadline
-    /// enforcement (`now <= deadline`). A non-zero value means signed bond
-    /// actions are accepted for up to that many seconds past their nominal
-    /// deadline.
-    ///
-    /// # Security
-    /// A non-zero grace window widens the replay/expiry attack surface on signed
-    /// bond actions. This read view lets operators and indexers observe whether
-    /// deadlines are currently being relaxed.
-    pub fn get_grace_window(e: Env) -> u64 {
-        nonce::get_grace_window(&e)
-    }
-
-    /// Set the signed-action grace window (in seconds). Admin only.
-    ///
-    /// Emits a `param_updated` event (key `"grace_window"`, category
-    /// `"security"`) carrying the `(old, new)` values so changes to this
-    /// security-relevant parameter are observable off-chain.
-    ///
-    /// This is observability/configuration only — it does not change
-    /// `validate_and_consume` semantics beyond the deadline window the verifier
-    /// already reads from storage.
-    ///
-    /// # Security
-    /// A non-zero window relaxes signed-action deadlines and directly widens the
-    /// replay/expiry attack surface. Prefer `0` (strict enforcement).
-    ///
-    /// # Errors
-    /// - `ContractError::NotInitialized` when the admin has not been set.
-    /// - `ContractError::NotAdmin` when `admin` is not the configured admin.
-    pub fn set_grace_window(e: Env, admin: Address, grace: u64) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        admin.require_auth();
-        if admin != stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
-
-        let old = nonce::set_grace_window(&e, grace);
-        events::emit_parameter_updated(
-            &e,
-            Symbol::new(&e, "grace_window"),
-            Symbol::new(&e, "security"),
-            &admin,
-            old as i128,
-            grace as i128,
-        );
-    }
-
     /// Set attester stake (admin only).
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        Self::require_not_paused(&e);
         admin.require_auth();
-        if admin != stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
-        credence_errors::require_positive_amount!(&e, amount);
+        guards::require_admin(&e, &admin);
         weighted_attestation::set_attester_stake(&e, &attester, amount);
     }
 
     /// Set weight config: multiplier_bps, max_weight. Admin only.
     pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        Self::require_not_paused(&e);
         admin.require_auth();
-        if admin != stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
         weighted_attestation::set_weight_config(&e, multiplier_bps, max_weight);
     }
 
@@ -1480,6 +1577,7 @@ impl CredenceBond {
     /// - `ContractError::InvalidAdminAddress` when `new_admin` is a zero/unset address.
     /// - `ContractError::AdminUnchanged` when `new_admin` equals `current_admin`.
     pub fn transfer_admin(e: Env, current_admin: Address, new_admin: Address) {
+        Self::require_not_paused(&e);
         current_admin.require_auth();
         new_admin.require_auth();
 
@@ -1509,10 +1607,12 @@ impl CredenceBond {
     }
 
     pub fn transfer_upgrade_admin(e: Env, admin: Address, new_admin: Address) {
+        Self::require_not_paused(&e);
         upgrade_auth::transfer_upgrade_admin(&e, &admin, &new_admin);
     }
 
     pub fn accept_upgrade_admin(e: Env, caller: Address) {
+        Self::require_not_paused(&e);
         upgrade_auth::accept_upgrade_admin(&e, &caller);
     }
 
@@ -1521,6 +1621,7 @@ impl CredenceBond {
     }
 
     pub fn cancel_upgrade_admin_transfer(e: Env, admin: Address) {
+        Self::require_not_paused(&e);
         upgrade_auth::cancel_upgrade_admin_transfer(&e, &admin);
     }
 
@@ -1530,20 +1631,38 @@ impl CredenceBond {
     }
 
     /// Withdraw from bond after lock-up period has ended.
+    /// Withdraw `amount` USDC from a bond after lock-up has ended.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// this entry point pushes `amount` USDC from the bond contract back to
+    /// `identity` via [`token_integration::transfer_from_contract`]
+    /// (`try_transfer` with a balance-delta guard that rejects fee-on-
+    /// transfer tokens). The bond contract must hold at least `amount` USDC;
+    /// any shortfall aborts the entire transaction (atomic rollback).
+    ///
+    /// Without a configured token the entry point operates in phantom-
+    /// balance mode and only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The reduced `IdentityBond` storage entry is written **before** the
+    /// external `transfer` so a hostile token contract cannot re-enter and
+    /// double-spend against a post-withdrawal snapshot.
+    ///
+    /// # Errors
+    /// - `InvalidBondAmount` when `amount <= 0`.
+    /// - `LockupNotExpired` when called before the bond's lock-up end (use
+    ///   `withdraw_early` instead to exit early with a penalty).
+    /// - `InsufficientBalance` when `amount > bonded_amount - slashed_amount`.
+    /// - `SlashExceedsBond` when the subtraction would leave
+    ///   `slashed_amount > bonded_amount`.
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize withdrawals.
         identity.require_auth();
         credence_errors::require_positive_amount!(&e, amount);
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        if bond.identity != identity {
-            panic_with_error!(e, ContractError::NotBondOwner);
-        }
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         let now = e.ledger().timestamp();
         let end = bond
@@ -1589,8 +1708,21 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(&e, new_available);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
+        // Persist the reduced bond state (Effects) before the external
+        // token transfer (Interactions). See the function-level
+        // `# Checks–Effects–Interactions` docstring for the threat
+        // classification that motivates this ordering.
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+
+        // Custody: push `amount` USDC back to the bond owner after
+        // lock-up. Gated by `has_token()` so phantom-balance deployments
+        // (no `DataKey::BondToken` configured) still record the on-paper
+        // withdrawal without performing an on-token move.
+        if token_integration::has_token(&e) {
+            token_integration::transfer_from_contract(&e, &bond.identity, amount);
+        }
+
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -1605,21 +1737,41 @@ impl CredenceBond {
     /// - `ContractError::Overflow` if arithmetic overflows.
     /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
     ///   the gross withdrawal exactly into treasury penalty plus identity payout.
+    /// Withdraw before lock-up end; applies a time-decayed penalty.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// the gross withdrawn amount is split on-chain:
+    ///
+    /// - `penalty` is pushed to the early-exit treasury via
+    ///   [`token_integration::transfer_from_contract_with_source`] with
+    ///   `FundSource::ProtocolFee`, emitting `bond_fund_transfer`.
+    /// - `net_amount = amount - penalty` is pushed back to the bond owner
+    ///   via [`token_integration::transfer_from_contract`].
+    ///
+    /// Both transfers use the balance-delta guard so fee-on-transfer tokens
+    /// are rejected. The bond contract must hold at least `amount` USDC; any
+    /// shortfall aborts the entire transaction. Without a configured token
+    /// the entry point operates in phantom-balance mode and only mutates the
+    /// [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The reduced `IdentityBond` storage entry is written **before** any
+    /// external transfers so a hostile token contract cannot re-enter and
+    /// double-spend against a post-withdrawal snapshot.
+    ///
+    /// Errors:
+    /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
+    ///   configuration exists. The call will revert instead of silently dropping
+    ///   the penalty amount.
+    /// - `ContractError::Underflow` if arithmetic underflows.
+    /// - `ContractError::Overflow` if arithmetic overflows.
+    /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
+    ///   the gross withdrawal exactly into treasury penalty plus identity payout.
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         let key = DataKey::Bond;
-
-        Self::acquire_lock(&e);
-        credence_errors::require_positive_amount!(&e, amount);
-
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        if bond.identity != identity {
-            panic_with_error!(e, ContractError::NotBondOwner);
-        }
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         let available = bond
             .bonded_amount
@@ -1713,18 +1865,11 @@ impl CredenceBond {
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
     pub fn request_withdrawal(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize the withdrawal request.
         identity.require_auth();
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        if bond.identity != identity {
-            panic_with_error!(e, ContractError::NotBondOwner);
-        }
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
         if !bond.is_rolling {
             panic_with_error!(e, ContractError::NotRollingBond);
         }
@@ -1733,6 +1878,7 @@ impl CredenceBond {
         }
         bond.withdrawal_requested_at = e.ledger().timestamp();
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e);
         e.events().publish(
             (Symbol::new(&e, "withdrawal_requested"),),
             (bond.identity.clone(), bond.withdrawal_requested_at),
@@ -1747,17 +1893,11 @@ impl CredenceBond {
     ///
     /// See also: [`docs/rolling-bonds.md`](../../../docs/rolling-bonds.md)
     pub fn renew_if_rolling(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize renewal.
         identity.require_auth();
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        if bond.identity != identity {
-            panic_with_error!(e, ContractError::NotBondOwner);
-        }
+        let mut bond: IdentityBond = guards::load_bond(&e);
         if !bond.is_rolling {
             return bond;
         }
@@ -1795,6 +1935,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         slashing::slash_bond(&e, &admin, amount)
     }
 
@@ -1805,19 +1946,30 @@ impl CredenceBond {
     /// - `ContractError::Overflow` when the addition would overflow `i128`.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
+    /// Top up an existing bond for `identity`, escrowing additional USDC.
+    ///
+    /// Authority: `identity` must authorize the call.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// this entry point pulls `amount` USDC from `identity` into the bond
+    /// contract via [`token_integration::transfer_into_contract`] (allowance
+    /// pre-check + balance-delta fee-on-transfer guard). The caller must have
+    /// pre-approved the bond contract for at least `amount`. Without a
+    /// configured token the entry point operates in phantom-balance mode
+    /// and only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The `IdentityBond` storage entry and tier events are updated **before**
+    /// the external `transfer_from` so a re-entering token contract cannot
+    /// observe stale state.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize top-ups.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        if bond.identity != identity {
-            panic_with_error!(e, ContractError::NotBondOwner);
-        }
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &bond.identity, amount);
@@ -1843,6 +1995,10 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+        // Issue #996: same-ledger sequencing guard — record this ledger
+        // sequence so that any subsequent same-ledger slash is blocked by
+        // `same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase`.
+        crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -1855,18 +2011,11 @@ impl CredenceBond {
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn extend_duration(e: Env, identity: Address, additional_duration: u64) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: bond owner must authorize duration extensions.
         identity.require_auth();
         let key = DataKey::Bond;
-        let mut bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        if bond.identity != identity {
-            panic_with_error!(e, ContractError::NotBondOwner);
-        }
-        bump_instance_ttl(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e);
 
         bond.bond_duration = bond
             .bond_duration
@@ -1888,6 +2037,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/fees.md`](../../../docs/fees.md)
     pub fn deposit_fees(e: Env, amount: i128) {
+        Self::require_not_paused(&e);
         credence_errors::require_positive_amount!(&e, amount);
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
@@ -1905,17 +2055,13 @@ impl CredenceBond {
     /// See also: [`docs/withdrawal.md`](../../../docs/withdrawal.md),
     /// [`docs/reentrancy.md`](../../../docs/reentrancy.md)
     pub fn withdraw_bond(e: Env, identity: Address) -> i128 {
+        Self::require_not_paused(&e);
         // auth: tree shape [Identity] -> [Bond::withdraw_bond]; may be delegated.
         identity.require_auth();
         Self::acquire_lock(&e);
 
         let bond_key = DataKey::Bond;
-        let bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&bond_key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
-        bump_instance_ttl(&e);
+        let bond: IdentityBond = guards::load_bond(&e);
 
         if bond.identity != identity {
             Self::release_lock(&e);
@@ -1988,32 +2134,26 @@ impl CredenceBond {
         slash_amount: i128,
         idempotency_salt: Bytes,
     ) -> i128 {
+        Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
         if idempotency_salt.len() > 0 {
-            idempotency::check_and_record(&e, &admin, &Symbol::new(&e, "slash_bond"), &idempotency_salt);
+            idempotency::check_and_record(
+                &e,
+                &admin,
+                &Symbol::new(&e, "slash_bond"),
+                &idempotency_salt,
+            );
         }
 
         Self::acquire_lock(&e);
 
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            Self::release_lock(&e);
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
 
         let bond_key = DataKey::Bond;
-        let bond: IdentityBond = e
-            .storage()
-            .instance()
-            .get(&bond_key)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
+        let bond: IdentityBond = guards::load_bond(&e);
 
         if !bond.active {
             Self::release_lock(&e);
@@ -2038,7 +2178,8 @@ impl CredenceBond {
             notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
-        invariants::assert_self_consistent(&e);
+        bump_instance_ttl(&e);
+        bump_instance_ttl(&e);
 
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
@@ -2058,24 +2199,22 @@ impl CredenceBond {
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     pub fn collect_fees(e: Env, admin: Address, idempotency_salt: Bytes) -> i128 {
+        Self::require_not_paused(&e);
         admin.require_auth();
 
         // Check idempotency if a salt is provided (non-empty)
         if idempotency_salt.len() > 0 {
-            idempotency::check_and_record(&e, &admin, &Symbol::new(&e, "collect_fees"), &idempotency_salt);
+            idempotency::check_and_record(
+                &e,
+                &admin,
+                &Symbol::new(&e, "collect_fees"),
+                &idempotency_salt,
+            );
         }
 
         Self::acquire_lock(&e);
 
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            Self::release_lock(&e);
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        guards::require_admin(&e, &admin);
 
         let fee_key = Symbol::new(&e, "fees");
         let fees: i128 = e.storage().instance().get(&fee_key).unwrap_or(0);
@@ -2105,6 +2244,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md)
     pub fn set_liquidation_treasury(e: Env, admin: Address, treasury: Address) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -2140,6 +2280,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn set_slash_treasury(e: Env, admin: Address, treasury: Address) {
+        Self::require_not_paused(&e);
         admin.require_auth();
         let stored_admin: Address = e
             .storage()
@@ -2216,6 +2357,7 @@ impl CredenceBond {
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
     /// [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     pub fn liquidate(e: Env, admin: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::liquidate]; usually direct admin call.
         admin.require_auth();
         Self::acquire_lock(&e);
@@ -2304,9 +2446,9 @@ impl CredenceBond {
         // to perform the actual sweep.
 
         let reason_sym: Symbol = if fully_slashed {
-            Symbol::new(&e, liquidation_reason::FULLY_SLASHED)
+            Symbol::new(&e, self::liquidation_reason::FULLY_SLASHED)
         } else {
-            Symbol::new(&e, liquidation_reason::EXPIRED_UNRENEWED)
+            Symbol::new(&e, self::liquidation_reason::EXPIRED_UNRENEWED)
         };
         events::emit_bond_liquidated(&e, &bond.identity, residual, reason_sym, now, &admin);
 
@@ -2337,6 +2479,7 @@ impl CredenceBond {
     /// client.set_callback(&callback);
     /// ```
     pub fn set_callback(e: Env, addr: Address) {
+        Self::require_not_paused(&e);
         e.storage()
             .instance()
             .set(&Symbol::new(&e, "callback"), &addr);
@@ -2389,6 +2532,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/batch-operations.md`](../../../docs/batch-operations.md)
     pub fn expire_claims(e: Env, user: Address, max_iter: u32) -> u32 {
+        Self::require_not_paused(&e);
         claims::expire_claims_bounded(&e, &user, max_iter)
     }
 
@@ -2419,19 +2563,6 @@ impl CredenceBond {
     // -----------------------------------------------------------------
     // Internal helpers (lock, treasury config, eligibility predicates)
     // -----------------------------------------------------------------
-    fn acquire_lock(e: &Env) {
-        let key = Symbol::new(e, "locked");
-        let locked: bool = e.storage().instance().get(&key).unwrap_or(false);
-        if locked {
-            panic_with_error!(e, ContractError::ReentrancyDetected);
-        }
-        e.storage().instance().set(&key, &true);
-    }
-
-    fn release_lock(e: &Env) {
-        let key = Symbol::new(e, "locked");
-        e.storage().instance().set(&key, &false);
-    }
 
     fn check_lock(e: &Env) -> bool {
         let key = Symbol::new(e, "locked");
@@ -2549,7 +2680,8 @@ impl CredenceBond {
     /// - `ContractError::EmergencyDrainNotPermitted` — not paused, or no ETA scheduled.
     /// - `ContractError::TimelockNotReady` — ETA not yet reached.
     /// - Panics with `"amount must be positive"` — `amount <= 0`.
-    /// - Panics with `"recipient must be treasury"` — wrong recipient.
+    /// - `ContractError::TreasuryBeneficiaryMismatch` (code 610) — wrong recipient
+    ///   (enforced by `credence_errors::require_matching_treasury_beneficiary`).
     pub fn emergency_drain_to_treasury(
         e: Env,
         admin: Address,
@@ -2591,6 +2723,76 @@ impl CredenceBond {
     pub fn get_drain_record(e: Env, id: u64) -> emergency_drain::DrainRecord {
         emergency_drain::get_drain_record(&e, id)
     }
+
+    /// Transfer tokens to multiple recipients in a single atomic operation.
+    ///
+    /// All transfers are validated before any are executed. If any validation
+    /// fails, the entire batch is rejected.
+    ///
+    /// # Arguments
+    /// * `admin` - Must be the stored admin
+    /// * `items` - Vector of `BatchTransferItem` (recipient, amount) pairs
+    ///
+    /// # Returns
+    /// Number of successful transfers
+    ///
+    /// # Events
+    /// Emits `batch_transfer` with topics `(batch_transfer, admin)` and data `(count, total_amount)`
+    ///
+    /// # Errors
+    /// - `ContractError::NotInitialized` when admin has not been set
+    /// - `ContractError::NotAdmin` when `admin` is not the configured admin
+    /// - `ContractError::EmptyBatch` when `items` is empty
+    /// - `ContractError::BatchTooLarge` when `items.len() > MAX_BATCH_TRANSFER_SIZE`
+    /// - Panics with `"amount must be positive"` for any item with `amount <= 0`
+    /// - Panics with `"recipient cannot be the contract itself"` for any self-transfer
+    pub fn batch_transfer(e: Env, admin: Address, items: Vec<BatchTransferItem>) -> u32 {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        if stored_admin != admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        crate::validation::verify_batch_size(&e, items.len(), MAX_BATCH_TRANSFER_SIZE);
+
+        let contract = e.current_contract_address();
+        let mut total_amount: i128 = 0;
+
+        // Validate all items before any transfer (atomic: all or nothing)
+        for i in 0..items.len() {
+            let item = items.get(i).unwrap();
+            if item.amount <= 0 {
+                panic!("amount must be positive");
+            }
+            if item.recipient == contract {
+                panic!("recipient cannot be the contract itself");
+            }
+            total_amount = total_amount
+                .checked_add(item.amount)
+                .expect("total amount overflow");
+        }
+
+        // Execute all transfers
+        for i in 0..items.len() {
+            let item = items.get(i).unwrap();
+            safe_token::safe_transfer(&e, &item.recipient, item.amount);
+        }
+
+        let count = items.len();
+
+        e.events().publish(
+            (Symbol::new(&e, "batch_transfer"), admin),
+            (count, total_amount),
+        );
+
+        count
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2598,6 +2800,7 @@ impl CredenceBond {
 // ---------------------------------------------------------------------------
 
 /// Represents a validated, created bond.
+#[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bond {
     pub amount: i128,
@@ -2665,6 +2868,7 @@ pub fn create_bond(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
 
     #[test]
     fn is_valid_bond_positive_amount() {
@@ -2817,6 +3021,93 @@ mod tests {
         let err = create_bond(100, 0, 0, true, 0).unwrap_err();
         assert_eq!(err, ContractError::InvalidBondDuration);
     }
+
+    #[test]
+    fn bond_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let identity = Address::generate(&e);
+        client.initialize(&admin);
+
+        client.create_bond(&identity, &50_i128, &MAX_BOND_DURATION_SECONDS as u64, &false, &0_u64);
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let bond = client.get_identity_state();
+        assert_eq!(bond.bonded_amount, 50);
+        assert_eq!(bond.identity, identity);
+    }
+
+    #[test]
+    fn attestation_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let attester = Address::generate(&e);
+        client.initialize(&admin);
+        client.register_attester(&attester);
+
+        let subject = Address::generate(&e);
+        let attestation = e.as_contract(&contract_id, || {
+            let deadline = e.ledger().timestamp() + 100_000;
+            let nonce = crate::nonce::get_nonce(&e, &attester);
+            client.add_attestation(
+                &attester,
+                &subject,
+                &String::from_str(&e, "ttl"),
+                &contract_id,
+                &deadline,
+                &nonce,
+            )
+        });
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let loaded = client.get_attestation(&attestation.id);
+        assert_eq!(loaded.id, attestation.id);
+        assert_eq!(loaded.identity, subject);
+    }
+
+    #[test]
+    fn attester_stake_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let attester = Address::generate(&e);
+        client.initialize(&admin);
+        client.register_attester(&attester);
+
+        e.as_contract(&contract_id, || {
+            weighted_attestation::set_attester_stake(&e, &attester, 123);
+        });
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let weight = e.as_contract(&contract_id, || weighted_attestation::compute_weight(&e, &attester));
+        assert_eq!(weight, 123u32);
+    }
 }
 
 #[cfg(test)]
@@ -2855,7 +3146,6 @@ mod test_early_exit_precision;
 #[cfg(test)]
 mod test_early_exit_penalty;
 
-
 /// Deliberately-divergent contract used by `test_differential` to verify the
 /// harness detects behavioural divergence.  Never shipped to mainnet.
 #[cfg(test)]
@@ -2883,3 +3173,19 @@ mod test_storage_ttl;
 /// Tests for the grace-window read view and admin-gated setter (issue #655).
 #[cfg(test)]
 mod test_grace_window;
+
+/// Tests for the batch_transfer entrypoint (issue #917).
+#[cfg(test)]
+mod test_batch_transfer;
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceBond {
+    fn get_admin(e: Env) -> Address {
+        storage::get_admin(&e).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        let current_admin = storage::get_admin(&e).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        Self::transfer_admin(e, current_admin, new_admin);
+    }
+}

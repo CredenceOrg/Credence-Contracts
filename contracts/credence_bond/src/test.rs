@@ -6,7 +6,7 @@ fn test_create_bond() {
     let e = Env::default();
     let (client, _admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
 
-    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     assert!(bond.active);
     assert_eq!(bond.bonded_amount, 1000_i128);
@@ -20,7 +20,7 @@ fn test_top_up_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     client.top_up(&identity, &0_i128);
 }
 
@@ -30,7 +30,7 @@ fn test_top_up_rejects_negative_amount() {
     let e = Env::default();
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     client.top_up(&identity, &-100_i128);
 }
 
@@ -40,7 +40,7 @@ fn test_withdraw_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     e.ledger().with_mut(|l| l.timestamp += 86401);
     client.withdraw(&identity, &0_i128);
 }
@@ -51,7 +51,7 @@ fn test_withdraw_rejects_negative_amount() {
     let e = Env::default();
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     e.ledger().with_mut(|l| l.timestamp += 86401);
     client.withdraw(&identity, &-100_i128);
 }
@@ -62,7 +62,7 @@ fn test_slash_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     client.slash(&admin, &identity, &0_i128);
 }
 
@@ -72,7 +72,7 @@ fn test_slash_rejects_negative_amount() {
     let e = Env::default();
     let (client, admin, identity, _token_id, _bond_id) = test_helpers::setup_with_token(&e);
     
-    client.create_bond_with_rolling(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     client.slash(&admin, &identity, &-100_i128);
 }
 

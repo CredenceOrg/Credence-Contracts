@@ -522,16 +522,43 @@ Emitted when a verifier's reputation changes.
 
 #### `param_updated`
 
-Emitted when a protocol parameter is updated.
+Emitted when a governance-controlled protocol parameter is updated.
 
-| Component | Position | Type    | Description       |
-| --------- | -------- | ------- | ----------------- |
-| Topics    | 0        | Symbol  | `"param_updated"` |
-| Topics    | 1        | Symbol  | Parameter key     |
-| Topics    | 2        | Symbol  | Category          |
-| Topics    | 3        | Address | Admin             |
-| Data      | 0        | i128    | Old value         |
-| Data      | 1        | i128    | New value         |
+| Component | Position | Type    | Description                                   |
+| --------- | -------- | ------- | --------------------------------------------- |
+| Topics    | 0        | Symbol  | `"param_updated"`                             |
+| Topics    | 1        | Symbol  | Parameter key (see table below)               |
+| Topics    | 2        | Symbol  | Category (`"fee"`, `"cooldown"`, `"tier"`, `"risk"`) |
+| Topics    | 3        | Address | Admin who authorised the change               |
+| Data      | 0        | i128    | Old value (before update)                     |
+| Data      | 1        | i128    | New value (after update)                      |
+
+##### Parameter Key Reference
+
+Each governance parameter uses a canonical 7-character `Symbol` key emitted in
+`topics[1]`. Indexers should match against these exact symbols.
+
+| # | Parameter                | Key Symbol  | Category    | Storage type | i128 range |
+|---|--------------------------|-------------|-------------|-------------|------------|
+| 1 | Protocol fee (bps)       | `fee_prot`  | `fee`       | `u32`       | 0–1000     |
+| 2 | Attestation fee (bps)    | `fee_att`   | `fee`       | `u32`       | 0–500      |
+| 3 | Withdrawal cooldown (s)  | `cd_with`   | `cooldown`  | `u64`       | 0–2 592 000 |
+| 4 | Slash cooldown (s)       | `cd_slash`  | `cooldown`  | `u64`       | 0–604 800  |
+| 5 | Bronze threshold         | `th_brnz`   | `tier`      | `i128`      | 0–10¹²     |
+| 6 | Silver threshold         | `th_slvr`   | `tier`      | `i128`      | 10⁸–10¹³   |
+| 7 | Gold threshold           | `th_gold`   | `tier`      | `i128`      | 10⁹–10¹⁴   |
+| 8 | Platinum threshold       | `th_plat`   | `tier`      | `i128`      | 10¹⁰–10¹⁵  |
+| 9 | Max leverage multiplier  | `max_lev`   | `risk`      | `u32`       | 1–10⁸      |
+
+Values natively stored as `u32` or `u64` are cast to `i128` in the event payload
+and are guaranteed to fit without loss.
+
+##### Indexing Guidance
+
+- **All parameter changes**: filter `topics[0] == Symbol("param_updated")`
+- **By category**: filter `topics[2] == Symbol("fee")` (or `"cooldown"`, `"tier"`, `"risk"`)
+- **By specific parameter**: filter `topics[1] == Symbol("fee_prot")` (or any key from table)
+- **By admin**: filter `topics[3] == admin_address`
 
 ### Upgrade Authorization
 
@@ -770,6 +797,9 @@ Emitted when a pause proposal is executed.
 - **Admin accountability**: Filter `bond_slashed_v2` where `topics[5] == admin_address`.
 - **Governance audit trail**: Collect `slash_proposed` → `governance_vote` → `slash_proposal_executed` / `slash_proposal_rejected` grouped by `data[0]` (proposal ID).
 - **Verifier reputation changes**: Filter `verifier_reputation_updated` by `topics[1]` (verifier address) to track reputation history.
+- **Parameter changes by category**: Filter `param_updated` where `topics[2] == Symbol("fee")` (or `"cooldown"`, `"tier"`, `"risk"`) to slice governance activity by area.
+- **Parameter changes by key**: Filter `param_updated` where `topics[1] == Symbol("fee_prot")` (or any key from the [parameter key reference](#parameter-key-reference)) to track a single parameter over time.
+- **Parameter changes by admin**: Filter `param_updated` where `topics[3] == admin_address` to audit a specific governance actor.
 
 ### Credence Delegation Queries
 

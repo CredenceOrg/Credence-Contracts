@@ -133,6 +133,19 @@ fn test_withdrawal_allowed_when_exactly_at_floor() {
 }
 
 #[test]
+fn test_withdrawal_allowed_when_exactly_one_above_floor() {
+    let e = Env::default();
+    let (client, _admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 5_000, 1_000);
+
+    // Boundary: withdraw 3999, leaving exactly 1001 (one above floor)
+    let id = client.propose_withdrawal(&signer, &recipient, &3_999);
+    client.approve_withdrawal(&signer, &id);
+    client.execute_withdrawal(&id, &0);
+
+    assert_eq!(client.get_balance(), 1_001);
+}
+
+#[test]
 fn test_withdrawal_with_zero_min_liquidity() {
     let e = Env::default();
     let (client, _admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 1_000, 0);
@@ -425,4 +438,39 @@ fn test_proposal_amount_validation_before_guardrails() {
 
     // Proposal validation happens first - can't propose more than balance
     client.propose_withdrawal(&signer, &recipient, &10_000);
+}
+
+#[test]
+fn test_operator_top_up_allows_withdrawal() {
+    let e = Env::default();
+    // Initial setup: balance 9_000, min liquidity 8_000
+    let (client, admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 9_000, 8_000);
+
+    // First attempt: withdraw 2_000 would leave 7_000 < floor => should panic
+    let id = client.propose_withdrawal(&signer, &recipient, &2_000);
+    client.approve_withdrawal(&signer, &id);
+    // Expect failure due to insufficient treasury balance (floor breach)
+    let result = client.try_execute_withdrawal(&id, &0);
+    assert!(result.is_err(), "withdrawal should have failed due to floor breach");
+
+    // Operator (admin) tops up the treasury
+    client.receive_fee(&admin, &2_000, &FundSource::ProtocolFee);
+
+    // New withdrawal proposal of 2_000 should now succeed
+    let id2 = client.propose_withdrawal(&signer, &recipient, &2_000);
+    client.approve_withdrawal(&signer, &id2);
+    client.execute_withdrawal(&id2, &0);
+
+    // Remaining balance should be 9_000 (original) + 2_000 top‑up - 2_000 withdrawal = 9_000
+    assert_eq!(client.get_balance(), 9_000);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #602)")]
+fn test_operator_top_up_prevents_withdrawal() {
+    let e = Env::default();
+    let (client, _admin, signer, recipient, _token) = setup_withdrawal_scenario(&e, 9_000, 8_000);
+    let id = client.propose_withdrawal(&signer, &recipient, &2_000);
+    client.approve_withdrawal(&signer, &id);
+    client.execute_withdrawal(&id, &0);
 }

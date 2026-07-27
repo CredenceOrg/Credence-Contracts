@@ -112,7 +112,7 @@ pub fn validate_batch_bonds(e: &Env, params_list: &Vec<BatchBondParams>) {
 ///     BatchBondParams {
 ///         identity: addr1,
 ///         amount: 1000,
-///         duration: 86400,
+///         duration: credence_math::Timestamp::SECONDS_PER_DAY,
 ///         is_rolling: false,
 ///         notice_period_duration: 0,
 ///     },
@@ -254,7 +254,7 @@ mod tests {
         params_list.push_back(BatchBondParams {
             identity: addr1,
             amount: 1000,
-            duration: 86400,
+            duration: credence_math::Timestamp::SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });
@@ -262,7 +262,7 @@ mod tests {
         params_list.push_back(BatchBondParams {
             identity: addr2,
             amount: 2000,
-            duration: 86400,
+            duration: credence_math::Timestamp::SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });

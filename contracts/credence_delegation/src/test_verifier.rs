@@ -9,7 +9,7 @@
 
 #![cfg(test)]
 
-use soroban_sdk::Env;
+use soroban_sdk::{String, Env};
 use crate::{
     domain::{DelegatedActionPayload, DomainTag, decode_scheme_safe, verify_scheme_supported},
     verifier::{SchemeTag, validate_scheme_registered},
@@ -61,6 +61,7 @@ fn test_legacy_payload_decoding() {
         nonce: 0,
         scheme: 0, // Ed25519
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -79,6 +80,7 @@ fn test_payload_with_secp256r1() {
         nonce: 0,
         scheme: 1, // Secp256r1
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -97,6 +99,7 @@ fn test_payload_with_mldsa44() {
         nonce: 0,
         scheme: 2, // MLDSA44
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);
@@ -115,6 +118,7 @@ fn test_unknown_scheme_defaults_to_ed25519() {
         nonce: 0,
         scheme: 255, // Unknown scheme
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
 
     let decoded_scheme = decode_scheme_safe(&payload);

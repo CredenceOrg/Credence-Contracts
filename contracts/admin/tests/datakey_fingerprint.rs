@@ -1,3 +1,8 @@
+// This is an off-chain integration test binary, not deployed WASM. Issue #713
+// disallows `format!`/`write!`/`writeln!`/`format_args!` in production contract
+// code; integration tests aren't on chain, so we silence the lint locally.
+#![allow(clippy::disallowed_macros)]
+
 //! Storage-key fingerprint snapshot for `admin::DataKey`.
 //!
 //! Every `DataKey` variant encodes to a specific byte sequence that becomes the
@@ -9,7 +14,7 @@
 //! Field values are fixed, deterministic placeholders: the fingerprint is about
 //! the variant *tag and shape*, not the runtime data stored under it.
 
-use admin::{DataKey, AdminRole};
+use admin::{AdminRole, DataKey};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::xdr::{FromXdr, ToXdr};
 use soroban_sdk::{Address, Bytes, Env};
@@ -53,7 +58,6 @@ fn fingerprints(env: &Env) -> Vec<(&'static str, String)> {
 fn render(fps: &[(&'static str, String)]) -> String {
     let mut out = String::new();
     for (name, hex) in fps {
-
         out.push_str(name);
         out.push_str(" = ");
         out.push_str(hex);
@@ -133,6 +137,7 @@ fn previous_snapshot_deserialises_with_new_spec() {
             .collect();
 
         let bytes = Bytes::from_slice(&env, &bytes_vec);
-        let _ = DataKey::from_xdr(&env, &bytes).expect("Failed to deserialize DataKey from snapshot hex");
+        let _ = DataKey::from_xdr(&env, &bytes)
+            .expect("Failed to deserialize DataKey from snapshot hex");
     }
 }

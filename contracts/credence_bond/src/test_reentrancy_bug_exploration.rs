@@ -1,4 +1,4 @@
-﻿//! Bug Condition Exploration Test - Reentrancy Vulnerability
+//! Bug Condition Exploration Test - Reentrancy Vulnerability
 //!
 //! **Validates: Requirements 1.1, 1.2, 1.3, 1.4**
 //!
@@ -146,7 +146,7 @@ fn test_withdraw_bond_reentrancy_attack() {
     let (client, admin, identity, _token_id, contract_id) = test_helpers::setup_with_token(&e);
 
     // Create bond with 2000 tokens
-    client.create_bond(&identity, &2000_i128, &86400_u64);
+    client.create_bond(&identity, &2000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time past lock-up period to allow withdrawal
     e.ledger().with_mut(|l| {
@@ -193,11 +193,11 @@ fn test_withdraw_early_reentrancy_attack() {
     client.set_early_exit_config(&admin, &treasury, &1000_u32);
 
     // Create bond with 2000 tokens
-    client.create_bond(&identity, &2000_i128, &86400_u64);
+    client.create_bond(&identity, &2000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time to middle of lock-up period (allows early withdrawal)
     e.ledger().with_mut(|l| {
-        l.timestamp += 43200; // Half of 86400
+        l.timestamp += 43200; // Half of credence_math::Timestamp::SECONDS_PER_DAY
     });
 
     // Setup malicious attacker contract
@@ -239,7 +239,7 @@ fn test_execute_cooldown_withdrawal_reentrancy_attack() {
     client.set_cooldown_period(&admin, &3600_u64);
 
     // Create bond with 2000 tokens (rolling)
-    client.create_bond_with_rolling(&identity, &2000_i128, &86400_u64, &true, &3600_u64);
+    client.create_bond_with_rolling(&identity, &2000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &3600_u64);
 
     // Request withdrawal
     client.request_withdrawal(&identity);
@@ -279,7 +279,7 @@ fn test_nested_reentrancy_blocked() {
     let (client, admin, identity, _token_id, contract_id) = test_helpers::setup_with_token(&e);
 
     // Create bond with 3000 tokens
-    client.create_bond(&identity, &3000_i128, &86400_u64);
+    client.create_bond(&identity, &3000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time past lock-up period
     e.ledger().with_mut(|l| {

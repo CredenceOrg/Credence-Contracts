@@ -12,8 +12,8 @@
 
 #![allow(dead_code)]
 
-use crate::{events, DataKey};
 use crate::parameters::MAX_QUERY_LIMIT;
+use crate::{events, DataKey};
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Maximum number of claims that can be processed in a single batch
@@ -415,9 +415,7 @@ pub fn process_claims(
         paid_claim.processed = true;
         let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
         let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
-        e.storage()
-            .persistent()
-            .set(&claim_by_id_key, &paid_claim);
+        e.storage().persistent().set(&claim_by_id_key, &paid_claim);
         e.storage()
             .persistent()
             .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
@@ -500,6 +498,218 @@ pub fn process_claims(
     // Emit events
     events::emit_claims_processed(e, user, &result, &processed_claims);
 
+    result
+}
+
+/// Process a single claim by its unique `claim_id`
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address claiming the reward
+/// * `claim_id` - ID of the claim to process
+///
+/// # Returns
+/// ClaimResult with details of the processed claim
+///
+/// # Panics
+/// * If claim is not found, expired, or already processed
+pub fn process_claim_by_id(
+    e: &Env,
+    user: &Address,
+    claim_id: u64,
+) -> ClaimResult {
+    user.require_auth();
+
+    let now = e.ledger().timestamp();
+    let mut claims = get_pending_claims(e, user);
+
+    let mut found_idx = None;
+    for (i, claim) in claims.iter().enumerate() {
+        if claim.claim_id == claim_id {
+            found_idx = Some(i);
+            break;
+        }
+    }
+
+    let idx = found_idx.expect("claim not found for user");
+    let claim = claims.get(idx as u32).unwrap();
+
+    if claim.processed {
+        panic!("claim already processed");
+    }
+    if claim.expires_at > 0 && now > claim.expires_at {
+        panic!("claim expired");
+    }
+
+    let mut paid_claim = claim.clone();
+    paid_claim.processed = true;
+
+    let claim_by_id_key = DataKey::ClaimById(claim_id);
+    let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
+    e.storage().persistent().set(&claim_by_id_key, &paid_claim);
+    e.storage().persistent().extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+
+    claims.remove(idx as u32);
+    
+    if claims.is_empty() {
+        e.storage().persistent().remove(&DataKey::PendingClaims(user.clone()));
+        e.storage().persistent().remove(&DataKey::ClaimableAmount(user.clone()));
+    } else {
+        let pending_key = DataKey::PendingClaims(user.clone());
+        e.storage().persistent().set(&pending_key, &claims);
+        e.storage().persistent().extend_ttl(&pending_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+
+        let current_amount = get_claimable_amount(e, user);
+        let remaining_amount = current_amount.checked_sub(claim.amount).expect("amount underflow");
+        let claimable_key = DataKey::ClaimableAmount(user.clone());
+        e.storage().persistent().set(&claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(&claimable_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+    }
+
+    if claim.amount > 0 {
+        let token: Address = e.storage().instance().get(&DataKey::BondToken).expect("token not configured");
+        let contract = e.current_contract_address();
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &claim.amount);
+    }
+
+    let mut claim_types = Vec::new(e);
+    claim_types.push_back(claim.claim_type);
+    
+    let result = ClaimResult {
+        processed_count: 1,
+        total_amount: claim.amount,
+        claim_types,
+    };
+    
+    let mut processed_claims = Vec::new(e);
+    processed_claims.push_back(paid_claim);
+    events::emit_claims_processed(e, user, &result, &processed_claims);
+
+    result
+}
+
+/// Process claims for a user with cursor pagination
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address claiming rewards
+/// * `cursor` - Start processing claims with `claim_id > cursor`
+/// * `limit` - Maximum number of claims to process
+/// * `claim_types` - Optional filter for specific claim types (empty = all types)
+///
+/// # Returns
+/// ClaimResult with details of processed claims
+pub fn process_claims_paginated(
+    e: &Env,
+    user: &Address,
+    cursor: u64,
+    limit: u32,
+    claim_types: Vec<ClaimType>,
+) -> ClaimResult {
+    user.require_auth();
+
+    let now = e.ledger().timestamp();
+    let claims = get_pending_claims(e, user);
+
+    if claims.is_empty() {
+        return ClaimResult {
+            processed_count: 0,
+            total_amount: 0,
+            claim_types: Vec::new(e),
+        };
+    }
+
+    let filter_types = !claim_types.is_empty();
+    let mut type_set: Map<ClaimType, bool> = Map::new(e);
+    if filter_types {
+        for i in 0..claim_types.len() {
+            type_set.set(claim_types.get(i).unwrap(), true);
+        }
+    }
+
+    let actual_limit = if limit == 0 { MAX_BATCH_CLAIMS } else { limit.min(MAX_BATCH_CLAIMS) };
+    
+    let mut processed_claims = Vec::new(e);
+    let mut valid_claims = Vec::new(e);
+    let mut total_amount = 0i128;
+    let mut processed_types = Vec::new(e);
+    let mut processed_count_in_batch = 0;
+
+    for i in 0..claims.len() {
+        let claim = claims.get(i).unwrap();
+
+        if claim.processed || (claim.expires_at > 0 && now > claim.expires_at) {
+            continue;
+        }
+
+        if claim.claim_id <= cursor || processed_count_in_batch >= actual_limit {
+            valid_claims.push_back(claim);
+            continue;
+        }
+
+        if filter_types && !type_set.contains_key(claim.claim_type) {
+            valid_claims.push_back(claim);
+            continue;
+        }
+
+        let mut paid_claim = claim.clone();
+        paid_claim.processed = true;
+        let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
+        let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
+        e.storage().persistent().set(&claim_by_id_key, &paid_claim);
+        e.storage().persistent().extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+
+        processed_claims.push_back(paid_claim.clone());
+        total_amount = total_amount.checked_add(claim.amount).expect("claim total overflow");
+        
+        let mut type_exists = false;
+        for j in 0..processed_types.len() {
+            if processed_types.get(j).unwrap() == claim.claim_type {
+                type_exists = true;
+                break;
+            }
+        }
+        if !type_exists {
+            processed_types.push_back(claim.claim_type);
+        }
+
+        processed_count_in_batch += 1;
+    }
+
+    if valid_claims.is_empty() {
+        e.storage().persistent().remove(&DataKey::PendingClaims(user.clone()));
+        e.storage().persistent().remove(&DataKey::ClaimableAmount(user.clone()));
+    } else {
+        let remaining_pending_key = DataKey::PendingClaims(user.clone());
+        e.storage().persistent().set(&remaining_pending_key, &valid_claims);
+        e.storage().persistent().extend_ttl(&remaining_pending_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+        
+        let mut remaining_amount = 0i128;
+        for claim in valid_claims.iter() {
+            remaining_amount += claim.amount;
+        }
+        
+        let remaining_claimable_key = DataKey::ClaimableAmount(user.clone());
+        e.storage().persistent().set(&remaining_claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(&remaining_claimable_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+    }
+
+    if total_amount > 0 {
+        let token: Address = e.storage().instance().get(&DataKey::BondToken).expect("token not configured");
+        let contract = e.current_contract_address();
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &total_amount);
+    }
+
+    let result = ClaimResult {
+        processed_count: processed_count_in_batch,
+        total_amount,
+        claim_types: processed_types,
+    };
+    
+    if processed_count_in_batch > 0 {
+        events::emit_claims_processed(e, user, &result, &processed_claims);
+    }
+    
     result
 }
 

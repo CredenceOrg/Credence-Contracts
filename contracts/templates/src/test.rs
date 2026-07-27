@@ -40,7 +40,7 @@ fn test_initialize_sets_admin() {
 }
 
 #[test]
-#[should_panic(expected = "already initialized")]
+#[should_panic(expected = "Error(Contract, #2)")]
 fn test_initialize_twice_panics() {
     let e = Env::default();
     e.mock_all_auths();
@@ -277,7 +277,7 @@ fn test_expiry_pattern() {
 }
 
 #[test]
-#[should_panic(expected = "record expired")]
+#[should_panic(expected = "Error(Contract, #222)")]
 fn test_get_expired_record_panics() {
     let e = Env::default();
     e.mock_all_auths();

@@ -14,6 +14,12 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -46,7 +52,7 @@ pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_transition, ArbitrationError, DisputeStatus};
+use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -85,6 +91,7 @@ pub enum DataKey {
     ArbitratorRegistry,
     MinTotalWeight,
     MinVoters,
+    ActiveDispute(Address),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
@@ -93,6 +100,22 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), ArbitrationError> {
+    // Prevent a creator from re-entering the dispute lifecycle while an
+    // unresolved dispute remains active for the same address.
+    let key = DataKey::ActiveDispute(creator.clone());
+    if e.storage().instance().has(&key) {
+        return Err(ArbitrationError::OngoingDispute);
+    }
+    Ok(())
+}
+
+fn clear_active_dispute(e: &Env, creator: &Address) {
+    e.storage()
+        .instance()
+        .remove(&DataKey::ActiveDispute(creator.clone()));
 }
 
 #[contract]
@@ -218,6 +241,8 @@ impl CredenceArbitration {
         pausable::require_not_paused(&e);
         creator.require_auth();
 
+        require_no_ongoing_dispute(&e, &creator)?;
+
         let counter_key = DataKey::DisputeCounter;
         let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
         let next_id = id
@@ -246,6 +271,9 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        e.storage()
+            .instance()
+            .set(&DataKey::ActiveDispute(creator.clone()), &id);
 
         // Lifecycle events: created + status transition
         e.events()
@@ -305,6 +333,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        clear_active_dispute(&e, &dispute.creator);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -500,18 +529,14 @@ impl CredenceArbitration {
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
+            clear_active_dispute(&e, &dispute.creator);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
-                (
-                    DisputeStatus::Resolving as u32,
-                    DisputeStatus::Tied as u32,
-                ),
+                (DisputeStatus::Resolving as u32, DisputeStatus::Tied as u32),
             );
-            e.events().publish(
-                (Symbol::new(&e, "dispute_tied"), dispute_id),
-                (),
-            );
+            e.events()
+                .publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
 
             Ok(0)
         } else {
@@ -522,6 +547,7 @@ impl CredenceArbitration {
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
+            clear_active_dispute(&e, &dispute.creator);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
@@ -722,6 +748,37 @@ impl CredenceArbitration {
         bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized));
+        admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for ArbitrationContract {
+    fn get_admin(e: Env) -> Address {
+        e.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized))
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
+    }
 }
 
 #[cfg(test)]
@@ -738,3 +795,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_events_schema;
+
+#[cfg(test)]
+mod test_dispute_guard;

@@ -18,6 +18,8 @@
 
 #[cfg(test)]
 mod tests {
+    extern crate alloc;
+    use alloc::vec::Vec;
     use crate::{CredenceTreasury, CredenceTreasuryClient, FundSource};
     use proptest::prelude::*;
     use soroban_sdk::testutils::Address as _;
@@ -118,22 +120,20 @@ mod tests {
 
             for (i, op) in ops.iter().enumerate() {
                 match op {
-                    TreasuryOp::Deposit { source, amount } => {
-                        let fund_source = if *source == 0 {
-                            FundSource::ProtocolFee
-                        } else {
-                            FundSource::SlashedFunds
-                        };
-                        client.receive_fee(&admin, amount, &fund_source);
-                        assert_invariant(&client, &format!("after deposit op #{i}"));
+                    TreasuryOp::Deposit { source: 0u8, amount } => {
+                        client.receive_fee(&admin, amount, &FundSource::ProtocolFee);
+                        assert_invariant(&client, "after deposit");
                     }
+                    TreasuryOp::Deposit { source: 1u8, amount } => {
+                        client.receive_fee(&admin, amount, &FundSource::SlashedFunds);
+                        assert_invariant(&client, "after deposit");
+                    }
+                    TreasuryOp::Deposit { .. } => {}
                     TreasuryOp::Withdraw { fraction_tenths } => {
                         let total = client.get_balance();
                         if total == 0 || *fraction_tenths == 0 {
-                            // Nothing to withdraw; invariant trivially holds.
                             continue;
                         }
-                        // Compute withdrawal amount as a fraction of the current total.
                         let amount = (total / 10) * i128::from(*fraction_tenths);
                         if amount == 0 {
                             continue;
@@ -142,10 +142,9 @@ mod tests {
                         let proposal_id = client.propose_withdrawal(&signer, &recipient, &amount);
                         client.approve_withdrawal(&signer, &proposal_id);
                         client.execute_withdrawal(&proposal_id, &0);
-                        assert_invariant(&client, &format!("after withdrawal op #{i}"));
+                        assert_invariant(&client, "after withdrawal");
 
                         // Additionally assert no individual source went negative
-                        // (redundant with assert_invariant but explicit for clarity).
                         prop_assert!(client.get_balance_by_source(&FundSource::ProtocolFee) >= 0);
                         prop_assert!(client.get_balance_by_source(&FundSource::SlashedFunds) >= 0);
 
