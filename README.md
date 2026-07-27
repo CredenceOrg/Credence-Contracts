@@ -67,6 +67,11 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 
 The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the same checks.
 
+## Contributor support
+
+Maintainer review and routine contributor support hours are documented in
+[docs/BUSINESS_HOURS.md](docs/BUSINESS_HOURS.md).
+
 ## Helpers
 
 - **`testutils::deduplicate_stable`**: a small stable dedup helper that removes duplicates while preserving first-seen order for Soroban `Vec` and `alloc::vec::Vec` (available from the `testutils` crate).
