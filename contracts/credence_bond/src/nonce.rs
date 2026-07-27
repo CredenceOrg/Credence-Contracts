@@ -115,7 +115,7 @@ pub fn require_domain_match(e: &Env, expected_contract: &Address) {
 fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
     e.storage()
         .instance()
-        .extend_ttl(MIN_NONCE_TTL, MIN_NONCE_TTL * 2);
+        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
 }
 
 // ============================================================================
@@ -199,10 +199,4 @@ mod testutils_helpers {
         super::require_domain_match(e, expected_contract);
         super::consume_nonce(e, identity, nonce);
     }
-}
-
-fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
-    e.storage()
-        .instance()
-        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
 }

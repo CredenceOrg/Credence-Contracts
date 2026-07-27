@@ -646,13 +646,7 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 124,
-
-    /// A contract state migration is in progress; state-changing calls are
-    /// rejected until it completes.
-    /// Contracts: general-purpose
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
+    MaxPauseSignersExceeded = 125,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -828,10 +822,10 @@ impl ErrorExt for ContractError {
             | ContractError::MaxPauseSignersExceeded
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
+            | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::OutsideBusinessHours
             | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
@@ -1178,9 +1172,8 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::OutsideBusinessHours   // retry within business hours
-            | ContractError::MigrationInProgress => true, // retry after migration completes
-
+            | ContractError::LeaseSignerMismatch
+            | ContractError::OutsideBusinessHours => true, // retry within business hours / after lease fix
 
             // Admin can supply a valid value / remove a signer or raise the
             // cap, then retry.
@@ -1495,6 +1488,18 @@ pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Addres
 pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) {
     if lease != actor {
         panic_with_error!(e, ContractError::LeaseSignerMismatch);
+    }
+}
+
+/// Validates that an emergency-drain recipient is exactly the configured treasury.
+///
+/// # Panics
+/// Panics with `ContractError::TreasuryBeneficiaryMismatch` when
+/// `recipient != treasury`.
+#[inline]
+pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
+    if recipient != treasury {
+        panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
     }
 }
 
