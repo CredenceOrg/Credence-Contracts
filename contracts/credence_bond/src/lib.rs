@@ -934,14 +934,18 @@ mod tests {
         client.register_attester(&attester);
 
         let subject = Address::generate(&e);
-        let attestation = crate::test_attestation::add(
-            &client,
-            &e,
-            &contract_id,
-            &attester,
-            &subject,
-            "ttl",
-        );
+        let attestation = e.as_contract(&contract_id, || {
+            let deadline = e.ledger().timestamp() + 100_000;
+            let nonce = crate::nonce::get_nonce(&e, &attester);
+            client.add_attestation(
+                &attester,
+                &subject,
+                &String::from_str(&e, "ttl"),
+                &contract_id,
+                &deadline,
+                &nonce,
+            )
+        });
 
         let mut info = e.ledger().get();
         info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
@@ -966,7 +970,9 @@ mod tests {
         client.initialize(&admin);
         client.register_attester(&attester);
 
-        weighted_attestation::set_attester_stake(&e.as_contract(&contract_id, || e.clone()), &attester, 123);
+        e.as_contract(&contract_id, || {
+            weighted_attestation::set_attester_stake(&e, &attester, 123);
+        });
 
         let mut info = e.ledger().get();
         info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
@@ -975,7 +981,7 @@ mod tests {
         );
         e.ledger().set(info);
 
-        let weight = weighted_attestation::compute_weight(&e.as_contract(&contract_id, || e.clone()), &attester);
+        let weight = e.as_contract(&contract_id, || weighted_attestation::compute_weight(&e, &attester));
         assert_eq!(weight, 123u32);
     }
 }
