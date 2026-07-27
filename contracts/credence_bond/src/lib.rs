@@ -54,6 +54,8 @@ mod test_events_schema;
 #[cfg(test)]
 mod test_events_v2;
 #[cfg(test)]
+mod test_events;
+#[cfg(test)]
 mod test_validation;
 #[cfg(test)]
 mod test_zero_address;
