@@ -117,6 +117,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [datakey-fingerprint.md](datakey-fingerprint.md) | Contributor | Storage key fingerprinting for upgrades |
+| [ARITHMETIC_HELPERS.md](ARITHMETIC_HELPERS.md) | Contributor | Complete reference for all `credence_math` arithmetic helpers, rounding modes, and overflow semantics |
 | [decimal-handling.md](decimal-handling.md) | Contributor | Fixed-point arithmetic patterns |
 | [PERCENT_SPLIT_MODEL.md](PERCENT_SPLIT_MODEL.md) | Integrator | Multi-recipient percent splits in bps; must sum to 10_000 |
 | [error-codes-wire.md](error-codes-wire.md) | Integrator | On-chain error code → off-chain mapping |

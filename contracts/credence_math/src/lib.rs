@@ -191,6 +191,30 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
         .ok_or(ContractError::Overflow)
 }
 
+/// Checked `i128` addition returning a typed error instead of panicking.
+///
+/// Returns `Ok(sum)` on success, or [`ContractError::Overflow`] when the
+/// addition would exceed `i128::MIN` / `i128::MAX`.
+///
+/// This is the typed counterpart to [`add_i128`]; prefer it on paths where
+/// overflow is a reachable runtime state so callers receive a wire-stable
+/// error code rather than a free-form panic string.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::checked_add_or_error;
+/// use credence_errors::ContractError;
+///
+/// assert_eq!(checked_add_or_error(1, 2), Ok(3));
+/// assert_eq!(checked_add_or_error(i128::MAX, 1), Err(ContractError::Overflow));
+/// assert_eq!(checked_add_or_error(i128::MIN, -1), Err(ContractError::Overflow));
+/// ```
+#[inline]
+pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
 /// Compute `a * b / denom` over a 256-bit intermediate, **panicking** on overflow
 /// or `denom == 0`.
 ///
