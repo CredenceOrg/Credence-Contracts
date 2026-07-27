@@ -47,6 +47,7 @@ pub mod pausable;
 pub mod receiver;
 pub mod treasury;
 
+pub use credence_errors::is_expired;
 pub use treasury::*;
 
 #[cfg(test)]

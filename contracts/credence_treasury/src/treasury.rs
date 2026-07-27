@@ -598,8 +598,7 @@ impl CredenceTreasury {
             );
             panic_with_error!(&e, ContractError::ProposalExpired);
         }
-        }
-        let already = e
+let already = e
             .storage()
             .instance()
             .get(&DataKey::Approval(proposal_id, approver.clone()))
@@ -666,7 +665,7 @@ impl CredenceTreasury {
             );
             panic_with_error!(&e, ContractError::ProposalExpired);
         }
-        }
+
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
