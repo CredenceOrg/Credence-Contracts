@@ -31,6 +31,14 @@ pub fn get_cooldown_period(e: &Env) -> u64 {
         .unwrap_or(0)
 }
 
+/// Compute the inclusive deadline for a cooldown request.
+/// The boundary itself is treated as the moment the cooldown has elapsed:
+/// `now == request_time + cooldown_period` allows execution.
+#[must_use]
+pub(crate) fn cooldown_deadline(request_time: u64, cooldown_period: u64) -> u64 {
+    request_time.saturating_add(cooldown_period)
+}
+
 /// Returns `true` when the cooldown window is still active (withdrawal not yet
 /// permitted). A request_time of 0 means no request was made.
 #[must_use]
@@ -39,7 +47,7 @@ pub fn is_cooldown_active(now: u64, request_time: u64, cooldown_period: u64) -> 
     if request_time == 0 {
         return false;
     }
-    let end = request_time.saturating_add(cooldown_period);
+    let end = cooldown_deadline(request_time, cooldown_period);
     now < end
 }
 
@@ -50,7 +58,7 @@ pub fn can_withdraw(now: u64, request_time: u64, cooldown_period: u64) -> bool {
     if request_time == 0 {
         return false;
     }
-    let end = request_time.saturating_add(cooldown_period);
+    let end = cooldown_deadline(request_time, cooldown_period);
     now >= end
 }
 
