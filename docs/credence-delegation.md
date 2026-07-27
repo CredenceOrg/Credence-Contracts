@@ -1,20 +1,33 @@
-# Crate: Credence Delegation
+# Crate: credence_delegation
 
-**Path:** `contracts/credence-delegation`
+**Path:** `contracts/credence_delegation`
 
 ## Overview
 
-Enables "Gasless" operations and delegated authority. It allows identity owners to delegate their management or attestation rights to other addresses (e.g., hot wallets or third-party verifiers) using off-chain signatures.
+The delegation crate enables owners to grant limited authority to another address and to execute delegated actions through a relayer. The contract couples direct and relayed flows under the same replay-protection model so a backend can safely relay signed payloads.
 
-## 1. Entrypoint Reference
+## Entrypoints
 
-| Function               | Roles   | Description                                                                                                  |
-| :--------------------- | :------ | :----------------------------------------------------------------------------------------------------------- |
-| `delegate`             | Owner   | Synchronous delegation of rights to a `delegatee`.                                                           |
-| `execute_delegated_op` | Relayer | Executes a management action (e.g., bond adjustment) on behalf of an owner via EIP-712-style signed payload. |
-| `revoke_delegation`    | Owner   | Removes a previously granted delegation.                                                                     |
+| Entrypoint | Required role | Notes |
+| :--------- | :------------ | :---- |
+| `initialize` | Admin | Stores the admin and initial pause defaults for the deployment. |
+| `delegate` | Owner | Creates a new delegation directly from the owner and consumes a nonce. |
+| `revoke_delegation` | Owner | Revokes a delegation created by the owner and consumes a nonce. |
+| `revoke_attestation` | Attester | Revokes an attestation-style delegation and consumes the attester nonce. |
+| `execute_delegated_delegate` | Relayer, plus owner signature | Accepts an off-chain payload signed by the owner and executes the delegation flow. |
+| `execute_delegated_revoke` | Relayer, plus owner signature | Executes a relayed delegation revocation. |
+| `execute_delegated_revoke_attest` | Relayer, plus attester signature | Executes a relayed attestation-revocation flow. |
 
-## 2. Integration Notes
+## Required roles
 
-- **Domain Tags**: Payloads are signed with a `DomainTag`. The backend must ensure the tag matches the specific action (e.g., `Management` vs `Attestation`) to avoid cross-action replays.
-- **Relayer Pattern**: The backend can act as the `Relayer`, paying the XLM fee for the transaction while the user only provides a signature.
+- **Admin**: Owns initialization and pause configuration.
+- **Owner**: The address that grants or revokes a delegation.
+- **Attester**: The address that owns the attestation-style delegation.
+- **Relayer**: The backend or service that submits the transaction after the owner or attester signs the payload.
+
+## Backend integration notes
+
+- Domain separation is mandatory: the payload domain must match the requested action and the target contract so a signature cannot be replayed across entrypoints.
+- Keep delegated payloads fresh and use the correct nonce; replayed payloads fail once the nonce has already been consumed.
+- Relayed calls still require the underlying owner or attester address to authenticate the transaction, so the backend should never impersonate the signer.
+- Mutating entrypoints are paused-aware, so the backend should surface a clear degraded-state message if the contract is paused.

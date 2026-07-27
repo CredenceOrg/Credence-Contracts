@@ -1,93 +1,34 @@
-# Crate: Credence Bond
+# Crate: credence_bond
 
-**Path:** `contracts/credence-bond`
+**Path:** `contracts/credence_bond`
 
 ## Overview
 
-The Credence Bond contract is the foundational security layer for the protocol. It manages the lifecycle of USDC-collateralized bonds, tiered identity statuses, and the enforcement of slashing via governance.
+The bond crate is the core collateral and lifecycle contract for Credence identities. It records bond state, enforces the owner-authenticated lifecycle transitions, and exposes the admin-only slashing path used by governance.
 
-## Architecture & Flow
+## Entrypoints
 
-1. **Bonding**: User locks USDC -> Receives `IdentityBond` status.
-2. **Attestation**: Authorized Verifiers sign claims against the bond.
-3. **Slashing**: Multi-sig governance can deduct funds for protocol violations.
+| Entrypoint | Required role | Notes |
+| :--------- | :------------ | :---- |
+| `initialize` | Admin | Stores the contract admin and marks the instance as initialized. |
+| `set_accepted_tokens` | Admin | Updates the list of accepted token addresses for collateral flow. |
+| `create_bond` | Identity owner | Creates a new bond and transfers collateral from the identity into the contract. |
+| `top_up` | Identity owner | Adds more collateral to an existing bond. |
+| `extend_duration` | Identity owner | Extends the unlock deadline for an existing bond. |
+| `request_withdrawal` | Identity owner | Starts the notice period for rolling bonds. |
+| `withdraw` | Identity owner | Releases collateral once the lockup or notice window has elapsed. |
+| `slash` | Admin | Applies a slash against a bond and updates the slashed balance. |
+
+## Required roles
+
+- **Admin**: Can initialize the contract, manage the accepted-token list, and slash bonds.
+- **Identity owner**: Must be the transaction signer for any bond lifecycle operation that touches that identity's balance.
+
+## Backend integration notes
+
+- Treat the identity address as the transaction signer for `create_bond`, `top_up`, `extend_duration`, `request_withdrawal`, and `withdraw`.
+- For rolling bonds, backends should call `request_withdrawal` first and only attempt `withdraw` once the notice period has elapsed.
+- A slash reduces the effective withdrawable balance; off-chain UIs should use the persisted slashed amount when presenting available collateral.
+- Event consumers should watch for bond lifecycle and slash events so they can update state without polling the contract repeatedly.
 
 For the contributor-facing lifecycle reference, see [Bond State Transitions](bond-state-transitions.md).
-
-## 1. Entrypoint Reference
-
-### Bond Management
-
-| Function                   | Roles    | Description                                                                         |
-| :------------------------- | :------- | :---------------------------------------------------------------------------------- |
-| `create_bond`              | Identity | Locks USDC for a fixed duration. Validates against `SupplyCap` and `MinBondAmount`. |
-| `create_bond_with_rolling` | Identity | Creates a bond that auto-renews at the end of the term unless a notice is filed.    |
-| `start_withdrawal_notice`  | Identity | Begins the mandatory cooldown period before a bond can be unlocked.                 |
-| `withdraw_expired_bond`    | Identity | Reclaims USDC after the notice period and bond duration have both lapsed.           |
-
-### Attestations (Identity Logic)
-
-| Function             | Roles    | Description                                                                     |
-| :------------------- | :------- | :------------------------------------------------------------------------------ |
-| `add_attestation`    | Verifier | Issues a signed claim for a subject. Requires a valid nonce to prevent replays. |
-| `revoke_attestation` | Verifier | Invalidates an existing claim. Only the original issuer can revoke.             |
-
-### Governance & Slashing
-
-| Function                    | Roles     | Description                                                                 |
-| :-------------------------- | :-------- | :-------------------------------------------------------------------------- |
-| `propose_slash`             | Admin/Gov | Opens a `SlashProposal` for a specific identity bond.                       |
-| `vote`                      | Governor  | Records an approval or rejection for a proposal. Supports delegation logic. |
-| `execute_slash_if_approved` | Public    | Finalizes the movement of slashed funds to the treasury if quorum is met.   |
-
-## 2. Role Definitions & Access Control
-
-Managed via `access_control.rs`. All restricted paths emit `access_denied` on unauthorized calls.
-
-- **Admin (`ADMIN_KEY`)**: Manages verifier registration, initializes governance, and sets global constants (BPS, leverage).
-- **Verifier (`VERIFIER_PREFIX`)**: Authorized addresses that can validate identity claims.
-- **Governor**: A set of addresses (defined in `governance_approval`) authorized to vote on slashing.
-- **Identity Owner**: The address that owns the locked capital.
-
-## 3. Backend Integration Notes
-
-- **Nonce Handling**: Before calling `add_attestation`, the backend **must** fetch the current nonce via `get_nonce(identity)`. If the transaction fails, the nonce remains unchanged; if it succeeds, it increments.
-- **Slashing Lifecycle**:
-  1. Monitor `slash_proposed` events.
-  2. Backend triggers notifications for `Governors`.
-  3. Check `is_approved(proposal_id)` before attempting to call `execute_slash_if_approved` to save gas.
-- **Storage Keys**: Verifier roles are stored in instance storage as `(Symbol("verifier"), Address)`. Check this before routing verifier-only UI actions.
-
-## 4. Deterministic Ordering Guarantees (Pagination Contract)
-
-List-returning APIs in the bond domain expose deterministic ordering so off-chain pagination cannot duplicate or omit entries due to non-deterministic traversal.
-
-- `scan_liquidation_candidates(keeper, cursor, max_iter, min_slash_ratio_bps)`
-  - Uses a stable slot-indexed registry order.
-  - Deregistration marks identities inactive instead of compacting/removing slots.
-  - Cursor advancement is therefore stable across page boundaries, even when a holder is deregistered between pages.
-  - `registry_size` reports active holders; cursor math is based on stable slot count.
-
-Operational note for indexers: treat `(cursor, next_cursor, done)` as the source of truth for page traversal and do not infer page progression from `registry_size` alone.
-
-## Function Reference
-
-### `create_bond_with_rolling(caller, amount, duration)`
-
-Creates a bond that auto-renews.
-
-- **Validation**: Ensures `amount >= MinBondAmount` and `TotalSupply + amount <= SupplyCap`.
-- **Event**: Emits `bond_created`.
-
-### `add_attestation(verifier, subject, claim_hash, nonce, deadline)`
-
-Verifiers use this to attach metadata/claims to a bonded identity.
-
-- **Security**: Validates `verifier` role and prevents replay via `nonce`.
-- **Replay Protection**: The `deadline` prevents "zombie" transactions from being executed during high network congestion.
-
-### `propose_slash(proposer, identity, amount) -> u64`
-
-Initiates a governance proposal to slash a specific bond.
-
-- **Constraint**: `amount` cannot exceed the current locked balance of the identity.
