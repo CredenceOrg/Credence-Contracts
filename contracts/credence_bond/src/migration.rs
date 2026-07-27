@@ -1,7 +1,23 @@
 //! Storage migration utilities for IdentityBond
 use crate::{DataKey, IdentityBond};
-use soroban_sdk::Env;
+use soroban_sdk::{contracttype, panic_with_error, Env};
+use credence_errors::ContractError;
 
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MigrationStatus {
+    None = 0,
+    InProgress = 1,
+    Completed = 2,
+}
+
+/// Ensures that no migration is currently in progress, to prevent
+/// state mutations during an active migration.
+pub fn require_no_ongoing_migration(e: &Env, status: MigrationStatus) {
+    if status == MigrationStatus::InProgress {
+        panic_with_error!(e, ContractError::MigrationInProgress);
+    }
+}
 /// Perform lazy migration of IdentityBond storage from v1 to v2 format.
 ///
 /// This function reads the existing bond entry (if any) and writes it back
