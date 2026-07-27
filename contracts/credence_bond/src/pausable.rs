@@ -174,6 +174,21 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
         do_unpause(e, None);
         None
     } else {
+        // Admin override: admin can always unpause without a proposal (mirrors
+        // credence_delegation::pausable) so the contract cannot be permanently
+        // locked if pause signers are unavailable.
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
+        if *caller == stored_admin {
+            caller.require_auth();
+            do_unpause(e, None);
+            return None;
+        }
+
         propose_action(e, caller, PauseAction::Unpause)
     }
 }

@@ -33,8 +33,6 @@ use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Bytes, Env, Symbol};
 use soroban_sdk::xdr::ToXdr;
 
-use soroban_sdk::xdr::ToXdr;
-
 use crate::DataKey;
 
 /// Computes an idempotency key hash from (actor, operation, salt).

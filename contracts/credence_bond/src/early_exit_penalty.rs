@@ -36,8 +36,7 @@ pub fn get_config(e: &Env) -> Result<EarlyExitConfig, ContractError> {
     e.storage()
         .instance()
         .get(&key)
-        .ok_or(ContractError::EarlyExitConfigNotSet)?;
-    Ok(config)
+        .ok_or(ContractError::EarlyExitConfigNotSet)
 }
 
 pub fn calculate_penalty(amount: i128, remaining: u64, duration: u64, penalty_bps: u32) -> i128 {
