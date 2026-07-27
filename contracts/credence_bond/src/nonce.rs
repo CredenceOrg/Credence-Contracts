@@ -1,7 +1,9 @@
 //! Nonce tracking for replay prevention in the credence bond contract.
 //!
-//! Safety buffer added on top of the nonce TTL.
-const MIN_NONCE_TTL: u32 = 518_400;
+//! Nonces remain alive long enough to survive the bond lifecycle and any
+//! recovery flows without falling out of storage.
+const NONCE_TTL_THRESHOLD: u32 = 259_200;
+const NONCE_TTL_EXTEND_TO: u32 = 518_400;
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -67,9 +69,7 @@ pub fn get_grace_window(e: &Env) -> u64 {
 /// directly widens the replay/expiry attack surface.
 pub fn set_grace_window(e: &Env, grace: u64) -> u64 {
     let old = get_grace_window(e);
-    e.storage()
-        .instance()
-        .set(&DataKey::GraceWindow, &grace);
+    e.storage().instance().set(&DataKey::GraceWindow, &grace);
     bump_nonce_ttl(e, &DataKey::GraceWindow, 0);
     old
 }
@@ -201,5 +201,8 @@ mod testutils_helpers {
     }
 }
 
-#[cfg(any(test, feature = "testutils"))]
-pub use testutils_helpers::*;
+fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
+    e.storage()
+        .instance()
+        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
+}

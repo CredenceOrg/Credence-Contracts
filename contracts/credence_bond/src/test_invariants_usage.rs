@@ -314,13 +314,13 @@ proptest! {
         
         // Initial bond creation so we can deposit/withdraw
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ctx.client.create_bond(&ctx.identity, &1000, &86400, &false, &0);
+            ctx.client.create_bond(&ctx.identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
         }));
         
         assert_all_invariants(&ctx.env, &ctx.contract);
         
         for action in actions {
-            // Advance ledger to allow withdrawals (since bond_duration is 86400)
+            // Advance ledger to allow withdrawals (since bond_duration is credence_math::Timestamp::SECONDS_PER_DAY)
             advance(&ctx.env, 100_000);
             
             match action {

@@ -1,4 +1,4 @@
-﻿//! Preservation Property Tests - Non-Reentrant Withdrawal Behavior
+//! Preservation Property Tests - Non-Reentrant Withdrawal Behavior
 //!
 //! **Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5**
 //!
@@ -89,7 +89,7 @@ fn property_withdraw_bond_normal_behavior_preserved() {
 
         // Generate random valid inputs
         let initial_amount = rng.gen_range(1000, 10000);
-        let duration = rng.gen_range(86400, 86400 * 30); // 1-30 days
+        let duration = rng.gen_range(credence_math::Timestamp::SECONDS_PER_DAY, credence_math::Timestamp::SECONDS_PER_DAY * 30); // 1-30 days
         let is_rolling = rng.gen_bool();
 
         // Create bond
@@ -194,7 +194,7 @@ fn property_withdraw_early_penalty_calculations_preserved() {
 
         // Generate random valid inputs
         let initial_amount = rng.gen_range(1000, 10000);
-        let duration = rng.gen_range(86400, 86400 * 30); // 1-30 days
+        let duration = rng.gen_range(credence_math::Timestamp::SECONDS_PER_DAY, credence_math::Timestamp::SECONDS_PER_DAY * 30); // 1-30 days
 
         // Create bond
         client.create_bond(&identity, &initial_amount, &(duration as u64));
@@ -283,11 +283,11 @@ fn property_withdraw_bond_insufficient_balance_error_preserved() {
         test_helpers::setup_with_token(&e);
 
     // Create bond with 1000 tokens
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time past lock-up period
     e.ledger().with_mut(|l| {
-        l.timestamp = 1000 + 86400 + 1;
+        l.timestamp = 1000 + credence_math::Timestamp::SECONDS_PER_DAY + 1;
     });
 
     // Attempt to withdraw more than available - should panic with specific message
@@ -305,7 +305,7 @@ fn property_withdraw_bond_before_lockup_error_preserved() {
         test_helpers::setup_with_token(&e);
 
     // Create bond with 1000 tokens
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Attempt to withdraw before lock-up period - should panic with specific message
     e.ledger().with_mut(|l| {
@@ -330,11 +330,11 @@ fn property_withdraw_early_after_lockup_error_preserved() {
     client.set_early_exit_config(&admin, &treasury, &1000_u32);
 
     // Create bond with 1000 tokens
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time past lock-up period
     e.ledger().with_mut(|l| {
-        l.timestamp = 1000 + 86400 + 1;
+        l.timestamp = 1000 + credence_math::Timestamp::SECONDS_PER_DAY + 1;
     });
 
     // Attempt early withdrawal after lock-up - should panic with specific message
@@ -352,11 +352,11 @@ fn property_withdraw_bond_negative_amount_error_preserved() {
         test_helpers::setup_with_token(&e);
 
     // Create bond with 1000 tokens
-    client.create_bond(&identity, &1000_i128, &86400_u64);
+    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time past lock-up period
     e.ledger().with_mut(|l| {
-        l.timestamp = 1000 + 86400 + 1;
+        l.timestamp = 1000 + credence_math::Timestamp::SECONDS_PER_DAY + 1;
     });
 
     // Attempt to withdraw negative amount - should panic with specific message
@@ -389,7 +389,7 @@ fn property_sequential_withdrawals_preserved() {
 
         // Generate random valid inputs
         let initial_amount = rng.gen_range(2000, 10000);
-        let duration = rng.gen_range(86400, 86400 * 30);
+        let duration = rng.gen_range(credence_math::Timestamp::SECONDS_PER_DAY, credence_math::Timestamp::SECONDS_PER_DAY * 30);
 
         // Create bond
         client.create_bond(&identity, &initial_amount, &(duration as u64));
@@ -464,7 +464,7 @@ fn property_withdraw_bond_full_unchanged() {
 
     // Create bond with 5000 tokens
     let initial_amount = 5000_i128;
-    client.create_bond(&identity, &initial_amount, &86400_u64);
+    client.create_bond(&identity, &initial_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Record state before withdrawal
     let before_identity_balance = token_client.balance(&identity);
@@ -525,12 +525,12 @@ fn property_execute_cooldown_withdrawal_preserved() {
             test_helpers::setup_with_token(&e);
 
         // Set cooldown period
-        let cooldown_period = rng.gen_range(3600, 86400) as u64; // 1-24 hours
+        let cooldown_period = rng.gen_range(3600, credence_math::Timestamp::SECONDS_PER_DAY) as u64; // 1-24 hours
         client.set_cooldown_period(&admin, &cooldown_period);
 
         // Generate random valid inputs
         let initial_amount = rng.gen_range(2000, 10000);
-        let duration = rng.gen_range(86400, 86400 * 30) as u64;
+        let duration = rng.gen_range(credence_math::Timestamp::SECONDS_PER_DAY, credence_math::Timestamp::SECONDS_PER_DAY * 30) as u64;
 
         // Create bond
         client.create_bond(&identity, &initial_amount, &duration);
@@ -578,11 +578,11 @@ fn property_zero_amount_withdrawal_preserved() {
 
     // Create bond with 1000 tokens
     let initial_amount = 1000_i128;
-    client.create_bond(&identity, &initial_amount, &86400_u64);
+    client.create_bond(&identity, &initial_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Advance time past lock-up period
     e.ledger().with_mut(|l| {
-        l.timestamp = 1000 + 86400 + 1;
+        l.timestamp = 1000 + credence_math::Timestamp::SECONDS_PER_DAY + 1;
     });
 
     // Record state before withdrawal

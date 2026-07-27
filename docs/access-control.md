@@ -15,8 +15,8 @@ The Credence access control module provides reusable, composable role-based acce
   - Add/remove verifiers
   - Execute slashing operations
   - Modify system parameters
-- **Storage**: Single admin address stored at key `"admin"`
-- **Modifier**: `require_admin(e: &Env, caller: &Address)`
+- **Storage**: Defined by `DataKey::Admin` in the respective contract
+- **Modifier**: `credence_errors::require_admin!(e: &Env, caller: &Address, admin_key: DataKey)`
 
 #### 2. Verifier Role
 - **Purpose**: Validate and verify identity claims
@@ -71,19 +71,19 @@ The bond contract uses explicit authorization at each state-changing entrypoint.
 
 ### Access Control Modifiers
 
-#### `require_admin(e: &Env, caller: &Address)`
-Enforces admin-only access.
+#### `credence_errors::require_admin!(e, caller, admin_key)`
+Enforces admin-only access using a shared macro.
 
 **Panics**: 
-- `"not admin"` - Caller is not the admin
-- `"not initialized"` - Contract not initialized
+- `ContractError::NotAdmin` - Caller is not the admin
+- `ContractError::NotInitialized` - Contract not initialized
 
-**Events**: Emits `access_denied` on failure
+**Events**: Inherits `require_auth` from caller, removing need for manual auth checks.
 
 **Example**:
 ```rust
 pub fn set_config(e: Env, caller: Address, value: u32) {
-    require_admin(&e, &caller);
+    credence_errors::require_admin!(&e, &caller, DataKey::Admin);
     // Admin-only logic
 }
 ```

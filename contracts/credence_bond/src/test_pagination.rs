@@ -33,8 +33,7 @@ extern crate std;
 use crate::{
     claims::{self, ClaimType},
     parameters::MAX_QUERY_LIMIT,
-    slash_history,
-    CredenceBond, CredenceBondClient,
+    slash_history, CredenceBond, CredenceBondClient,
 };
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, String, Symbol, Vec};
@@ -88,7 +87,14 @@ fn add_slash_records(e: &Env, identity: &Address, n: u32) {
 fn add_claims(e: &Env, user: &Address, n: u32) {
     for i in 0..n {
         let meta = Symbol::new(e, "m");
-        claims::add_pending_claim(e, user, ClaimType::VerifierReward, 100, i as u64, Some(meta));
+        claims::add_pending_claim(
+            e,
+            user,
+            ClaimType::VerifierReward,
+            100,
+            i as u64,
+            Some(meta),
+        );
     }
 }
 

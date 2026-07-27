@@ -56,6 +56,13 @@ jobs:
             --fail-under-lines ${{ env.COVERAGE_THRESHOLD }} \
             --lcov --output-path lcov-timelock.info
 
+
+      - name: Coverage — credence_errors
+        run: |
+          cargo llvm-cov --package credence_errors \
+            --fail-under-lines 90 \
+            --lcov --output-path lcov-credence_errors.info
+
       - name: Upload coverage reports
         uses: actions/upload-artifact@v4
         with:

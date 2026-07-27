@@ -487,6 +487,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "credence-contracts"
+version = "0.1.0"
+
+[[package]]
 name = "credence_admin_cli"
 version = "0.1.0"
 dependencies = [
@@ -505,6 +509,7 @@ name = "credence_arbitration"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -514,6 +519,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "credence_math",
+ "interfaces",
  "proptest",
  "soroban-sdk",
  "timelock",
@@ -523,8 +529,8 @@ dependencies = [
 name = "credence_delegation"
 version = "0.1.0"
 dependencies = [
- "credence_bond",
  "credence_errors",
+ "credence_math",
  "insta",
  "proptest",
  "serde",
@@ -546,6 +552,8 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "proptest",
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -553,6 +561,8 @@ name = "credence_multisig"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
+ "proptest",
  "soroban-sdk",
 ]
 
@@ -561,7 +571,9 @@ name = "credence_registry"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
+ "timelock",
 ]
 
 [[package]]
@@ -570,8 +582,10 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "interfaces",
  "proptest",
  "soroban-sdk",
+ "timelock",
 ]
 
 [[package]]
@@ -893,9 +907,9 @@ checksum = "2bfcf67fea2815c2fc3b90873fae90957be12ff417335dfadc7f52927feb03b2"
 
 [[package]]
 name = "ethnum"
-version = "1.5.2"
+version = "1.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ca81e6b4777c89fd810c25a4be2b1bd93ea034fbe58e6a75216a34c6b82c539b"
+checksum = "40404c3f5f511ec4da6fe866ddf6a717c309fdbb69fbbad7b0f3edab8f2e835f"
 
 [[package]]
 name = "fastrand"
@@ -934,6 +948,15 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+
+[[package]]
+name = "fixed_duration_bond"
+version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "credence_math",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "flate2"
@@ -1481,6 +1504,13 @@ dependencies = [
  "serde",
  "similar",
  "tempfile",
+]
+
+[[package]]
+name = "interfaces"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -2812,6 +2842,7 @@ name = "templates"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -2898,6 +2929,7 @@ name = "timelock"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 

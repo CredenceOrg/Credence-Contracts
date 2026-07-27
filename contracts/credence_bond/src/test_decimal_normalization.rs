@@ -67,7 +67,7 @@ fn test_6_decimal_bond_creation() {
     let (client, _admin, identity, _token) = setup_token_with_decimals(&e, 6);
 
     let native_amount = 1_000_000_000_i128;
-    let bond = client.create_bond_with_rolling(&identity, &native_amount, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &native_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     let expected_normalized = 1_000_000_000_000_000_000_000_i128;
     assert_eq!(bond.bonded_amount, expected_normalized);
@@ -80,7 +80,7 @@ fn test_6_decimal_withdrawal() {
     let (client, _admin, identity, _token) = setup_token_with_decimals(&e, 6);
 
     let native_amount = 1_000_000_000_i128;
-    client.create_bond_with_rolling(&identity, &native_amount, &86400, &false, &0);
+    client.create_bond_with_rolling(&identity, &native_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     e.ledger().with_mut(|l| l.timestamp = 100_000);
 
@@ -97,7 +97,7 @@ fn test_8_decimal_bond_creation() {
     let (client, _admin, identity, _token) = setup_token_with_decimals(&e, 8);
 
     let native_amount = 100_000_000_000_i128;
-    let bond = client.create_bond_with_rolling(&identity, &native_amount, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &native_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     let expected_normalized = 1_000_000_000_000_000_000_000_i128;
     assert_eq!(bond.bonded_amount, expected_normalized);
@@ -110,7 +110,7 @@ fn test_18_decimal_bond_creation() {
     let (client, _admin, identity, _token) = setup_token_with_decimals(&e, 18);
 
     let native_amount = 1_000_000_000_000_000_000_000_i128;
-    let bond = client.create_bond_with_rolling(&identity, &native_amount, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &native_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
     let expected_normalized = 1_000_000_000_000_000_000_000_i128;
     assert_eq!(bond.bonded_amount, expected_normalized);
@@ -132,7 +132,7 @@ fn test_invariant_preservation_across_decimals() {
             _ => panic!("unsupported decimals"),
         };
 
-        let bond = client.create_bond_with_rolling(&identity, &native_amount, &86400, &false, &0);
+        let bond = client.create_bond_with_rolling(&identity, &native_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
 
         let expected_normalized = 1_000_000_000_000_000_000_000_i128;
         assert_eq!(
@@ -160,12 +160,12 @@ fn test_minimum_bond_amount_6_decimals() {
     // Min bond is 1 token normalized = 10^18
     // For 6 decimals: 10^18 / 10^12 = 10^6 = 1,000,000
     let min_native_6 = 1_000_000_i128;
-    let bond = client.create_bond_with_rolling(&identity, &min_native_6, &86400, &false, &0);
+    let bond = client.create_bond_with_rolling(&identity, &min_native_6, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
     assert_eq!(bond.bonded_amount, 1_000_000_000_000_000_000_i128);
 
     // For 18 decimals: 10^18
     let min_native_18 = 1_000_000_000_000_000_000_i128;
-    let bond1 = client1.create_bond_with_rolling(&identity1, &min_native_18, &86400, &false, &0);
+    let bond1 = client1.create_bond_with_rolling(&identity1, &min_native_18, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
     assert_eq!(bond1.bonded_amount, 1_000_000_000_000_000_000_i128);
 }
 
@@ -184,7 +184,7 @@ fn test_tier_boundaries_with_different_decimals() {
         };
 
         let bond =
-            client.create_bond_with_rolling(&identity, &native_1000_tokens, &86400, &false, &0);
+            client.create_bond_with_rolling(&identity, &native_1000_tokens, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
         assert_eq!(
             client.get_tier(),
             BondTier::Silver,

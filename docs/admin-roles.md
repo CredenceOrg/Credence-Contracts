@@ -28,6 +28,8 @@ The system implements three distinct roles with clear privilege separation:
 - Cannot manage other users
 - Cannot assign roles
 
+See [OPERATOR_BALANCES.md](OPERATOR_BALANCES.md) for what each operation costs and how to keep balances healthy.
+
 ## Core Features
 
 ### Multi-Admin Support
@@ -318,7 +320,7 @@ cargo test -p admin
 
 ## Two-Step Admin Transfer
 
-Admin rotation uses a secure two-step flow with a 24-hour timelock:
+For the operator runbook and rationale, see [TWO_STEP_ADMIN.md](TWO_STEP_ADMIN.md). Admin rotation uses a secure two-step flow with a 24-hour timelock:
 
 ### propose_admin(current_admin, proposed)
 - Only the current admin may call this
