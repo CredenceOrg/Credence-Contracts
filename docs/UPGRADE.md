@@ -8,6 +8,7 @@ This document covers two independent procedures:
 2. [Deploying a new Wasm binary](#deploying-a-new-wasm-binary) — swapping the contract logic.
 
 See also:
+- [bond-upgrade-auth-checklist.md](bond-upgrade-auth-checklist.md) — pre-upgrade authorization and safety checklist
 - [TWO_STEP_ADMIN.md](TWO_STEP_ADMIN.md) — two-step ownership rotation for the bond admin role (separate from the upgrade admin)
 - [DEPLOYMENT.md](DEPLOYMENT.md) — initial deploy and cross-contract wiring runbook
 - [CONSTRUCTOR_PATTERNS.md](CONSTRUCTOR_PATTERNS.md) — one-shot initialise pattern including `initialize_upgrade_auth`

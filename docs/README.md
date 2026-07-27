@@ -34,6 +34,7 @@ This directory contains all design docs, API references, and operational guides 
 | [slashing-history.md](slashing-history.md) | Integrator / Auditor | Append-only slash record storage |
 | [withdrawal.md](withdrawal.md) | Integrator | Normal and early withdrawal flows |
 | [bond-invariants.md](bond-invariants.md) | Contributor | Mathematical invariants tested in fuzz suite |
+| [bond-upgrade-auth-checklist.md](bond-upgrade-auth-checklist.md) | Operator / Auditor | Pre-upgrade authorization & safety checklist |
 | [bond-drift-detection.md](bond-drift-detection.md) | Operator | Detecting storage drift across deployments |
 | [bond-introspection.md](bond-introspection.md) | Integrator | Read-only view functions |
 | [bond-crate-layout.md](bond-crate-layout.md) | Contributor | Module map, public re-exports |
