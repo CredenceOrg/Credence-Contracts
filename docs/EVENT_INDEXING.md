@@ -243,6 +243,19 @@ e.events().publish(
 
 ## Event Version Changelog
 
+### 2026-04: Parameter Update Events with Old/New + Key/Category
+
+**Events**: `param_updated`
+
+**Changes**:
+- Added `param_updated` event with indexed `Symbol` key, `Symbol` category, and `Address` admin topics
+- Added `i128` old_value and `i128` new_value in data payload
+- Replaced legacy `parameter_changed` event (see `docs/EVENTS.md` for the `param_updated` schema)
+
+**Rationale**: Indexers need filterable parameter change history for governance dashboards and audit trails. The four-indexed-topic layout (`key`, `category`, `admin`) enables efficient slice-and-dice queries.
+
+**Migration**: All parameter setters now emit `param_updated`. The old `parameter_changed` event is removed. Indexers consuming `parameter_changed` must migrate to `param_updated`.
+
 ### 2026-07: Bond Lifecycle V2 Events
 
 **Events**: `bond_created_v2`, `bond_withdrawn_v2`, `bond_increased_v2`, `bond_slashed_v2`

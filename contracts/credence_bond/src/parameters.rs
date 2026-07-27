@@ -27,7 +27,7 @@
 #![allow(dead_code)]
 
 use crate::events::emit_parameter_updated;
-use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 /// Governance approval envelope for parameter mutations.
 #[contracttype]
@@ -869,30 +869,4 @@ fn validate_governance_approval(
     }
 }
 
-/// Emits a parameter change event for off-chain tracking and auditing.
-///
-/// # Arguments
-/// * `e` - Soroban environment for event publishing
-/// * `parameter` - Name of the parameter that changed
-/// * `old_value` - Previous value (normalized to i128)
-/// * `new_value` - New value (normalized to i128)
-/// * `updated_by` - Address that performed the update
-fn emit_parameter_changed(
-    e: &Env,
-    parameter: &str,
-    old_value: i128,
-    new_value: i128,
-    updated_by: &Address,
-) {
-    let timestamp = e.ledger().timestamp();
-    e.events().publish(
-        (Symbol::new(e, "parameter_changed"),),
-        (
-            String::from_str(e, parameter),
-            old_value,
-            new_value,
-            updated_by.clone(),
-            timestamp,
-        ),
-    );
-}
+
