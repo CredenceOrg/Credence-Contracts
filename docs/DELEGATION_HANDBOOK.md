@@ -342,6 +342,7 @@ cargo fmt --all -- --check
 | Delegation API Reference | Integrator | [credence_delegation_api.md](credence_delegation_api.md) |
 | Delegation System Overview | Integrator | [delegation.md](delegation.md) |
 | Failure Mode Analysis | Contributor / Auditor | [delegation-failure-modes.md](delegation-failure-modes.md) |
+| Lease Signature Format | Integrator | [LEASE_SIGNATURES.md](LEASE_SIGNATURES.md) |
 | Event Catalog | Indexer | [EVENTS.md](EVENTS.md) |
 | Error Code Wire Format | Integrator | [error-codes-wire.md](error-codes-wire.md) |
 | Cross-Contract Trust Model | Auditor | [CROSS_CONTRACT_TRUST.md](CROSS_CONTRACT_TRUST.md) |
