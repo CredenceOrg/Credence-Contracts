@@ -546,6 +546,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "soroban-sdk",
 ]
 
 [[package]]

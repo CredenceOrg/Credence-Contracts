@@ -138,6 +138,12 @@ pub enum ContractError {
     /// Replaces: panic!("signature expired")
     /// Contracts: bond
     SignatureExpired = 109,
+
+    /// Idempotency key has already been used for this operation.
+    /// Replaces: panic!("duplicate idempotency key")
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 117,
     /// The target admin is currently suspended (suspended_until > now).
     /// Used by suspend_admin when `until_ts` is not strictly in the future,
     /// and by callers that detect a suspended admin attempting a privileged
@@ -207,7 +213,7 @@ pub enum ContractError {
 
     /// Signature/operation deadline has passed (now > deadline + grace).
     /// Contracts: bond, delegation
-    SignatureExpired = 222,
+    DeadlineExpired = 222,
 
     /// Attester stake would go negative, which is not permitted.
     /// Replaces: panic!("attester stake cannot be negative")
@@ -278,7 +284,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 218,
+    InvariantViolation = 230,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -465,14 +471,14 @@ pub enum ContractError {
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
-    DomainMismatch = 225,
+    DomainMismatch = 231,
     OwnerMismatch = 219,
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
     // --- Admin Transfer (109-112) ---
     /// No pending admin transfer exists.
-    NoPendingAdmin = 109,
+    NoPendingAdmin = 114,
 
     /// Proposed admin is the zero/identity address.
     InvalidAdminAddress = 110,
@@ -486,7 +492,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 113,
+    EmergencyDrainNotPermitted = 115,
 
     /// Actor did not hold the required role at the given ledger timestamp.
     ///
@@ -495,7 +501,7 @@ pub enum ContractError {
     /// the role was not yet granted at the time of the delegated action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 114,
+    RoleNotHeldAtLedger = 116,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -632,7 +638,9 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidPauseAction
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
-            | ContractError::RoleNotHeldAtLedger => ErrorCategory::Authorization,
+            | ContractError::RoleNotHeldAtLedger
+            | ContractError::DuplicateIdempotencyKey
+            | ContractError::DeadlineExpired => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -644,6 +652,7 @@ impl ErrorExt for ContractError {
             | ContractError::ReentrancyDetected
             | ContractError::InvalidNonce
             | ContractError::SignatureExpired
+            | ContractError::DeadlineExpired
             | ContractError::NegativeStake
             | ContractError::EarlyExitConfigNotSet
             | ContractError::InvalidPenaltyBps
@@ -660,7 +669,9 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::InvariantViolation => ErrorCategory::Bond,
+            | ContractError::InvariantViolation
+            | ContractError::UnauthorizedToken
+            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -708,10 +719,11 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
+            | ContractError::EmergencyDrainNotPermitted
+            | ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
-            | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
+            | ContractError::ContractIdMismatch => ErrorCategory::Authorization,
         }
     }
 
@@ -731,6 +743,8 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
             ContractError::AdminSuspended => "Admin is currently suspended",
+            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
+            ContractError::DeadlineExpired => "Signature/operation deadline has passed",
             ContractError::RoleNotHeldAtLedger => {
                 "Actor did not hold the required role at the specified ledger timestamp"
             }
@@ -851,6 +865,14 @@ impl ErrorExt for ContractError {
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::UnsupportedInterface => "Bond contract does not support required interface",
             ContractError::DivisionByZero => "Division by a zero denominator",
+            ContractError::BondNotFound => "No bond exists for the given address",
+            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
+            ContractError::EmptyBatch => "Batch input is empty",
+            ContractError::AmountMustBePositive => "Amount must be positive",
+            ContractError::InvalidFlashLoanCallback => "Invalid flash loan callback",
+            ContractError::FlashLoanRepaymentFailed => "Flash loan repayment failed",
+            ContractError::DeadlineExpired => "Signature/operation deadline has passed",
+            _ => "Unknown error",
         }
     }
 
@@ -923,6 +945,8 @@ impl ErrorExt for ContractError {
             ContractError::DuplicateIdempotencyKey => true, // idempotent - safe to retry with same key
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
+            ContractError::UnauthorizedToken => false,
+            ContractError::UnsupportedDecimals => false,
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -973,16 +997,16 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalExpired                // create a new proposal
             | ContractError::SlippageExceeded => true,      // retry with a looser min_amount_out
 
-            // FATAL Treasury flashloan failures: callback contract misbehaved.
-            ContractError::InvalidFlashLoanCallback => false, // bad magic value
-            ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
+
+
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::UnsupportedInterface => false,
-            ContractError::Overflow
-            | ContractError::Underflow
-            | ContractError::DivisionByZero => false,
+            ContractError::DivisionByZero => false,
+            ContractError::DeadlineExpired => true,  // re-sign with later deadline
+            ContractError::InvalidFlashLoanCallback => false,
+            ContractError::FlashLoanRepaymentFailed => false,
         }
     }
 }
