@@ -15,7 +15,13 @@ impl Rate {
         let mut multiplier: i128 = 10_000;
         let factor = 10_000_i128 + rate as i128;
         for _ in 0..periods {
-            multiplier = mul_div_i128(multiplier, factor, 10_000, Rounding::Down, "compound overflow");
+            multiplier = mul_div_i128(
+                multiplier,
+                factor,
+                10_000,
+                Rounding::Down,
+                "compound overflow",
+            );
         }
         multiplier
     }
@@ -38,10 +44,10 @@ mod proptests {
             } else {
                 (period_b, period_a)
             };
-            
+
             let val_min = Rate::compound(bps, min_period);
             let val_max = Rate::compound(bps, max_period);
-            
+
             prop_assert!(val_max >= val_min, "More periods should yield higher or equal compounded rate");
         }
     }

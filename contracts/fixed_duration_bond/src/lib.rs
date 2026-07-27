@@ -176,10 +176,9 @@ impl FixedDurationBond {
         admin.require_auth();
         require_admin(&e, &admin);
         require_valid_penalty_bps(&e, fee_bps);
-        e.storage().instance().set(
-            &DataKey::FeeConfig,
-            &FeeConfig { treasury, fee_bps },
-        );
+        e.storage()
+            .instance()
+            .set(&DataKey::FeeConfig, &FeeConfig { treasury, fee_bps });
         e.events()
             .publish((Symbol::new(&e, "fee_config_set"),), fee_bps);
     }
@@ -187,12 +186,7 @@ impl FixedDurationBond {
     /// Set the default early-exit penalty for bonds created after this call.
     /// `base_penalty_bps` = 0 disables early exit.
     /// `treasury` receives the penalty on early exit.
-    pub fn set_penalty_config(
-        e: Env,
-        admin: Address,
-        treasury: Address,
-        base_penalty_bps: u32,
-    ) {
+    pub fn set_penalty_config(e: Env, admin: Address, treasury: Address, base_penalty_bps: u32) {
         admin.require_auth();
         require_admin(&e, &admin);
         require_valid_penalty_bps(&e, base_penalty_bps);
@@ -222,11 +216,15 @@ impl FixedDurationBond {
         }
 
         // CEI: zero the accumulator first, then transfer.
-        e.storage().instance().set(&DataKey::AccumulatedFees, &0_i128);
+        e.storage()
+            .instance()
+            .set(&DataKey::AccumulatedFees, &0_i128);
         transfer_out(&e, &recipient, fees);
 
-        e.events()
-            .publish((Symbol::new(&e, "fees_collected"),), (admin, recipient, fees));
+        e.events().publish(
+            (Symbol::new(&e, "fees_collected"),),
+            (admin, recipient, fees),
+        );
         fees
     }
 
@@ -240,12 +238,7 @@ impl FixedDurationBond {
     ///
     /// State changes happen before external calls so a re-entrant token cannot
     /// observe inconsistent state.
-    pub fn create_bond(
-        e: Env,
-        owner: Address,
-        amount: i128,
-        duration_secs: u64,
-    ) -> FixedBond {
+    pub fn create_bond(e: Env, owner: Address, amount: i128, duration_secs: u64) -> FixedBond {
         owner.require_auth();
         require_positive_amount(&e, amount);
         require_no_active_bond(&e, &owner);
@@ -255,10 +248,8 @@ impl FixedDurationBond {
         let bond_start = e.ledger().timestamp();
 
         // Snapshot penalty config at creation time.
-        let penalty_cfg: Option<PenaltyConfig> = e
-            .storage()
-            .instance()
-            .get(&DataKey::PenaltyConfig);
+        let penalty_cfg: Option<PenaltyConfig> =
+            e.storage().instance().get(&DataKey::PenaltyConfig);
         let penalty_bps = penalty_cfg
             .as_ref()
             .map(|c| c.base_penalty_bps)

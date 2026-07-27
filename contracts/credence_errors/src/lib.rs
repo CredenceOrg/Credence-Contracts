@@ -643,20 +643,16 @@ pub enum ContractError {
 
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
-    /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 125,
+    /// Originally code 125; renumbered to 127 pre-deployment to resolve a
+    /// duplicate-variant collision with `MigrationInProgress`. Off-chain
+    /// consumers must reference by name (`ContractError::MaxPauseSignersExceeded`),
+    /// not by code value.
+    MaxPauseSignersExceeded = 127,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
     CrossContractCallerMismatch = 123,
-
-    /// A state migration is currently in progress; retry after it completes.
-    /// Emitted when a contract entry-point is called while an in-flight migration
-    /// holds the schema lock. Callers should back off and retry.
-    /// Contracts: bond, registry, delegation
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 124,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -955,9 +951,6 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
-            ContractError::OutsideBusinessHours => {
-                "Operation is not permitted outside UTC business hours (Mon-Fri 09:00-17:00)"
-            }
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1159,7 +1152,7 @@ impl ErrorExt for ContractError {
             | ContractError::NotSigner
             | ContractError::UnauthorizedDepositor
             | ContractError::ContractPaused         // wait for unpause
-            | ContractError::MigrationInProgress    // wait for migration to finish
+            | ContractError::MigrationInProgress    // caller waits for migration to complete, then retries
             | ContractError::BorrowFrozen           // wait for unfreeze
             | ContractError::OutsideBusinessHours   // retry within business hours
             | ContractError::InvalidPauseAction     // correct action byte
@@ -1184,23 +1177,12 @@ impl ErrorExt for ContractError {
             ContractError::MaxPauseSignersExceeded => true,
 
             // Retry after the business-hours window opens.
-            ContractError::OutsideBusinessHours => true,
-
-            // MigrationInProgress: wait for migration to complete, then retry.
-            ContractError::MigrationInProgress => true,
-
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.
             ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
 
             // Cross-contract caller mismatch is a security halt; do not retry.
             ContractError::CrossContractCallerMismatch => false,
-
-            // Migration in progress — caller waits for the migration to complete, then retries.
-            ContractError::MigrationInProgress => true,
-
-            // OutsideBusinessHours — caller retries after the next business-hours window opens.
-            ContractError::OutsideBusinessHours => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1395,42 +1377,7 @@ macro_rules! require_positive_amount {
             return Err($crate::ContractError::AmountMustBePositive);
         }
     };
-}
-
-/// Rejects a caller-supplied ledger sequence number that is strictly ahead of
-/// the current on-chain ledger sequence.
-///
-/// # Threat being mitigated
-///
-/// Without this check, an attacker can submit a payload with a far-future
-/// `ledger_number` field. When the staleness check uses `current.saturating_sub(signed_at)`,
-/// a future value yields 0 (due to saturation), making the payload appear perpetually
-/// fresh and bypassing the entire staleness window.
-///
-/// # Arguments
-///
-/// * `e` - The Soroban environment
-/// * `ledger_number` - The claimed ledger sequence number from the payload
-///
-/// # Panics
-///
-/// Panics with `ContractError::TimestampInFuture` when `ledger_number > e.ledger().sequence()`.
-///
-/// # Examples
-///
-/// ```ignore
-/// use credence_errors::verify_no_future_ledger;
-/// 
-/// verify_no_future_ledger(&env, payload.ledger_number);
-/// ```
-pub fn verify_no_future_ledger(e: &soroban_sdk::Env, ledger_number: u32) {
-    let current_sequence = e.ledger().sequence();
-    if ledger_number > current_sequence {
-        soroban_sdk::panic_with_error!(e, ContractError::TimestampInFuture);
-    }
-}
-
-/// Rejects a caller-supplied timestamp that is strictly ahead of the
+}/// Rejects a caller-supplied timestamp that is strictly ahead of the
 /// current on-chain ledger timestamp.
 ///
 /// Returns `ContractError::TimestampInFuture` when `$t` exceeds

@@ -26,7 +26,7 @@
 //! the scheme field is absent, preserving backwards compatibility. Clients
 //! transmitting payloads should always set the scheme explicitly.
 
-use credence_errors::{ContractError, verify_no_future_ledger_sequence};
+use credence_errors::{verify_no_future_ledger_sequence, ContractError};
 use soroban_sdk::{contracttype, panic_with_error, Address, Env, String};
 
 pub use crate::verifier::SchemeTag;

@@ -156,7 +156,9 @@ mod tests {
         let id = tx_id(&env, 0x11);
 
         // Prime the cache.
-        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || payload(&env, b"primed"));
+        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || {
+            payload(&env, b"primed")
+        });
 
         let call_count = std::cell::Cell::new(0u32);
         let _ = Idempotency::handle(&env, id, caller, || {
@@ -179,9 +181,7 @@ mod tests {
         let id = tx_id(&env, 0x20);
 
         // First call succeeds.
-        let _ = Idempotency::handle(&env, id.clone(), original_caller, || {
-            payload(&env, b"data")
-        });
+        let _ = Idempotency::handle(&env, id.clone(), original_caller, || payload(&env, b"data"));
 
         // Second call with a different caller must be rejected.
         let result =

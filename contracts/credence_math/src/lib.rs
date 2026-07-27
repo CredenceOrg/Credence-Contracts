@@ -907,11 +907,11 @@ mod tests {
         splits.push_back(5000);
         splits.push_back(5000);
         assert_eq!(crate::require_valid_percent_split(&splits), Ok(()));
-        
+
         let mut splits2 = soroban_sdk::Vec::new(&env);
         splits2.push_back(10000);
         assert_eq!(crate::require_valid_percent_split(&splits2), Ok(()));
-        
+
         let mut splits3 = soroban_sdk::Vec::new(&env);
         splits3.push_back(3333);
         splits3.push_back(3333);
@@ -925,10 +925,16 @@ mod tests {
         let mut splits = soroban_sdk::Vec::new(&env);
         splits.push_back(5000);
         splits.push_back(4999);
-        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::InvariantViolation));
-        
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::InvariantViolation)
+        );
+
         let splits_empty = soroban_sdk::Vec::new(&env); // empty sums to 0
-        assert_eq!(crate::require_valid_percent_split(&splits_empty), Err(crate::ContractError::InvariantViolation));
+        assert_eq!(
+            crate::require_valid_percent_split(&splits_empty),
+            Err(crate::ContractError::InvariantViolation)
+        );
     }
 
     #[test]
@@ -937,11 +943,17 @@ mod tests {
         let mut splits = soroban_sdk::Vec::new(&env);
         splits.push_back(5000);
         splits.push_back(5001);
-        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::InvariantViolation));
-        
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::InvariantViolation)
+        );
+
         let mut splits2 = soroban_sdk::Vec::new(&env);
         splits2.push_back(10001);
-        assert_eq!(crate::require_valid_percent_split(&splits2), Err(crate::ContractError::InvariantViolation));
+        assert_eq!(
+            crate::require_valid_percent_split(&splits2),
+            Err(crate::ContractError::InvariantViolation)
+        );
     }
 
     #[test]
@@ -950,7 +962,10 @@ mod tests {
         let mut splits = soroban_sdk::Vec::new(&env);
         splits.push_back(u32::MAX);
         splits.push_back(1);
-        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::Arithmetic));
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::Arithmetic)
+        );
     }
 
     #[test]
