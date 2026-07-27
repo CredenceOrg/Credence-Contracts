@@ -159,7 +159,7 @@ pub enum ContractError {
     /// Raised by `require_no_ongoing_migration`.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 124,
+    MigrationInProgress = 125,
 
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
@@ -648,12 +648,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     MaxPauseSignersExceeded = 124,
 
-    /// A contract state migration is in progress; state-changing calls are
-    /// rejected until it completes.
-    /// Contracts: general-purpose
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
-
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
@@ -828,10 +822,10 @@ impl ErrorExt for ContractError {
             | ContractError::MaxPauseSignersExceeded
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
+            | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::OutsideBusinessHours
             | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
@@ -919,7 +913,6 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::OutsideBusinessHours
             | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
@@ -957,7 +950,6 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
-            ContractError::OutsideBusinessHours => "Operation attempted outside permitted business hours",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1106,9 +1098,6 @@ impl ErrorExt for ContractError {
             ContractError::CrossContractCallerMismatch => {
                 "Cross-contract caller does not match the configured partner address"
             }
-            ContractError::OutsideBusinessHours => {
-                "Scheduled operation is outside permitted UTC business hours (Mon-Fri 09:00-17:00)"
-            }
             ContractError::InvalidMaxPauseSigners => {
                 "Max-pause-signers value must be greater than zero and within the hard cap"
             }
@@ -1126,9 +1115,6 @@ impl ErrorExt for ContractError {
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {
                 "Percentage splits do not sum to exactly 10,000 basis points"
-            }
-            ContractError::OutsideBusinessHours => {
-                "Operation scheduled outside UTC business hours (Mon-Fri 09:00-17:00)"
             }
         }
     }
@@ -1178,8 +1164,8 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::OutsideBusinessHours   // retry within business hours
-            | ContractError::MigrationInProgress => true, // retry after migration completes
+            | ContractError::LeaseSignerMismatch
+            => true, // retry after business hours
 
 
             // Admin can supply a valid value / remove a signer or raise the
