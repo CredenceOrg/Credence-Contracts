@@ -86,6 +86,11 @@ mod test_auth;
 #[cfg(test)]
 mod test_pagination;
 
+/// Regression tests codifying the deterministic-ordering guarantee for every
+/// list-returning read (no duplicates, no omissions, stable key order).
+#[cfg(test)]
+mod test_ordering_guarantees;
+
 /// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
 #[cfg(test)]
 mod test_rolling_notice;
