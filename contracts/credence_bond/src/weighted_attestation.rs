@@ -95,30 +95,49 @@ pub const DEFAULT_MAX_WEIGHT: u32 = 100_000;
 
 /// Returns `(multiplier_bps, max_weight)`.
 ///
-/// Falls back to `(DEFAULT_WEIGHT_MULTIPLIER_BPS, DEFAULT_MAX_WEIGHT)` when
-/// the config has never been written.
+/// Falls back to `(0, DEFAULT_MAX_WEIGHT)` when the config has never been written.
 #[must_use]
 pub fn get_weight_config(e: &Env) -> (u32, u32) {
-    e.storage()
-        .instance()
-        .get::<_, (u32, u32)>(&weight_config_key(e))
-        .unwrap_or((DEFAULT_WEIGHT_MULTIPLIER_BPS, DEFAULT_MAX_WEIGHT))
+    let key = DataKey::WeightConfig;
+    let config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_MAX_WEIGHT,
+    });
+    crate::bump_instance_ttl(e);
+    (config.multiplier_bps, config.max_weight)
 }
 
-/// Persists the weight config, silently clamping both fields to their
-/// respective protocol ceilings.
-///
-/// - `multiplier_bps` is clamped to [`MAX_WEIGHT_MULTIPLIER_BPS`] (10_000).
-/// - `max_weight` is clamped to [`MAX_ATTESTATION_WEIGHT`] (1_000_000).
-///
-/// The stored values are what `get_weight_config` returns afterwards; callers
-/// must use `get_weight_config` to inspect the effective (post-clamp) config.
+/// Persists weight config and emits a `weight_config_set` event.
 pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
-    let multiplier = core::cmp::min(multiplier_bps, MAX_WEIGHT_MULTIPLIER_BPS);
-    let cap = core::cmp::min(max_weight, MAX_ATTESTATION_WEIGHT);
-    e.storage()
-        .instance()
-        .set(&weight_config_key(e), &(multiplier, cap));
+    if multiplier_bps > MAX_WEIGHT_MULTIPLIER_BPS {
+        panic!("multiplier_bps exceeds maximum");
+    }
+    if max_weight > MAX_ATTESTATION_WEIGHT {
+        panic!("max_weight exceeds maximum");
+    }
+
+    let key = DataKey::WeightConfig;
+    let old_config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_MAX_WEIGHT,
+    });
+
+    let new_config = WeightConfig {
+        multiplier_bps,
+        max_weight,
+    };
+    e.storage().instance().set(&key, &new_config);
+    crate::bump_instance_ttl(e);
+
+    e.events().publish(
+        (Symbol::new(e, "weight_config_set"),),
+        (
+            old_config.multiplier_bps,
+            old_config.max_weight,
+            multiplier_bps,
+            max_weight,
+        ),
+    );
 }
 
 fn weight_config_key(e: &Env) -> Symbol {

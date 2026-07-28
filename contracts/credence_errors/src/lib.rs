@@ -1210,15 +1210,13 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::LeaseSignerMismatch => true,
-
+            | ContractError::LeaseSignerMismatch => true, // correct signer and retry
 
             // Admin can supply a valid value / remove a signer or raise the
             // cap, then retry.
             ContractError::InvalidMaxPauseSigners => true,
             ContractError::MaxPauseSignersExceeded => true,
 
-            // Retry after the business-hours window opens.
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.
             ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
@@ -1513,6 +1511,18 @@ macro_rules! require_non_zero_bytes32 {
 /// let caller = e.current_contract_address(); // or get from auth context
 /// credence_errors::require_matching_contract_id(&e, &caller, &expected_partner);
 /// ```
+/// Validates that an emergency-drain recipient matches the configured treasury.
+///
+/// # Panics
+/// Panics with `ContractError::TreasuryBeneficiaryMismatch` when
+/// `recipient != treasury`.
+#[inline]
+pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
+    if recipient != treasury {
+        panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
+    }
+}
+
 pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Address) {
     if caller != expected {
         panic_with_error!(e, ContractError::CrossContractCallerMismatch);

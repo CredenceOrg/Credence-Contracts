@@ -345,3 +345,41 @@ fn test_pause_withdraw_bond_blocked() {
     // withdraw_bond has require_not_paused
     assert!(client.try_withdraw_bond(&identity).is_err());
 }
+
+#[test]
+fn test_pause_during_active_lockup_blocks_mutations() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e);
+
+    // Bond is still inside its 3600s lock-up window.
+    assert!(client.try_withdraw(&identity, &1_000_i128).is_err());
+
+    client.pause(&admin);
+    assert!(client.is_paused());
+
+    // Mutating lifecycle paths must stay blocked while paused mid-lock-up.
+    assert!(client.try_top_up(&identity, &500_i128).is_err());
+    assert!(client.try_withdraw(&identity, &1_000_i128).is_err());
+    assert!(client.try_withdraw_early(&identity, &1_000_i128).is_err());
+    assert!(client.try_slash_bond(&admin, &100_i128, &Bytes::new(&e)).is_err());
+    assert!(client.try_collect_fees(&admin, &Bytes::new(&e)).is_err());
+    assert!(client.try_withdraw_bond(&identity).is_err());
+
+    // Views remain available during the paused lock-up.
+    let _ = client.get_identity_state();
+    let _ = client.get_tier();
+    assert!(client.is_paused());
+}
+
+#[test]
+fn test_unpause_after_lockup_pause_restores_top_up() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e);
+
+    client.pause(&admin);
+    assert!(client.try_top_up(&identity, &500_i128).is_err());
+
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+    assert!(client.try_top_up(&identity, &500_i128).is_ok());
+}

@@ -4,6 +4,7 @@
 //! recovery flows without falling out of storage.
 const NONCE_TTL_THRESHOLD: u32 = 259_200;
 const NONCE_TTL_EXTEND_TO: u32 = 518_400;
+const MIN_NONCE_TTL: u32 = NONCE_TTL_THRESHOLD;
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -221,10 +222,4 @@ mod testutils_helpers {
             .instance()
             .set(&DataKey::Nonce(identity.clone()), &nonce);
     }
-}
-
-fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
-    e.storage()
-        .instance()
-        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
 }
