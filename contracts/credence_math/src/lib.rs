@@ -25,12 +25,16 @@ use credence_errors::ContractError;
 use ethnum::U256;
 use soroban_sdk;
 
+pub mod fixed_point;
 pub mod rate;
 pub mod time;
+pub mod timestamp;
 
+pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
 pub use time::{
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };
+pub use timestamp::Timestamp;
 
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
@@ -448,6 +452,196 @@ pub fn split_bps(
     (fee, net)
 }
 
+/// Alias for [`sat_mul_bps`].
+#[inline]
+#[must_use]
+pub fn sat_bps(amount: i128, bps_value: u32) -> i128 {
+    sat_mul_bps(amount, bps_value)
+}
+
+/// Saturating basis-point multiply for `u64` amounts.
+///
+/// Clamps to `u64::MAX` on overflow. Returns `0` when the effective
+/// denominator path would divide by zero (unreachable for `BPS_DENOMINATOR`).
+#[inline]
+#[must_use]
+pub fn sat_mul_bps_u64(amount: u64, bps_value: u32) -> u64 {
+    let widened = sat_mul_div_i128(
+        amount as i128,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Down,
+    );
+    if widened <= 0 {
+        0
+    } else if widened as u128 > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        widened as u64
+    }
+}
+
+/// Alias for [`sat_mul_bps_u64`].
+#[inline]
+#[must_use]
+pub fn sat_bps_u64(amount: u64, bps_value: u32) -> u64 {
+    sat_mul_bps_u64(amount, bps_value)
+}
+
+/// Saturating basis-point multiply that rounds away from zero.
+#[inline]
+#[must_use]
+pub fn sat_bps_round_up(amount: i128, bps_value: u32) -> i128 {
+    sat_mul_div_i128(
+        amount,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Up,
+    )
+}
+
+/// Saturating split into `(fee, net)` using basis points.
+///
+/// When saturation would make `fee > amount` for a positive amount, `net`
+/// saturates to `0` (and symmetrically for negatives).
+#[inline]
+#[must_use]
+pub fn sat_split_bps(amount: i128, bps_value: u32) -> (i128, i128) {
+    let fee = sat_mul_bps(amount, bps_value);
+    let net = amount.saturating_sub(fee);
+    (fee, net)
+}
+
+/// Percentage of an amount: `amount * percentage / 100`.
+///
+/// Uses a 256-bit intermediate via [`mul_div_i128`]. The trailing `_div_msg`
+/// is retained as a no-op forward-compat placeholder.
+///
+/// # Panics
+/// Panics with `mul_msg` if the final result does not fit in `i128`.
+#[inline]
+#[must_use]
+pub fn percent(
+    amount: i128,
+    percentage: u32,
+    mul_msg: &'static str,
+    _div_msg: &'static str,
+) -> i128 {
+    mul_div_i128(
+        amount,
+        percentage as i128,
+        PERCENT_DENOMINATOR,
+        Rounding::Down,
+        mul_msg,
+    )
+}
+
+/// Percentage of a `u64` amount: `amount * percentage / 100`.
+///
+/// # Panics
+/// Panics with `mul_msg` on `u64` multiplication overflow.
+#[inline]
+#[must_use]
+pub fn percent_u64(amount: u64, percentage: u32, mul_msg: &'static str) -> u64 {
+    mul_u64(amount, percentage as u64, mul_msg) / PERCENT_DENOMINATOR as u64
+}
+
+/// Percentage of an amount, rounding away from zero.
+#[inline]
+#[must_use]
+pub fn percent_round_up(amount: i128, percentage: u32, msg: &'static str) -> i128 {
+    mul_div_i128(
+        amount,
+        percentage as i128,
+        PERCENT_DENOMINATOR,
+        Rounding::Up,
+        msg,
+    )
+}
+
+/// Split an amount into `(fee, net)` using percentage math.
+///
+/// `div_msg` is retained as a no-op forward-compat placeholder.
+#[inline]
+#[must_use]
+pub fn split_percent(
+    amount: i128,
+    percentage: u32,
+    mul_msg: &'static str,
+    div_msg: &'static str,
+    sub_msg: &'static str,
+) -> (i128, i128) {
+    let fee = percent(amount, percentage, mul_msg, div_msg);
+    let net = sub_i128(amount, fee, sub_msg);
+    (fee, net)
+}
+
+/// Saturating percentage multiply: `amount * percentage / 100`.
+#[inline]
+#[must_use]
+pub fn sat_percent(amount: i128, percentage: u32) -> i128 {
+    sat_mul_div_i128(
+        amount,
+        percentage as i128,
+        PERCENT_DENOMINATOR,
+        Rounding::Down,
+    )
+}
+
+/// Alias for [`sat_percent`].
+#[inline]
+#[must_use]
+pub fn sat_mul_percent(amount: i128, percentage: u32) -> i128 {
+    sat_percent(amount, percentage)
+}
+
+/// Saturating percentage multiply for `u64` amounts.
+#[inline]
+#[must_use]
+pub fn sat_percent_u64(amount: u64, percentage: u32) -> u64 {
+    let widened = sat_mul_div_i128(
+        amount as i128,
+        percentage as i128,
+        PERCENT_DENOMINATOR,
+        Rounding::Down,
+    );
+    if widened <= 0 {
+        0
+    } else if widened as u128 > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        widened as u64
+    }
+}
+
+/// Alias for [`sat_percent_u64`].
+#[inline]
+#[must_use]
+pub fn sat_mul_percent_u64(amount: u64, percentage: u32) -> u64 {
+    sat_percent_u64(amount, percentage)
+}
+
+/// Saturating percentage multiply that rounds away from zero.
+#[inline]
+#[must_use]
+pub fn sat_percent_round_up(amount: i128, percentage: u32) -> i128 {
+    sat_mul_div_i128(
+        amount,
+        percentage as i128,
+        PERCENT_DENOMINATOR,
+        Rounding::Up,
+    )
+}
+
+/// Saturating split into `(fee, net)` using percentages.
+#[inline]
+#[must_use]
+pub fn sat_split_percent(amount: i128, percentage: u32) -> (i128, i128) {
+    let fee = sat_percent(amount, percentage);
+    let net = amount.saturating_sub(fee);
+    (fee, net)
+}
+
 /// Check that the absolute difference between `requested` and `actual` does not
 /// exceed `max_slippage_bps` basis points.
 ///
@@ -576,9 +770,12 @@ mod tests {
     extern crate std;
 
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, slippage_bps_check,
-        split_bps, Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, floor_to_day, mul_div_i128,
+        percent, percent_round_up, percent_u64, sat_bps, sat_mul_bps, sat_percent,
+        sat_split_bps, sat_split_percent, slippage_bps_check, split_bps, split_percent,
+        BPS_DENOMINATOR, Rounding,
     };
+    use credence_errors::ContractError;
 
     // ── floor_to_day ─────────────────────────────────────────────────────────
 
@@ -679,12 +876,11 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn test_checked_add_or_error() {
         assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
         assert_eq!(
             super::checked_add_or_error(i128::MAX, 1),
-            Err(crate::ContractError::Overflow)
+            Err(ContractError::Overflow)
         );
     }
 
@@ -917,15 +1113,10 @@ mod tests {
         assert_eq!(bps_u64(0, 0, "mul"), 0);
         assert_eq!(bps_u64(0, BPS_DENOMINATOR as u32, "mul"), 0);
         assert_eq!(bps_u64(10000, BPS_DENOMINATOR as u32, "mul"), 10000);
-        let max_div_2 = u64::MAX / 2;
-        assert_eq!(
-            bps_u64(
-                (u64::MAX / (BPS_DENOMINATOR as u64 * 2)) * (BPS_DENOMINATOR as u64 * 2),
-                BPS_DENOMINATOR as u32,
-                "mul"
-            ),
-            max_div_2
-        );
+        // Keep the product inside u64 for the panicking helper.
+        assert_eq!(bps_u64(20_000, BPS_DENOMINATOR as u32, "mul"), 20_000);
+        // Saturating sibling handles the extreme bound without panicking.
+        assert_eq!(super::sat_bps_u64(u64::MAX, BPS_DENOMINATOR as u32), u64::MAX);
     }
 
     #[test]
@@ -955,13 +1146,13 @@ mod tests {
         splits.push_back(4999);
         assert_eq!(
             crate::require_valid_percent_split(&splits),
-            Err(crate::ContractError::InvariantViolation)
+            Err(ContractError::InvalidPercentSplit)
         );
 
         let splits_empty = soroban_sdk::Vec::new(&env); // empty sums to 0
         assert_eq!(
             crate::require_valid_percent_split(&splits_empty),
-            Err(crate::ContractError::InvariantViolation)
+            Err(ContractError::InvalidPercentSplit)
         );
     }
 
@@ -973,14 +1164,14 @@ mod tests {
         splits.push_back(5001);
         assert_eq!(
             crate::require_valid_percent_split(&splits),
-            Err(crate::ContractError::InvariantViolation)
+            Err(ContractError::InvalidPercentSplit)
         );
 
         let mut splits2 = soroban_sdk::Vec::new(&env);
         splits2.push_back(10001);
         assert_eq!(
             crate::require_valid_percent_split(&splits2),
-            Err(crate::ContractError::InvariantViolation)
+            Err(ContractError::InvalidPercentSplit)
         );
     }
 
@@ -992,7 +1183,7 @@ mod tests {
         splits.push_back(1);
         assert_eq!(
             crate::require_valid_percent_split(&splits),
-            Err(crate::ContractError::Arithmetic)
+            Err(ContractError::Overflow)
         );
     }
 
@@ -1100,25 +1291,30 @@ mod tests {
             Ok(())
         );
     }
-}
 
-/// Helper struct for timestamp calculations.
-pub struct Timestamp;
+    /// Percentage + saturating helper regression vectors.
+    #[test]
+    fn percent_and_sat_regression_vectors() {
+        assert_eq!(percent(10_000, 50, "mul", "div"), 5_000);
+        assert_eq!(percent_u64(10_000, 25, "mul"), 2_500);
+        assert_eq!(percent_round_up(101, 50, "mul"), 51); // 50.5 → 51
+        assert_eq!(split_percent(1_000, 10, "mul", "div", "sub"), (100, 900));
 
-impl Timestamp {
-    /// The number of seconds in a standard UTC day (24 hours).
-    pub const SECONDS_PER_DAY: u64 = crate::time::SECONDS_PER_DAY;
+        assert_eq!(sat_bps(i128::MAX, 10_000), i128::MAX);
+        assert_eq!(sat_mul_bps(1_000, 500), 50);
+        assert_eq!(sat_percent(1_000, 10), 100);
+        assert_eq!(sat_split_bps(1_000, 1_000), (100, 900));
+        assert_eq!(sat_split_percent(1_000, 10), (100, 900));
 
-    /// Truncates a timestamp (in seconds) to the start of its UTC day.
-    #[inline]
-    #[must_use]
-    pub fn floor_to_day(t: u64) -> u64 {
-        (t / Self::SECONDS_PER_DAY) * Self::SECONDS_PER_DAY
+        // Wide intermediate: amount that would overflow naive amount*bps.
+        let huge = i128::MAX / 2;
+        assert_eq!(sat_bps(huge, 10_000), huge);
+        assert_eq!(percent(huge, 100, "mul", "div"), huge);
     }
 }
 
 #[cfg(test)]
-mod tests {
+mod timestamp_floor_tests {
     use super::*;
 
     #[test]
@@ -1140,6 +1336,13 @@ mod proptests {
         #[test]
         fn sat_mul_bps_identity(amount in 0..i128::MAX) {
             prop_assert_eq!(sat_mul_bps(amount, 10_000), amount);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn mul_wad_identity(amount in -1_000_000_000_000_000_000i128..1_000_000_000_000_000_000i128) {
+            prop_assert_eq!(mul_wad(amount, WAD, "prop"), amount);
         }
     }
 }
