@@ -232,6 +232,21 @@ fn test_execute_cooldown_withdrawal_exact_boundary() {
 }
 
 #[test]
+fn test_cooldown_boundary_transitions_are_stable() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, admin, identity) = setup_with_token(&e);
+    client.create_bond_with_rolling(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
+    client.set_cooldown_period(&admin, &100);
+    client.request_cooldown_withdrawal(&identity, &250);
+
+    assert!(!cooldown::can_withdraw(1099, 1000, 100));
+    assert!(cooldown::can_withdraw(1100, 1000, 100));
+    assert!(cooldown::can_withdraw(1101, 1000, 100));
+}
+
+#[test]
 fn test_execute_cooldown_removes_request() {
     let e = Env::default();
     e.mock_all_auths();
