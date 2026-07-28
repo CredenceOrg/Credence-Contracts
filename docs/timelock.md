@@ -19,12 +19,23 @@ Admin ──cancel_operation───────┘
 3. After the ETA, anyone can call `execute_operation(op_id)` to execute it, provided it's within the grace window (`now <= expires_at`).
 4. At any point before execution, the admin can call `cancel_operation(op_id)` to discard it.
 
-Execution time boundaries are deterministic and inclusive:
+Execution time boundaries are deterministic and inclusive across the full lifecycle window `[eta, expires_at]`:
 
-- `now = eta - 1`: execution must fail.
-- `now = eta`: execution is allowed.
-- `now = expires_at`: execution is still allowed.
-- `now = expires_at + 1`: execution must fail.
+| Timestamp Boundary | Condition | Result / Error Code | Operation Status |
+|-------------------|-----------|----------------------|------------------|
+| `now = eta - 1` | `now < eta` | Fails: `ContractError::TimelockNotReady` | `Pending` |
+| `now = eta` | `now == eta` | Succeeds (lower inclusive boundary) | `Executed` |
+| `now = eta + 1` | `now > eta && now < expires_at` | Succeeds | `Executed` |
+| `now = expires_at - 1` | `now < expires_at` | Succeeds | `Executed` |
+| `now = expires_at` | `now == expires_at` | Succeeds (upper inclusive boundary) | `Executed` |
+| `now = expires_at + 1` | `now > expires_at` | Fails: `ContractError::SignatureExpired` | `Pending` |
+
+### Grace Window Semantics
+
+- **Grace Duration**: `GRACE_PERIOD = 86_400` seconds (24 hours).
+- **Expiration Calculation**: `expires_at = eta + GRACE_PERIOD`.
+- **Inclusive Range**: An operation is executable on any ledger timestamp `now` satisfying `eta <= now <= expires_at`.
+- **Regression Suite**: Fully tested in `contracts/timelock/src/test_timelock.rs` covering all boundary conditions (`eta - 1`, `eta`, `eta + 1`, `expires_at - 1`, `expires_at`, `expires_at + 1`).
 
 ## Function Reference
 

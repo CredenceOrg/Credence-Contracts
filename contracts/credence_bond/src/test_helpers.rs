@@ -11,6 +11,9 @@ impl MockStellarAsset {
     pub fn decimals(_e: Env) -> u32 {
         18
     }
+    pub fn symbol(e: Env) -> soroban_sdk::String {
+        soroban_sdk::String::from_str(&e, "USDC")
+    }
     pub fn balance(e: Env, id: Address) -> i128 {
         e.storage()
             .instance()

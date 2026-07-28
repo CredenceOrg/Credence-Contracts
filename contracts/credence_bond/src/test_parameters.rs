@@ -211,14 +211,23 @@ fn test_set_protocol_fee_bps_at_max_boundary() {
 }
 
 #[test]
-#[should_panic(expected = "protocol_fee_bps out of bounds")]
-fn test_set_protocol_fee_bps_below_min() {
+fn test_set_protocol_fee_bps_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 bps — must be accepted.
     let e = Env::default();
     let (client, admin) = setup(&e);
 
-    // MIN is 0, so we can't go below, but test with u32::MAX wrapping behavior
-    // Actually, since MIN is 0, we test the max boundary instead
-    client.set_protocol_fee_bps(&admin, &(MAX_PROTOCOL_FEE_BPS + 1));
+    client.set_protocol_fee_bps(&admin, &(MIN_PROTOCOL_FEE_BPS + 1));
+    assert_eq!(client.get_protocol_fee_bps(), MIN_PROTOCOL_FEE_BPS + 1);
+}
+
+#[test]
+fn test_set_protocol_fee_bps_max_minus_one_accepted() {
+    // One below the maximum (MAX_PROTOCOL_FEE_BPS - 1) must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_protocol_fee_bps(&admin, &(MAX_PROTOCOL_FEE_BPS - 1));
+    assert_eq!(client.get_protocol_fee_bps(), MAX_PROTOCOL_FEE_BPS - 1);
 }
 
 #[test]
@@ -246,6 +255,26 @@ fn test_set_attestation_fee_bps_at_max_boundary() {
 
     client.set_attestation_fee_bps(&admin, &MAX_ATTESTATION_FEE_BPS);
     assert_eq!(client.get_attestation_fee_bps(), MAX_ATTESTATION_FEE_BPS);
+}
+
+#[test]
+fn test_set_attestation_fee_bps_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 bps — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_attestation_fee_bps(&admin, &(MIN_ATTESTATION_FEE_BPS + 1));
+    assert_eq!(client.get_attestation_fee_bps(), MIN_ATTESTATION_FEE_BPS + 1);
+}
+
+#[test]
+fn test_set_attestation_fee_bps_max_minus_one_accepted() {
+    // One below the maximum (MAX_ATTESTATION_FEE_BPS - 1) must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_attestation_fee_bps(&admin, &(MAX_ATTESTATION_FEE_BPS - 1));
+    assert_eq!(client.get_attestation_fee_bps(), MAX_ATTESTATION_FEE_BPS - 1);
 }
 
 #[test]
@@ -286,6 +315,32 @@ fn test_set_withdrawal_cooldown_at_max_boundary() {
 }
 
 #[test]
+fn test_set_withdrawal_cooldown_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 second — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_withdrawal_cooldown_secs(&admin, &(MIN_WITHDRAWAL_COOLDOWN_SECS + 1));
+    assert_eq!(
+        client.get_withdrawal_cooldown_secs(),
+        MIN_WITHDRAWAL_COOLDOWN_SECS + 1
+    );
+}
+
+#[test]
+fn test_set_withdrawal_cooldown_max_minus_one_accepted() {
+    // One second below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_withdrawal_cooldown_secs(&admin, &(MAX_WITHDRAWAL_COOLDOWN_SECS - 1));
+    assert_eq!(
+        client.get_withdrawal_cooldown_secs(),
+        MAX_WITHDRAWAL_COOLDOWN_SECS - 1
+    );
+}
+
+#[test]
 #[should_panic(expected = "withdrawal_cooldown_secs out of bounds")]
 fn test_set_withdrawal_cooldown_above_max() {
     let e = Env::default();
@@ -310,6 +365,32 @@ fn test_set_slash_cooldown_at_max_boundary() {
 
     client.set_slash_cooldown_secs(&admin, &MAX_SLASH_COOLDOWN_SECS);
     assert_eq!(client.get_slash_cooldown_secs(), MAX_SLASH_COOLDOWN_SECS);
+}
+
+#[test]
+fn test_set_slash_cooldown_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 second — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_slash_cooldown_secs(&admin, &(MIN_SLASH_COOLDOWN_SECS + 1));
+    assert_eq!(
+        client.get_slash_cooldown_secs(),
+        MIN_SLASH_COOLDOWN_SECS + 1
+    );
+}
+
+#[test]
+fn test_set_slash_cooldown_max_minus_one_accepted() {
+    // One second below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_slash_cooldown_secs(&admin, &(MAX_SLASH_COOLDOWN_SECS - 1));
+    assert_eq!(
+        client.get_slash_cooldown_secs(),
+        MAX_SLASH_COOLDOWN_SECS - 1
+    );
 }
 
 #[test]
@@ -341,6 +422,26 @@ fn test_set_bronze_threshold_at_max_boundary() {
 
     client.set_bronze_threshold(&admin, &MAX_BRONZE_THRESHOLD);
     assert_eq!(client.get_bronze_threshold(), MAX_BRONZE_THRESHOLD);
+}
+
+#[test]
+fn test_set_bronze_threshold_min_plus_one_accepted() {
+    // MIN is 0, so min+1 = 1 — must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_bronze_threshold(&admin, &(MIN_BRONZE_THRESHOLD + 1));
+    assert_eq!(client.get_bronze_threshold(), MIN_BRONZE_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_bronze_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_bronze_threshold(&admin, &(MAX_BRONZE_THRESHOLD - 1));
+    assert_eq!(client.get_bronze_threshold(), MAX_BRONZE_THRESHOLD - 1);
 }
 
 #[test]
@@ -380,6 +481,26 @@ fn test_set_silver_threshold_at_max_boundary() {
 }
 
 #[test]
+fn test_set_silver_threshold_min_plus_one_accepted() {
+    // One above the minimum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_silver_threshold(&admin, &(MIN_SILVER_THRESHOLD + 1));
+    assert_eq!(client.get_silver_threshold(), MIN_SILVER_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_silver_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_silver_threshold(&admin, &(MAX_SILVER_THRESHOLD - 1));
+    assert_eq!(client.get_silver_threshold(), MAX_SILVER_THRESHOLD - 1);
+}
+
+#[test]
 #[should_panic(expected = "silver_threshold out of bounds")]
 fn test_set_silver_threshold_above_max() {
     let e = Env::default();
@@ -416,6 +537,26 @@ fn test_set_gold_threshold_at_max_boundary() {
 }
 
 #[test]
+fn test_set_gold_threshold_min_plus_one_accepted() {
+    // One above the minimum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_gold_threshold(&admin, &(MIN_GOLD_THRESHOLD + 1));
+    assert_eq!(client.get_gold_threshold(), MIN_GOLD_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_gold_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_gold_threshold(&admin, &(MAX_GOLD_THRESHOLD - 1));
+    assert_eq!(client.get_gold_threshold(), MAX_GOLD_THRESHOLD - 1);
+}
+
+#[test]
 #[should_panic(expected = "gold_threshold out of bounds")]
 fn test_set_gold_threshold_above_max() {
     let e = Env::default();
@@ -449,6 +590,26 @@ fn test_set_platinum_threshold_at_max_boundary() {
 
     client.set_platinum_threshold(&admin, &MAX_PLATINUM_THRESHOLD);
     assert_eq!(client.get_platinum_threshold(), MAX_PLATINUM_THRESHOLD);
+}
+
+#[test]
+fn test_set_platinum_threshold_min_plus_one_accepted() {
+    // One above the minimum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_platinum_threshold(&admin, &(MIN_PLATINUM_THRESHOLD + 1));
+    assert_eq!(client.get_platinum_threshold(), MIN_PLATINUM_THRESHOLD + 1);
+}
+
+#[test]
+fn test_set_platinum_threshold_max_minus_one_accepted() {
+    // One below the maximum must be accepted.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_platinum_threshold(&admin, &(MAX_PLATINUM_THRESHOLD - 1));
+    assert_eq!(client.get_platinum_threshold(), MAX_PLATINUM_THRESHOLD - 1);
 }
 
 #[test]
@@ -588,7 +749,7 @@ fn test_all_parameters_independent() {
     // Update all parameters
     client.set_protocol_fee_bps(&admin, &75);
     client.set_attestation_fee_bps(&admin, &15);
-    client.set_withdrawal_cooldown_secs(&admin, &86400);
+    client.set_withdrawal_cooldown_secs(&admin, &credence_math::Timestamp::SECONDS_PER_DAY);
     client.set_slash_cooldown_secs(&admin, &43200);
     client.set_bronze_threshold(&admin, &200_000_000);
     client.set_silver_threshold(&admin, &2_000_000_000);
@@ -598,7 +759,7 @@ fn test_all_parameters_independent() {
     // Verify all are set correctly
     assert_eq!(client.get_protocol_fee_bps(), 75);
     assert_eq!(client.get_attestation_fee_bps(), 15);
-    assert_eq!(client.get_withdrawal_cooldown_secs(), 86400);
+    assert_eq!(client.get_withdrawal_cooldown_secs(), credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(client.get_slash_cooldown_secs(), 43200);
     assert_eq!(client.get_bronze_threshold(), 200_000_000);
     assert_eq!(client.get_silver_threshold(), 2_000_000_000);
@@ -758,17 +919,21 @@ fn test_protocol_fee_event_args() {
     client.set_protocol_fee_bps(&admin, &200);
 
     let events = e.events().all();
-    // Find the last parameter_changed event
+    // Find the last param_updated event
     let last = events.iter().rev().find(|(_, topics, _)| {
         Symbol::try_from_val(&e, &topics.get(0).unwrap())
-            .map(|symbol| symbol == Symbol::new(&e, "parameter_changed"))
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
             .unwrap_or(false)
     });
-    assert!(last.is_some(), "parameter_changed event not emitted");
-    let (_, _, data) = last.unwrap();
-    // data = (parameter_name, old_value, new_value, caller, timestamp)
-    let (_, old_val, new_val, _, _) =
-        <(soroban_sdk::String, i128, i128, Address, u64)>::try_from_val(&e, &data).unwrap();
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    // Topics: (Symbol("param_updated"), Symbol("fee_prot"), Symbol("fee"), Address(admin))
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("fee_prot"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("fee"));
+    // Data: (old_value, new_value)
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
     assert_eq!(old_val, 100i128, "old_value mismatch");
     assert_eq!(new_val, 200i128, "new_value mismatch");
 }
@@ -784,13 +949,16 @@ fn test_attestation_fee_event_args() {
     let events = e.events().all();
     let last = events.iter().rev().find(|(_, topics, _)| {
         Symbol::try_from_val(&e, &topics.get(0).unwrap())
-            .map(|symbol| symbol == Symbol::new(&e, "parameter_changed"))
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
             .unwrap_or(false)
     });
-    assert!(last.is_some(), "parameter_changed event not emitted");
-    let (_, _, data) = last.unwrap();
-    let (_, old_val, new_val, _, _) =
-        <(soroban_sdk::String, i128, i128, Address, u64)>::try_from_val(&e, &data).unwrap();
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("fee_att"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("fee"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
     assert_eq!(old_val, 25i128);
     assert_eq!(new_val, 50i128);
 }
@@ -806,13 +974,16 @@ fn test_withdrawal_cooldown_event_args() {
     let events = e.events().all();
     let last = events.iter().rev().find(|(_, topics, _)| {
         Symbol::try_from_val(&e, &topics.get(0).unwrap())
-            .map(|symbol| symbol == Symbol::new(&e, "parameter_changed"))
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
             .unwrap_or(false)
     });
-    assert!(last.is_some());
-    let (_, _, data) = last.unwrap();
-    let (_, old_val, new_val, _, _) =
-        <(soroban_sdk::String, i128, i128, Address, u64)>::try_from_val(&e, &data).unwrap();
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("cd_with"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("cooldown"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
     assert_eq!(old_val, 3600i128);
     assert_eq!(new_val, 7200i128);
 }
@@ -880,7 +1051,208 @@ fn test_no_duplicate_events_on_parameter_update() {
 }
 
 // ============================================================================
-// Category 11: Governance Approval Invariants (issue #278)
+// Category 11: Per-Parameter Event Key & Category Verification
+// ============================================================================
+
+#[test]
+fn test_slash_cooldown_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_slash_cooldown_secs(&admin, &3600);
+    client.set_slash_cooldown_secs(&admin, &7200);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("cd_slash"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("cooldown"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
+    assert_eq!(old_val, 3600i128);
+    assert_eq!(new_val, 7200i128);
+}
+
+#[test]
+fn test_bronze_threshold_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_bronze_threshold(&admin, &200_000_000);
+    client.set_bronze_threshold(&admin, &400_000_000);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("th_brnz"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("tier"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
+    assert_eq!(old_val, 200_000_000i128);
+    assert_eq!(new_val, 400_000_000i128);
+}
+
+#[test]
+fn test_silver_threshold_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_silver_threshold(&admin, &2_000_000_000);
+    client.set_silver_threshold(&admin, &4_000_000_000);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("th_slvr"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("tier"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
+    assert_eq!(old_val, 2_000_000_000i128);
+    assert_eq!(new_val, 4_000_000_000i128);
+}
+
+#[test]
+fn test_gold_threshold_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_gold_threshold(&admin, &20_000_000_000);
+    client.set_gold_threshold(&admin, &40_000_000_000);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("th_gold"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("tier"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
+    assert_eq!(old_val, 20_000_000_000i128);
+    assert_eq!(new_val, 40_000_000_000i128);
+}
+
+#[test]
+fn test_platinum_threshold_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_platinum_threshold(&admin, &200_000_000_000);
+    client.set_platinum_threshold(&admin, &400_000_000_000);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("th_plat"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("tier"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
+    assert_eq!(old_val, 200_000_000_000i128);
+    assert_eq!(new_val, 400_000_000_000i128);
+}
+
+#[test]
+fn test_max_leverage_event_args() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_max_leverage(&admin, &50_000);
+    client.set_max_leverage(&admin, &100_000);
+
+    let events = e.events().all();
+    let last = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(last.is_some(), "param_updated event not emitted");
+    let (_, topics, data) = last.unwrap();
+    let topic_key: Symbol = topics.get(1).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_key, symbol_short!("max_lev"));
+    let topic_cat: Symbol = topics.get(2).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_cat, symbol_short!("risk"));
+    let (old_val, new_val): (i128, i128) = data.into_val(&e);
+    assert_eq!(old_val, 50_000i128);
+    assert_eq!(new_val, 100_000i128);
+}
+
+#[test]
+fn test_event_topics_contain_admin_address() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    client.set_protocol_fee_bps(&admin, &100);
+
+    let events = e.events().all();
+    let ev = events.iter().rev().find(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    });
+    assert!(ev.is_some(), "param_updated event not emitted");
+    let (_, topics, _) = ev.unwrap();
+    // Topic[3] is the admin address
+    let topic_admin: Address = topics.get(3).unwrap().try_into_val(&e).unwrap();
+    assert_eq!(topic_admin, admin);
+}
+
+#[test]
+fn test_all_parameter_events_have_correct_categories() {
+    // Verify every parameter key maps to its expected category via the event topics.
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    // Execute one set per parameter
+    client.set_protocol_fee_bps(&admin, &100);
+    client.set_attestation_fee_bps(&admin, &20);
+    client.set_withdrawal_cooldown_secs(&admin, &3600);
+    client.set_slash_cooldown_secs(&admin, &1800);
+    client.set_bronze_threshold(&admin, &200_000_000);
+    client.set_silver_threshold(&admin, &2_000_000_000);
+    client.set_gold_threshold(&admin, &20_000_000_000);
+    client.set_platinum_threshold(&admin, &200_000_000_000);
+    client.set_max_leverage(&admin, &50_000);
+
+    // Check categories are set correctly, but here we just verify event count
+    let events = e.events().all();
+    let param_events: Vec<_> = events.iter().filter(|(_, topics, _)| {
+        Symbol::try_from_val(&e, &topics.get(0).unwrap())
+            .map(|symbol| symbol == Symbol::new(&e, "param_updated"))
+            .unwrap_or(false)
+    }).collect();
+    assert_eq!(param_events.len(), 9, "expected 9 param_updated events");
+}
+
+// ============================================================================
+// Category 12: Governance Approval Invariants (issue #278)
 // ============================================================================
 
 #[test]

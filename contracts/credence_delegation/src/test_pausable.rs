@@ -1,8 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 fn setup() -> (Env, Address, CredenceDelegationClient<'static>) {
     let env = Env::default();
@@ -43,7 +42,7 @@ fn test_pause_blocks_state_changes_but_allows_reads() {
             &owner,
             &delegate,
             &DelegationType::Attestation,
-            &86400_u64,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
             &0_u64
         )
         .is_err());
@@ -60,7 +59,7 @@ fn test_pause_blocks_state_changes_but_allows_reads() {
         &owner,
         &delegate,
         &DelegationType::Attestation,
-        &86400_u64,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &0_u64,
     );
 }
@@ -175,7 +174,7 @@ fn test_delegate_paused() {
             &owner,
             &delegate,
             &DelegationType::Attestation,
-            &86400_u64,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
             &0_u64
         )
         .is_err());
@@ -190,7 +189,7 @@ fn test_revoke_delegation_paused() {
         &owner,
         &delegate,
         &DelegationType::Attestation,
-        &86400_u64,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &0_u64,
     );
     client.pause(&admin);
@@ -208,7 +207,7 @@ fn test_revoke_attestation_paused() {
         &owner,
         &delegate,
         &DelegationType::Attestation,
-        &86400_u64,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &0_u64,
     );
     client.pause(&admin);
@@ -230,6 +229,7 @@ fn test_execute_delegated_delegate_paused() {
         owner: owner.clone(),
         target: delegate.clone(),
         scheme: 0,
+        ledger_number: 0,
         signature_domain: String::from_str(&env, "CredenceDelegation"),
     };
     assert!(client
@@ -237,7 +237,7 @@ fn test_execute_delegated_delegate_paused() {
             &owner,
             &delegate,
             &DelegationType::Attestation,
-            &86400_u64,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
             &payload
         )
         .is_err());
@@ -252,7 +252,7 @@ fn test_execute_delegated_revoke_paused() {
         &owner,
         &delegate,
         &DelegationType::Attestation,
-        &86400_u64,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &0_u64,
     );
     client.pause(&admin);
@@ -263,6 +263,7 @@ fn test_execute_delegated_revoke_paused() {
         owner: owner.clone(),
         target: delegate.clone(),
         scheme: 0,
+        ledger_number: 0,
         signature_domain: String::from_str(&env, "CredenceDelegation"),
     };
     assert!(client
@@ -279,7 +280,7 @@ fn test_execute_delegated_revoke_attest_paused() {
         &owner,
         &delegate,
         &DelegationType::Attestation,
-        &86400_u64,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &0_u64,
     );
     client.pause(&admin);
@@ -290,6 +291,7 @@ fn test_execute_delegated_revoke_attest_paused() {
         owner: owner.clone(),
         target: delegate.clone(),
         scheme: 0,
+        ledger_number: 0,
         signature_domain: String::from_str(&env, "CredenceDelegation"),
     };
     assert!(client

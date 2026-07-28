@@ -121,9 +121,7 @@ pub fn set_enabled(e: &Env, enabled: bool, admin: &Address, governance: &Address
     };
 
     let transition_key = EmergencyDataKey::Transition(transition_id);
-    e.storage()
-        .persistent()
-        .set(&transition_key, &transition);
+    e.storage().persistent().set(&transition_key, &transition);
     e.storage().persistent().extend_ttl(
         &transition_key,
         crate::PERSISTENT_TTL_MAX / 2,
@@ -219,9 +217,7 @@ pub fn store_record(
     };
 
     let record_key = EmergencyDataKey::Record(id);
-    e.storage()
-        .persistent()
-        .set(&record_key, &record);
+    e.storage().persistent().set(&record_key, &record);
     e.storage().persistent().extend_ttl(
         &record_key,
         crate::PERSISTENT_TTL_MAX / 2,

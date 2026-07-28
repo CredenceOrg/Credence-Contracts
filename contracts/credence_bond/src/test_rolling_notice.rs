@@ -152,7 +152,10 @@ fn test_renew_during_open_request_emits_no_bond_renewed() {
             .map(|v| Symbol::from_val(&e, &v) == Symbol::new(&e, "bond_renewed"))
             .unwrap_or(false)
     });
-    assert!(!renewed, "bond_renewed must not be emitted when withdrawal is pending");
+    assert!(
+        !renewed,
+        "bond_renewed must not be emitted when withdrawal is pending"
+    );
 }
 
 // ── 5. renew without open request advances the period and resets state ────────
@@ -190,7 +193,10 @@ fn test_renew_emits_bond_renewed_event() {
             .map(|v| Symbol::from_val(&e, &v) == Symbol::new(&e, "bond_renewed"))
             .unwrap_or(false)
     });
-    assert!(renewed, "bond_renewed event must be emitted on successful renewal");
+    assert!(
+        renewed,
+        "bond_renewed event must be emitted on successful renewal"
+    );
 }
 
 // ── 6. withdrawal_requested event fields ─────────────────────────────────────

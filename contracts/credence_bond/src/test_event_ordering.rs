@@ -39,7 +39,7 @@ fn event_name(e: &Env, event: &soroban_sdk::ContractEvent) -> Symbol {
 fn create_bond_emits_events_in_order() {
     let (e, client, _admin, identity, contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let events = e.events().all();
 
@@ -61,7 +61,7 @@ fn create_bond_emits_events_in_order() {
 fn withdraw_emits_events_in_order() {
     let (e, client, _admin, identity, _contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let mut ledger_info = e.ledger().get();
     ledger_info.timestamp += 86401;
@@ -97,7 +97,7 @@ fn withdraw_emits_events_in_order() {
 fn top_up_emits_events_in_order() {
     let (e, client, _admin, identity, _contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     client.top_up(&identity, &5_000_i128);
 
@@ -127,7 +127,7 @@ fn top_up_emits_events_in_order() {
 fn multi_event_tx_ordering_create_bond() {
     let (e, client, _admin, identity, contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let events = e.events().all();
 
@@ -155,7 +155,7 @@ fn multi_event_tx_ordering_create_bond() {
 fn create_bond_no_tier_events_when_tier_unchanged() {
     let (e, client, _admin, identity, contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
     let events = e.events().all();
 
@@ -188,7 +188,7 @@ fn sad_path_no_events_on_panic() {
     let identity = Address::generate(&e);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        client.create_bond_with_rolling(&identity, &10_000_i128, &86400_u64, &false, &0_u64);
+        client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     }));
     assert!(result.is_err(), "create_bond without token should fail");
 
@@ -219,7 +219,7 @@ proptest! {
             params_list.push_back(BatchBondParams {
                 identity,
                 amount,
-                duration: 86400,
+                duration: credence_math::Timestamp::SECONDS_PER_DAY,
                 is_rolling: false,
                 notice_period_duration: 0,
             });
@@ -268,14 +268,14 @@ fn sad_path_no_events_on_batch_panic() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&e),
         amount: 1000,
-        duration: 86400,
+        duration: credence_math::Timestamp::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&e),
         amount: -100, // Invalid
-        duration: 86400,
+        duration: credence_math::Timestamp::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });

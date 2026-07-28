@@ -54,6 +54,9 @@ pub enum ArbitrationError {
     QuorumNotMet = 13,
     /// The actual outcome does not match the promised outcome.
     PromiseNotKept = 15,
+    /// Dispute is in an active state (Open, Voting, or Resolving) and the
+    /// requested operation requires an inactive state (Resolved, Cancelled, or Tied).
+    DisputeActive = 16,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -78,6 +81,26 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
     }
 }
 
+/// Check whether a dispute status is considered "active" (operations should be blocked).
+pub fn is_dispute_active(status: DisputeStatus) -> bool {
+    matches!(
+        status,
+        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving
+    )
+}
+
+/// Require that a dispute's status is inactive (Resolved, Cancelled, or Tied).
+///
+/// Active disputes (Open, Voting, Resolving) block lease-modifying operations;
+/// resolved disputes allow them to proceed.
+pub fn require_dispute_inactive(status: DisputeStatus) -> Result<(), ArbitrationError> {
+    if is_dispute_active(status) {
+        Err(ArbitrationError::DisputeActive)
+    } else {
+        Ok(())
+    }
+}
+
 /// Assert that a promised outcome matches the actual outcome.
 ///
 /// Returns `Ok(())` when the outcomes match (promise kept),
@@ -87,5 +110,25 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
         Ok(())
     } else {
         Err(ArbitrationError::PromiseNotKept)
+    }
+}
+
+/// Assert that a dispute is in a resolved (terminal) state.
+///
+/// Active dispute states (`Open`, `Voting`, `Resolving`) indicate the dispute
+/// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`) mean
+/// the dispute has concluded and downstream operations (e.g. lease/bond
+/// actions) may proceed.
+///
+/// # Returns
+///
+/// - `Ok(())` when the dispute is in a terminal state.
+/// - `Err(ArbitrationError::DisputeActive)` when the dispute is still active.
+pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), ArbitrationError> {
+    match status {
+        DisputeStatus::Resolved | DisputeStatus::Cancelled | DisputeStatus::Tied => Ok(()),
+        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving => {
+            Err(ArbitrationError::DisputeActive)
+        }
     }
 }

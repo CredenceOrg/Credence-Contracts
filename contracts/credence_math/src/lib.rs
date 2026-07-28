@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,15 +14,26 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use ethnum::U256;
 use soroban_sdk;
 
+pub mod rate;
+
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
 
-/// Rounding behavior for [`mul_div_i128`].
+/// Fixed-point denominator for percentage calculations.
+pub const PERCENT_DENOMINATOR: i128 = 100;
+
+/// Rounding behavior for [`mul_div_i128`] and [`sat_mul_div_i128`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero.
@@ -37,6 +49,40 @@ pub enum Rounding {
 #[must_use]
 pub fn mul_u64(a: u64, b: u64, msg: &'static str) -> u64 {
     a.checked_mul(b).unwrap_or_else(|| panic!("{msg}"))
+}
+
+/// Floor a Unix timestamp (seconds since epoch) to the start of its UTC day.
+///
+/// Equivalent to `ts / SECS_PER_DAY * SECS_PER_DAY`, where
+/// `SECS_PER_DAY = 86_400`.  The result is the Unix timestamp of the most
+/// recent midnight (00:00:00 UTC) that is ≤ `ts`.
+///
+/// # Properties
+///
+/// * **Idempotent**: `floor_to_day(floor_to_day(ts)) == floor_to_day(ts)`.
+/// * **Monotone**: `a <= b` implies `floor_to_day(a) <= floor_to_day(b)`.
+/// * **Epoch zero**: `floor_to_day(0) == 0` (epoch is already a midnight).
+/// * **Range**: the result is always a multiple of `86_400`.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::floor_to_day;
+///
+/// // Epoch zero is already a midnight boundary.
+/// assert_eq!(floor_to_day(0), 0);
+///
+/// // Mid-day: 2024-01-01 12:00:00 UTC  →  2024-01-01 00:00:00 UTC
+/// assert_eq!(floor_to_day(1_704_067_200 + 43_200), 1_704_067_200);
+///
+/// // Last second of the day floors back to the same midnight.
+/// assert_eq!(floor_to_day(86_399), 0);
+/// ```
+#[inline]
+#[must_use]
+pub fn floor_to_day(ts: u64) -> u64 {
+    const SECS_PER_DAY: u64 = 86_400;
+    (ts / SECS_PER_DAY) * SECS_PER_DAY
 }
 
 /// Checked `i128` addition with a stable panic message.
@@ -145,7 +191,32 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
         .ok_or(ContractError::Overflow)
 }
 
-/// Compute `a * b / denom` over a 256-bit intermediate.
+/// Checked `i128` addition returning a typed error instead of panicking.
+///
+/// Returns `Ok(sum)` on success, or [`ContractError::Overflow`] when the
+/// addition would exceed `i128::MIN` / `i128::MAX`.
+///
+/// This is the typed counterpart to [`add_i128`]; prefer it on paths where
+/// overflow is a reachable runtime state so callers receive a wire-stable
+/// error code rather than a free-form panic string.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::checked_add_or_error;
+/// use credence_errors::ContractError;
+///
+/// assert_eq!(checked_add_or_error(1, 2), Ok(3));
+/// assert_eq!(checked_add_or_error(i128::MAX, 1), Err(ContractError::Overflow));
+/// assert_eq!(checked_add_or_error(i128::MIN, -1), Err(ContractError::Overflow));
+/// ```
+#[inline]
+pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
+/// Compute `a * b / denom` over a 256-bit intermediate, **panicking** on overflow
+/// or `denom == 0`.
 ///
 /// The intermediate product is widened before division, so large products that
 /// exceed `i128` can still succeed when the final rounded result fits in
@@ -220,12 +291,103 @@ pub fn mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding, msg: &'static
     }
 }
 
+/// Compute `a * b / denom` over a 256-bit intermediate with **saturating**
+/// semantics.
+///
+/// Unlike [`mul_div_i128`] — which panics on overflow or `denom == 0` — this
+/// helper silently **clamps** the result to `i128::MIN` / `i128::MAX` and
+/// **returns `0`** when `denom == 0`. Use it on UX/aggregation paths that must
+/// never revert the transaction.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::{sat_mul_div_i128, Rounding};
+///
+/// // Saturation at upper bound: never panics, clamps to i128::MAX.
+/// assert_eq!(sat_mul_div_i128(i128::MAX, 2, 1, Rounding::Down), i128::MAX);
+/// // Saturation at lower bound: clamps to i128::MIN.
+/// assert_eq!(sat_mul_div_i128(i128::MIN, 2, 1, Rounding::Down), i128::MIN);
+/// // Zero denominator is treated as zero (no panic).
+/// assert_eq!(sat_mul_div_i128(10, 3, 0, Rounding::Down), 0);
+/// // Basic rounding semantics:
+/// assert_eq!(sat_mul_div_i128(10, 3, 4, Rounding::Down), 7);
+/// assert_eq!(sat_mul_div_i128(10, 3, 4, Rounding::Up), 8);
+/// ```
+#[inline]
+#[must_use]
+pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, mode: Rounding) -> i128 {
+    if denom == 0 {
+        return 0;
+    }
+
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let numerator = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let quotient = numerator / divisor;
+    let remainder = numerator % divisor;
+
+    let rounded = match mode {
+        Rounding::Down => quotient,
+        Rounding::Up => {
+            if remainder == U256::ZERO {
+                quotient
+            } else {
+                quotient + U256::ONE
+            }
+        }
+        Rounding::Nearest => {
+            if remainder * U256::new(2) >= divisor {
+                quotient + U256::ONE
+            } else {
+                quotient
+            }
+        }
+    };
+
+    let positive_limit = U256::new(i128::MAX as u128);
+    let negative_limit = U256::new((i128::MAX as u128) + 1);
+    if negative {
+        if rounded >= negative_limit {
+            i128::MIN
+        } else {
+            -(rounded.as_u128() as i128)
+        }
+    } else {
+        if rounded >= positive_limit {
+            i128::MAX
+        } else {
+            rounded.as_u128() as i128
+        }
+    }
+}
+
 /// Calculate a basis-point percentage of an `i128` amount: `amount * bps / BPS_DENOMINATOR`.
+///
+/// # Panics
+/// Panics with `mul_msg` on i128 multiplication overflow, with `div_msg` on
+/// division by zero. Panics never fire on hot paths because the i128 multiply
+/// step is the only widening boundary on this call.
 #[inline]
 #[must_use]
 pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str) -> i128 {
     let numerator = mul_i128(amount, bps as i128, mul_msg);
     div_i128(numerator, BPS_DENOMINATOR, div_msg)
+}
+
+/// Saturated basis-point multiplication: `amount * bps / BPS_DENOMINATOR`.
+///
+/// Uses [`mul_div_i128`] so `amount * bps` cannot overflow before division.
+#[inline]
+#[must_use]
+pub fn sat_mul_bps(amount: i128, bps_value: u32) -> i128 {
+    mul_div_i128(
+        amount,
+        bps_value as i128,
+        BPS_DENOMINATOR,
+        Rounding::Down,
+        "sat_mul_bps overflow",
+    )
 }
 
 /// Calculate a basis-point percentage of an `i128` amount, rounded away from zero.
@@ -254,6 +416,9 @@ pub fn bps_round_up(amount: i128, bps_value: u32, msg: &'static str) -> i128 {
 }
 
 /// Calculate a basis-point percentage of a `u64` amount: `amount * bps / BPS_DENOMINATOR`.
+///
+/// # Panics
+/// Panics with `mul_msg` on u64 multiplication overflow.
 #[inline]
 #[must_use]
 pub fn bps_u64(amount: u64, bps: u32, mul_msg: &'static str) -> u64 {
@@ -261,6 +426,10 @@ pub fn bps_u64(amount: u64, bps: u32, mul_msg: &'static str) -> u64 {
 }
 
 /// Split an amount into `(fee, net)` using basis-point math.
+///
+/// # Panics
+/// Panics with `mul_msg` on i128 multiplication overflow, with `div_msg` on
+/// division by zero, with `sub_msg` if `fee > amount`.
 #[inline]
 #[must_use]
 pub fn split_bps(
@@ -273,6 +442,52 @@ pub fn split_bps(
     let fee = bps(amount, bps_value, mul_msg, div_msg);
     let net = sub_i128(amount, fee, sub_msg);
     (fee, net)
+}
+
+/// Check that the absolute difference between `requested` and `actual` does not
+/// exceed `max_slippage_bps` basis points.
+///
+/// Returns `Ok(())` when the actual amount is within the slippage tolerance of
+/// the requested amount. Returns [`ContractError::SlippageExceeded`] when the
+/// slippage exceeds the bound.
+///
+/// # Arguments
+///
+/// * `requested` - The expected/requested amount.
+/// * `actual` - The realized amount.
+/// * `max_slippage_bps` - Maximum allowed slippage in basis points.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::slippage_bps_check;
+/// use credence_errors::ContractError;
+///
+/// assert_eq!(slippage_bps_check(1000, 1000, 100), Ok(()));
+/// assert_eq!(slippage_bps_check(1000, 990, 100), Ok(()));
+/// assert_eq!(slippage_bps_check(1000, 900, 100), Err(ContractError::SlippageExceeded));
+/// ```
+#[inline]
+pub fn slippage_bps_check(
+    requested: i128,
+    actual: i128,
+    max_slippage_bps: u32,
+) -> Result<(), ContractError> {
+    if requested == actual {
+        return Ok(());
+    }
+    if max_slippage_bps == 0 || requested == 0 {
+        return Err(ContractError::SlippageExceeded);
+    }
+    let diff = requested.abs_diff(actual);
+    let requested_abs = requested.unsigned_abs();
+    if U256::new(diff) * U256::new(BPS_DENOMINATOR as u128)
+        <= U256::new(requested_abs) * U256::new(max_slippage_bps as u128)
+    {
+        Ok(())
+    } else {
+        Err(ContractError::SlippageExceeded)
+    }
 }
 
 /// Split `items` into chunks of `chunk_size` and invoke `f` for each chunk.
@@ -289,9 +504,9 @@ pub fn split_bps(
 /// | exact multiple     | every chunk has exactly `chunk_size` elements |
 /// | remainder          | last chunk has `len % chunk_size` elements    |
 ///
-/// # Panics
+/// # Errors
 ///
-/// Panics with `"chunked_iter: chunk_size must be > 0"` when `chunk_size == 0`.
+/// Aborts with [`ContractError::DivisionByZero`] when `chunk_size == 0`.
 ///
 /// # Returns
 ///
@@ -310,7 +525,7 @@ where
     F: FnMut(soroban_sdk::Vec<T>, u32),
 {
     if chunk_size == 0 {
-        panic!("chunked_iter: chunk_size must be > 0");
+        soroban_sdk::panic_with_error!(e, ContractError::DivisionByZero);
     }
 
     let len = items.len();
@@ -335,11 +550,112 @@ where
     chunk_index
 }
 
+/// Validate that an array of percentage splits sums to exactly 10,000 bps.
+///
+/// Returns `ContractError::InvalidPercentSplit` if the splits sum is not exactly `BPS_DENOMINATOR`.
+/// Returns `ContractError::Overflow` if the sum exceeds `u32::MAX`.
+#[inline]
+pub fn require_valid_percent_split(splits: &soroban_sdk::Vec<u32>) -> Result<(), ContractError> {
+    let mut sum: u32 = 0;
+    for i in 0..splits.len() {
+        let split = splits.get(i).unwrap();
+        sum = sum.checked_add(split).ok_or(ContractError::Overflow)?;
+    }
+    if sum != BPS_DENOMINATOR as u32 {
+        return Err(ContractError::InvalidPercentSplit);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::{
-        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, split_bps, Rounding,
+        bps, bps_round_up, bps_u64, ceil_div_i128, div_i128, mul_div_i128, slippage_bps_check,
+        split_bps, Rounding,
     };
+
+    // ── floor_to_day ─────────────────────────────────────────────────────────
+
+    /// Epoch zero is already a midnight: flooring it must return 0.
+    #[test]
+    fn floor_to_day_at_epoch_zero() {
+        assert_eq!(floor_to_day(0), 0);
+    }
+
+    /// A timestamp that falls exactly on a midnight boundary is unchanged.
+    ///
+    /// 2024-01-01 00:00:00 UTC = 1_704_067_200
+    #[test]
+    fn floor_to_day_at_midnight() {
+        let midnight: u64 = 1_704_067_200;
+        assert_eq!(floor_to_day(midnight), midnight);
+    }
+
+    /// A mid-day timestamp floors back to the start of the same UTC day.
+    ///
+    /// 2024-01-01 12:00:00 UTC = midnight + 43_200  →  midnight
+    #[test]
+    fn floor_to_day_mid_day() {
+        let midnight: u64 = 1_704_067_200;
+        let midday = midnight + 43_200; // 12 hours into the day
+        assert_eq!(floor_to_day(midday), midnight);
+    }
+
+    /// The last second of a day (23:59:59) floors to the same day's midnight.
+    ///
+    /// 1970-01-01 23:59:59 UTC = 86_399  →  0 (epoch midnight)
+    #[test]
+    fn floor_to_day_end_of_day() {
+        assert_eq!(floor_to_day(86_399), 0);
+    }
+
+    /// The last second of an arbitrary day floors to that day's midnight.
+    ///
+    /// 2024-01-01 23:59:59 UTC  →  2024-01-01 00:00:00 UTC
+    #[test]
+    fn floor_to_day_last_second_of_arbitrary_day() {
+        let midnight: u64 = 1_704_067_200;
+        let last_second = midnight + 86_399; // 23:59:59 on the same day
+        assert_eq!(floor_to_day(last_second), midnight);
+    }
+
+    /// The first second of the next day is the next midnight, not the previous.
+    ///
+    /// 1970-01-02 00:00:00 UTC = 86_400  →  86_400 (already a boundary)
+    #[test]
+    fn floor_to_day_first_second_of_next_day() {
+        let day2_midnight: u64 = 86_400;
+        assert_eq!(floor_to_day(day2_midnight), day2_midnight);
+    }
+
+    /// floor_to_day is idempotent: applying it twice gives the same result.
+    #[test]
+    fn floor_to_day_is_idempotent() {
+        let cases: &[u64] = &[0, 1, 43_200, 86_399, 86_400, 1_704_067_200, u64::MAX];
+        for &ts in cases {
+            assert_eq!(
+                floor_to_day(floor_to_day(ts)),
+                floor_to_day(ts),
+                "idempotent check failed for ts={ts}"
+            );
+        }
+    }
+
+    /// floor_to_day result is always a multiple of 86_400 (seconds-per-day).
+    #[test]
+    fn floor_to_day_result_is_multiple_of_86400() {
+        let cases: &[u64] = &[0, 1, 43_200, 86_399, 86_400, 1_704_067_200, u64::MAX];
+        for &ts in cases {
+            let result = floor_to_day(ts);
+            assert_eq!(
+                result % 86_400,
+                0,
+                "result {result} is not a multiple of 86_400 (input ts={ts})"
+            );
+        }
+    }
 
     fn legacy_bps_i128(amount: i128, bps: u32) -> i128 {
         amount
@@ -356,6 +672,16 @@ mod tests {
         let fee = legacy_bps_i128(amount, bps);
         let net = amount.checked_sub(fee).expect("legacy i128 underflow");
         (fee, net)
+    }
+
+    #[test]
+    #[test]
+    fn test_checked_add_or_error() {
+        assert_eq!(super::checked_add_or_error(1, 2), Ok(3));
+        assert_eq!(
+            super::checked_add_or_error(i128::MAX, 1),
+            Err(crate::ContractError::Overflow)
+        );
     }
 
     #[test]
@@ -531,10 +857,6 @@ mod tests {
         assert_eq!(ceil_div_i128(3 * 10_000, 7, "test"), 4286);
     }
 
-    // -----------------------------------------------------------------------
-    // Overflow boundary of the inner `a + (b - 1)` add (issue #660)
-    // -----------------------------------------------------------------------
-
     /// `a == i128::MAX, b == 2` makes the inner `a + (b - 1)` overflow, which
     /// must hit the `checked_add` panic path with the supplied message.
     #[test]
@@ -574,124 +896,246 @@ mod tests {
     #[test]
     fn ceil_div_i128_differs_from_floor_by_one_on_remainder() {
         // remainder present: ceil(11/5) = 3, floor(11/5) = 2
-        assert_eq!(
-            ceil_div_i128(11, 5, "test"),
-            div_i128(11, 5, "test") + 1
-        );
+        assert_eq!(ceil_div_i128(11, 5, "test"), div_i128(11, 5, "test") + 1);
         // exact division: ceil(10/5) == floor(10/5)
         assert_eq!(ceil_div_i128(10, 5, "test"), div_i128(10, 5, "test"));
     }
 
-    // -----------------------------------------------------------------------
-    // chunked_iter — boundary tests (issue #760)
-    // -----------------------------------------------------------------------
-    //
-    // Three boundary cases are locked in here:
-    //   1. empty     — callback is never called, return value is 0
-    //   2. exact     — every chunk is full (len is an exact multiple of chunk_size)
-    //   3. remainder — final chunk is shorter than chunk_size
+    #[test]
+    fn bps_round_up_zero_bps() {
+        assert_eq!(bps_round_up(12345, 0, "test"), 0);
+        assert_eq!(bps_round_up(i128::MAX, 0, "test"), 0);
+        assert_eq!(bps_round_up(-98765, 0, "test"), 0);
+    }
 
-    use crate::chunked_iter;
+    #[test]
+    fn bps_u64_boundaries() {
+        assert_eq!(bps_u64(0, 0, "mul"), 0);
+        assert_eq!(bps_u64(0, BPS_DENOMINATOR as u32, "mul"), 0);
+        assert_eq!(bps_u64(10000, BPS_DENOMINATOR as u32, "mul"), 10000);
+        let max_div_2 = u64::MAX / 2;
+        assert_eq!(
+            bps_u64(
+                (u64::MAX / (BPS_DENOMINATOR as u64 * 2)) * (BPS_DENOMINATOR as u64 * 2),
+                BPS_DENOMINATOR as u32,
+                "mul"
+            ),
+            max_div_2
+        );
+    }
 
-    /// Build a `soroban_sdk::Vec<u32>` with elements [1, 2, ..., n].
-    fn make_vec(e: &soroban_sdk::Env, n: u32) -> soroban_sdk::Vec<u32> {
-        let mut v: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(e);
-        for i in 1..=n {
-            v.push_back(i);
+    #[test]
+    fn test_require_valid_percent_split_valid() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(5000);
+        splits.push_back(5000);
+        assert_eq!(crate::require_valid_percent_split(&splits), Ok(()));
+
+        let mut splits2 = soroban_sdk::Vec::new(&env);
+        splits2.push_back(10000);
+        assert_eq!(crate::require_valid_percent_split(&splits2), Ok(()));
+
+        let mut splits3 = soroban_sdk::Vec::new(&env);
+        splits3.push_back(3333);
+        splits3.push_back(3333);
+        splits3.push_back(3334);
+        assert_eq!(crate::require_valid_percent_split(&splits3), Ok(()));
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_less_than() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(5000);
+        splits.push_back(4999);
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::InvariantViolation)
+        );
+
+        let splits_empty = soroban_sdk::Vec::new(&env); // empty sums to 0
+        assert_eq!(
+            crate::require_valid_percent_split(&splits_empty),
+            Err(crate::ContractError::InvariantViolation)
+        );
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_greater_than() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(5000);
+        splits.push_back(5001);
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::InvariantViolation)
+        );
+
+        let mut splits2 = soroban_sdk::Vec::new(&env);
+        splits2.push_back(10001);
+        assert_eq!(
+            crate::require_valid_percent_split(&splits2),
+            Err(crate::ContractError::InvariantViolation)
+        );
+    }
+
+    #[test]
+    fn test_require_valid_percent_split_overflow() {
+        let env = soroban_sdk::Env::default();
+        let mut splits = soroban_sdk::Vec::new(&env);
+        splits.push_back(u32::MAX);
+        splits.push_back(1);
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::Arithmetic)
+        );
+    }
+
+    #[test]
+    fn split_bps_boundaries() {
+        assert_eq!(split_bps(0, 0, "mul", "div", "sub"), (0, 0));
+        assert_eq!(
+            split_bps(0, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (0, 0)
+        );
+        assert_eq!(split_bps(12345, 0, "mul", "div", "sub"), (0, 12345));
+        assert_eq!(
+            split_bps(12345, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (12345, 0)
+        );
+        let amount = i128::MAX / 20000;
+        assert_eq!(
+            split_bps(amount, BPS_DENOMINATOR as u32, "mul", "div", "sub"),
+            (amount, 0)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_exact_match() {
+        assert_eq!(slippage_bps_check(1000, 1000, 100), Ok(()));
+        assert_eq!(slippage_bps_check(0, 0, 100), Ok(()));
+        assert_eq!(slippage_bps_check(-1000, -1000, 100), Ok(()));
+    }
+
+    #[test]
+    fn slippage_bps_check_zero_slippage_tolerance() {
+        assert_eq!(slippage_bps_check(1000, 1000, 0), Ok(()));
+        assert_eq!(
+            slippage_bps_check(1000, 1001, 0),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_within_tolerance() {
+        assert_eq!(slippage_bps_check(1000, 995, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 1005, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 990, 100), Ok(()));
+        assert_eq!(slippage_bps_check(1000, 1010, 100), Ok(()));
+    }
+
+    #[test]
+    fn slippage_bps_check_at_boundary() {
+        assert_eq!(slippage_bps_check(10000, 9900, 100), Ok(()));
+        assert_eq!(slippage_bps_check(10000, 10100, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(10000, 9899, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(10000, 10101, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_beyond_tolerance() {
+        assert_eq!(
+            slippage_bps_check(1000, 900, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(1000, 1100, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_zero_requested() {
+        assert_eq!(
+            slippage_bps_check(0, 1, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+        assert_eq!(
+            slippage_bps_check(0, 100, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_negative_values() {
+        assert_eq!(slippage_bps_check(-1000, -1000, 100), Ok(()));
+        assert_eq!(slippage_bps_check(-1000, -990, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(-1000, -900, 100),
+            Err(ContractError::SlippageExceeded)
+        );
+    }
+
+    #[test]
+    fn slippage_bps_check_large_values() {
+        assert_eq!(slippage_bps_check(i128::MAX, i128::MAX, 100), Ok(()));
+        assert_eq!(
+            slippage_bps_check(i128::MAX, i128::MAX - 1, 0),
+            Err(ContractError::SlippageExceeded)
+        );
+        let tiny_diff = i128::MAX / 10000;
+        assert_eq!(
+            slippage_bps_check(i128::MAX, i128::MAX - tiny_diff, 100),
+            Ok(())
+        );
+    }
+}
+
+/// Helper struct for timestamp calculations.
+pub struct Timestamp;
+
+impl Timestamp {
+    /// The number of seconds in a standard UTC day (24 hours).
+    pub const SECONDS_PER_DAY: u64 = 86_400;
+
+    /// Truncates a timestamp (in seconds) to the start of its UTC day.
+    #[inline]
+    #[must_use]
+    pub fn floor_to_day(t: u64) -> u64 {
+        (t / Self::SECONDS_PER_DAY) * Self::SECONDS_PER_DAY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_timestamp_floor_to_day() {
+        assert_eq!(Timestamp::floor_to_day(0), 0);
+        assert_eq!(Timestamp::floor_to_day(86_399), 0);
+        assert_eq!(Timestamp::floor_to_day(86_400), 86_400);
+        assert_eq!(Timestamp::floor_to_day(86_401), 86_400);
+        assert_eq!(Timestamp::floor_to_day(172_800), 172_800);
+    }
+}
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn sat_mul_bps_identity(amount in 0..i128::MAX) {
+            prop_assert_eq!(sat_mul_bps(amount, 10_000), amount);
         }
-        v
-    }
-
-    /// Empty input — callback never fires, chunk count is 0.
-    #[test]
-    fn chunked_iter_empty_vec_never_calls_callback() {
-        let e = soroban_sdk::Env::default();
-        let items: soroban_sdk::Vec<u32> = soroban_sdk::Vec::new(&e);
-        let mut call_count = 0u32;
-        let chunks = chunked_iter(&e, &items, 3, |_chunk, _idx| {
-            call_count += 1;
-        });
-        assert_eq!(chunks, 0, "empty input produces 0 chunks");
-        assert_eq!(call_count, 0, "callback must not be invoked for empty input");
-    }
-
-    /// Exact multiple — every chunk is full-sized, no remainder chunk.
-    ///
-    /// 6 elements / chunk_size 3 → 2 full chunks of [1,2,3] and [4,5,6].
-    #[test]
-    fn chunked_iter_exact_multiple_produces_full_chunks() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 6);
-        let mut chunk_lens = [0u32; 4];
-        let mut seen = 0usize;
-        let count = chunked_iter(&e, &items, 3, |chunk, _idx| {
-            chunk_lens[seen] = chunk.len();
-            seen += 1;
-        });
-        assert_eq!(count, 2, "6 / 3 = exactly 2 chunks");
-        assert_eq!(seen, 2);
-        assert_eq!(chunk_lens[0], 3, "first chunk is full");
-        assert_eq!(chunk_lens[1], 3, "second chunk is full");
-    }
-
-    /// Remainder — last chunk is smaller than chunk_size.
-    ///
-    /// 7 elements / chunk_size 3 → chunks of sizes 3, 3, 1.
-    #[test]
-    fn chunked_iter_remainder_last_chunk_is_shorter() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 7);
-        let mut chunk_lens = [0u32; 8];
-        let mut seen = 0usize;
-        let count = chunked_iter(&e, &items, 3, |chunk, _idx| {
-            chunk_lens[seen] = chunk.len();
-            seen += 1;
-        });
-        assert_eq!(count, 3, "ceil(7/3) = 3 chunks");
-        assert_eq!(chunk_lens[0], 3, "first chunk is full");
-        assert_eq!(chunk_lens[1], 3, "second chunk is full");
-        assert_eq!(chunk_lens[2], 1, "final chunk holds the remainder");
-    }
-
-    /// chunk_index is passed in monotonically increasing order: 0, 1, 2, …
-    #[test]
-    fn chunked_iter_chunk_index_is_monotone() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 5);
-        let mut expected_idx = 0u32;
-        chunked_iter(&e, &items, 2, |_chunk, idx| {
-            assert_eq!(idx, expected_idx, "chunk_index must be monotonically increasing");
-            expected_idx += 1;
-        });
-    }
-
-    /// chunk_size == 1 produces exactly one chunk per element.
-    #[test]
-    fn chunked_iter_chunk_size_one_produces_one_chunk_per_element() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 4);
-        let mut total_chunks = 0u32;
-        let count = chunked_iter(&e, &items, 1, |chunk, _idx| {
-            assert_eq!(chunk.len(), 1, "each chunk must have exactly one element");
-            total_chunks += 1;
-        });
-        assert_eq!(count, 4);
-        assert_eq!(total_chunks, 4);
-    }
-
-    /// chunk_size larger than the input → single chunk containing all elements.
-    #[test]
-    fn chunked_iter_chunk_size_exceeds_len_produces_single_chunk() {
-        let e = soroban_sdk::Env::default();
-        let items = make_vec(&e, 3);
-        let mut call_count = 0u32;
-        let mut observed_len = 0u32;
-        let count = chunked_iter(&e, &items, 100, |chunk, _idx| {
-            call_count += 1;
-            observed_len = chunk.len();
-        });
-        assert_eq!(count, 1, "one chunk when chunk_size > len");
-        assert_eq!(call_count, 1);
-        assert_eq!(observed_len, 3, "single chunk contains all elements");
     }
 }

@@ -1,4 +1,4 @@
-﻿#![cfg(test)]
+#![cfg(test)]
 //! Arithmetic Security Tests
 //!
 //!
@@ -33,10 +33,10 @@ fn test_i128_bond_amount_at_max() {
 
     let identity = Address::generate(&e);
     // FIX: create_bond takes 3 arguments: identity, amount, duration
-    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64);
+    let bond = client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
     // Test creating bond with maximum i128 value
-    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64);
-    let bond = client.create_bond(&identity, &i128::MAX, &86400_u64);
+    let bond = client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond = client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     assert_eq!(bond.bonded_amount, i128::MAX);
     assert!(bond.active);
@@ -54,10 +54,10 @@ fn test_i128_overflow_on_top_up() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64);
+    client.create_bond(&identity, &(i128::MAX - 1000), &credence_math::Timestamp::SECONDS_PER_DAY);
     // Create bond with max - 1000
-    client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64);
-    client.create_bond(&identity, &(i128::MAX - 1000), &86400_u64);
+    client.create_bond(&identity, &(i128::MAX - 1000), &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &(i128::MAX - 1000), &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // FIX: Passes value instead of reference
     client.top_up(&identity, &2000);
@@ -76,8 +76,8 @@ fn test_i128_overflow_on_max_top_up() {
 
     let identity = Address::generate(&e);
     // Create bond with max value
-    client.create_bond(&identity, &i128::MAX, &86400_u64);
-    client.create_bond(&identity, &i128::MAX, &86400_u64);
+    client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Attempt to top up by 1, which should overflow
     client.top_up(&identity, &1);
@@ -95,10 +95,10 @@ fn test_i128_overflow_on_massive_slashing() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &(i128::MAX / 2), &86400_u64);
+    client.create_bond(&identity, &(i128::MAX / 2), &credence_math::Timestamp::SECONDS_PER_DAY);
     // Create bond with large amount
-    client.create_bond(&identity, &(i128::MAX / 2), &86400_u64);
-    client.create_bond(&identity, &(i128::MAX / 2), &86400_u64);
+    client.create_bond(&identity, &(i128::MAX / 2), &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &(i128::MAX / 2), &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash near-maximum amount first
     client.slash(&admin, &(i128::MAX / 2));
@@ -126,8 +126,8 @@ fn test_i128_large_bond_operations() {
     let large_amount = i128::MAX / 2;
 
     // Create bond with large amount
-    let bond = client.create_bond(&identity, &large_amount, &86400_u64);
-    let bond = client.create_bond(&identity, &large_amount, &86400_u64);
+    let bond = client.create_bond(&identity, &large_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond = client.create_bond(&identity, &large_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, large_amount);
 
     // Top up with another large amount (should succeed as sum < i128::MAX)
@@ -151,8 +151,8 @@ fn test_negative_bond_amount_handling() {
     client.slash(&(i128::MAX / 2 + 2));
     // Test with negative amount (technically allowed by i128, but may be business logic violation)
     // This documents current behavior
-    let bond = client.create_bond(&identity, &(-1000), &86400_u64);
-    let bond = client.create_bond(&identity, &(-1000), &86400_u64);
+    let bond = client.create_bond(&identity, &(-1000), &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond = client.create_bond(&identity, &(-1000), &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, -1000);
 }
 
@@ -191,7 +191,7 @@ fn test_u64_overflow_on_duration_extension() {
 
     let identity = Address::generate(&e);
     // Create bond with valid duration
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Attempt to extend by u64::MAX, which should overflow
     client.extend_duration(&identity, &u64::MAX);
@@ -208,7 +208,7 @@ fn test_u64_overflow_on_end_timestamp() {
         li.timestamp = u64::MAX - 1000;
     e.ledger().with_mut(|li| {
         // Set current timestamp to a very high value
-        li.timestamp = u64::MAX - 86400;
+        li.timestamp = u64::MAX - credence_math::Timestamp::SECONDS_PER_DAY;
     });
 
     let contract_id = e.register(CredenceBond, ());
@@ -219,7 +219,7 @@ fn test_u64_overflow_on_end_timestamp() {
 
     let identity = Address::generate(&e);
     // Create bond with valid duration that causes end timestamp to overflow
-    // bond_start will be u64::MAX - 86400, adding 86401 exceeds u64::MAX
+    // bond_start will be u64::MAX - credence_math::Timestamp::SECONDS_PER_DAY, adding 86401 exceeds u64::MAX
     client.create_bond(&identity, &1000, &86401_u64);
 }
 
@@ -234,7 +234,7 @@ fn test_u64_large_duration_extension() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let duration = 86400_u64;
+    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
 
     // Create bond with valid duration
     let bond = client.create_bond(&identity, &1000, &duration);
@@ -242,8 +242,8 @@ fn test_u64_large_duration_extension() {
     assert_eq!(bond.bond_duration, duration);
 
     // Extend with another duration (should succeed as sum doesn't overflow)
-    let bond = client.extend_duration(&identity, &86400_u64);
-    assert_eq!(bond.bond_duration, duration + 86400);
+    let bond = client.extend_duration(&identity, &credence_math::Timestamp::SECONDS_PER_DAY);
+    assert_eq!(bond.bond_duration, duration + credence_math::Timestamp::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -265,9 +265,9 @@ fn test_timestamp_boundary_conditions() {
     // This should panic inside the contract if you have: bond_start.checked_add(duration)
     client.create_bond(&identity, &1000, &2000);
     // Create bond with minimum valid duration that still fits within timestamp range
-    let bond = client.create_bond(&identity, &1000, &86400_u64);
+    let bond = client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
-    assert_eq!(bond.bond_duration, 86400);
+    assert_eq!(bond.bond_duration, credence_math::Timestamp::SECONDS_PER_DAY);
     assert!(bond.bond_start >= u64::MAX - 31_536_000);
 }
 
@@ -287,8 +287,8 @@ fn test_withdrawal_exceeds_available_balance() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Attempt to withdraw more than available
     client.withdraw(&identity, &1001);
@@ -306,8 +306,8 @@ fn test_withdrawal_after_slashing() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash 400
     client.slash(&admin, &400);
@@ -328,8 +328,8 @@ fn test_withdrawal_exact_available_balance() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Withdraw exact available amount
     let bond = client.withdraw(&identity, &1000);
@@ -347,8 +347,8 @@ fn test_withdrawal_zero_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Withdraw zero amount (should succeed)
     let bond = client.withdraw(&identity, &0);
@@ -367,8 +367,8 @@ fn test_multiple_withdrawals_causing_underflow() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Multiple withdrawals
     client.withdraw(&identity, &400);
@@ -388,8 +388,8 @@ fn test_withdrawal_with_max_i128_bond() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &i128::MAX, &86400_u64);
-    client.create_bond(&identity, &i128::MAX, &86400_u64);
+    client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Withdraw large amount
     let bond = client.withdraw(&identity, &(i128::MAX / 2));
@@ -408,8 +408,8 @@ fn test_withdrawal_when_fully_slashed() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash entire amount
     client.slash(&admin, &1000);
@@ -434,8 +434,8 @@ fn test_slashing_normal_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash normal amount
     let bond = client.slash(&admin, &300);
@@ -454,9 +454,9 @@ fn test_slashing_exceeds_bonded_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash more than bonded amount (should cap at bonded amount)
     let bond = client.slash(&admin, &2000);
@@ -476,8 +476,8 @@ fn test_multiple_slashing_operations() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Multiple slashing operations
     let bond = client.slash(&admin, &200);
@@ -501,8 +501,8 @@ fn test_slashing_zero_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash zero amount
     let bond = client.slash(&admin, &0);
@@ -521,8 +521,8 @@ fn test_slashing_after_withdrawal() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Withdraw first
     client.withdraw(&identity, &300);
@@ -544,8 +544,8 @@ fn test_slashing_with_max_values() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &i128::MAX, &86400_u64);
-    client.create_bond(&identity, &i128::MAX, &86400_u64);
+    client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &i128::MAX, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash large amount
     let bond = client.slash(&admin, &(i128::MAX / 2));
@@ -568,8 +568,8 @@ fn test_complex_arithmetic_scenario() {
 
     let identity = Address::generate(&e);
     // Initial bond
-    client.create_bond(&identity, &10000, &86400_u64);
-    client.create_bond(&identity, &10000, &86400_u64);
+    client.create_bond(&identity, &10000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &10000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Top up
     let bond = client.top_up(&identity, &5000);
@@ -600,8 +600,8 @@ fn test_withdrawal_leaves_insufficient_for_slashed() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1000, &86400_u64);
-    client.create_bond(&identity, &1000, &86400_u64);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     // Slash 500
     client.slash(&admin, &500);
@@ -624,8 +624,8 @@ fn test_boundary_arithmetic_with_zero_values() {
 
     let identity = Address::generate(&e);
     // Create bond with zero amount
-    let bond = client.create_bond(&identity, &0, &86400_u64);
-    let bond = client.create_bond(&identity, &0, &86400_u64);
+    let bond = client.create_bond(&identity, &0, &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond = client.create_bond(&identity, &0, &credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(bond.bonded_amount, 0);
 
     // Try operations on zero bond

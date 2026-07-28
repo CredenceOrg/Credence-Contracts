@@ -64,6 +64,8 @@ pub enum ScanKey {
     BondHolderActive(Address),
     /// u32 cursor per keeper address (tamper-resistant progress state).
     KeeperCursor(Address),
+    /// Size of the last page scanned by a keeper, used to validate cursor advances.
+    KeeperLastPageSize(Address),
     /// Total registered bond holders (cached for O(1) length check).
     RegistrySize,
 }
@@ -221,13 +223,14 @@ pub fn get_keeper_cursor(e: &Env, keeper: &Address) -> u32 {
 /// Advance the keeper cursor to `next_cursor`.
 ///
 /// # Tamper-resistance
-/// Validates that `next_cursor` equals the value returned by the most recent
-/// `scan_liquidation_candidates` call for this keeper. A keeper cannot skip
-/// positions by jumping the cursor forward arbitrarily.
+/// Validates that `next_cursor` is either a reset to zero or the exact cursor
+/// returned by the most recent `scan_liquidation_candidates` call for this
+/// keeper. A keeper cannot skip positions by jumping the cursor forward
+/// arbitrarily.
 ///
 /// # Panics
-/// - "keeper cursor: invalid advance" if `next_cursor` is not a forward move
-///   by exactly the last page size.
+/// - "keeper cursor: invalid advance" if `next_cursor` is not a reset to zero
+///   or a forward move by exactly the last page size.
 pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
     let current: u32 = get_keeper_cursor(e, keeper);
     let registry_slots: u32 = e
@@ -236,9 +239,20 @@ pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
         .get::<_, Vec<Address>>(&ScanKey::BondHolderRegistry)
         .unwrap_or_else(|| Vec::new(e))
         .len();
+    let last_page_size: u32 = e
+        .storage()
+        .instance()
+        .get(&ScanKey::KeeperLastPageSize(keeper.clone()))
+        .unwrap_or(0);
 
-    // Allow reset to 0 (new pass) or forward advance within bounds
-    let valid = next_cursor == 0 || (next_cursor > current && next_cursor <= registry_slots);
+    let valid = if next_cursor == 0 {
+        true
+    } else {
+        last_page_size > 0
+            && next_cursor > current
+            && next_cursor <= registry_slots
+            && next_cursor == current + last_page_size
+    };
     if !valid {
         panic!("keeper cursor: invalid advance");
     }
@@ -266,6 +280,7 @@ pub fn advance_keeper_cursor(e: &Env, keeper: &Address, next_cursor: u32) {
 /// * `max_iter` - Maximum number of accounts to inspect (capped at `MAX_ITER_HARD_CAP`)
 /// * `min_slash_ratio_bps` - Minimum slashed/bonded ratio (basis points) to qualify
 ///   as a liquidation candidate. E.g. 5000 = 50%.
+/// * `snapshot_generation` - The active registry size recorded when the scan started.
 ///
 /// # Returns
 /// `ScanResult` with candidates found, next cursor, and done flag.
@@ -279,6 +294,7 @@ pub fn scan_liquidation_candidates(
     cursor: u32,
     max_iter: u32,
     min_slash_ratio_bps: u32,
+    snapshot_generation: u32,
 ) -> ScanResult {
     keeper.require_auth();
 
@@ -290,6 +306,10 @@ pub fn scan_liquidation_candidates(
 
     let registry_slots = registry.len();
     let active_registry_size = get_registry_size(e);
+
+    if cursor > 0 {
+        require_matching_snapshot_generation(e, snapshot_generation, active_registry_size);
+    }
 
     // Reject any cursor that is at or beyond the end of the registry.
     // The one exception is cursor == 0 on an empty registry, which is the
@@ -311,6 +331,7 @@ pub fn scan_liquidation_candidates(
     let end = (cursor + effective_max).min(registry_slots);
     let done = end >= registry_slots;
     let next_cursor = if done { 0 } else { end };
+    let scanned_count = end.saturating_sub(cursor);
 
     let mut candidates: Vec<LiquidationCandidate> = Vec::new(e);
 
@@ -376,5 +397,14 @@ pub fn scan_liquidation_candidates(
         next_cursor,
         done,
         registry_size: active_registry_size,
+    }
+}
+
+/// Reject paginated reads if the requested snapshot generation does not match
+/// the active on-chain generation. This ensures keepers do not process pages
+/// with a stale cursor if the registry size mutated mid-scan.
+pub fn require_matching_snapshot_generation(e: &Env, requested_generation: u32, current_generation: u32) {
+    if requested_generation != current_generation {
+        panic_with_error!(e, ContractError::SnapshotGenerationMismatch);
     }
 }
