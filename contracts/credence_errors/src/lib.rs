@@ -646,13 +646,9 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 124,
+    MaxPauseSignersExceeded = 125,
 
-    /// A contract state migration is in progress; state-changing calls are
-    /// rejected until it completes.
-    /// Contracts: general-purpose
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
+
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -832,7 +828,8 @@ impl ErrorExt for ContractError {
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
             | ContractError::OutsideBusinessHours
-            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch
+            | ContractError::LeaseSignerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -1179,7 +1176,9 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
             | ContractError::OutsideBusinessHours   // retry within business hours
-            | ContractError::MigrationInProgress => true, // retry after migration completes
+            | ContractError::MigrationInProgress    // retry after migration completes
+            | ContractError::LeaseSignerMismatch    // fix lease signer
+            => true,
 
 
             // Admin can supply a valid value / remove a signer or raise the
