@@ -44,21 +44,37 @@ mod tests {
         let role = AdminRole::Admin;
 
         // Mirrors the emission in lib.rs add_admin / update_admin_role / reactivate_admin
-        e.events()
-            .publish((Symbol::new(&e, "ROLE_ASSIGNED"), actor.clone()), (role, caller.clone()));
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_ASSIGNED"), actor.clone()),
+            (role, caller.clone()),
+        );
 
         let (topics, data) = only_event(&e);
 
         assert_eq!(topics.len(), 2, "ROLE_ASSIGNED must have 2 topics");
 
-        let t0 = decode!(&e, topics.get(0).unwrap(), Symbol, "topic[0] must be Symbol");
+        let t0 = decode!(
+            &e,
+            topics.get(0).unwrap(),
+            Symbol,
+            "topic[0] must be Symbol"
+        );
         assert_eq!(t0, Symbol::new(&e, "ROLE_ASSIGNED"));
 
-        let t1 = decode!(&e, topics.get(1).unwrap(), Address, "topic[1] must be Address");
+        let t1 = decode!(
+            &e,
+            topics.get(1).unwrap(),
+            Address,
+            "topic[1] must be Address"
+        );
         assert_eq!(t1, actor);
 
-        let (r, c): (AdminRole, Address) =
-            decode!(&e, data, (AdminRole, Address), "data must be (AdminRole, Address)");
+        let (r, c): (AdminRole, Address) = decode!(
+            &e,
+            data,
+            (AdminRole, Address),
+            "data must be (AdminRole, Address)"
+        );
         assert_eq!(r, role);
         assert_eq!(c, caller);
     }
@@ -72,21 +88,32 @@ mod tests {
         let caller = Address::generate(&e);
 
         // Mirrors the emission in lib.rs remove_admin / deactivate_admin
-        e.events()
-            .publish((Symbol::new(&e, "ROLE_REVOKED"), actor.clone()), (caller.clone(),));
+        e.events().publish(
+            (Symbol::new(&e, "ROLE_REVOKED"), actor.clone()),
+            (caller.clone(),),
+        );
 
         let (topics, data) = only_event(&e);
 
         assert_eq!(topics.len(), 2, "ROLE_REVOKED must have 2 topics");
 
-        let t0 = decode!(&e, topics.get(0).unwrap(), Symbol, "topic[0] must be Symbol");
+        let t0 = decode!(
+            &e,
+            topics.get(0).unwrap(),
+            Symbol,
+            "topic[0] must be Symbol"
+        );
         assert_eq!(t0, Symbol::new(&e, "ROLE_REVOKED"));
 
-        let t1 = decode!(&e, topics.get(1).unwrap(), Address, "topic[1] must be Address");
+        let t1 = decode!(
+            &e,
+            topics.get(1).unwrap(),
+            Address,
+            "topic[1] must be Address"
+        );
         assert_eq!(t1, actor);
 
-        let (c,): (Address,) =
-            decode!(&e, data, (Address,), "data must be (Address,)");
+        let (c,): (Address,) = decode!(&e, data, (Address,), "data must be (Address,)");
         assert_eq!(c, caller);
     }
 
@@ -137,8 +164,12 @@ mod tests {
         let t0 = decode!(&e, topics.get(0).unwrap(), Symbol, "t0 Symbol");
         assert_eq!(t0, Symbol::new(&e, "ownership_transfer_initiated"));
 
-        let (c, p): (Address, Address) =
-            decode!(&e, data, (Address, Address), "data must be (Address, Address)");
+        let (c, p): (Address, Address) = decode!(
+            &e,
+            data,
+            (Address, Address),
+            "data must be (Address, Address)"
+        );
         assert_eq!(c, current);
         assert_eq!(p, pending);
     }
@@ -162,8 +193,7 @@ mod tests {
         let t0 = decode!(&e, topics.get(0).unwrap(), Symbol, "t0 Symbol");
         assert_eq!(t0, Symbol::new(&e, "ownership_transfer_accepted"));
 
-        let (p, n): (Address, Address) =
-            decode!(&e, data, (Address, Address), "data (prev, next)");
+        let (p, n): (Address, Address) = decode!(&e, data, (Address, Address), "data (prev, next)");
         assert_eq!(p, prev);
         assert_eq!(n, next);
     }
@@ -185,8 +215,12 @@ mod tests {
         let t0 = decode!(&e, topics.get(0).unwrap(), Symbol, "t0 Symbol");
         assert_eq!(t0, Symbol::new(&e, "paused"));
 
-        let (pid, rsn): (Option<u64>, String) =
-            decode!(&e, data, (Option<u64>, String), "data (Option<u64>, String)");
+        let (pid, rsn): (Option<u64>, String) = decode!(
+            &e,
+            data,
+            (Option<u64>, String),
+            "data (Option<u64>, String)"
+        );
         assert_eq!(pid, proposal_id);
         assert_eq!(rsn, reason);
     }

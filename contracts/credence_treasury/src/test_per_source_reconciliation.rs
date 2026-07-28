@@ -19,8 +19,8 @@
 #[cfg(test)]
 mod tests {
     extern crate alloc;
-    use alloc::vec::Vec;
     use crate::{CredenceTreasury, CredenceTreasuryClient, FundSource};
+    use alloc::vec::Vec;
     use proptest::prelude::*;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env};

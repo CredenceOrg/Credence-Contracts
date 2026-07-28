@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-//! # Proptest: Batch Atomicity 
+//! # Proptest: Batch Atomicity
 //!
 
 //! Property-based tests that lock in the **between-batch invariant** for the

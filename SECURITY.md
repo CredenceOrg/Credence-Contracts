@@ -45,6 +45,8 @@ The `Admin` contract manages the system-wide role hierarchy and administrative o
 |------------------|-------|----------|------------|----------------|--------|
 | **Configuration** | | | | | |
 | `initialize` | ✅ | ❌ | ❌ | ❌ | One-time setup |
+| `set_accepted_tokens` | ✅ | ❌ | ❌ | ❌ | Accepted token list |
+| `set_token` | ✅ | ❌ | ❌ | ❌ | Primary token address |
 | `set_supply_cap` | ✅ | ❌ | ❌ | ❌ | Global supply limit |
 | `set_early_exit_config` | ✅ | ❌ | ❌ | ❌ | Early exit penalties |
 | `set_emergency_config` | ✅ | ❌ | ❌ | ❌ | Emergency controls |
@@ -56,6 +58,7 @@ The `Admin` contract manages the system-wide role hierarchy and administrative o
 | `set_withdrawal_cooldown_secs` | ✅ | ❌ | ❌ | ❌ | Withdrawal cooldown |
 | `set_slash_cooldown_secs` | ✅ | ❌ | ❌ | ❌ | Slash cooldown |
 | `set_cooldown_period` | ✅ | ❌ | ❌ | ❌ | Cooldown period |
+| `set_borrow_frozen` | ✅ | ❌ | ❌ | ❌ | Freeze borrow operations |
 | **Tier Configuration** | | | | | |
 | `set_bronze_threshold` | ✅ | ❌ | ❌ | ❌ | Bronze tier requirement |
 | `set_silver_threshold` | ✅ | ❌ | ❌ | ❌ | Silver tier requirement |
@@ -74,6 +77,9 @@ The `Admin` contract manages the system-wide role hierarchy and administrative o
 | **Emergency Controls** | | | | | |
 | `set_emergency_mode` | ✅ | ❌ | ✅ | ❌ | Emergency mode toggle |
 | `emergency_withdraw` | ✅ | ❌ | ✅ | ❌ | Emergency withdrawal |
+| `schedule_emergency_drain` | ✅ | ❌ | ❌ | ❌ | Schedule USDC drain |
+| `cancel_emergency_drain` | ✅ | ❌ | ❌ | ❌ | Cancel drain schedule |
+| `emergency_drain_to_treasury` | ✅ | ❌ | ❌ | ❌ | Drain funds to treasury |
 | **Governance** | | | | | |
 | `initialize_governance` | ✅ | ❌ | ❌ | ❌ | Setup governance |
 | `governance_vote` | ❌ | ❌ | ✅ | ❌ | Vote on proposals |
@@ -84,6 +90,8 @@ The `Admin` contract manages the system-wide role hierarchy and administrative o
 | `slash` | ✅ | ❌ | ❌ | ❌ | Direct admin slash |
 | `slash_bond` | ✅ | ❌ | ❌ | ❌ | Slash bond amount |
 | `collect_fees` | ✅ | ❌ | ❌ | ❌ | Collect protocol fees |
+| `set_liquidation_treasury` | ✅ | ❌ | ❌ | ❌ | Set liquidation treasury |
+| `set_slash_treasury` | ✅ | ❌ | ❌ | ❌ | Set slash treasury |
 | **Pause Mechanism** | | | | | |
 | `pause` | ✅ | ❌ | ❌ | ❌ | Pause contract |
 | `unpause` | ✅ | ❌ | ❌ | ❌ | Unpause contract |
@@ -93,6 +101,9 @@ The `Admin` contract manages the system-wide role hierarchy and administrative o
 | `initialize_upgrade_auth` | ✅ | ❌ | ❌ | ❌ | Setup upgrade auth |
 | `grant_upgrade_auth` | ✅ | ❌ | ❌ | ❌ | Grant upgrade role |
 | `revoke_upgrade_auth` | ✅ | ❌ | ❌ | ❌ | Revoke upgrade role |
+| `transfer_admin` | ✅ | ❌ | ❌ | ❌ | Transfer admin role |
+| `transfer_upgrade_admin` | ✅ | ❌ | ❌ | ❌ | Transfer upgrade admin |
+| `accept_upgrade_admin` | ❌ | ❌ | ❌ | ❌ | Accept upgrade admin (Pending admin) |
 | `propose_upgrade` | ❌ | ❌ | ❌ | ❌ | Propose upgrade (Upgrader) |
 | `approve_upgrade_proposal` | ❌ | ❌ | ❌ | ❌ | Approve upgrade (Upgrader) |
 | `execute_upgrade` | ❌ | ❌ | ❌ | ❌ | Execute upgrade (Upgrader) |

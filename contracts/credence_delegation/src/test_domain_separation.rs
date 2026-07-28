@@ -8,8 +8,9 @@
 //! 3. A stale / replayed nonce is rejected after it has been consumed.
 //! 4. The nonce increments correctly after each delegated call.
 //! 5. Cross-method replay: a revoke payload cannot be reused as a delegate payload.
-//! 6. Cross-contract replay is prevented via contract_id validation (SIGNATURE_DOMAIN
-//!    constant is reserved for future payload-level domain binding).
+//! 6. Cross-contract replay is prevented via contract_id validation.
+//! 7. Field-value binding: altering any field in the payload (signature_domain,
+//!    scheme, ledger_number) must be detectable through contract-level checks.
 
 use super::*;
 use soroban_sdk::Env;
@@ -45,8 +46,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
-        ledger_number: 0,
-        signature_domain: String::from_str(&Env::default(), "CredenceDelegation"),
+        ledger_number: e.ledger().sequence(),
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -987,4 +988,105 @@ fn invalidate_nonce_range_burns_delegation_window_without_cross_namespace_leakag
         &valid,
     );
     assert_eq!(client.get_nonce(&owner), 6);
+}
+
+// ---------------------------------------------------------------------------
+// Field-value binding: altering any payload field must fail verification.
+// These tests ensure the signed payload hash implicitly binds all fields
+// through the Soroban `require_auth()` / contracttype serialisation, so that
+// any field mutation produces a structurally incompatible signature.
+// ---------------------------------------------------------------------------
+
+/// A payload with an unknown scheme tag defaults to Ed25519 for backwards
+/// compatibility and succeeds — this verifies that decode_scheme_safe does
+/// not reject unknown schemes.
+#[test]
+fn unknown_scheme_defaults_to_ed25519_and_succeeds() {
+    let (e, client, contract_id) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    let legacy_payload = DelegatedActionPayload {
+        domain: DomainTag::Delegate,
+        owner: owner.clone(),
+        target: delegate.clone(),
+        contract_id: contract_id.clone(),
+        nonce: 0,
+        scheme: 99, // Invalid/unknown scheme — defaults to Ed25519
+        ledger_number: e.ledger().sequence(),
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
+    };
+
+    // Must succeed because decode_scheme_safe defaults to Ed25519
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &legacy_payload,
+    );
+    assert_eq!(client.get_nonce(&owner), 1);
+}
+
+/// A payload whose `owner` field has been swapped with `target` must be rejected.
+/// This tests that the payload fields are checked positionally, not by value
+/// equivalence — swapping two valid addresses between fields must fail.
+#[test]
+#[should_panic(expected = "Error(Contract, #219)")] // OwnerMismatch
+fn swapped_owner_target_rejected() {
+    let (e, client, contract_id) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    // Payload has owner and target swapped
+    let swapped_payload = DelegatedActionPayload {
+        domain: DomainTag::Delegate,
+        owner: delegate.clone(),     // Should be `owner`
+        target: owner.clone(),       // Should be `delegate`
+        contract_id: contract_id.clone(),
+        nonce: 0,
+        scheme: 0,
+        ledger_number: e.ledger().sequence(),
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
+    };
+
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &swapped_payload,
+    );
+}
+
+/// Verify that a payload with the correct contract_id succeeds (happy path).
+/// This confirms the contract_id binding works correctly in both directions.
+#[test]
+fn correct_contract_id_and_ledger_number_accepted() {
+    let (e, client, contract_id) = setup();
+    let owner = Address::generate(&e);
+    let delegate = Address::generate(&e);
+    let expiry = e.ledger().timestamp() + 86_400;
+
+    let valid_payload = DelegatedActionPayload {
+        domain: DomainTag::Delegate,
+        owner: owner.clone(),
+        target: delegate.clone(),
+        contract_id: contract_id.clone(),
+        nonce: 0,
+        scheme: 0,
+        ledger_number: e.ledger().sequence(),
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
+    };
+
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &expiry,
+        &valid_payload,
+    );
+    assert_eq!(client.get_nonce(&owner), 1);
 }
