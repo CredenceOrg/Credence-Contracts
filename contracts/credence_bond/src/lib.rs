@@ -26,6 +26,7 @@ mod same_ledger_liquidation_guard;
 mod storage;
 mod slash_history;
 mod slashing;
+mod status_snapshot;
 mod tiered_bond;
 mod token_integration;
 mod upgrade_auth;
@@ -745,6 +746,22 @@ impl CredenceBond {
             notice_period_duration: bond.notice_period_duration,
             tier,
         })
+    }
+
+    /// Return a backend-friendly status snapshot of the current bond state.
+    ///
+    /// This is a read-only helper that returns a stable snapshot of the bond's
+    /// current tier, cooldown remaining, emergency mode flag, and available balance.
+    /// All fields are primitive types suitable for JSON serialization via XDR.
+    ///
+    /// # Returns
+    /// A `BondStatusSnapshot` with the current state, or panics if no bond exists.
+    /// This is safe for off-chain consumption without requiring any authorization.
+    ///
+    /// # Panics
+    /// - `"no bond"` if no bond has been created for the current identity.
+    pub fn get_bond_status_snapshot(e: Env) -> status_snapshot::BondStatusSnapshot {
+        status_snapshot::get_bond_status_snapshot(&e)
     }
 
     /// Configure early exit penalty parameters.
@@ -3177,6 +3194,10 @@ mod test_grace_window;
 /// Tests for the batch_transfer entrypoint (issue #917).
 #[cfg(test)]
 mod test_batch_transfer;
+
+/// Tests for bond status snapshot helper (issue #1023).
+#[cfg(test)]
+mod test_status_snapshot;
 
 #[contractimpl]
 impl interfaces::governable::Governable for CredenceBond {
