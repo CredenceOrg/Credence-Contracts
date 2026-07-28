@@ -56,19 +56,7 @@ pub enum AccessError {
 /// ```
 pub fn require_admin(e: &Env, caller: &Address) {
     let admin_key = Symbol::new(e, ADMIN_KEY);
-
-    match e.storage().instance().get::<Symbol, Address>(&admin_key) {
-        Some(admin) => {
-            if caller != &admin {
-                emit_access_denied(e, caller, "admin", AccessError::NotAdmin);
-                panic!("not admin");
-            }
-        }
-        None => {
-            emit_access_denied(e, caller, "admin", AccessError::NotInitialized);
-            panic!("not initialized");
-        }
-    }
+    credence_errors::require_admin!(e, caller, admin_key);
 }
 
 /// @notice Require that the caller is a registered verifier.

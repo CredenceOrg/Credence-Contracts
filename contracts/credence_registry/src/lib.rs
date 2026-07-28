@@ -24,75 +24,19 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Vec};
 pub mod idempotency;
+pub mod storage;
+
+pub use storage::RegistryEntry;
+use storage::{bump_instance_ttl, DataKey};
 
 /// Signature domain identifier for the CredenceRegistry contract.
-///
-/// This constant binds signatures to this specific contract, preventing
-/// cross-contract replay attacks where a signature intended for one contract
-/// could be replayed against another. Each contract in the Credence system
-/// has a unique signature domain constant.
-///
-/// # Security
-///
-/// Without domain separation, a signature created for contract A could be
-/// replayed against contract B if both contracts share the same nonce namespace
-/// and signature verification logic. By including this domain in the signed
-/// payload hash, we ensure signatures are only valid for their intended contract.
-///
-/// # Value
-///
-/// The domain is a human-readable string that uniquely identifies this contract
-/// within the Credence system. It should be included in the signed payload hash
-/// along with other payload fields (nonce, deadline, etc.).
 #[allow(dead_code)]
 const SIGNATURE_DOMAIN: &str = "CredenceRegistry";
 
-const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
-
-fn bump_instance_ttl(e: &Env) {
-    e.storage()
-        .instance()
-        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
-}
-
 /// Interface identifier expected from Credence bond contracts.
 pub const IFACE_CREDENCE_BOND_V1: u32 = 0x4342_5631;
-
-/// Represents a registry entry mapping an identity to their bond contract
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct RegistryEntry {
-    /// The identity address
-    pub identity: Address,
-    /// The bond contract address for this identity
-    pub bond_contract: Address,
-    /// Timestamp when this entry was registered
-    pub registered_at: u64,
-    /// Whether this registration is currently active
-    pub active: bool,
-}
-
-/// Storage keys for the registry contract
-#[contracttype]
-#[derive(Clone)]
-enum DataKey {
-    Admin,
-    Paused,
-    PauseSigner(Address),
-    PauseSignerCount,
-    PauseThreshold,
-    PauseProposalCounter,
-    PauseProposal(u32),
-    PauseApproval(u32, Address),
-    PauseApprovalCount(u32),
-    IdentityToBond(Address),
-    BondToIdentity(Address),
-    RegisteredIdentities,
-    AllowNonInterface(Address),
-    BondCodeHash,
-}
 
 /// Maximum number of identities that can be returned in a single page
 /// This hard cap prevents unbounded ledger reads that could exceed Soroban's
@@ -887,5 +831,16 @@ mod tests {
             result.is_err(),
             "admin-check must panic on an uninitialized registry"
         );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceRegistry {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }

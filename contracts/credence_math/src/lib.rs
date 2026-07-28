@@ -191,6 +191,30 @@ pub fn ceil_div_checked_i128(a: i128, b: i128) -> Result<i128, ContractError> {
         .ok_or(ContractError::Overflow)
 }
 
+/// Checked `i128` addition returning a typed error instead of panicking.
+///
+/// Returns `Ok(sum)` on success, or [`ContractError::Overflow`] when the
+/// addition would exceed `i128::MIN` / `i128::MAX`.
+///
+/// This is the typed counterpart to [`add_i128`]; prefer it on paths where
+/// overflow is a reachable runtime state so callers receive a wire-stable
+/// error code rather than a free-form panic string.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::checked_add_or_error;
+/// use credence_errors::ContractError;
+///
+/// assert_eq!(checked_add_or_error(1, 2), Ok(3));
+/// assert_eq!(checked_add_or_error(i128::MAX, 1), Err(ContractError::Overflow));
+/// assert_eq!(checked_add_or_error(i128::MIN, -1), Err(ContractError::Overflow));
+/// ```
+#[inline]
+pub fn checked_add_or_error(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
+}
+
 /// Compute `a * b / denom` over a 256-bit intermediate, **panicking** on overflow
 /// or `denom == 0`.
 ///
@@ -907,11 +931,11 @@ mod tests {
         splits.push_back(5000);
         splits.push_back(5000);
         assert_eq!(crate::require_valid_percent_split(&splits), Ok(()));
-        
+
         let mut splits2 = soroban_sdk::Vec::new(&env);
         splits2.push_back(10000);
         assert_eq!(crate::require_valid_percent_split(&splits2), Ok(()));
-        
+
         let mut splits3 = soroban_sdk::Vec::new(&env);
         splits3.push_back(3333);
         splits3.push_back(3333);
@@ -925,10 +949,16 @@ mod tests {
         let mut splits = soroban_sdk::Vec::new(&env);
         splits.push_back(5000);
         splits.push_back(4999);
-        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::InvariantViolation));
-        
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::InvariantViolation)
+        );
+
         let splits_empty = soroban_sdk::Vec::new(&env); // empty sums to 0
-        assert_eq!(crate::require_valid_percent_split(&splits_empty), Err(crate::ContractError::InvariantViolation));
+        assert_eq!(
+            crate::require_valid_percent_split(&splits_empty),
+            Err(crate::ContractError::InvariantViolation)
+        );
     }
 
     #[test]
@@ -937,11 +967,17 @@ mod tests {
         let mut splits = soroban_sdk::Vec::new(&env);
         splits.push_back(5000);
         splits.push_back(5001);
-        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::InvariantViolation));
-        
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::InvariantViolation)
+        );
+
         let mut splits2 = soroban_sdk::Vec::new(&env);
         splits2.push_back(10001);
-        assert_eq!(crate::require_valid_percent_split(&splits2), Err(crate::ContractError::InvariantViolation));
+        assert_eq!(
+            crate::require_valid_percent_split(&splits2),
+            Err(crate::ContractError::InvariantViolation)
+        );
     }
 
     #[test]
@@ -950,7 +986,10 @@ mod tests {
         let mut splits = soroban_sdk::Vec::new(&env);
         splits.push_back(u32::MAX);
         splits.push_back(1);
-        assert_eq!(crate::require_valid_percent_split(&splits), Err(crate::ContractError::Arithmetic));
+        assert_eq!(
+            crate::require_valid_percent_split(&splits),
+            Err(crate::ContractError::Arithmetic)
+        );
     }
 
     #[test]

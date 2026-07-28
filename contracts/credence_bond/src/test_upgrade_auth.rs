@@ -319,3 +319,53 @@ fn test_upgrade_replay_prevention_surfaces_typed_error() {
     // Usually it manifests as an Err with the specific ContractError variant.
     // If we can't extract the exact ContractError, we at least assert it panicked.
 }
+
+#[test]
+fn test_execute_upgrade_unapproved_proposal_fails() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let executor = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+
+    // Create proposal requiring 1 approval, but don't approve it
+    let proposal_id =
+        upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+
+    // Attempt to execute unapproved proposal - should fail
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        upgrade_auth::execute_upgrade(&env, &executor, &new_impl, Some(proposal_id));
+    }))
+    .expect_err("Execution of unapproved proposal should fail");
+}
+
+#[test]
+fn test_execute_upgrade_mismatched_proposal_implementation_fails() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let approver = create_test_address(&env);
+    let executor = create_test_address(&env);
+    let proposal_impl = create_test_address(&env);
+    let actual_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver, UpgradeRole::Upgrader, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+
+    let proposal_id =
+        upgrade_auth::propose_upgrade(&env, &proposer, &proposal_impl, Bytes::new(&env), 1);
+    upgrade_auth::approve_upgrade_proposal(&env, &approver, proposal_id);
+
+    // Attempt to execute proposal with a different implementation address - should fail
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        upgrade_auth::execute_upgrade(&env, &executor, &actual_impl, Some(proposal_id));
+    }))
+    .expect_err("Execution with mismatched implementation should fail");
+}
+
