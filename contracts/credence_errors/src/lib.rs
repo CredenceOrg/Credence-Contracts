@@ -274,6 +274,24 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     WithdrawalAlreadyRequested = 206,
 
+    /// A cooldown withdrawal request is already pending for this bond.
+    /// Replaces: panic!("cooldown request already pending")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CooldownRequestAlreadyPending = 400,
+
+    /// No cooldown withdrawal request exists for this bond.
+    /// Replaces: panic!("no cooldown request")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CooldownRequestNotFound = 401,
+
+    /// The cooldown period has not yet elapsed.
+    /// Replaces: panic!("cooldown period has not elapsed")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CooldownPeriodNotElapsed = 402,
+
     /// Reentrancy was detected; the call is rejected.
     /// Replaces: panic!("reentrancy detected")
     /// Contracts: bond
@@ -841,6 +859,9 @@ impl ErrorExt for ContractError {
             | ContractError::LockupNotExpired
             | ContractError::NotRollingBond
             | ContractError::WithdrawalAlreadyRequested
+            | ContractError::CooldownRequestAlreadyPending
+            | ContractError::CooldownRequestNotFound
+            | ContractError::CooldownPeriodNotElapsed
             | ContractError::ReentrancyDetected
             | ContractError::InvalidNonce
             | ContractError::SignatureExpired
@@ -966,6 +987,15 @@ impl ErrorExt for ContractError {
             ContractError::NotRollingBond => "Bond is not configured as a rolling bond",
             ContractError::WithdrawalAlreadyRequested => {
                 "A withdrawal has already been requested for this bond"
+            }
+            ContractError::CooldownRequestAlreadyPending => {
+                "A cooldown withdrawal request is already pending"
+            }
+            ContractError::CooldownRequestNotFound => {
+                "No cooldown withdrawal request exists"
+            }
+            ContractError::CooldownPeriodNotElapsed => {
+                "Cooldown period has not yet elapsed"
             }
             ContractError::ReentrancyDetected => "Reentrancy detected; call rejected",
             ContractError::InvalidNonce => "Nonce is replayed or out of order",
@@ -1203,6 +1233,9 @@ impl ErrorExt for ContractError {
             | ContractError::LockupNotExpired           // wait for the lock-up
             | ContractError::NotRollingBond
             | ContractError::WithdrawalAlreadyRequested // wait for the existing request
+            | ContractError::CooldownRequestAlreadyPending
+            | ContractError::CooldownRequestNotFound
+            | ContractError::CooldownPeriodNotElapsed
             | ContractError::InvalidNonce               // bump nonce
             | ContractError::SignatureExpired           // re-sign with later deadline
             | ContractError::NegativeStake              // reduce the stake

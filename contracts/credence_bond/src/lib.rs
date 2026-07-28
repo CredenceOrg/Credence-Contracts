@@ -494,6 +494,12 @@ pub enum DataKey {
     BorrowFrozen,
     /// Executed upgrade hashes to prevent replay. Value: `bool`.
     ExecutedOp(soroban_sdk::BytesN<32>),
+    /// Per-identity cooldown withdrawal request. Value: [`CooldownRequest`].
+    CooldownRequest(Address),
+    /// Ledger sequence of the most recent cooldown request. Value: `u32`.
+    /// Used by the same-ledger sequencing guard to prevent cooldown
+    /// withdrawal execution in the same ledger as a collateral increase.
+    CooldownRequestLedger,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -2114,6 +2120,118 @@ impl CredenceBond {
 
         Self::release_lock(&e);
         withdraw_amount
+    }
+
+    /// Request a cooldown withdrawal.
+    ///
+    /// Records the current ledger timestamp and sequence in the cooldown
+    /// request so that a same-ledger execution of
+    /// [`execute_cooldown_withdrawal`] is blocked by the
+    /// [`same_ledger_liquidation_guard`].
+    ///
+    /// # Panics
+    /// - If no bond exists for `identity`.
+    /// - If `identity` is not the bond holder.
+    /// - If `amount` is not positive.
+    /// - If `amount` exceeds available balance.
+    /// - If a cooldown request is already pending.
+    pub fn request_cooldown_withdrawal(e: Env, identity: Address, amount: i128) {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = guards::load_bond(&e);
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::BondNotFound);
+        }
+        if amount <= 0 {
+            panic_with_error!(e, ContractError::InvalidBondAmount);
+        }
+        let available = bond.bonded_amount - bond.slashed_amount;
+        if amount > available {
+            panic_with_error!(e, ContractError::InsufficientBalance);
+        }
+        if cooldown::get_cooldown_request(&e, &identity).is_some() {
+            panic_with_error!(e, ContractError::CooldownRequestAlreadyPending);
+        }
+        let now = e.ledger().timestamp();
+        let seq = e.ledger().sequence();
+        let request = cooldown::CooldownRequest {
+            requester: identity.clone(),
+            amount,
+            requested_at: now,
+            ledger_sequence: seq,
+        };
+        cooldown::set_cooldown_request(&e, &identity, &request);
+        cooldown::record_cooldown_request(&e);
+        cooldown::emit_cooldown_requested(&e, &identity, amount);
+    }
+
+    /// Execute a previously requested cooldown withdrawal.
+    ///
+    /// Calls [`same_ledger_liquidation_guard::require_cooldown_allowed_after_collateral_increase`]
+    /// to prevent same-ledger sandwich attacks where an attacker increases
+    /// collateral and then immediately drains the cooldown window.
+    ///
+    /// # Panics
+    /// - If no cooldown request exists for `identity`.
+    /// - If `identity` is not the requester.
+    /// - If the cooldown period has not yet elapsed.
+    /// - If the cooldown execution happens in the same ledger as a collateral increase.
+    pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let key = DataKey::Bond;
+        let mut bond: IdentityBond = guards::load_bond(&e);
+        if bond.identity != identity {
+            panic_with_error!(e, ContractError::BondNotFound);
+        }
+        let request = cooldown::get_cooldown_request(&e, &identity)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
+        if request.requester != identity {
+            panic_with_error!(e, ContractError::Unauthorized);
+        }
+        same_ledger_liquidation_guard::require_cooldown_allowed_after_collateral_increase(&e);
+        let now = e.ledger().timestamp();
+        let cooldown_period = cooldown::get_cooldown_period(&e);
+        if !cooldown::can_withdraw(now, request.requested_at, cooldown_period) {
+            panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
+        }
+        let available = bond.bonded_amount - bond.slashed_amount;
+        if request.amount > available {
+            panic_with_error!(e, ContractError::InsufficientBalance);
+        }
+        let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        bond.bonded_amount = bond.bonded_amount.checked_sub(request.amount).ok_or(ContractError::Underflow).unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
+        let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
+        tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
+        cooldown::clear_cooldown_request(&e, &identity);
+        bump_instance_ttl(&e);
+        cooldown::emit_cooldown_executed(&e, &identity, request.amount);
+        bond
+    }
+
+    /// Cancel a pending cooldown withdrawal request.
+    ///
+    /// # Panics
+    /// - If no cooldown request exists for `identity`.
+    /// - If `identity` is not the requester.
+    pub fn cancel_cooldown(e: Env, identity: Address) {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let request = cooldown::get_cooldown_request(&e, &identity)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
+        if request.requester != identity {
+            panic_with_error!(e, ContractError::Unauthorized);
+        }
+        cooldown::clear_cooldown_request(&e, &identity);
+        cooldown::emit_cooldown_cancelled(&e, &identity);
+    }
+
+    /// Get the pending cooldown withdrawal request for `identity`.
+    ///
+    /// Returns `None` when no request is pending.
+    pub fn get_cooldown_request(e: Env, identity: Address) -> Option<cooldown::CooldownRequest> {
+        cooldown::get_cooldown_request(&e, &identity)
     }
 
     /// Slash a portion of the bond with a reentrancy guard.
