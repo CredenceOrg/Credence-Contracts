@@ -27,7 +27,13 @@ fn test_early_exit_penalty_calculation_zero_penalty_rate() {
     let treasury = Address::generate(&e);
     let (client, _admin, identity, token_id, bond_contract_id) = test_helpers::setup_with_token(&e);
     client.set_early_exit_config(&_admin, &treasury, &0);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let token_client = TokenClient::new(&e, &token_id);
     let before_identity = token_client.balance(&identity);
@@ -51,7 +57,13 @@ fn test_early_exit_penalty_calculation_max_penalty() {
     let treasury = Address::generate(&e);
     let (client, admin, identity, token_id, bond_contract_id) = test_helpers::setup_with_token(&e);
     client.set_early_exit_config(&admin, &treasury, &10_000); // 100%
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     let token_client = TokenClient::new(&e, &token_id);
     let before_identity = token_client.balance(&identity);
     let before_treasury = token_client.balance(&treasury);
@@ -75,7 +87,13 @@ fn test_early_exit_penalty_half_remaining() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let treasury = Address::generate(&e);
     let (client, _admin, identity) = setup(&e, &treasury, 1000); // 10%
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     // At t=44200: remaining=43200, total=credence_math::Timestamp::SECONDS_PER_DAY -> 50% of penalty rate -> 5% of amount
     e.ledger().with_mut(|li| li.timestamp = 44200);
     let bond = client.withdraw_early(&identity, &100);
@@ -90,7 +108,13 @@ fn test_early_exit_emits_penalty_event() {
     let treasury = Address::generate(&e);
     let (client, admin, identity, _token_id, bond_contract_id) = test_helpers::setup_with_token(&e);
     client.set_early_exit_config(&admin, &treasury, &500); // 5%
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     client.withdraw_early(&identity, &200);
     let expected_penalty = early_exit_penalty::calculate_penalty(200, 86_400, 86_400, 500);
     let events = e.events().all();
@@ -108,7 +132,7 @@ fn test_early_exit_emits_penalty_event() {
     });
     assert!(found, "early_exit_penalty event was not emitted");
 
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.bonded_amount, 800);
 }
 
@@ -119,7 +143,13 @@ fn test_early_exit_rejected_after_lock_up() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let treasury = Address::generate(&e);
     let (client, _admin, identity) = setup(&e, &treasury, 500);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
     client.withdraw_early(&identity, &100);
 }
@@ -129,10 +159,16 @@ fn test_early_exit_fails_without_config_and_reverts_state() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, token_id, bond_contract_id) = test_helpers::setup_with_token(&e);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let token_client = TokenClient::new(&e, &token_id);
-    let before_bond = client.get_identity_state();
+    let before_bond = client.get_identity_state(&identity);
     let before_identity = token_client.balance(&identity);
     let before_contract = token_client.balance(&bond_contract_id);
 
@@ -142,7 +178,7 @@ fn test_early_exit_fails_without_config_and_reverts_state() {
         "withdraw_early must revert when early-exit treasury is unset"
     );
 
-    let after_bond = client.get_identity_state();
+    let after_bond = client.get_identity_state(&identity);
     assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
     assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
     assert_eq!(token_client.balance(&identity), before_identity);
@@ -155,7 +191,13 @@ fn test_early_exit_without_config_uses_typed_error() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, ..) = test_helpers::setup_with_token(&e);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     client.withdraw_early(&identity, &100);
 }
 
@@ -230,5 +272,54 @@ fn test_calculate_penalty_unit() {
     let p = early_exit_penalty::calculate_penalty(1000, 0, 100, 500);
     assert_eq!(p, 0);
     let p = early_exit_penalty::calculate_penalty(1000, 50, 100, math::BPS_DENOMINATOR as u32);
+    assert_eq!(p, 500);
+}
+
+// ---------------------------------------------------------------------------
+// Docs-matching regression vectors (see docs/early-exit.md)
+// ---------------------------------------------------------------------------
+
+/// Docs example (see docs/early-exit.md): 10% penalty rate, ~half duration remaining.
+/// amount=500, rate=1000 bps, remaining=183/365 → floor(50*183/365) = 25.
+#[test]
+fn docs_example_ten_percent_half_duration() {
+    let p = early_exit_penalty::calculate_penalty(500, 183, 365, 1000);
+    assert_eq!(p, 25);
+}
+
+#[test]
+fn docs_example_five_percent_quarter_remaining() {
+    // 5% penalty, 25% of duration remaining
+    // amount = 2000, penalty_bps = 500, remaining = 25, duration = 100
+    // base = 2000 * 500 / 10000 = 100
+    // penalty = 100 * 25 / 100 = 25
+    let p = early_exit_penalty::calculate_penalty(2000, 25, 100, 500);
+    assert_eq!(p, 25);
+}
+
+#[test]
+fn regression_vector_zero_duration() {
+    // Zero duration should return 0 penalty regardless of inputs
+    let p = early_exit_penalty::calculate_penalty(1_000_000, 50, 0, 1000);
+    assert_eq!(p, 0);
+}
+
+#[test]
+fn regression_vector_full_bps_at_start() {
+    // 100% penalty rate, all time remaining
+    // amount = 1000, penalty_bps = 10000, remaining = duration
+    // base = 1000 * 10000 / 10000 = 1000
+    // penalty = 1000 * 100 / 100 = 1000 (full amount)
+    let p = early_exit_penalty::calculate_penalty(1000, 100, 100, math::BPS_DENOMINATOR as u32);
+    assert_eq!(p, 1000);
+}
+
+#[test]
+fn regression_vector_half_bps_half_remaining() {
+    // 50% (5000 bps) penalty, 50% remaining
+    // amount = 2000, penalty_bps = 5000, remaining = 50, duration = 100
+    // base = 2000 * 5000 / 10000 = 1000
+    // penalty = 1000 * 50 / 100 = 500
+    let p = early_exit_penalty::calculate_penalty(2000, 50, 100, 5000);
     assert_eq!(p, 500);
 }

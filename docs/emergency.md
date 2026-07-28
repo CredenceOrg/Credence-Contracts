@@ -85,7 +85,14 @@ These exemptions are hardened by independent security gates (timelock, admin aut
 
 ### CredenceBond Pause Coverage
 
-The bond contract stores its emergency pause flag at `DataKey::Paused`. Admins can call `pause(admin)` and `unpause(admin)` directly, and both functions emit audit events.
+The bond contract stores its emergency pause flag at `DataKey::Paused`. Admins can call `pause(admin)` and `unpause(admin)` directly, and both functions emit audit events. Multisig pause control is also exposed on the bond contract (mirroring `credence_delegation`):
+
+- `set_pause_signer(admin, signer, enabled)`
+- `set_pause_threshold(admin, threshold)`
+- `approve_pause_proposal(signer, proposal_id)`
+- `execute_pause_proposal(proposal_id)`
+
+When a pause threshold `> 0` is configured, the stored admin may still call `unpause(admin)` directly to prevent governance lockout.
 
 While paused, the bond contract blocks ALL mutating entrypoints, including:
 

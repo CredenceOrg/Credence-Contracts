@@ -174,6 +174,20 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
         do_unpause(e, None);
         None
     } else {
+        // Admin override: admin can always unpause without a proposal to
+        // prevent governance lockout (mirrors credence_delegation::pausable).
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
+        if *caller == stored_admin {
+            caller.require_auth();
+            do_unpause(e, None);
+            return None;
+        }
+
         propose_action(e, caller, PauseAction::Unpause)
     }
 }
@@ -278,4 +292,3 @@ pub fn require_not_borrow_frozen(e: &Env) {
 pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
     crate::parameters::set_borrow_frozen(e, admin, frozen);
 }
-

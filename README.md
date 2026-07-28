@@ -27,6 +27,20 @@ cargo build --target wasm32-unknown-unknown --release --locked -p credence_bond 
 
 For the reproducibility check and the CI hash comparison, see [docs/wasm-reproducibility.md](docs/wasm-reproducibility.md).
 
+## Local Development
+
+### Reset the local network
+
+Wipe and restart a fresh local Soroban node in one command:
+
+```bash
+npm run reset-local-network
+# or directly:
+sh scripts/reset_local_network.sh
+```
+
+Safe to re-run at any time. Requires [Soroban CLI](https://developers.stellar.org/docs/smart-contracts/getting-started/setup) and [Docker](https://docs.docker.com/get-docker/).
+
 ## Tests
 
 Run all workspace tests:
@@ -54,7 +68,7 @@ just test-one credence_bond              # all tests in one crate
 just test-one credence_bond test_name    # single test by name
 ```
 
-The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests on every PR.
+The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests (`cargo test --workspace --locked`) on every push and PR, with cargo caching and a 30-minute timeout. Concurrency groups ensure stale runs are cancelled automatically.
 
 ## Linting
 
@@ -75,6 +89,7 @@ Maintainer review and routine contributor support hours are documented in
 ## Helpers
 
 - **`testutils::deduplicate_stable`**: a small stable dedup helper that removes duplicates while preserving first-seen order for Soroban `Vec` and `alloc::vec::Vec` (available from the `testutils` crate).
+- **`testutils::pair_iter`**: iterates over consecutive `(this, next)` pairs in a Soroban `Vec<T>`, returning an `alloc::vec::Vec<(T, T)>` with `n − 1` entries for a vector of length `n`. Useful for asserting monotonicity, ordering, or transition guards in tests.
 
 ## Security scanning
 
@@ -127,6 +142,7 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
 - `contracts/credence_delegation/` — Delegation contract
+- `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `crates.md`, `CROSS_CONTRACT.md`)
 - `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `TIME_UNITS.md`, `ADMIN_EPOCHS.md`, [`COMPOUND_RATE.md`](docs/COMPOUND_RATE.md))
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.

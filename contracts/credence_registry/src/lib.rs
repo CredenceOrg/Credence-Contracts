@@ -47,6 +47,9 @@ pub mod pausable;
 
 mod test_pausable;
 
+#[cfg(test)]
+mod test_uniqueness;
+
 #[contract]
 pub struct CredenceRegistry;
 
@@ -335,6 +338,12 @@ impl CredenceRegistry {
         // Remove reverse mapping so the bond contract can be re-registered
         let bond_key = DataKey::BondToIdentity(entry.bond_contract.clone());
         e.storage().instance().remove(&bond_key);
+
+        // Remove AllowNonInterface flag if set for this bond contract
+        let allow_non_iface_key = DataKey::AllowNonInterface(entry.bond_contract.clone());
+        if e.storage().instance().has(&allow_non_iface_key) {
+            e.storage().instance().remove(&allow_non_iface_key);
+        }
 
         // Remove from the identities list
         let mut identities: Vec<Address> = e
@@ -834,7 +843,6 @@ mod tests {
     }
 }
 
-#[contractimpl]
 impl interfaces::governable::Governable for CredenceRegistry {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)

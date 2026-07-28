@@ -110,7 +110,7 @@ fn property_withdraw_bond_normal_behavior_preserved() {
         let withdraw_amount = rng.gen_range(1, initial_amount);
 
         // Record state before withdrawal
-        let before_bond = client.get_identity_state();
+        let before_bond = client.get_identity_state(&identity);
         let before_identity_balance = token_client.balance(&identity);
         let before_contract_balance = token_client.balance(&bond_contract_id);
 
@@ -209,7 +209,7 @@ fn property_withdraw_early_penalty_calculations_preserved() {
         let withdraw_amount = rng.gen_range(100, initial_amount);
 
         // Record state before withdrawal
-        let before_bond = client.get_identity_state();
+        let before_bond = client.get_identity_state(&identity);
         let before_identity_balance = token_client.balance(&identity);
         let before_treasury_balance = token_client.balance(&treasury);
         let before_contract_balance = token_client.balance(&bond_contract_id);
@@ -496,7 +496,7 @@ fn property_withdraw_bond_full_unchanged() {
     );
 
     // Verify bond is deactivated
-    let final_bond = client.get_identity_state();
+    let final_bond = client.get_identity_state(&identity);
     assert_eq!(final_bond.bonded_amount, 0, "bonded_amount should be 0");
     assert!(!final_bond.active, "bond should be inactive");
 }
@@ -545,7 +545,7 @@ fn property_execute_cooldown_withdrawal_preserved() {
         });
 
         // Record state before execution
-        let before_bond = client.get_identity_state();
+        let before_bond = client.get_identity_state(&identity);
 
         // Execute cooldown withdrawal
         let after_bond = client.execute_cooldown_withdrawal(&identity);
@@ -586,7 +586,7 @@ fn property_zero_amount_withdrawal_preserved() {
     });
 
     // Record state before withdrawal
-    let before_bond = client.get_identity_state();
+    let before_bond = client.get_identity_state(&identity);
     let before_identity_balance = token_client.balance(&identity);
     let before_contract_balance = token_client.balance(&bond_contract_id);
 
