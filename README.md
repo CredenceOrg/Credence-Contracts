@@ -54,7 +54,7 @@ just test-one credence_bond              # all tests in one crate
 just test-one credence_bond test_name    # single test by name
 ```
 
-The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests on every PR.
+The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests (`cargo test --workspace --locked`) on every push and PR, with cargo caching and a 30-minute timeout. Concurrency groups ensure stale runs are cancelled automatically.
 
 ## Linting
 
