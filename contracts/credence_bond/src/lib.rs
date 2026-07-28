@@ -112,8 +112,9 @@ mod test_rolling_notice;
 
 /// Tests for `fee.rs`: get_protocol_fee_bps default, MAX_FEE_BPS accept/reject boundary,
 /// setter round-trip and event payload verification (issue #665).
-#[cfg(test)]
-mod fee_tests;
+/// NOTE: disabled pending activation of `mod fee;` — see fee.rs header comment.
+// #[cfg(test)]
+// mod fee_tests;
 
 /// Tests for `parameters.rs`: governance access control, bounds, event emission, approval invariants.
 #[cfg(test)]
@@ -3149,6 +3150,10 @@ mod test_early_exit_precision;
 
 #[cfg(test)]
 mod test_early_exit_penalty;
+
+/// Cross-module tests that verify consistent BPS_DENOMINATOR usage across fee and penalty math.
+#[cfg(test)]
+mod test_bps_denominator;
 
 /// Deliberately-divergent contract used by `test_differential` to verify the
 /// harness detects behavioural divergence.  Never shipped to mainnet.
