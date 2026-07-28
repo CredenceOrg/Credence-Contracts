@@ -36,7 +36,13 @@ fn setup() -> Setup<'static> {
     let client = CredenceArbitrationClient::new(&env, &contract_id);
     client.initialize(&admin);
     client.register_arbitrator(&arb, &10);
-    Setup { env, admin, arb, creator, client }
+    Setup {
+        env,
+        admin,
+        arb,
+        creator,
+        client,
+    }
 }
 
 fn create_and_resolve(s: &Setup) -> u64 {
@@ -97,8 +103,14 @@ fn test_archive_cancelled_dispute() {
 #[test]
 fn test_archive_rejects_voting_dispute() {
     let s = setup();
-    let id = s.client.create_dispute(&s.creator, &String::from_str(&s.env, "d"), &3600);
-    let err = s.client.try_archive_dispute(&s.admin, &id).unwrap_err().unwrap();
+    let id = s
+        .client
+        .create_dispute(&s.creator, &String::from_str(&s.env, "d"), &3600);
+    let err = s
+        .client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
 }
 
@@ -107,7 +119,11 @@ fn test_archive_rejects_non_admin() {
     let s = setup();
     let id = create_and_resolve(&s);
     let stranger = Address::generate(&s.env);
-    let err = s.client.try_archive_dispute(&stranger, &id).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_archive_dispute(&stranger, &id)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::NotAdmin);
 }
 
@@ -129,7 +145,11 @@ fn test_reopen_rejects_non_admin() {
     let id = create_and_resolve(&s);
     s.client.try_archive_dispute(&s.admin, &id).unwrap();
     let stranger = Address::generate(&s.env);
-    let err = s.client.try_reopen_dispute(&stranger, &id, &3600).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_reopen_dispute(&stranger, &id, &3600)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::NotAdmin);
 }
 
@@ -137,7 +157,11 @@ fn test_reopen_rejects_non_admin() {
 fn test_reopen_rejects_non_archived() {
     let s = setup();
     let id = create_and_resolve(&s);
-    let err = s.client.try_reopen_dispute(&s.admin, &id, &3600).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_reopen_dispute(&s.admin, &id, &3600)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
 }
 
@@ -146,7 +170,11 @@ fn test_cannot_archive_twice() {
     let s = setup();
     let id = create_and_resolve(&s);
     s.client.try_archive_dispute(&s.admin, &id).unwrap();
-    let err = s.client.try_archive_dispute(&s.admin, &id).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
 }
 
@@ -169,10 +197,28 @@ fn test_invalid_transition_require_transition() {
     assert!(require_transition(DisputeStatus::Tied, DisputeStatus::Archived).is_ok());
     assert!(require_transition(DisputeStatus::Cancelled, DisputeStatus::Archived).is_ok());
     assert!(require_transition(DisputeStatus::Archived, DisputeStatus::Voting).is_ok());
-    assert_eq!(require_transition(DisputeStatus::Archived, DisputeStatus::Resolved), Err(ArbitrationError::InvalidTransition));
-    assert_eq!(require_transition(DisputeStatus::Archived, DisputeStatus::Tied), Err(ArbitrationError::InvalidTransition));
-    assert_eq!(require_transition(DisputeStatus::Archived, DisputeStatus::Cancelled), Err(ArbitrationError::InvalidTransition));
-    assert_eq!(require_transition(DisputeStatus::Archived, DisputeStatus::Open), Err(ArbitrationError::InvalidTransition));
-    assert_eq!(require_transition(DisputeStatus::Resolved, DisputeStatus::Voting), Err(ArbitrationError::InvalidTransition));
-    assert_eq!(require_transition(DisputeStatus::Voting, DisputeStatus::Archived), Err(ArbitrationError::InvalidTransition));
+    assert_eq!(
+        require_transition(DisputeStatus::Archived, DisputeStatus::Resolved),
+        Err(ArbitrationError::InvalidTransition)
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Archived, DisputeStatus::Tied),
+        Err(ArbitrationError::InvalidTransition)
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Archived, DisputeStatus::Cancelled),
+        Err(ArbitrationError::InvalidTransition)
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Archived, DisputeStatus::Open),
+        Err(ArbitrationError::InvalidTransition)
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Resolved, DisputeStatus::Voting),
+        Err(ArbitrationError::InvalidTransition)
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Voting, DisputeStatus::Archived),
+        Err(ArbitrationError::InvalidTransition)
+    );
 }

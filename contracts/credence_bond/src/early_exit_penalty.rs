@@ -31,10 +31,11 @@ pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
 
 pub fn get_config(e: &Env) -> Result<EarlyExitConfig, ContractError> {
     let key = DataKey::EarlyExitConfig;
-    let config = e.storage()
+    let config = e
+        .storage()
         .instance()
         .get(&key)
-        .ok_or(ContractError::EarlyExitConfigNotSet)
+        .ok_or(ContractError::EarlyExitConfigNotSet);
 }
 
 pub fn calculate_penalty(amount: i128, remaining: u64, duration: u64, penalty_bps: u32) -> i128 {

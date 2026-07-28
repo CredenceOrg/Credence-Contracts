@@ -50,7 +50,12 @@ pub struct BondDriftDetails {
 pub fn assert_self_consistent(e: &Env) {
     // Multi-identity: callers should use assert_self_consistent_for_subject.
     // This stub gracefully returns for backward compatibility.
-    }
+
+    let bond = e
+        .storage()
+        .instance()
+        .get::<_, IdentityBond>(&DataKey::Bond(identity.clone()))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
 
     check_bond_slashed_within_bonded(e, &bond);
 

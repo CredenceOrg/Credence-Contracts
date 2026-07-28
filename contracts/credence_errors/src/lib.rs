@@ -41,15 +41,6 @@ pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
         e.panic_with_error(ContractError::AlreadyInitialized);
     }
 }
-/// Panic with  if .
-/// Defence-in-depth guard that rejects treasury-flow payments to any
-/// recipient other than the configured treasury.
-pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
-    if recipient != treasury {
-        e.panic_with_error(ContractError::TreasuryBeneficiaryMismatch);
-    }
-}
-
 
 /// Simple role enum for admin checks.
 #[contracttype]
@@ -213,7 +204,7 @@ pub enum ContractError {
     /// Replaces: panic!("zero bytes32")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    ZeroBytes32 = 109,
+    ZeroBytes32 = 127,
 
     /// Lease scope bitmask does not cover the requested operation.
     /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
@@ -232,6 +223,12 @@ pub enum ContractError {
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
     LeaseSignerMismatch = 126,
+
+    /// Migration is in progress; the operation is temporarily unavailable.
+    /// Replaces: panic!("migration in progress")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 124,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -290,31 +287,25 @@ pub enum ContractError {
     /// Replaces: panic!("cooldown request already pending")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    CooldownRequestAlreadyPending = 400,
+    CooldownRequestAlreadyPending = 240,
 
     /// No cooldown withdrawal request exists for this bond.
     /// Replaces: panic!("no cooldown request")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    CooldownRequestNotFound = 401,
+    CooldownRequestNotFound = 241,
 
     /// The cooldown period has not yet elapsed.
     /// Replaces: panic!("cooldown period has not elapsed")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    CooldownPeriodNotElapsed = 402,
+    CooldownPeriodNotElapsed = 242,
 
     /// Reentrancy was detected; the call is rejected.
     /// Replaces: panic!("reentrancy detected")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     ReentrancyDetected = 207,
-
-    /// Signature or operation deadline has passed.
-    /// Replaces: panic!("signature expired")
-    /// Contracts: bond, delegation
-    /// Wire-stable: do not renumber this error code.
-    SignatureExpired = 222,
 
     /// Nonce is invalid - either replayed or out of order.
     /// Replaces: panic!("invalid nonce: replay or out-of-order")
@@ -324,7 +315,7 @@ pub enum ContractError {
 
     /// Signature/operation deadline has passed (now > deadline + grace).
     /// Contracts: bond, delegation
-    DeadlineExpired = 222,
+    DeadlineExpired = 233,
 
     /// Attester stake would go negative, which is not permitted.
     /// Replaces: panic!("attester stake cannot be negative")
@@ -403,15 +394,11 @@ pub enum ContractError {
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
     UnauthorizedToken = 231,
-    /// An idempotency key has already been used for this operation.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    DuplicateIdempotencyKey = 232,
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 230,
+    InvariantViolation = 234,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -441,6 +428,11 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+    /// Empty or whitespace-only currency symbol.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidCurrency = 243,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -633,24 +625,12 @@ pub enum ContractError {
     // --- Shared Bond/Delegation payload mismatch errors (218-221) ---
     // Wire-stable: codes documented in the note above; kept distinct from the
     // delegation scheme/verifier errors (504-507).
-    DomainMismatch = 231,
+    DomainMismatch = 236,
     OwnerMismatch = 219,
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
     // --- Admin Transfer (115-119) ---
-    /// No pending admin transfer exists.
-    NoPendingAdmin = 114,
-
-    /// Proposed admin is the zero/identity address.
-    InvalidAdminAddress = 110,
-
-    /// Proposed admin is the same as the current admin.
-    AdminUnchanged = 111,
-
-    /// Timelock delay has not yet elapsed.
-    TimelockNotReady = 112,
-
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
@@ -680,7 +660,18 @@ pub enum ContractError {
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
     CrossContractCallerMismatch = 123,
-    RoleNotHeldAtLedger = 116,
+
+    /// No pending admin transfer exists.
+    NoPendingAdmin = 128,
+
+    /// Proposed admin is the zero/identity address.
+    InvalidAdminAddress = 110,
+
+    /// Proposed admin is the same as the current admin.
+    AdminUnchanged = 111,
+
+    /// Timelock delay has not yet elapsed.
+    TimelockNotReady = 112,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -878,21 +869,21 @@ impl ErrorExt for ContractError {
             | ContractError::UnsupportedToken
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
+            | ContractError::AmountExplicitlyZero
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::InvalidStringifiedBytes
             | ContractError::UnauthorizedToken
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
-            | ContractError::EmptyBatch
-            | ContractError::InvariantViolation
-            | ContractError::UnauthorizedToken
-            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
+            | ContractError::EmptyBatch => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1250,6 +1241,7 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch // retry with correct generation
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
@@ -1541,18 +1533,6 @@ pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Addres
 pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) {
     if lease != actor {
         panic_with_error!(e, ContractError::LeaseSignerMismatch);
-    }
-}
-
-/// Validates that an emergency-drain recipient is exactly the configured treasury.
-///
-/// # Panics
-/// Panics with `ContractError::TreasuryBeneficiaryMismatch` when
-/// `recipient != treasury`.
-#[inline]
-pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
-    if recipient != treasury {
-        panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
     }
 }
 

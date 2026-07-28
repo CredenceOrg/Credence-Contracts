@@ -127,7 +127,10 @@ fn test_floor_guardrail_still_enforced_after_unpause() {
     let id = client.propose_withdrawal(&s1, &recipient, &2_000);
     client.approve_withdrawal(&s1, &id);
     let result = client.try_execute_withdrawal(&id, &0);
-    assert!(result.is_err(), "floor guardrail must still be enforced after unpause");
+    assert!(
+        result.is_err(),
+        "floor guardrail must still be enforced after unpause"
+    );
 }
 
 // ── Balance invariants across pause/recovery ───────────────────────────────
@@ -191,7 +194,10 @@ fn test_slippage_guardrail_preserved_across_pause() {
 
     // Slippage guard must still work
     let result = client.try_execute_withdrawal(&id, &5_000);
-    assert!(result.is_err(), "slippage guard must be preserved across pause");
+    assert!(
+        result.is_err(),
+        "slippage guard must be preserved across pause"
+    );
 }
 
 // ── Rapid pause/unpause boundary ────────────────────────────────────────────
