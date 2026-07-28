@@ -1,5 +1,20 @@
-use crate::DataKey;
-use soroban_sdk::{Address, Env, Vec};
+use crate::Bond;
+use credence_errors::ContractError;
+use soroban_sdk::{contracttype, Address, Env, Vec};
+
+/// Instance-storage keys owned by this module.
+///
+/// This enum shares a Rust name (`DataKey`) with the crate-root enum in
+/// `lib.rs`, which also writes to instance storage. Soroban keys
+/// `#[contracttype]` enums by variant name + field shape, not by Rust type
+/// name, so a future unit variant added to `lib.rs::DataKey` with the exact
+/// name `AcceptedTokens` would silently alias this key. See
+/// `docs/STORAGE_KEY_LAYOUT.md` for the full collision-safety rules before
+/// adding variants to either enum.
+#[contracttype]
+pub enum DataKey {
+    AcceptedTokens,
+}
 
 pub fn get_accepted_tokens(e: &Env) -> Vec<Address> {
     e.storage()

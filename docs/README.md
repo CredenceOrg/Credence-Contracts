@@ -104,6 +104,7 @@ These compact pages list the main public entrypoints, required roles, and backen
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Operator | Testnet/mainnet deploy runbook, cross-contract wiring |
 | [admin-cli.md](admin-cli.md) | Operator | CLI for admin operations |
 | [STORAGE_KEYS.md](STORAGE_KEYS.md) | Contributor / Operator | Storage key enum, TTL policies |
+| [STORAGE_KEY_LAYOUT.md](STORAGE_KEY_LAYOUT.md) | Contributor | Per-contract storage key catalog and collision-safety rules |
 | [storage-ttl.md](storage-ttl.md) | Contributor | TTL extension strategies |
 | [wasm-reproducibility.md](wasm-reproducibility.md) | Operator | Reproducible build verification |
 | [wasm-size-budget.md](wasm-size-budget.md) | Contributor | Per-contract size ceilings, CI gate |
