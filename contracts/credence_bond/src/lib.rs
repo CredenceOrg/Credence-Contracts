@@ -157,8 +157,7 @@ pub use soroban_sdk;
 /// The domain is a human-readable string that uniquely identifies this contract
 /// within the Credence system. It should be included in the signed payload hash
 /// along with other payload fields (nonce, deadline, etc.).
-#[allow(dead_code)]
-const SIGNATURE_DOMAIN: &str = "CredenceBond";
+pub(crate) const SIGNATURE_DOMAIN: &str = "CredenceBond";
 
 /// Identity tier based on bonded amount.
 #[contracttype]
@@ -221,12 +220,20 @@ fn validate_and_create_bond_struct(
     let bond = create_bond(amount, bond_start, duration, is_rolling, notice_period_duration)?;
     Ok(bond)
 }
+#[contract]
+pub struct CredenceBond;
+
+
 
 /// Maximum number of attestations allowed in a single batch operation.
 /// Enforces a safe upper bound on CPU/memory resource usage to prevent exceeding Soroban transaction limits.
 pub const MAX_BATCH_ATTESTATION_SIZE: u32 = 64;
 
 /// Input item for a batch attestation operation.
+///
+/// Each item carries its own `contract_id`, `deadline`, and `nonce` so the
+/// per-attester signed action is domain-bound and time-bound independently
+/// of the other items in the batch.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AttestationBatchItem {
@@ -234,6 +241,10 @@ pub struct AttestationBatchItem {
     pub attester: Address,
     /// Opaque attestation payload.
     pub attestation_data: String,
+    /// Contract address that this attestation is bound to (anti-replay).
+    pub contract_id: Address,
+    /// Deadline timestamp after which the signature expires.
+    pub deadline: u64,
     /// Nonce for replay prevention for this attester.
     pub nonce: u64,
 }
@@ -459,9 +470,6 @@ pub struct BondStateView {
     /// Derived tier based on `bonded_amount`.
     pub tier: BondTier,
 }
-
-#[contract]
-pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
@@ -1034,11 +1042,19 @@ impl CredenceBond {
         bond
     }
 
-    /// Add a weighted attestation for a subject.
+/// Add a weighted attestation for a subject.
     ///
     /// Errors:
     /// - `ContractError::UnauthorizedAttester` when caller is not a registered attester.
     /// - `ContractError::DuplicateAttestation` when the same (attester, subject, data) triple already exists.
+    /// - `ContractError::SignatureExpired` if deadline has passed.
+    /// - `ContractError::DomainMismatch` if contract_id doesn't match current contract.
+    /// - `ContractError::InvalidNonce` if nonce doesn't match stored nonce.
+    ///
+    /// # Security
+    /// The `contract_id` and `deadline` parameters bind this signed action to a
+    /// specific contract address and time window, preventing cross-contract replay
+    /// and replay-after-expiry. See [`nonce::validate_and_consume`] for details.
     ///
     /// See also: [`docs/attestations.md`](../../../docs/attestations.md),
     /// [`docs/weighted-attestations.md`](../../../docs/weighted-attestations.md)
@@ -1061,7 +1077,8 @@ impl CredenceBond {
     /// client.register_attester(&attester);
     ///
     /// let data = String::from_str(&e, "kyc:verified");
-    /// let attestation = client.add_attestation(&attester, &subject, &data, &0_u64);
+    /// let deadline = e.ledger().timestamp() + 3600;
+    /// let attestation = client.add_attestation(&attester, &subject, &data, &contract_id, &deadline, &0_u64);
     /// assert_eq!(attestation.verifier, attester);
     /// assert_eq!(attestation.identity, subject);
     /// assert!(!attestation.revoked);
@@ -1071,6 +1088,8 @@ impl CredenceBond {
         attester: Address,
         subject: Address,
         attestation_data: String,
+        contract_id: Address,
+        deadline: u64,
         nonce: u64,
     ) -> Attestation {
         Self::require_not_paused(&e);
@@ -1086,7 +1105,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::UnauthorizedAttester);
         }
 
-        nonce::consume_nonce(&e, &attester, nonce);
+        // Validate deadline, domain, and consume nonce atomically
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
 
         let dedup_key = types::AttestationDedupKey {
             verifier: attester.clone(),
@@ -1170,7 +1190,7 @@ impl CredenceBond {
             }
         }
 
-        // Enforce authorization, registration, and consume nonces
+        // Enforce authorization, registration, deadline, domain, and consume nonces
         for i in 0..n {
             let item = items.get(i).unwrap();
             item.attester.require_auth();
@@ -1184,7 +1204,14 @@ impl CredenceBond {
                 panic_with_error!(e, ContractError::UnauthorizedAttester);
             }
 
-            nonce::consume_nonce(&e, &item.attester, item.nonce);
+            // Validate deadline, domain, and consume nonce atomically per item
+            nonce::validate_and_consume(
+                &e,
+                &item.attester,
+                &item.contract_id,
+                item.deadline,
+                item.nonce,
+            );
         }
 
         // Check duplicate key in storage
@@ -1291,11 +1318,23 @@ impl CredenceBond {
         added
     }
 
-    /// Revoke an attestation (only the original attester can revoke). Requires correct nonce.
-    pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
+    /// Revoke an attestation (only the original attester can revoke).
+    ///
+    /// The `contract_id` and `deadline` parameters bind this signed action to a
+    /// specific contract address and time window, preventing cross-contract replay
+    /// and replay-after-expiry.
+    pub fn revoke_attestation(
+        e: Env,
+        attester: Address,
+        attestation_id: u64,
+        contract_id: Address,
+        deadline: u64,
+        nonce: u64,
+    ) {
         Self::require_not_paused(&e);
         attester.require_auth();
-        nonce::consume_nonce(&e, &attester, nonce);
+        // Validate deadline, domain, and consume nonce atomically
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
 
         let key = DataKey::Attestation(attestation_id);
         let mut attestation: Attestation = e
@@ -1580,37 +1619,13 @@ impl CredenceBond {
     /// - `ContractError::Overflow` if arithmetic overflows.
     /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
     ///   the gross withdrawal exactly into treasury penalty plus identity payout.
-    /// Withdraw before lock-up end; applies a time-decayed penalty.
+    /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     ///
-    /// # Custody semantics
-    /// If a USDC token has been configured via [`set_token`](Self::set_token),
-    /// the gross withdrawn amount is split on-chain:
+    /// # Security
     ///
-    /// - `penalty` is pushed to the early-exit treasury via
-    ///   [`token_integration::transfer_from_contract_with_source`] with
-    ///   `FundSource::ProtocolFee`, emitting `bond_fund_transfer`.
-    /// - `net_amount = amount - penalty` is pushed back to the bond owner
-    ///   via [`token_integration::transfer_from_contract`].
-    ///
-    /// Both transfers use the balance-delta guard so fee-on-transfer tokens
-    /// are rejected. The bond contract must hold at least `amount` USDC; any
-    /// shortfall aborts the entire transaction. Without a configured token
-    /// the entry point operates in phantom-balance mode and only mutates the
-    /// [`IdentityBond`] storage entry.
-    ///
-    /// # Checks–Effects–Interactions
-    /// The reduced `IdentityBond` storage entry is written **before** any
-    /// external transfers so a hostile token contract cannot re-enter and
-    /// double-spend against a post-withdrawal snapshot.
-    ///
-    /// Errors:
-    /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
-    ///   configuration exists. The call will revert instead of silently dropping
-    ///   the penalty amount.
-    /// - `ContractError::Underflow` if arithmetic underflows.
-    /// - `ContractError::Overflow` if arithmetic overflows.
-    /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
-    ///   the gross withdrawal exactly into treasury penalty plus identity payout.
+    /// Uses the application-level reentrancy guard to prevent reentrancy via
+    /// malicious token transfer callbacks. State is committed before any external
+    /// token transfer (CEI pattern).
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
         let key = DataKey::Bond;
@@ -1634,6 +1649,8 @@ impl CredenceBond {
             release_lock(&e);
             panic_with_error!(&e, ContractError::EarlyExitConfigNotSet)
         });
+        let cfg = early_exit_penalty::get_config(&e)
+            .unwrap_or_else(|_| panic_with_error!(&e, ContractError::EarlyExitConfigNotSet));
         let penalty_bps = cfg.penalty_bps;
 
         let remaining = end.saturating_sub(now);
@@ -1654,6 +1671,9 @@ impl CredenceBond {
         if penalty < 0 || penalty > amount || split_total != amount {
             panic_with_error!(e, ContractError::InvariantViolation);
         }
+
+        // ── Acquire reentrancy lock before state mutations ──
+        Self::acquire_lock(&e);
 
         // Emit event before transfers for audit trail consistency
         early_exit_penalty::emit_penalty_event(&e, &bond.identity, amount, penalty, &cfg.treasury);
@@ -1787,6 +1807,13 @@ impl CredenceBond {
     /// Errors:
     /// - `ContractError::BondNotFound` when no bond exists.
     /// - `ContractError::Overflow` when the addition would overflow `i128`.
+    /// - `ContractError::ReentrancyDetected` when called re-entrantly.
+    ///
+    /// # Security
+    ///
+    /// Uses the application-level reentrancy guard to prevent reentrancy via
+    /// malicious token transfer callbacks during the token pull from the user's
+    /// wallet. State is committed after the token transfer completes.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
     /// Top up an existing bond for `identity`, escrowing additional USDC.
@@ -1814,6 +1841,9 @@ impl CredenceBond {
         let key = DataKey::Bond;
         let mut bond: IdentityBond = guards::load_bond(&e);
 
+        // ── Acquire reentrancy lock before external token calls ──
+        Self::acquire_lock(&e);
+
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &bond.identity, amount);
         }
@@ -1838,10 +1868,8 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
-        // Issue #996: same-ledger sequencing guard — record this ledger
-        // sequence so that any subsequent same-ledger slash is blocked by
-        // `same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase`.
-        crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
+
+        Self::release_lock(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -2412,6 +2440,19 @@ impl CredenceBond {
     fn check_lock(e: &Env) -> bool {
         let key = Symbol::new(e, "locked");
         e.storage().instance().get(&key).unwrap_or(false)
+    }
+
+    fn acquire_lock(e: &Env) {
+        let key = Symbol::new(e, "locked");
+        if e.storage().instance().get(&key).unwrap_or(false) {
+            panic_with_error!(e.clone(), ContractError::ReentrancyDetected);
+        }
+        e.storage().instance().set(&key, &true);
+    }
+
+    fn release_lock(e: &Env) {
+        let key = Symbol::new(e, "locked");
+        e.storage().instance().set(&key, &false);
     }
 
     // -----------------------------------------------------------------------
