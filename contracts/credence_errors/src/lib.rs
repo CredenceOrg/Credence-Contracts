@@ -41,6 +41,15 @@ pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
         e.panic_with_error(ContractError::AlreadyInitialized);
     }
 }
+/// Panic with  if .
+/// Defence-in-depth guard that rejects treasury-flow payments to any
+/// recipient other than the configured treasury.
+pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
+    if recipient != treasury {
+        e.panic_with_error(ContractError::TreasuryBeneficiaryMismatch);
+    }
+}
+
 
 /// Simple role enum for admin checks.
 #[contracttype]
