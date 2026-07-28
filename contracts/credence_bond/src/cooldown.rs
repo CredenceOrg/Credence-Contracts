@@ -11,10 +11,42 @@
 //!      `execute_cooldown_withdrawal` to finalize the withdrawal.
 //!   4. At any point before execution, the holder may cancel via
 //!      `cancel_cooldown`.
+//!
+//! ## Sequencing protection
+//!
+//! The guard in `same_ledger_liquidation_guard` records the ledger sequence
+//! whenever collateral is increased (via `create_bond` or `top_up`).
+//! `execute_cooldown_withdrawal` calls
+//! `require_cooldown_allowed_after_collateral_increase`, which panics if the
+//! current ledger sequence still matches the recorded one.  This prevents an
+//! attacker from sandwiching a collateral increase and a cooldown withdrawal
+//! within the same ledger entry.
+//!
+//! `request_cooldown_withdrawal` also records the current ledger sequence in
+//! `DataKey::CooldownRequestLedger` so that a subsequent same-ledger execution
+//! can be correlated.  The recorder is written *after* the request is stored
+//! so that a panicking `assert_self_consistent` call still rolls it back.
 
+use crate::DataKey;
 use soroban_sdk::{Address, Env, Symbol};
 
 const KEY_COOLDOWN_PERIOD: &str = "cooldown_period";
+const KEY_COOLDOWN_REQUEST: &str = "cooldown_request";
+
+/// Cooldown withdrawal request state stored per-identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[contracttype]
+pub struct CooldownRequest {
+    /// Address of the bond holder who requested the withdrawal.
+    pub requester: Address,
+    /// Amount requested for withdrawal.
+    pub amount: i128,
+    /// Ledger timestamp when the request was made.
+    pub requested_at: u64,
+    /// Ledger sequence at which the request was recorded (used for
+    /// same-ledger sequencing guard).
+    pub ledger_sequence: u32,
+}
 
 /// Store the cooldown period (seconds). Caller is responsible for admin checks.
 pub fn set_cooldown_period(e: &Env, period: u64) {
@@ -52,6 +84,35 @@ pub fn can_withdraw(now: u64, request_time: u64, cooldown_period: u64) -> bool {
     }
     let end = request_time.saturating_add(cooldown_period);
     now >= end
+}
+
+/// Persist a cooldown withdrawal request.
+pub fn set_cooldown_request(e: &Env, identity: &Address, request: &CooldownRequest) {
+    e.storage()
+        .instance()
+        .set(&DataKey::CooldownRequest(identity.clone()), request);
+}
+
+/// Read the stored cooldown request for `identity`, if any.
+pub fn get_cooldown_request(e: &Env, identity: &Address) -> Option<CooldownRequest> {
+    e.storage()
+        .instance()
+        .get::<_, CooldownRequest>(&DataKey::CooldownRequest(identity.clone()))
+}
+
+/// Remove the stored cooldown request for `identity`.
+pub fn clear_cooldown_request(e: &Env, identity: &Address) {
+    e.storage()
+        .instance()
+        .remove::<CooldownRequest>(&DataKey::CooldownRequest(identity.clone()));
+}
+
+/// Record the current ledger sequence for cooldown sequencing guard.
+pub fn record_cooldown_request(e: &Env) {
+    let seq = e.ledger().sequence();
+    e.storage()
+        .instance()
+        .set(&DataKey::CooldownRequestLedger, &seq);
 }
 
 /// Emit an event when a cooldown withdrawal is requested.
