@@ -117,7 +117,7 @@ mod tests {
         let cb = e.register(PanickingCallback, ());
         client.set_callback(&cb);
 
-        assert_eq!(client.get_identity_state().slashed_amount, 0);
+        assert_eq!(client.get_identity_state(&identity).slashed_amount, 0);
         assert!(!client.is_locked());
 
         // slash_bond: writes slashed_amount=50, then calls on_slash ? panic.
@@ -125,7 +125,7 @@ mod tests {
         assert!(result.is_err(), "slash_bond must fail when callback panics");
 
         // INVARIANT: no state mutation may persist when an inner call panics.
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.slashed_amount, 0, "slashed_amount must revert to 0");
         assert_eq!(bond.bonded_amount, 1000, "bonded_amount must be unchanged");
         assert!(
@@ -148,7 +148,7 @@ mod tests {
         let cb = e.register(PanickingCallback, ());
         client.set_callback(&cb);
 
-        assert!(client.get_identity_state().active);
+        assert!(client.get_identity_state(&identity).active);
 
         let result = client.try_withdraw_bond(&identity);
         assert!(
@@ -157,7 +157,7 @@ mod tests {
         );
 
         // INVARIANT
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert!(
             bond.active,
             "bond must remain active after callback-induced rollback"
@@ -242,7 +242,7 @@ mod tests {
             e.storage().instance().set(&DataKey::Admin, &admin);
         });
 
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.slashed_amount, 0);
         assert_eq!(bond.bonded_amount, 1000);
     }
@@ -279,12 +279,12 @@ mod tests {
         let e = Env::default();
         let (client, admin, _) = setup_with_bond(&e);
 
-        assert_eq!(client.get_identity_state().slashed_amount, 0);
+        assert_eq!(client.get_identity_state(&identity).slashed_amount, 0);
 
         let result = client.try_slash_bond(&admin, &2000_i128);
         assert!(result.is_err(), "slash exceeding bond must be rejected");
 
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.slashed_amount, 0);
         assert_eq!(bond.bonded_amount, 1000);
         assert!(!client.is_locked());

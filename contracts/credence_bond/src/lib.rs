@@ -242,7 +242,7 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
-    Bond,
+    Bond(Address),
     Attester(Address),
     Attestation(u64),
     AttestationCounter,
@@ -276,6 +276,8 @@ pub enum DataKey {
     /// Reentrancy protection flag. Value: `bool`. When `true`, prevents
     /// external token calls from re-entering and double-spending.
     SettlingFlag,
+    /// Simple reentrancy lock. Value: `bool`.
+    Locked,
     // --- Liquidation namespace (appended for issue #366) ---
     /// Treasury recipient for residual funds swept by
     /// [`liquidate`](CredenceBond::liquidate). Value: `Address`. Optional; when
@@ -534,11 +536,7 @@ impl CredenceBond {
     ///
     /// See also: [`docs/bond-introspection.md`](../../../docs/bond-introspection.md)
     pub fn describe_bond(e: Env, identity: Address) -> Option<BondStateView> {
-        let bond: IdentityBond = e.storage().instance().get(&DataKey::Bond)?;
-        // The contract stores a single bond; only return it if it belongs to `identity`.
-        if bond.identity != identity {
-            return None;
-        }
+        let bond: IdentityBond = e.storage().instance().get(&DataKey::Bond(identity))?;
         let available_amount = bond.bonded_amount.saturating_sub(bond.slashed_amount);
         let tier = tiered_bond::get_tier_for_amount(&e, available_amount);
         Some(BondStateView {
@@ -968,7 +966,10 @@ impl CredenceBond {
             withdrawal_requested_at: 0,
             notice_period_duration,
         };
-        let key = DataKey::Bond;
+        if e.storage().instance().has(&DataKey::Bond(identity.clone())) {
+            panic_with_error!(&e, ContractError::BondAlreadyExists);
+        }
+        let key = DataKey::Bond(identity.clone());
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
         let tier = tiered_bond::get_tier_for_amount(&e, amount);
@@ -1007,14 +1008,14 @@ impl CredenceBond {
     /// client.initialize(&admin, &None);
     /// client.create_bond(&identity, &500_i128, &3600_u64, &false, &0_u64);
     ///
-    /// let state = client.get_identity_state();
+    /// let state = client.get_identity_state(&identity);
     /// assert_eq!(state.bonded_amount, 500);
     /// assert!(state.active);
     /// ```
     pub fn get_identity_state(e: Env) -> IdentityBond {
         // Ensure storage is migrated from v1 to v2 before accessing bond state
         migration::migrate_v1_to_v2(&e);
-        let bond: IdentityBond = guards::load_bond(&e);
+        let bond: IdentityBond = guards::load_bond(&e, &identity);
         bond
     }
 
@@ -1521,8 +1522,8 @@ impl CredenceBond {
         // auth: bond owner must authorize withdrawals.
         identity.require_auth();
         credence_errors::require_positive_amount!(&e, amount);
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let key = DataKey::Bond(identity.clone());
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
         let now = e.ledger().timestamp();
         let end = bond
@@ -1630,8 +1631,8 @@ impl CredenceBond {
     /// Blocked while the contract is paused (`ContractError::ContractPaused`).
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let key = DataKey::Bond(identity.clone());
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
         let available = bond
             .bonded_amount
@@ -1735,8 +1736,8 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize the withdrawal request.
         identity.require_auth();
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let key = DataKey::Bond(identity.clone());
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
         if !bond.is_rolling {
             panic_with_error!(e, ContractError::NotRollingBond);
         }
@@ -1765,8 +1766,8 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize renewal.
         identity.require_auth();
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let key = DataKey::Bond(identity.clone());
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
         if !bond.is_rolling {
             return bond;
         }
@@ -1846,8 +1847,8 @@ impl CredenceBond {
         // auth: bond owner must authorize top-ups.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let key = DataKey::Bond(identity.clone());
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
         // ── Acquire reentrancy lock before external token calls ──
         Self::acquire_lock(&e);
@@ -1893,8 +1894,8 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize duration extensions.
         identity.require_auth();
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let key = DataKey::Bond(identity.clone());
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
         bond.bond_duration = bond
             .bond_duration
@@ -1941,8 +1942,8 @@ impl CredenceBond {
         identity.require_auth();
         acquire_lock(&e);
 
-        let bond_key = DataKey::Bond;
-        let bond: IdentityBond = guards::load_bond(&e);
+        let bond_key = DataKey::Bond(identity.clone());
+        let bond: IdentityBond = guards::load_bond(&e, &identity);
 
         if bond.identity != identity {
             release_lock(&e);
@@ -2148,8 +2149,8 @@ impl CredenceBond {
 
         guards::require_admin(&e, &admin);
 
-        let bond_key = DataKey::Bond;
-        let bond: IdentityBond = guards::load_bond(&e);
+        let bond_key = DataKey::Bond(identity.clone());
+        let bond: IdentityBond = guards::load_bond(&e, &identity);
 
         if !bond.active {
             release_lock(&e);
@@ -2361,7 +2362,7 @@ impl CredenceBond {
         admin.require_auth();
         acquire_lock(&e);
 
-        let bond_key = DataKey::Bond;
+        let bond_key = DataKey::Bond(identity.clone());
         let bond: IdentityBond = match e.storage().instance().get::<_, IdentityBond>(&bond_key) {
             Some(b) => b,
             None => {
@@ -3081,7 +3082,7 @@ mod tests {
         );
         e.ledger().set(info);
 
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.bonded_amount, 50);
         assert_eq!(bond.identity, identity);
     }

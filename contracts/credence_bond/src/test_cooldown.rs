@@ -487,7 +487,7 @@ fn test_full_cooldown_lifecycle() {
     assert_eq!(req.requested_at, 1000);
 
     // Verify bond unchanged
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     assert_eq!(bond.bonded_amount, 5000);
 
     // Advance past cooldown and execute

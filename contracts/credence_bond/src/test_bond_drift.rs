@@ -87,7 +87,7 @@ fn bond_drift_slashed_over_bonded_emits_structured_event() {
 fn bond_drift_attestation_count_mismatch_panics() {
     let e = Env::default();
     let (contract_id, client) = setup_contract(&e);
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     inject_attestation_count_drift(&e, &contract_id, &bond.identity);
     e.as_contract(&contract_id, || {
         assert_self_consistent(&e);
@@ -100,7 +100,7 @@ fn bond_drift_attestation_count_mismatch_emits_event() {
 
     let e = Env::default();
     let (contract_id, client) = setup_contract(&e);
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     inject_attestation_count_drift(&e, &contract_id, &bond.identity);
 
     let panic_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

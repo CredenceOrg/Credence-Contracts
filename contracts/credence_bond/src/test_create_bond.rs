@@ -297,7 +297,7 @@ fn test_create_bond_duplicate() {
     assert_eq!(bond2.bond_duration, 172800);
 
     // Verify storage contains second bond
-    let stored_bond = client.get_identity_state();
+    let stored_bond = client.get_identity_state(&identity);
     assert_eq!(stored_bond.bonded_amount, 2000);
 }
 
@@ -318,7 +318,7 @@ fn test_create_bond_different_identities() {
     let _bond2 = client.create_bond(&identity2, &2000_i128, &172800_u64);
 
     // Due to single bond storage, only the last bond is stored
-    let stored_bond = client.get_identity_state();
+    let stored_bond = client.get_identity_state(&identity);
     assert_eq!(stored_bond.identity, identity2);
     assert_eq!(stored_bond.bonded_amount, 2000);
 }
@@ -359,7 +359,7 @@ fn test_create_bond_storage_persistence() {
 
     client.create_bond(&identity, &amount, &duration);
 
-    let retrieved_bond = client.get_identity_state();
+    let retrieved_bond = client.get_identity_state(&identity);
     assert_eq!(retrieved_bond.identity, identity);
     assert_eq!(retrieved_bond.bonded_amount, amount);
     assert_eq!(retrieved_bond.bond_duration, duration);
@@ -436,7 +436,7 @@ fn test_create_bond_sequential() {
     }
 
     // Last bond should be stored
-    let stored_bond = client.get_identity_state();
+    let stored_bond = client.get_identity_state(&identity);
     assert_eq!(stored_bond.bonded_amount, 5000);
 }
 
@@ -471,7 +471,7 @@ fn test_create_bond_bond_start_not_affected_by_later_time() {
 
     // Advance time — bond_start must still reflect creation time
     e.ledger().with_mut(|li| li.timestamp = 999_999);
-    let b = client.get_identity_state();
+    let b = client.get_identity_state(&identity);
     assert_eq!(
         b.bond_start, 500_000,
         "bond_start must be frozen at creation time"
