@@ -3264,6 +3264,11 @@ mod test_bps_denominator;
 #[cfg(test)]
 mod test_batch_transfer;
 
+#[cfg(test)]
+mod test_create_bond;
+
+#[cfg(test)]
+mod test_increase_bond;
 /// Emergency pause gating tests (issue #1042).
 #[cfg(test)]
 mod test_pausable;
