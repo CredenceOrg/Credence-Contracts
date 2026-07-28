@@ -213,11 +213,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     LeaseSignerMismatch = 126,
 
-    /// A supplied timestamp/sequence value is in the future relative to the ledger.
-    /// Contracts: general-purpose (lease auth, timelock)
-    /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
-
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -356,11 +351,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     AmountExplicitlyZero = 215,
 
-    /// Currency symbol is empty or whitespace-only.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    InvalidCurrency = 225,
-
     /// Bond duration must be strictly positive (> 0).
     /// Triggered by: create_bond called with duration == 0
     /// Contracts: bond
@@ -397,7 +387,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 233,
+    InvariantViolation = 299,
 
     /// Empty or whitespace-only currency symbol.
     /// Contracts: bond
@@ -899,6 +889,7 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
             | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
+            ContractError::InvalidStringifiedBytes | ContractError::SnapshotGenerationMismatch | ContractError::BytesTooLarge => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -959,6 +950,7 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Authorization,
+            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => ErrorCategory::Delegation,
         }
     }
 
@@ -1042,6 +1034,10 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
+            ContractError::InvalidStringifiedBytes => "Stringified bytes are invalid",
+            ContractError::SnapshotGenerationMismatch => "Snapshot generation mismatch",
+            ContractError::TimestampInFuture => "Timestamp is in the future",
+            ContractError::InvalidCurrency => "Invalid currency",
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
@@ -1163,6 +1159,8 @@ impl ErrorExt for ContractError {
                 "Signer pause proposal carries a stale epoch reference"
             }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
+            ContractError::StaleAdminEpoch => "Admin pause proposal ID was derived in a stale epoch",
+            ContractError::StaleSignerEpoch => "Signer pause proposal ID was derived in a stale epoch",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {
@@ -1341,7 +1339,7 @@ impl ErrorExt for ContractError {
             ContractError::SignatureExpired => true,  // re-sign with later deadline
             ContractError::InvalidFlashLoanCallback => false,
             ContractError::FlashLoanRepaymentFailed => false,
-            ContractError::SnapshotGenerationMismatch => false, // epoch drift is not caller-fixable
+            ContractError::SnapshotGenerationMismatch | ContractError::TimestampInFuture | ContractError::InvalidCurrency | ContractError::InvalidStringifiedBytes | ContractError::BytesTooLarge | ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
         }
     }
 }
