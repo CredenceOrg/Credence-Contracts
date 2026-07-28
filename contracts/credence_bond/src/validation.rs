@@ -11,7 +11,42 @@
 #![allow(dead_code)]
 
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, String, Vec};
+use soroban_sdk::{panic_with_error, Address, Bytes, Env, String, Vec};
+
+/// Maximum accepted length, in bytes, of a raw caller-supplied `Bytes` value
+/// checked via [`require_finite_bytes`] (e.g. idempotency salts).
+///
+/// # Threat model
+/// Entrypoints such as `slash_bond` and `collect_fees` accept a caller-chosen
+/// `idempotency_salt: Bytes` with no prior bound. That salt is concatenated
+/// into a buffer and SHA-256 hashed, then the hash is written to persistent
+/// storage on every call. Without a length cap, a caller can submit an
+/// arbitrarily large `Bytes` argument, forcing the contract to pay unbounded
+/// hashing/memory cost on a hot admin path and inflating the size of the
+/// transaction envelope needed to trigger it. This is a resource-exhaustion /
+/// griefing vector against the contract's own CPU and memory budget, not a
+/// funds-safety bug by itself — but it's exactly the kind of unchecked input
+/// boundary an external auditor flags, since nothing downstream re-validates
+/// the salt's size before it's hashed and persisted.
+///
+/// 512 bytes is generous headroom over any legitimate idempotency salt
+/// (typically a UUID or short nonce, well under 64 bytes) while still being
+/// a small, predictable bound on hashing cost.
+pub const MAX_FINITE_BYTES_LENGTH: u32 = 512;
+
+/// Reject a caller-supplied `Bytes` value that exceeds `max` bytes.
+///
+/// Intended to be called at the entrypoint boundary, before the value is
+/// used in hashing, storage, or passed to another contract, so that
+/// oversized input is rejected cheaply instead of paying its cost first.
+///
+/// # Panics
+/// * `ContractError::BytesTooLarge` if `value.len() > max`.
+pub fn require_finite_bytes(e: &Env, value: &Bytes, max: u32) {
+    if value.len() > max {
+        panic_with_error!(e, ContractError::BytesTooLarge);
+    }
+}
 
 /// Maximum accepted length of a hex/base64 byte string before decoding.
 ///
@@ -144,6 +179,7 @@ pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000; // 1 * 10^18 (1 tok
 
 #[cfg(test)]
 /// Minimum bond amount in tests. Set to 1000 to match legacy tests.
+/// See docs/known-simplifications.md § 4.2 for production vs test bounds.
 pub const MIN_BOND_AMOUNT: i128 = 1_000;
 
 #[cfg(not(test))]
@@ -153,6 +189,7 @@ pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000; // 100M *
 
 #[cfg(test)]
 /// Maximum bond amount in tests. Set to 100_000_000_000_000 to match legacy tests.
+/// See docs/known-simplifications.md § 4.3 for production vs test bounds.
 pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000;
 
 /// Validates that a bond amount is within acceptable bounds.
@@ -249,7 +286,31 @@ pub fn verify_batch_size(e: &Env, len: u32, max_size: u32) {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Address, Env, String};
+    use soroban_sdk::{Address, Bytes, Env, String};
+
+    #[test]
+    fn test_require_finite_bytes_accepts_within_bound() {
+        let env = Env::default();
+        let value = Bytes::from_slice(&env, &[1_u8; 10]);
+        // Should not panic.
+        require_finite_bytes(&env, &value, MAX_FINITE_BYTES_LENGTH);
+    }
+
+    #[test]
+    fn test_require_finite_bytes_accepts_exactly_at_bound() {
+        let env = Env::default();
+        let value = Bytes::from_slice(&env, &[0_u8; MAX_FINITE_BYTES_LENGTH as usize]);
+        // Should not panic: len == max is allowed.
+        require_finite_bytes(&env, &value, MAX_FINITE_BYTES_LENGTH);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_require_finite_bytes_rejects_oversized_input() {
+        let env = Env::default();
+        let value = Bytes::from_slice(&env, &[0_u8; (MAX_FINITE_BYTES_LENGTH + 1) as usize]);
+        require_finite_bytes(&env, &value, MAX_FINITE_BYTES_LENGTH);
+    }
 
     #[test]
     fn test_verify_stringified_bytes_accepts_hex_and_base64() {

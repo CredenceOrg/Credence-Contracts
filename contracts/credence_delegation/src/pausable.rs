@@ -116,15 +116,7 @@ fn require_matching_operator_epoch(e: &Env, action: PauseAction, ep: u64) {
 }
 
 fn require_admin_auth(e: &Env, admin: &Address) {
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored_admin != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
-    admin.require_auth();
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 pub fn is_paused(e: &Env) -> bool {

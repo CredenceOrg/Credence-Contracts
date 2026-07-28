@@ -254,7 +254,23 @@ impl TimelockContract {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
 }
+
+#[cfg(test)]
+mod test_timelock;
 
 #[cfg(test)]
 mod tests {
@@ -372,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_rejects_at_expiry() {
+    fn test_execute_succeeds_at_expiry_boundary() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[1; 32]);
         let delay = 86_400;
@@ -380,10 +396,15 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        // At expires_at: must fail because the action is no longer within TTL.
+        // At expires_at: must succeed. The lifecycle window [eta, expires_at]
+        // is inclusive on both ends (see execute_operation's `now > op.expires_at`
+        // check, which only rejects strictly-after-expiry timestamps).
         env.ledger().with_mut(|li| li.timestamp = op.expires_at);
-        let res = client.try_execute_operation(&op_id);
-        assert!(res.is_err());
+        client.execute_operation(&op_id);
+
+        let op = client.get_operation(&op_id).unwrap();
+        assert_eq!(op.status, OperationStatus::Executed);
+        assert!(client.is_operation_executed(&op_hash));
     }
 
     #[test]

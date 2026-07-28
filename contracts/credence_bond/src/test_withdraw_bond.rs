@@ -40,7 +40,7 @@ fn test_withdraw_bond_callback_failure_reverts_state() {
     let callback_id = e.register(failing_withdraw_callback::FailingWithdrawCallback, ());
     client.set_callback(&admin, &callback_id);
 
-    let before_bond = client.get_identity_state();
+    let before_bond = client.get_identity_state(&identity);
     let token_client = TokenClient::new(&e, &token_id);
     let before_identity_balance = token_client.balance(&identity);
     let before_contract_balance = token_client.balance(&bond_contract_id);
@@ -50,7 +50,7 @@ fn test_withdraw_bond_callback_failure_reverts_state() {
     }));
     assert!(result.is_err());
 
-    let after_bond = client.get_identity_state();
+    let after_bond = client.get_identity_state(&identity);
     assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
     assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
     assert_eq!(token_client.balance(&identity), before_identity_balance);

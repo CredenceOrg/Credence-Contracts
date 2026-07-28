@@ -250,7 +250,13 @@ fn test_event_indexing_query_efficiency() {
         let identity = if i % 2 == 0 { &identity1 } else { &identity2 };
         timestamps.push(e.ledger().timestamp());
 
-        client.create_bond_with_rolling(identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+        client.create_bond_with_rolling(
+            identity,
+            &amount,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &false,
+            &0_u64,
+        );
 
         // Advance time for uniqueness
         let mut ledger_info = e.ledger().get();
@@ -333,7 +339,13 @@ fn test_event_schema_compatibility() {
     client.set_token(&admin, &token_addr);
 
     // Test that both old and new events are emitted for backward compatibility
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let events = e.events().all();
 
@@ -413,8 +425,7 @@ fn test_tier_changed_v2_event_on_create_bond() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
-                    == Symbol::new(&e, "tier_changed_v2")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "tier_changed_v2")
         })
         .collect();
 
@@ -436,10 +447,7 @@ fn test_tier_changed_v2_event_on_create_bond() {
         Symbol::from_val(&e, &v2_event.1.get(0).unwrap()),
         Symbol::new(&e, "tier_changed_v2")
     );
-    assert_eq!(
-        Address::from_val(&e, &v2_event.1.get(1).unwrap()),
-        identity
-    );
+    assert_eq!(Address::from_val(&e, &v2_event.1.get(1).unwrap()), identity);
     let v2_data = <(crate::BondTier, crate::BondTier, u64)>::from_val(&e, &v2_event.2);
     assert!(
         core::mem::discriminant(&v2_data.0) == core::mem::discriminant(&crate::BondTier::Bronze)
@@ -451,4 +459,318 @@ fn test_tier_changed_v2_event_on_create_bond() {
         v2_data.2 >= ts_before,
         "tier_changed_v2 timestamp must reflect ledger time"
     );
+}
+
+// ============================================================================
+// Critical-flow event-payload assertions (added for issue #1022).
+//
+// These tests pin down the v2 payload of events that the older shared tests
+// don't fully exercise — `bond_slashed_v2`, `bond_liquidated`, the early-exit
+// penalty data tuple, `param_updated`, `attestation_added`, and the legacy
+// single-symbol attester/claim/payment event payloads. They follow the same
+// shape as the existing tests in this file: drive the contract through the
+// real entry point, then read back from `env.events().all()`.
+// ============================================================================
+
+#[test]
+fn test_bond_slashed_v2_pays_out_legacy_v1_and_indexed_v2() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let identity = Address::generate(&e);
+
+    client.initialize(&admin, &None);
+
+    let token_addr = e.register(test_helpers::MockStellarAsset, ());
+    let token_admin_client = StellarAssetClient::new(&e, &token_addr);
+    let token_client = TokenClient::new(&e, &token_addr);
+
+    token_admin_client.mint(&identity, &100_000_i128);
+    token_client.approve(&identity, &contract_id, &100_000_i128, &99999_u32);
+    client.set_token(&admin, &token_addr);
+
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+
+    // Set the slash treasury so the transfer-out path is satisfied.
+    let slash_treasury = Address::generate(&e);
+    client.set_slash_treasury(&admin, &slash_treasury);
+
+    let slash_amount = 4_000_i128;
+    let ts_before = e.ledger().timestamp();
+    client.slash(&admin, &slash_amount);
+
+    let events = e.events().all();
+
+    let v2_events: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "bond_slashed_v2")
+        })
+        .collect();
+
+    assert_eq!(
+        v2_events.len(),
+        1,
+        "slash must emit exactly one bond_slashed_v2 event"
+    );
+    let ev = &v2_events[0];
+
+    // Topics: (Symbol, identity, slash_amount, total_slashed, timestamp, admin)
+    assert_eq!(ev.1.len(), 6);
+    let topic_ident = Address::from_val(&e, &ev.1.get(1).unwrap());
+    let topic_amount = i128::from_val(&e, &ev.1.get(2).unwrap());
+    let topic_total = i128::from_val(&e, &ev.1.get(3).unwrap());
+    let topic_ts = u64::from_val(&e, &ev.1.get(4).unwrap());
+    let topic_admin = Address::from_val(&e, &ev.1.get(5).unwrap());
+
+    assert_eq!(topic_ident, identity);
+    assert_eq!(topic_amount, slash_amount);
+    assert_eq!(
+        topic_total, slash_amount,
+        "cumulative total after a single slash == per-event delta"
+    );
+    assert!(
+        topic_ts >= ts_before,
+        "v2 slash timestamp must reflect ledger time"
+    );
+    assert_eq!(topic_admin, admin);
+
+    // Data: (reason: String, is_full_slash: bool)
+    let (reason, is_full) = <(String, bool)>::from_val(&e, &ev.2);
+    assert!(!reason.is_empty(), "v2 slash must carry a non-empty reason");
+    assert!(!is_full, "partial slash must not be reported as full");
+}
+
+#[test]
+fn test_bond_withdrawn_v2_flags_early_withdrawal_and_penalty() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let identity = Address::generate(&e);
+    client.initialize(&admin, &None);
+
+    let token_addr = e.register(test_helpers::MockStellarAsset, ());
+    let token_admin_client = StellarAssetClient::new(&e, &token_addr);
+    let token_client = TokenClient::new(&e, &token_addr);
+
+    token_admin_client.mint(&identity, &100_000_i128);
+    token_client.approve(&identity, &contract_id, &100_000_i128, &99999_u32);
+    client.set_token(&admin, &token_addr);
+
+    let treasury = Address::generate(&e);
+    client.set_early_exit_config(&admin, &treasury, &500); // 5%
+
+    client.create_bond_with_rolling(
+        &identity,
+        &1_000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+
+    let gross_withdraw = 200_i128;
+    let penalty_bps = 500_u32;
+    let remaining_duration = credence_math::Timestamp::SECONDS_PER_DAY;
+    let expected_penalty = crate::early_exit_penalty::calculate_penalty(
+        gross_withdraw,
+        remaining_duration,
+        credence_math::Timestamp::SECONDS_PER_DAY,
+        penalty_bps,
+    );
+
+    client.withdraw_early(&identity, &gross_withdraw);
+
+    let events = e.events().all();
+    let v2_events: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
+                    == Symbol::new(&e, "bond_withdrawn_v2")
+        })
+        .collect();
+
+    assert_eq!(
+        v2_events.len(),
+        1,
+        "early withdraw must emit exactly one bond_withdrawn_v2"
+    );
+    let ev = &v2_events[0];
+
+    // Topics: (Symbol, identity, amount_withdrawn, remaining, timestamp)
+    assert_eq!(ev.1.len(), 5);
+    let topic_amount = i128::from_val(&e, &ev.1.get(2).unwrap());
+    let topic_remaining = i128::from_val(&e, &ev.1.get(3).unwrap());
+    let topic_ts = u64::from_val(&e, &ev.1.get(4).unwrap());
+    assert_eq!(topic_amount, gross_withdraw);
+    assert_eq!(topic_remaining, 800);
+    assert!(topic_ts > 0);
+
+    // Data: (is_early: bool, penalty_amount: i128)
+    let (is_early, penalty) = <(bool, i128)>::from_val(&e, &ev.2);
+    assert!(is_early, "withdraw_early must flag is_early=true");
+    assert_eq!(
+        penalty, expected_penalty,
+        "v2 penalty must match calculate_penalty"
+    );
+}
+
+#[test]
+fn test_bond_liquidated_v2_payload_after_full_slash() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    let identity = Address::generate(&e);
+    client.initialize(&admin, &None);
+
+    let token_addr = e.register(test_helpers::MockStellarAsset, ());
+    let token_admin_client = StellarAssetClient::new(&e, &token_addr);
+    let token_client = TokenClient::new(&e, &token_addr);
+
+    token_admin_client.mint(&identity, &100_000_i128);
+    token_client.approve(&identity, &contract_id, &100_000_i128, &99999_u32);
+    client.set_token(&admin, &token_addr);
+
+    let liquidation_treasury = Address::generate(&e);
+    client.set_liquidation_treasury(&admin, &liquidation_treasury);
+    let slash_treasury = Address::generate(&e);
+    client.set_slash_treasury(&admin, &slash_treasury);
+
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+    client.slash(&admin, &1_000_i128); // fully slash
+    let ts_before = e.ledger().timestamp();
+    client.liquidate(&admin);
+
+    let events = e.events().all();
+    let matched: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "bond_liquidated")
+        })
+        .collect();
+
+    assert_eq!(matched.len(), 1, "exactly one bond_liquidated per bond");
+    let ev = &matched[0];
+
+    // Topics: (Symbol, identity)
+    assert_eq!(ev.1.len(), 2);
+    let topic_ident = Address::from_val(&e, &ev.1.get(1).unwrap());
+    assert_eq!(topic_ident, identity);
+
+    // Data: (residual, reason Symbol, timestamp, admin)
+    let (residual, reason, ts, admin_addr) = <(i128, Symbol, u64, Address)>::from_val(&e, &ev.2);
+    assert_eq!(residual, 0, "fully-slashed → residual must be 0");
+    assert_eq!(reason, Symbol::new(&e, "fully_slashed"));
+    assert!(ts >= ts_before);
+    assert_eq!(admin_addr, admin);
+}
+
+#[test]
+fn test_param_updated_v2_emits_keyed_topics_for_governance_setters() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    client.initialize(&admin, &None);
+
+    let token_addr = e.register(test_helpers::MockStellarAsset, ());
+    let token_admin_client = StellarAssetClient::new(&e, &token_addr);
+    let token_admin_addr = Address::generate(&e);
+    token_admin_client.mint(&token_admin_addr, &1_i128);
+    client.set_token(&admin, &token_addr);
+
+    client.set_protocol_fee_bps(&admin, &75_u32);
+    let events = e.events().all();
+    let matched: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "param_updated")
+        })
+        .collect();
+
+    assert_eq!(matched.len(), 1);
+    let ev = &matched[0];
+    // topics: (name, key, category, admin) -> 4 entries
+    assert_eq!(ev.1.len(), 4);
+    let key = Symbol::from_val(&e, &ev.1.get(1).unwrap());
+    let category = Symbol::from_val(&e, &ev.1.get(2).unwrap());
+    let topic_admin = Address::from_val(&e, &ev.1.get(3).unwrap());
+
+    assert_eq!(key, Symbol::new(&e, "fee_prot"));
+    assert_eq!(category, Symbol::new(&e, "fee"));
+    assert_eq!(topic_admin, admin);
+
+    // data: (old, new) i128
+    let (old, new) = <(i128, i128)>::from_val(&e, &ev.2);
+    assert_eq!(old, crate::parameters::DEFAULT_PROTOCOL_FEE_BPS as i128);
+    assert_eq!(new, 75);
+}
+
+#[test]
+fn test_attestation_added_emits_subject_in_topic_and_id_in_data() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&e, &contract_id);
+
+    let admin = Address::generate(&e);
+    client.initialize(&admin, &None);
+
+    let token_addr = e.register(test_helpers::MockStellarAsset, ());
+    let token_admin_client = StellarAssetClient::new(&e, &token_addr);
+    let token_client = TokenClient::new(&e, &token_addr);
+
+    let attester = Address::generate(&e);
+    let subject = Address::generate(&e);
+    token_admin_client.mint(&attester, &1_i128);
+    token_client.approve(&attester, &contract_id, &1_i128, &99999_u32);
+    client.set_token(&admin, &token_addr);
+    client.register_attester(&attester);
+
+    let payload = String::from_str(&e, "kyc:verified");
+    let att = client.add_attestation(&attester, &subject, &payload, &0_u64);
+
+    let events = e.events().all();
+    let matched: Vec<_> = events
+        .iter()
+        .filter(|ev| {
+            ev.0 == contract_id
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
+                    == Symbol::new(&e, "attestation_added")
+        })
+        .collect();
+
+    assert_eq!(matched.len(), 1);
+    let ev = &matched[0];
+    // topics: (Symbol, subject) -> 2 entries
+    assert_eq!(ev.1.len(), 2);
+    let topic_subject = Address::from_val(&e, &ev.1.get(1).unwrap());
+    assert_eq!(topic_subject, subject);
+
+    // data: (id, attester, payload)
+    let (id, who, data_str) = <(u64, Address, String)>::from_val(&e, &ev.2);
+    assert_eq!(id, att.id);
+    assert_eq!(who, attester);
+    assert_eq!(data_str, payload);
 }

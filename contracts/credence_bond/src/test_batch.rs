@@ -463,6 +463,7 @@ fn test_batch_with_rolling_bonds() {
 }
 
 // TODO: Rewrite without catch_unwind - Env contains UnsafeCell and cannot cross unwind boundaries in SDK 22.0
+// See docs/known-simplifications.md § 5.1 for details about this SDK 22.0 limitation.
 #[test]
 #[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
 fn test_atomic_failure_on_second_bond() {

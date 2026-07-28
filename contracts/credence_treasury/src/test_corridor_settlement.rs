@@ -28,7 +28,10 @@ fn setup(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address) {
     (client, admin, token_id)
 }
 
-fn setup_with_balance(e: &Env, initial_balance: i128) -> (CredenceTreasuryClient<'_>, Address, Address) {
+fn setup_with_balance(
+    e: &Env,
+    initial_balance: i128,
+) -> (CredenceTreasuryClient<'_>, Address, Address) {
     let (client, admin, token_id) = setup(e);
     let stellar_client = soroban_sdk::token::StellarAssetClient::new(e, &token_id);
     stellar_client.mint(&admin, &initial_balance);

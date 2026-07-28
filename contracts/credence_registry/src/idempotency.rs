@@ -1,15 +1,21 @@
 use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env};
 
-/// Storage key namespace for idempotent transactions
+/// Storage key namespace for idempotent transactions.
+///
+/// Currently unreferenced by any production entry point in `lib.rs`
+/// (`Idempotency::handle` is exercised only by this module's own tests).
+/// Its instance-storage variant name doesn't overlap with `storage::DataKey`,
+/// so wiring it in later introduces no collision — see
+/// `docs/STORAGE_KEY_LAYOUT.md` for the contract's full key catalog.
 #[contracttype]
 pub enum StorageKey {
     Idempotent(BytesN<32>),
 }
 
-/// Stored transaction result
+/// Storage transaction result
 #[contracttype]
 #[derive(Clone)]
-pub struct StoredResult {
+pub struct StorageResult {
     pub caller: Address,
     pub result: Bytes,
     pub timestamp: u64,
@@ -17,7 +23,7 @@ pub struct StoredResult {
 
 /// Idempotency errors
 #[contracterror]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IdempotencyError {
     /// Transaction ID already used by a different caller
     DuplicateDifferentCaller = 1,
@@ -49,7 +55,7 @@ impl Idempotency {
         let key = StorageKey::Idempotent(tx_id.clone());
 
         // Check if transaction already exists
-        if let Some(existing) = env.storage().instance().get::<_, StoredResult>(&key) {
+        if let Some(existing) = env.storage().instance().get::<_, StorageResult>(&key) {
             if existing.caller != caller {
                 return Err(IdempotencyError::DuplicateDifferentCaller);
             }
@@ -59,7 +65,7 @@ impl Idempotency {
         // Execute transaction logic
         let result = execute();
 
-        let record = StoredResult {
+        let record = StorageResult {
             caller: caller.clone(),
             result: result.clone(),
             timestamp: env.ledger().timestamp(),
@@ -156,7 +162,9 @@ mod tests {
         let id = tx_id(&env, 0x11);
 
         // Prime the cache.
-        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || payload(&env, b"primed"));
+        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || {
+            payload(&env, b"primed")
+        });
 
         let call_count = std::cell::Cell::new(0u32);
         let _ = Idempotency::handle(&env, id, caller, || {
@@ -179,9 +187,7 @@ mod tests {
         let id = tx_id(&env, 0x20);
 
         // First call succeeds.
-        let _ = Idempotency::handle(&env, id.clone(), original_caller, || {
-            payload(&env, b"data")
-        });
+        let _ = Idempotency::handle(&env, id.clone(), original_caller, || payload(&env, b"data"));
 
         // Second call with a different caller must be rejected.
         let result =

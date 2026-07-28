@@ -1,11 +1,11 @@
 #![cfg(test)]
 
-//! # Proptest: Batch Atomicity (Issue #747)
+//! # Proptest: Batch Atomicity
 //!
+
 //! Property-based tests that lock in the **between-batch invariant** for the
 //! `add_attestation_batch` entrypoint of `credence_bond`.
 //!
-//! ## Goal
 //!
 //! No batch-sized call may leave the contract in a *split-brain* state —
 //! partial success where some items of a batch landed in storage while the

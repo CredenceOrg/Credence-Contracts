@@ -228,6 +228,22 @@ fn test_increase_bond_preserves_rolling_fields() {
     );
 }
 
+/// top-up respects supply cap - pushing total over cap must panic.
+#[test]
+#[should_panic(expected = "supply cap exceeded")]
+fn test_increase_bond_respects_supply_cap() {
+    let e = Env::default();
+    let (client, contract_id, identity, token_client) = setup(&e);
+
+    token_client.approve(&identity, &contract_id, &5_000_i128, &1_000_u32);
+    let admin = soroban_sdk::Address::generate(&e);
+    // Re-initialize with admin to set cap - use mock_all_auths already active
+    client.set_supply_cap(&admin, &1_200_i128);
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+    // total=1_000, cap=1_200 ? top-up of 300 would push to 1_300 > 1_200
+    client.top_up(&identity, &300_i128);
+}
+
 /// top-up of exactly 1 (minimum positive) is accepted.
 #[test]
 fn test_increase_bond_minimum_positive_amount_accepted() {
