@@ -405,6 +405,7 @@ When filing an issue, include:
 | Document | What it covers |
 |---|---|
 | [`README.md`](README.md) | Project overview, build setup |
+| [`docs/CI.md`](docs/CI.md) | CI linting guide — exact commands before PR review |
 | [`docs/architecture.md`](docs/architecture.md) | Crate responsibilities, state layout, events |
 | [`docs/testing.md`](docs/testing.md) | Running tests, coverage setup, CI integration |
 | [`docs/fuzz-testing.md`](docs/fuzz-testing.md) | Bond fuzz harness internals and failure interpretation |
