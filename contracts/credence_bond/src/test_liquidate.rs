@@ -168,6 +168,20 @@ fn liquidate_expired_at_exact_boundary_succeeds() {
 }
 
 #[test]
+fn liquidate_one_second_after_boundary_succeeds() {
+    let e = Env::default();
+    let (client, admin, identity, _treasury) = setup_with_treasury(&e);
+
+    make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
+    e.ledger().with_mut(|li| li.timestamp = 87_401);
+
+    let bond = client.liquidate(&admin);
+    assert!(!bond.active);
+    assert!(client.is_liquidated(&identity));
+    assert_eq!(bond.bonded_amount, 1_000);
+}
+
+#[test]
 fn liquidate_preserves_slashed_and_bonded_amounts() {
     // Partial slash + lockup expiry → expired_unrenewed path with a non-zero
     // residual. The on-chain state must stay coherent so off-chain replays

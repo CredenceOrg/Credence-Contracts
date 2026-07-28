@@ -63,14 +63,14 @@ pub const MIN_WITHDRAWAL_COOLDOWN_SECS: u64 = 0;
 /// Maximum withdrawal cooldown period in seconds (30 days)
 pub const MAX_WITHDRAWAL_COOLDOWN_SECS: u64 = 2_592_000;
 /// Default withdrawal cooldown period in seconds (7 days)
-pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = 604_800;
+pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 
 /// Minimum slash cooldown period in seconds (0 = no cooldown)
 pub const MIN_SLASH_COOLDOWN_SECS: u64 = 0;
 /// Maximum slash cooldown period in seconds (7 days)
-pub const MAX_SLASH_COOLDOWN_SECS: u64 = 604_800;
+pub const MAX_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 /// Default slash cooldown period in seconds (24 hours)
-pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = 86_400;
+pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_DAY;
 /// Maximum number of attestations per subject (ledger entry cap)
 pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)

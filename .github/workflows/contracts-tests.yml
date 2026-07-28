@@ -28,13 +28,19 @@ on:
       - .github/workflows/contracts-tests.yml
   workflow_dispatch:
 
+concurrency:
+  group: contracts-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
 
 jobs:
   test:
     name: Workspace Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,8 +48,9 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          toolchain: "1.89.0"
           targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
@@ -55,4 +62,4 @@ jobs:
         run: python3 scripts/check_soroban_sdk_pin.py
 
       - name: Run workspace tests
-        run: cargo test --workspace
+        run: cargo test --workspace --locked

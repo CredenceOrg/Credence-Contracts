@@ -13,7 +13,7 @@ use soroban_sdk::{
 pub const MIN_BOND_DURATION: u64 = 1;
 
 /// Maximum bond duration in seconds (365 days = 31_536_000 seconds).
-pub const MAX_BOND_DURATION: u64 = 31_536_000;
+pub const MAX_BOND_DURATION: u64 = credence_math::SECONDS_PER_YEAR;
 
 /// Fixed-point denominator for basis-point calculations.
 const BPS_DENOMINATOR: i128 = 10_000;
