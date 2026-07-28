@@ -193,7 +193,7 @@ pub enum ContractError {
     /// Replaces: panic!("zero bytes32")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    ZeroBytes32 = 109,
+    ZeroBytes32 = 127,
 
     /// Lease scope bitmask does not cover the requested operation.
     /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
@@ -295,12 +295,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ReentrancyDetected = 207,
 
-    /// Signature or operation deadline has passed.
-    /// Replaces: panic!("signature expired")
-    /// Contracts: bond, delegation
-    /// Wire-stable: do not renumber this error code.
-    SignatureExpired = 222,
-
     /// Nonce is invalid - either replayed or out of order.
     /// Replaces: panic!("invalid nonce: replay or out-of-order")
     /// Contracts: bond
@@ -389,10 +383,6 @@ pub enum ContractError {
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
     UnauthorizedToken = 231,
-    /// An idempotency key has already been used for this operation.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    DuplicateIdempotencyKey = 232,
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
@@ -433,7 +423,7 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
 
-    /// User-supplied raw Bytes input exceeds the maximum accepted length.
+     /// User-supplied raw Bytes input exceeds the maximum accepted length.
     /// Raised by `require_finite_bytes` at entrypoint boundaries that accept
     /// caller-controlled `Bytes` (e.g. idempotency salts) to bound hashing
     /// cost and persistent-storage growth before the value is used.
@@ -887,6 +877,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
+            | ContractError::InvalidStringifiedBytes
             | ContractError::UnauthorizedToken
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
@@ -1258,6 +1249,7 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch // retry with correct generation
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item

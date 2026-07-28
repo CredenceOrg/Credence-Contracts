@@ -48,7 +48,10 @@ fn duplicate_identity_while_deactivated_panics_400() {
 
     // Deactivated entry still blocks re-registration → #400
     let res = client.try_register(&identity, &bond_2, &true);
-    assert!(res.is_err(), "deactivated identity must still block re-registration");
+    assert!(
+        res.is_err(),
+        "deactivated identity must still block re-registration"
+    );
 }
 
 // ── #401 BondContractAlreadyRegistered ──────────────────────────────────
@@ -79,7 +82,10 @@ fn duplicate_bond_while_deactivated_panics_401() {
 
     // Deactivated entry still blocks bond re-use → #401
     let res = client.try_register(&id_2, &bond, &true);
-    assert!(res.is_err(), "deactivated bond must still block re-registration");
+    assert!(
+        res.is_err(),
+        "deactivated bond must still block re-registration"
+    );
 }
 
 // ── #402 IdentityNotRegistered ──────────────────────────────────────────
@@ -90,7 +96,10 @@ fn get_bond_contract_unknown_identity_panics_402() {
     let unknown = Address::generate(&e);
 
     let res = client.try_get_bond_contract(&unknown);
-    assert!(res.is_err(), "get_bond_contract on unknown identity must fail");
+    assert!(
+        res.is_err(),
+        "get_bond_contract on unknown identity must fail"
+    );
 }
 
 #[test]

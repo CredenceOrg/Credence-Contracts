@@ -36,7 +36,10 @@ fn emergency_pause_blocks_writes_allows_reads() {
 
     // Reads must still work
     assert_eq!(client.get_admin_count(), 1);
-    assert_eq!(client.version(), String::from_str(&e, credence_errors::VERSION));
+    assert_eq!(
+        client.version(),
+        String::from_str(&e, credence_errors::VERSION)
+    );
     assert_eq!(client.get_all_admins().len(), 1);
 }
 
@@ -166,7 +169,8 @@ fn emergency_pause_blocks_accept_ownership() {
     client.transfer_ownership(&super_admin, &new_owner);
 
     // Advance past the timelock
-    e.ledger().with_mut(|li| li.timestamp = li.timestamp + 86_401);
+    e.ledger()
+        .with_mut(|li| li.timestamp = li.timestamp + 86_401);
 
     client.pause(&super_admin);
     client.accept_ownership(&new_owner);
