@@ -102,7 +102,10 @@ pub fn validate_supported_decimals_and_symbol(e: &Env, token: &Address) -> u32 {
 /// supported, guaranteed by `validate_supported_decimals`.
 pub fn get_scale_info(decimals: u32) -> (i128, bool) {
     if decimals > NORMALIZED_DECIMALS {
-        panic!("get_scale_info: decimals {} exceeds NORMALIZED_DECIMALS {}", decimals, NORMALIZED_DECIMALS);
+        panic!(
+            "get_scale_info: decimals {} exceeds NORMALIZED_DECIMALS {}",
+            decimals, NORMALIZED_DECIMALS
+        );
     }
 
     if decimals == NORMALIZED_DECIMALS {
@@ -176,7 +179,12 @@ pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
 /// # Panics
 /// * If `amount` is negative
 /// * If token decimals are outside supported range
-pub fn denormalize_with_rounding(e: &Env, token: &Address, amount: i128, rounding: Rounding) -> i128 {
+pub fn denormalize_with_rounding(
+    e: &Env,
+    token: &Address,
+    amount: i128,
+    rounding: Rounding,
+) -> i128 {
     if amount < 0 {
         panic!("cannot denormalize negative amount");
     }
@@ -429,7 +437,11 @@ mod tests {
     fn test_denormalize_rounding_up_exact() {
         // No remainder, Rounding::Up should give same as Down
         assert_eq!(
-            denormalize_with_rounding_knowing_decimals(6, 1_000_000_000_000_000_000_i128, Rounding::Up),
+            denormalize_with_rounding_knowing_decimals(
+                6,
+                1_000_000_000_000_000_000_i128,
+                Rounding::Up
+            ),
             1_000_000
         );
     }
@@ -471,16 +483,28 @@ mod tests {
     #[test]
     fn test_can_denormalize_exactly_true() {
         assert!(can_denormalize_exactly_knowing_decimals(18, 42));
-        assert!(can_denormalize_exactly_knowing_decimals(6, 1_000_000_000_000_000_000_i128));
+        assert!(can_denormalize_exactly_knowing_decimals(
+            6,
+            1_000_000_000_000_000_000_i128
+        ));
         assert!(can_denormalize_exactly_knowing_decimals(6, 0));
-        assert!(can_denormalize_exactly_knowing_decimals(0, 1_000_000_000_000_000_000_i128));
+        assert!(can_denormalize_exactly_knowing_decimals(
+            0,
+            1_000_000_000_000_000_000_i128
+        ));
     }
 
     #[test]
     fn test_can_denormalize_exactly_false() {
         assert!(!can_denormalize_exactly_knowing_decimals(6, 1));
-        assert!(!can_denormalize_exactly_knowing_decimals(6, 999_999_999_999_i128));
-        assert!(!can_denormalize_exactly_knowing_decimals(6, 1_000_000_000_000_000_001_i128));
+        assert!(!can_denormalize_exactly_knowing_decimals(
+            6,
+            999_999_999_999_i128
+        ));
+        assert!(!can_denormalize_exactly_knowing_decimals(
+            6,
+            1_000_000_000_000_000_001_i128
+        ));
     }
 
     #[test]
@@ -494,15 +518,27 @@ mod tests {
     fn test_would_denormalize_to_zero_true() {
         assert!(would_denormalize_to_zero_knowing_decimals(6, 0));
         assert!(would_denormalize_to_zero_knowing_decimals(6, 1));
-        assert!(would_denormalize_to_zero_knowing_decimals(6, 999_999_999_999_i128));
+        assert!(would_denormalize_to_zero_knowing_decimals(
+            6,
+            999_999_999_999_i128
+        ));
         assert!(would_denormalize_to_zero_knowing_decimals(8, 1));
-        assert!(would_denormalize_to_zero_knowing_decimals(8, 9_999_999_999_i128));
+        assert!(would_denormalize_to_zero_knowing_decimals(
+            8,
+            9_999_999_999_i128
+        ));
     }
 
     #[test]
     fn test_would_denormalize_to_zero_false() {
-        assert!(!would_denormalize_to_zero_knowing_decimals(6, 1_000_000_000_000_i128));
-        assert!(!would_denormalize_to_zero_knowing_decimals(8, 10_000_000_000_i128));
+        assert!(!would_denormalize_to_zero_knowing_decimals(
+            6,
+            1_000_000_000_000_i128
+        ));
+        assert!(!would_denormalize_to_zero_knowing_decimals(
+            8,
+            10_000_000_000_i128
+        ));
         assert!(!would_denormalize_to_zero_knowing_decimals(18, 1));
     }
 
@@ -517,7 +553,10 @@ mod tests {
     #[test]
     fn test_can_normalize_safely_true() {
         assert!(can_normalize_safely_knowing_decimals(18, i128::MAX));
-        assert!(can_normalize_safely_knowing_decimals(6, i128::MAX / 1_000_000_000_000_i128));
+        assert!(can_normalize_safely_knowing_decimals(
+            6,
+            i128::MAX / 1_000_000_000_000_i128
+        ));
         assert!(can_normalize_safely_knowing_decimals(6, 0));
     }
 
@@ -579,7 +618,11 @@ mod tests {
         denormalize_with_rounding_knowing_decimals(decimals, amount, Rounding::Down)
     }
 
-    fn denormalize_with_rounding_knowing_decimals(decimals: u32, amount: i128, rounding: Rounding) -> i128 {
+    fn denormalize_with_rounding_knowing_decimals(
+        decimals: u32,
+        amount: i128,
+        rounding: Rounding,
+    ) -> i128 {
         if amount < 0 {
             panic!("cannot denormalize negative amount");
         }

@@ -38,7 +38,7 @@ pub fn get_bond_status_snapshot(e: &Env) -> BondStatusSnapshot {
     let bond = e
         .storage()
         .instance()
-        .get::<_, crate::IdentityBond>(&DataKey::Bond)
+        .get::<_, crate::IdentityBond>(&DataKey::Bond(identity.clone()))
         .unwrap_or_else(|| panic!("no bond"));
 
     let tier = tiered_bond::get_tier_for_amount(e, bond.bonded_amount);

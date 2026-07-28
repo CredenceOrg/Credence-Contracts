@@ -45,6 +45,12 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Test soroban-sdk pin checker
+        run: python3 -m unittest scripts.tests.test_check_soroban_sdk_pin
+
+      - name: Verify soroban-sdk pin
+        run: python3 scripts/check_soroban_sdk_pin.py
+
       - name: Check format
         run: cargo fmt --all -- --check
 
