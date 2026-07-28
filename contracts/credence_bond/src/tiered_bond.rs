@@ -22,6 +22,17 @@ pub fn get_tier_for_amount(e: &Env, amount: i128) -> BondTier {
             gold_max: TIER_GOLD_MAX,
         });
 
+    tier_for_amount_with_thresholds(amount, &thresholds)
+}
+
+/// Convert an amount into a tier using the configured thresholds.
+/// Exact threshold values advance to the next tier so boundary values remain
+/// deterministic and stable across top-ups, withdrawals, and slashing.
+#[must_use]
+pub(crate) fn tier_for_amount_with_thresholds(
+    amount: i128,
+    thresholds: &crate::TierThresholds,
+) -> BondTier {
     if amount < thresholds.bronze_max {
         BondTier::Bronze
     } else if amount < thresholds.silver_max {

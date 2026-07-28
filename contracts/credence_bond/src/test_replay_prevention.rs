@@ -47,6 +47,7 @@ fn nonce_increments_after_add_attestation() {
         &contract_id,
         &deadline,
         &0u64,
+        &0u64,
     );
     assert_eq!(client.get_nonce(&attester), 1);
     client.add_attestation(
@@ -56,6 +57,7 @@ fn nonce_increments_after_add_attestation() {
         &contract_id,
         &deadline,
         &1u64,
+        &0u64,
     );
     assert_eq!(client.get_nonce(&attester), 2);
 }

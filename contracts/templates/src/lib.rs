@@ -190,7 +190,10 @@ impl TemplateContract {
         let current_admin = Self::get_admin(e.clone());
         current_admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &new_admin);
-        e.events().publish((Symbol::new(&e, "admin_transferred"),), (current_admin, new_admin));
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
     }
 }
 
