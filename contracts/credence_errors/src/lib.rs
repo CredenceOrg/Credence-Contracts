@@ -221,6 +221,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     LeaseSignerMismatch = 126,
 
+    /// A supplied timestamp/sequence value is in the future relative to the ledger.
+    /// Contracts: general-purpose (lease auth, timelock)
+    /// Wire-stable: do not renumber this error code.
+    TimestampInFuture = 118,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -341,6 +346,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     AmountExplicitlyZero = 215,
 
+    /// Currency symbol is empty or whitespace-only.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidCurrency = 225,
+
     /// Bond duration must be strictly positive (> 0).
     /// Triggered by: create_bond called with duration == 0
     /// Contracts: bond
@@ -413,6 +423,14 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+    /// User-supplied raw Bytes input exceeds the maximum accepted length.
+    /// Raised by `require_finite_bytes` at entrypoint boundaries that accept
+    /// caller-controlled `Bytes` (e.g. idempotency salts) to bound hashing
+    /// cost and persistent-storage growth before the value is used.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BytesTooLarge = 233,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -851,6 +869,9 @@ impl ErrorExt for ContractError {
             | ContractError::UnsupportedToken
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
+            | ContractError::AmountExplicitlyZero
+            | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
@@ -863,6 +884,7 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
+            | ContractError::BytesTooLarge
             | ContractError::InvalidStringifiedBytes
             | ContractError::SnapshotGenerationMismatch
             | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
@@ -896,7 +918,9 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationInactive
             | ContractError::PayloadTooOld
             | ContractError::PromiseNotKept
-            | ContractError::StaleEpoch => ErrorCategory::Delegation,
+            | ContractError::StaleEpoch
+            | ContractError::StaleAdminEpoch
+            | ContractError::StaleSignerEpoch => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -998,6 +1022,7 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
+            ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
@@ -1178,6 +1203,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
+            | ContractError::LeaseSignerMismatch    // retry with a valid signer
             | ContractError::OutsideBusinessHours   // retry within business hours
             | ContractError::MigrationInProgress => true, // retry after migration completes
 
@@ -1222,6 +1248,7 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
+            | ContractError::BytesTooLarge         // resubmit with shorter input
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.

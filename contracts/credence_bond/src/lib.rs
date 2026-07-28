@@ -2138,6 +2138,8 @@ impl CredenceBond {
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         admin.require_auth();
 
+        validation::require_finite_bytes(&e, &idempotency_salt, validation::MAX_FINITE_BYTES_LENGTH);
+
         // Check idempotency if a salt is provided (non-empty)
         if idempotency_salt.len() > 0 {
             idempotency::check_and_record(
@@ -2201,6 +2203,8 @@ impl CredenceBond {
     pub fn collect_fees(e: Env, admin: Address, idempotency_salt: Bytes) -> i128 {
         Self::require_not_paused(&e);
         admin.require_auth();
+
+        validation::require_finite_bytes(&e, &idempotency_salt, validation::MAX_FINITE_BYTES_LENGTH);
 
         // Check idempotency if a salt is provided (non-empty)
         if idempotency_salt.len() > 0 {
