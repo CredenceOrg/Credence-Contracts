@@ -49,6 +49,7 @@ const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "MaxPauseSignersExceeded",
         ContractError::MaxPauseSignersExceeded,
     ),
+    ("RoleRequired", ContractError::RoleRequired),
     ("ZeroBytes32", ContractError::ZeroBytes32),
     ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),
     ("LeaseExpired", ContractError::LeaseExpired),
@@ -235,7 +236,7 @@ const ALL_VARIANTS: &[(&str, ContractError)] = &[
 /// when a new variant is added. The mismatch asserting test below fails the
 /// build if a contributor adds a row to `src/test_errors.rs::all_variants()`
 /// but forgets this file — and vice-versa.
-const ALL_VARIANTS_COUNT: usize = 106;
+const ALL_VARIANTS_COUNT: usize = 107;
 
 #[test]
 fn every_contract_error_variant_has_a_unique_u32_discriminant() {

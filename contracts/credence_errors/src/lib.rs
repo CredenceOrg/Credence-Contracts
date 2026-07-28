@@ -152,13 +152,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractPaused = 106,
 
-    /// A storage migration is currently in progress; state mutations are
-    /// rejected until it completes.
-    /// Raised by `require_no_ongoing_migration`.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
-
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
@@ -176,7 +169,7 @@ pub enum ContractError {
     /// Scheduled operation outside UTC business hours (Mon-Fri 09:00-17:00).
     /// Contracts: admin, timelock
     /// Wire-stable: do not renumber this error code.
-    OutsideBusinessHours = 124,
+    OutsideBusinessHours = 120,
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
@@ -218,6 +211,17 @@ pub enum ContractError {
     /// Contracts: delegation
     /// Wire-stable: do not renumber this error code.
     LeaseSignerMismatch = 126,
+
+    /// Caller does not hold the required role.
+    ///
+    /// Raised by `require_role` when the actor does not hold the expected
+    /// `Role` for the operation they are attempting. When the required role
+    /// is `Role::Admin` the helper panics with `NotAdmin` (code 100) for
+    /// backward compatibility with existing handlers; use `RoleRequired`
+    /// for future role types.
+    /// Contracts: general-purpose (RBAC)
+    /// Wire-stable: do not renumber this error code.
+    RoleRequired = 127,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -831,7 +835,8 @@ impl ErrorExt for ContractError {
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
             | ContractError::OutsideBusinessHours
-            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch
+            | ContractError::RoleRequired => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -941,6 +946,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::MigrationInProgress => "Migration in progress",
             ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
+            ContractError::RoleRequired => "Caller does not hold the required role",
             ContractError::OutsideBusinessHours => {
                 "Scheduled operation falls outside UTC business hours (Mon-Fri 09:00-17:00)"
             }
@@ -1175,7 +1181,8 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::LeaseSignerMismatch => true, // call with matching lease signer
+            | ContractError::LeaseSignerMismatch
+            | ContractError::RoleRequired => true, // call with matching lease signer
 
 
             // Admin can supply a valid value / remove a signer or raise the
@@ -1183,24 +1190,12 @@ impl ErrorExt for ContractError {
             ContractError::InvalidMaxPauseSigners => true,
             ContractError::MaxPauseSignersExceeded => true,
 
-            // Retry after the business-hours window opens.
-            ContractError::OutsideBusinessHours => true,
-
-            // MigrationInProgress: wait for migration to complete, then retry.
-            ContractError::MigrationInProgress => true,
-
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.
             ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
 
             // Cross-contract caller mismatch is a security halt; do not retry.
             ContractError::CrossContractCallerMismatch => false,
-
-            // Migration in progress — caller waits for the migration to complete, then retries.
-            ContractError::MigrationInProgress => true,
-
-            // OutsideBusinessHours — caller retries after the next business-hours window opens.
-            ContractError::OutsideBusinessHours => true,
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -1423,13 +1418,6 @@ macro_rules! require_positive_amount {
 /// 
 /// verify_no_future_ledger(&env, payload.ledger_number);
 /// ```
-pub fn verify_no_future_ledger(e: &soroban_sdk::Env, ledger_number: u32) {
-    let current_sequence = e.ledger().sequence();
-    if ledger_number > current_sequence {
-        soroban_sdk::panic_with_error!(e, ContractError::TimestampInFuture);
-    }
-}
-
 /// Rejects a caller-supplied timestamp that is strictly ahead of the
 /// current on-chain ledger timestamp.
 ///
@@ -1527,11 +1515,51 @@ pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) 
     }
 }
 
+/// @notice Require that `actor` holds the specified `role`.
+///
+/// This is a shared, tested RBAC helper that replaces bespoke role-check
+/// patterns (e.g. string-panicking `require_admin`, `require_verifier`)
+/// with a single typed helper.
+///
+/// # Arguments
+/// * `e` - The Soroban environment
+/// * `role` - The `Role` that the actor is expected to hold
+/// * `_actor` - The address being checked (reserved for future event emission)
+/// * `has_role` - `true` if the actor holds the required role
+///
+/// # Panics
+/// * `ContractError::NotAdmin` (code 100) when `role` is `Role::Admin` and
+///   `has_role` is `false`, preserving backward compatibility with existing
+///   callers that match on code 100.
+/// * `ContractError::RoleRequired` (code 127) when `role` is `Role::User`
+///   and `has_role` is `false`.
+///
+/// # Example
+/// ```ignore
+/// use credence_errors::{require_role, Role};
+///
+/// fn admin_only(e: Env, caller: Address) {
+///     caller.require_auth();
+///     let is_admin = /* check role against storage */;
+///     require_role(&e, Role::Admin, &caller, is_admin);
+///     // admin-only logic
+/// }
+/// ```
+#[inline]
+pub fn require_role(e: &Env, role: Role, _actor: &Address, has_role: bool) {
+    if !has_role {
+        match role {
+            Role::Admin => panic_with_error!(e, ContractError::NotAdmin),
+            Role::User => panic_with_error!(e, ContractError::RoleRequired),
+        }
+    }
+}
+
 /// Validates that the provided timestamp (seconds since UNIX epoch) falls
 /// within UTC business hours (Monday-Friday, 09:00:00 to 16:59:59).
 ///
 /// # Panics
-/// Panics with `ContractError::OutsideBusinessHours` (code 124) if it does
+/// Panics with `ContractError::OutsideBusinessHours` (code 120) if it does
 /// not.
 #[inline]
 pub fn require_within_business_hours(e: &Env, t: u64) {

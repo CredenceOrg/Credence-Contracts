@@ -39,6 +39,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("CrossContractCallerMismatch", ContractError::CrossContractCallerMismatch), // 123
     ("MigrationInProgress", ContractError::MigrationInProgress),             // 124
     ("MaxPauseSignersExceeded", ContractError::MaxPauseSignersExceeded),     // 125
+    ("RoleRequired", ContractError::RoleRequired),                           // 127
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound),                           // 200
     ("BondNotActive", ContractError::BondNotActive),                         // 201
