@@ -138,8 +138,7 @@ pub use soroban_sdk;
 /// The domain is a human-readable string that uniquely identifies this contract
 /// within the Credence system. It should be included in the signed payload hash
 /// along with other payload fields (nonce, deadline, etc.).
-#[allow(dead_code)]
-const SIGNATURE_DOMAIN: &str = "CredenceBond";
+pub(crate) const SIGNATURE_DOMAIN: &str = "CredenceBond";
 
 /// Identity tier based on bonded amount.
 #[contracttype]
@@ -175,6 +174,10 @@ pub struct CredenceBond;
 pub const MAX_BATCH_ATTESTATION_SIZE: u32 = 64;
 
 /// Input item for a batch attestation operation.
+///
+/// Each item carries its own `contract_id`, `deadline`, and `nonce` so the
+/// per-attester signed action is domain-bound and time-bound independently
+/// of the other items in the batch.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AttestationBatchItem {
@@ -182,6 +185,10 @@ pub struct AttestationBatchItem {
     pub attester: Address,
     /// Opaque attestation payload.
     pub attestation_data: String,
+    /// Contract address that this attestation is bound to (anti-replay).
+    pub contract_id: Address,
+    /// Deadline timestamp after which the signature expires.
+    pub deadline: u64,
     /// Nonce for replay prevention for this attester.
     pub nonce: u64,
 }
@@ -948,11 +955,19 @@ impl CredenceBond {
         bond
     }
 
-    /// Add a weighted attestation for a subject.
+/// Add a weighted attestation for a subject.
     ///
     /// Errors:
     /// - `ContractError::UnauthorizedAttester` when caller is not a registered attester.
     /// - `ContractError::DuplicateAttestation` when the same (attester, subject, data) triple already exists.
+    /// - `ContractError::SignatureExpired` if deadline has passed.
+    /// - `ContractError::DomainMismatch` if contract_id doesn't match current contract.
+    /// - `ContractError::InvalidNonce` if nonce doesn't match stored nonce.
+    ///
+    /// # Security
+    /// The `contract_id` and `deadline` parameters bind this signed action to a
+    /// specific contract address and time window, preventing cross-contract replay
+    /// and replay-after-expiry. See [`nonce::validate_and_consume`] for details.
     ///
     /// See also: [`docs/attestations.md`](../../../docs/attestations.md),
     /// [`docs/weighted-attestations.md`](../../../docs/weighted-attestations.md)
@@ -975,7 +990,8 @@ impl CredenceBond {
     /// client.register_attester(&attester);
     ///
     /// let data = String::from_str(&e, "kyc:verified");
-    /// let attestation = client.add_attestation(&attester, &subject, &data, &0_u64);
+    /// let deadline = e.ledger().timestamp() + 3600;
+    /// let attestation = client.add_attestation(&attester, &subject, &data, &contract_id, &deadline, &0_u64);
     /// assert_eq!(attestation.verifier, attester);
     /// assert_eq!(attestation.identity, subject);
     /// assert!(!attestation.revoked);
@@ -985,6 +1001,8 @@ impl CredenceBond {
         attester: Address,
         subject: Address,
         attestation_data: String,
+        contract_id: Address,
+        deadline: u64,
         nonce: u64,
     ) -> Attestation {
         Self::require_not_paused(&e);
@@ -1000,7 +1018,8 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::UnauthorizedAttester);
         }
 
-        nonce::consume_nonce(&e, &attester, nonce);
+        // Validate deadline, domain, and consume nonce atomically
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
 
         let dedup_key = types::AttestationDedupKey {
             verifier: attester.clone(),
@@ -1083,7 +1102,7 @@ impl CredenceBond {
             }
         }
 
-        // Enforce authorization, registration, and consume nonces
+        // Enforce authorization, registration, deadline, domain, and consume nonces
         for i in 0..n {
             let item = items.get(i).unwrap();
             item.attester.require_auth();
@@ -1097,7 +1116,14 @@ impl CredenceBond {
                 panic_with_error!(e, ContractError::UnauthorizedAttester);
             }
 
-            nonce::consume_nonce(&e, &item.attester, item.nonce);
+            // Validate deadline, domain, and consume nonce atomically per item
+            nonce::validate_and_consume(
+                &e,
+                &item.attester,
+                &item.contract_id,
+                item.deadline,
+                item.nonce,
+            );
         }
 
         // Check duplicate key in storage
@@ -1204,11 +1230,23 @@ impl CredenceBond {
         added
     }
 
-    /// Revoke an attestation (only the original attester can revoke). Requires correct nonce.
-    pub fn revoke_attestation(e: Env, attester: Address, attestation_id: u64, nonce: u64) {
+    /// Revoke an attestation (only the original attester can revoke).
+    ///
+    /// The `contract_id` and `deadline` parameters bind this signed action to a
+    /// specific contract address and time window, preventing cross-contract replay
+    /// and replay-after-expiry.
+    pub fn revoke_attestation(
+        e: Env,
+        attester: Address,
+        attestation_id: u64,
+        contract_id: Address,
+        deadline: u64,
+        nonce: u64,
+    ) {
         Self::require_not_paused(&e);
         attester.require_auth();
-        nonce::consume_nonce(&e, &attester, nonce);
+        // Validate deadline, domain, and consume nonce atomically
+        nonce::validate_and_consume(&e, &attester, &contract_id, deadline, nonce);
 
         let key = DataKey::Attestation(attestation_id);
         let mut attestation: Attestation = e

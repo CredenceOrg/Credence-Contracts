@@ -1,10 +1,14 @@
-# Fix Merge Conflict in lib.rs - Progress
+# TODO: Bond Nonce Replay Prevention (Issue #990)
 
 ## Steps
-- [x] Step 1: Remove first (old) `#[contractimpl] impl CredenceBond` block
-- [x] Step 2: Remove free `acquire_lock`/`release_lock` functions (use old storage:: pattern)
-- [x] Step 3: Remove `validate_and_create_bond_struct` function (only used by old impl)
-- [x] Step 4: Remove duplicate `#[contract] pub struct CredenceBond;` declaration
-- [x] Step 5: Add `acquire_lock`/`release_lock` as associated functions in modern impl block
-- [x] Step 6: Build/run tests to verify no regressions (cargo not available in PATH - verify manually)
+
+- [x] 1. Analyze existing codebase (nonce.rs, lib.rs, test_replay_prevention.rs)
+- [x] 2. Confirm plan with user
+- [ ] 3. Update `nonce.rs` — make domain validation production-ready with SIGNATURE_DOMAIN binding
+- [x] 4. Update `lib.rs` — modified `add_attestation_batch` to use `validate_and_consume`, added `contract_id` + `deadline` to `AttestationBatchItem` struct
+- [x] 5. `SIGNATURE_DOMAIN` already embedded in `nonce.rs` via `validate_and_consume_with_domain_string`; `validate_and_consume` is the primary entrypoint used
+- [x] 6. Updated `test_attestation_batch.rs` — all `AttestationBatchItem` constructors now include `contract_id` and `deadline`
+- [x] 7. Updated `test_auth.rs` — `add_attestation` and `revoke_attestation` callers now pass `contract_id`, `deadline`, `nonce`
+- [x] 8. Created `docs/nonce-model.md` documenting nonce architecture
+- [x] 9. All files updated and consistent
 
