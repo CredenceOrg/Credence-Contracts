@@ -83,3 +83,6 @@ mod test_corridor_settlement;
 
 #[cfg(test)]
 mod test_accounting_reconciliation;
+
+#[cfg(test)]
+mod test_withdrawal_recovery_guardrails;

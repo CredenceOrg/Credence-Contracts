@@ -232,3 +232,52 @@ fn test_calculate_penalty_unit() {
     let p = early_exit_penalty::calculate_penalty(1000, 50, 100, math::BPS_DENOMINATOR as u32);
     assert_eq!(p, 500);
 }
+
+// ---------------------------------------------------------------------------
+// Docs-matching regression vectors (see docs/early-exit.md)
+// ---------------------------------------------------------------------------
+
+/// Docs example (see docs/early-exit.md): 10% penalty rate, ~half duration remaining.
+/// amount=500, rate=1000 bps, remaining=183/365 → floor(50*183/365) = 25.
+#[test]
+fn docs_example_ten_percent_half_duration() {
+    let p = early_exit_penalty::calculate_penalty(500, 183, 365, 1000);
+    assert_eq!(p, 25);
+}
+
+#[test]
+fn docs_example_five_percent_quarter_remaining() {
+    // 5% penalty, 25% of duration remaining
+    // amount = 2000, penalty_bps = 500, remaining = 25, duration = 100
+    // base = 2000 * 500 / 10000 = 100
+    // penalty = 100 * 25 / 100 = 25
+    let p = early_exit_penalty::calculate_penalty(2000, 25, 100, 500);
+    assert_eq!(p, 25);
+}
+
+#[test]
+fn regression_vector_zero_duration() {
+    // Zero duration should return 0 penalty regardless of inputs
+    let p = early_exit_penalty::calculate_penalty(1_000_000, 50, 0, 1000);
+    assert_eq!(p, 0);
+}
+
+#[test]
+fn regression_vector_full_bps_at_start() {
+    // 100% penalty rate, all time remaining
+    // amount = 1000, penalty_bps = 10000, remaining = duration
+    // base = 1000 * 10000 / 10000 = 1000
+    // penalty = 1000 * 100 / 100 = 1000 (full amount)
+    let p = early_exit_penalty::calculate_penalty(1000, 100, 100, math::BPS_DENOMINATOR as u32);
+    assert_eq!(p, 1000);
+}
+
+#[test]
+fn regression_vector_half_bps_half_remaining() {
+    // 50% (5000 bps) penalty, 50% remaining
+    // amount = 2000, penalty_bps = 5000, remaining = 50, duration = 100
+    // base = 2000 * 5000 / 10000 = 1000
+    // penalty = 1000 * 50 / 100 = 500
+    let p = early_exit_penalty::calculate_penalty(2000, 50, 100, 5000);
+    assert_eq!(p, 500);
+}

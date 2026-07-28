@@ -47,6 +47,9 @@ pub mod pausable;
 
 mod test_pausable;
 
+#[cfg(test)]
+mod test_idempotency;
+
 #[contract]
 pub struct CredenceRegistry;
 

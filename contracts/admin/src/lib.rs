@@ -1278,4 +1278,7 @@ mod test_auth_entrypoints;
 mod test_require_role_at_least;
 
 #[cfg(test)]
+mod test_emergency;
+
+#[cfg(test)]
 mod test_role_events;
