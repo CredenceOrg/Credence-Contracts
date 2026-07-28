@@ -1,5 +1,3 @@
-use soroban_sdk::Env;
-
 /// Seconds in a standard day.
 pub const SECONDS_PER_DAY: u64 = 86_400;
 
@@ -7,6 +5,13 @@ pub const SECONDS_PER_DAY: u64 = 86_400;
 pub struct Timestamp;
 
 impl Timestamp {
+    /// Truncates a timestamp (in seconds) to the start of its UTC day.
+    #[inline]
+    #[must_use]
+    pub fn floor_to_day(t: u64) -> u64 {
+        (t / SECONDS_PER_DAY) * SECONDS_PER_DAY
+    }
+
     /// Adds `n` business days to the given timestamp `t` (in seconds since the UNIX epoch).
     ///
     /// # Assumptions
@@ -39,14 +44,15 @@ impl Timestamp {
 
         let weeks = n / 5;
         let extra_days = n % 5;
-        
+
         let mut actual_days = weeks * 7;
         let mut current_dow = standard_dow;
 
         for _ in 0..extra_days {
             actual_days += 1;
             current_dow = (current_dow + 1) % 7;
-            while current_dow >= 5 { // Skip Saturday and Sunday
+            while current_dow >= 5 {
+                // Skip Saturday and Sunday
                 actual_days += 1;
                 current_dow = (current_dow + 1) % 7;
             }
@@ -64,17 +70,17 @@ mod tests {
     #[test]
     fn test_add_business_days() {
         // 1970-01-01 was a Thursday (0 days since epoch)
-        let thursday = 0; 
-        
+        let thursday = 0;
+
         // +0 -> Thursday
         assert_eq!(Timestamp::add_business_days(thursday, 0), thursday);
 
         // +1 -> Friday
         assert_eq!(Timestamp::add_business_days(thursday, 1), 1 * SECONDS_PER_DAY);
-        
+
         // +2 -> Monday (skip Sat, Sun)
         assert_eq!(Timestamp::add_business_days(thursday, 2), 4 * SECONDS_PER_DAY);
-        
+
         // +5 -> Next Thursday
         assert_eq!(Timestamp::add_business_days(thursday, 5), 7 * SECONDS_PER_DAY);
 
@@ -89,12 +95,12 @@ mod tests {
         let saturday = 2 * SECONDS_PER_DAY;
         // +1 -> Monday
         assert_eq!(Timestamp::add_business_days(saturday, 1), 4 * SECONDS_PER_DAY);
-        
+
         // Start on Sunday (1970-01-04)
         let sunday = 3 * SECONDS_PER_DAY;
         // +1 -> Monday
         assert_eq!(Timestamp::add_business_days(sunday, 1), 4 * SECONDS_PER_DAY);
-        
+
         // +10 -> 2 weeks later
         assert_eq!(Timestamp::add_business_days(thursday, 10), 14 * SECONDS_PER_DAY);
     }
