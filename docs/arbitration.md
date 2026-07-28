@@ -20,14 +20,26 @@ Open ──────> Voting ──────> Resolving ──────
 
 ### Valid Transitions
 
-- `Open → Voting` — Voting period begins (implicit at creation)
-- `Voting → Resolving` — Voting period ends, `resolve_dispute` called
-- `Voting → Cancelled` — Dispute cancelled by creator or admin
-- `Resolving → Resolved` — Outcome tallied with a clear winner
-- `Resolving → Tied` — Outcome tallied with a tie (two or more outcomes have equal highest weight)
-- `Open → Cancelled` — Cancelled before voting starts
+- `Open → Voting` — Voting period begins immediately when a dispute is created.
+- `Voting → Resolving` — The voting period ends and `resolve_dispute` begins tallying.
+- `Voting → Cancelled` — The dispute is cancelled by the creator or admin.
+- `Resolving → Resolved` — The tally produces a clear winner.
+- `Resolving → Tied` — The tally produces an equal highest-weight outcome.
+- `Open → Cancelled` — The dispute is cancelled before voting begins.
 
 All other transitions are rejected with `ArbitrationError::InvalidTransition`.
+
+### Lifecycle Events
+
+The contract emits lifecycle events for the major milestones in the dispute lifecycle:
+
+- `dispute_created` when a dispute is opened.
+- `status_transition` for every accepted transition, including the initial `Open → Voting` step.
+- `dispute_cancelled` when a dispute is cancelled.
+- `dispute_resolved` when a dispute reaches a terminal resolved state.
+- `dispute_tied` when tallying ends in a tie.
+
+These events are intended to make the dispute lifecycle auditable and easy to consume off-chain.
 
 ## Types
 
@@ -70,6 +82,11 @@ All other transitions are rejected with `ArbitrationError::InvalidTransition`.
 | InvalidOutcome     | 10   | Outcome must be > 0                      |
 | WeightNotPositive  | 11   | Arbitrator weight must be positive       |
 | NotAuthorized      | 12   | Caller not authorized for this action    |
+| QuorumNotMet       | 13   | Quorum requirements were not met         |
+| ReasonTooLong      | 14   | Cancellation reason exceeds the limit    |
+| PromiseNotKept     | 15   | The promise outcome did not match reality |
+| DisputeActive      | 16   | Dispute is still active and blocks this action |
+| OngoingDispute     | 17   | Creator already has an unresolved dispute |
 
 ## Contract Functions
 
