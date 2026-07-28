@@ -1111,7 +1111,12 @@ impl CredenceBond {
         e.storage().instance().set(&counter_key, &next_id);
 
         let weight = weighted_attestation::compute_weight(&e, &attester);
-        types::Attestation::validate_weight(weight);
+        // Centralised validation: rejects an out-of-range derived weight AND a
+        // caller-supplied `attestation_data` longer than the storage budget
+        // before any instance-storage writes occur. Routing through
+        // `validate_input` keeps every storage mutator using one helper so
+        // future bounds updates can be made in a single place.
+        types::Attestation::validate_input(weight, &attestation_data);
 
         let attestation = types::Attestation {
             id,
@@ -1216,13 +1221,19 @@ impl CredenceBond {
         // Get weight configuration
         let (_, max_weight) = weighted_attestation::get_weight_config(&e);
 
-        // Compute weights, validate weight limits, and accumulate total weight.
+        // Compute weights, validate the derived weight AND the caller-supplied
+        // `attestation_data` per item via the centralised helper, and
+        // accumulate total weight. Routing validation through
+        // `Attestation::validate_input` keeps the batch entry point symmetric
+        // with the singular `add_attestation` path: every storage mutator runs
+        // exactly the same (weight, data) checks before any instance-storage
+        // writes occur.
         let mut total_weight = 0u64;
         let mut weights = Vec::new(&e);
         for i in 0..n {
             let item = items.get(i).unwrap();
             let weight = weighted_attestation::compute_weight(&e, &item.attester);
-            types::Attestation::validate_weight(weight);
+            types::Attestation::validate_input(weight, &item.attestation_data);
             total_weight = total_weight
                 .checked_add(weight as u64)
                 .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
