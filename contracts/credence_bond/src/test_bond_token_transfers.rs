@@ -411,7 +411,10 @@ fn test_phantom_balance_mode_succeeds_without_token_configuration() {
     // Canonical `create_bond` is gated by `if token_integration::has_token(&e)`;
     // with no token configured it succeeds as a pure storage write.
     let bond = client.create_bond(&identity, &1_000, &DAY, &false, &0_u64);
-    assert_eq!(bond.bonded_amount, 1_000, "phantom-mode create_bond must succeed");
+    assert_eq!(
+        bond.bonded_amount, 1_000,
+        "phantom-mode create_bond must succeed"
+    );
     assert_eq!(
         client.get_identity_state().bonded_amount,
         1_000,

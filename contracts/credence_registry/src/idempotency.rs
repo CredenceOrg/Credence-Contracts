@@ -1,6 +1,12 @@
 use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env};
 
-/// Storage key namespace for idempotent transactions
+/// Storage key namespace for idempotent transactions.
+///
+/// Currently unreferenced by any production entry point in `lib.rs`
+/// (`Idempotency::handle` is exercised only by this module's own tests).
+/// Its instance-storage variant name doesn't overlap with `storage::DataKey`,
+/// so wiring it in later introduces no collision — see
+/// `docs/STORAGE_KEY_LAYOUT.md` for the contract's full key catalog.
 #[contracttype]
 pub enum StorageKey {
     Idempotent(BytesN<32>),
@@ -17,7 +23,7 @@ pub struct StorageResult {
 
 /// Idempotency errors
 #[contracterror]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IdempotencyError {
     /// Transaction ID already used by a different caller
     DuplicateDifferentCaller = 1,

@@ -70,7 +70,7 @@
 //! attestation captures the weight that was in effect when it was created.
 
 use crate::math;
-use crate::types::attestation::MAX_ATTESTATION_WEIGHT;
+use crate::types::attestation::{DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT};
 use crate::DataKey;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
@@ -92,10 +92,6 @@ pub const MAX_WEIGHT_MULTIPLIER_BPS: u32 = 10_000;
 
 /// Default maximum attestation weight when no config is set.
 pub const DEFAULT_MAX_WEIGHT: u32 = 100_000;
-
-fn weight_config_key(e: &Env) -> Symbol {
-    Symbol::new(e, "weight_cfg")
-}
 
 /// Returns `(multiplier_bps, max_weight)`.
 ///
@@ -144,6 +140,10 @@ pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
     );
 }
 
+fn weight_config_key(e: &Env) -> Symbol {
+    Symbol::new(e, "weight_cfg")
+}
+
 /// Returns the stake (non-negative token units) recorded for `attester`.
 ///
 /// Returns **0** if no stake has been set, making the absence of a record
@@ -175,15 +175,8 @@ pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
 }
 
 pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
-    use crate::types::attestation::DEFAULT_ATTESTATION_WEIGHT;
-
     let stake = get_attester_stake(e, attester);
     let (multiplier_bps, max_weight) = get_weight_config(e);
-    let stake: i128 = e
-        .storage()
-        .instance()
-        .get(&DataKey::AttesterStake(attester.clone()))
-        .unwrap_or(0);
     crate::bump_instance_ttl(e);
 
     // Short-circuit: zero (or missing) stake always returns the default weight.

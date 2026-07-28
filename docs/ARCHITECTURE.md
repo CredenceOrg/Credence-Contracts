@@ -1,124 +1,458 @@
 # Contracts Architecture Overview
 
-This document is a contracts-only architecture overview for the Credence Soroban workspace. It focuses on the on-chain contracts, their primary responsibilities, the state each contract owns, the events they emit, and the integration points that matter to a backend or reputation engine.
+This document maps every crate in the workspace to its responsibility, state layout, events, and backend consumption points. It is the canonical reference for anyone integrating with or extending the Credence contracts.
 
-For the broader crate dependency map, see [crates.md](crates.md). For detailed per-crate internals, see [architecture.md](architecture.md).
+For a concise overview of how the crates fit together, their dependency graph, and why they are structured this way, see [crates.md](crates.md).
 
----
-
-## 1. Architectural shape
-
-The workspace is organized around a small set of deployable contracts:
-
-- `credence_bond` is the primary source of truth for identity bonds, attestation state, slashing, tier transitions, and supply accounting.
-- `credence_registry` is the discovery layer that maps identities to the bond contract instance that serves them.
-- `credence_delegation` models delegated attestation or management rights for bond owners.
-- `credence_treasury` records protocol fee revenue and withdrawal proposals.
-- `credence_arbitration` tracks dispute lifecycle and weighted arbitrator votes.
-- `admin`, `credence_multisig`, and `timelock` provide administrative and governance control surfaces.
-
-In practice, the backend should treat the bond contract as the main stateful authority for bond and attestation data, and use the other contracts as supporting systems that expose lookup, governance, or dispute state.
+See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
 
 ---
 
-## 2. Crate-to-responsibility map
+## Workspace Crates
 
-| Crate | Primary responsibility | Main state ownership | Key events | Backend use |
-|---|---|---|---|---|
-| `contracts/credence_bond` | Identity bond lifecycle, attestation tracking, slashing, tiers, emergency controls | Bond records, attestation records, supply cap/supply totals, governance proposals, upgrade authorization | `bond_created_v2`, `bond_increased_v2`, `bond_withdrawn_v2`, `bond_slashed_v2`, `tier_changed`, `attestation_added`, `attestation_revoked`, `emergency_withdrawal` | Primary source for bond ledger, tier history, attestation graph, slash history, and market utilization |
-| `contracts/credence_registry` | Identity-to-bond-contract discovery | Identity → bond address mapping and reverse lookup | `identity_registered`, `identity_deactivated`, `identity_reactivated` | Discovery layer for resolving which bond contract belongs to an identity |
-| `contracts/credence_delegation` | Delegated attestation or management rights | Delegation records keyed by owner/delegate/type | `delegation_created`, `delegation_revoked` | Active delegation graph and delegated-permission checks |
-| `contracts/credence_treasury` | Fee accounting and governance withdrawals | Proposal state, signer/threshold state, fee balances | Fee receipt and withdrawal proposal events | Revenue accounting and governance transparency |
-| `contracts/credence_arbitration` | Dispute lifecycle and voting | Dispute records, vote weights, status transitions | `dispute_created`, `status_transition`, `vote_cast`, `dispute_resolved` | Reputation and moderation workflows driven by dispute outcomes |
-| `contracts/admin` | Role and ownership management | Admin roster, role metadata, pending ownership transfer | `admin_added`, `admin_removed`, `admin_role_updated`, `ownership_transfer_*` | Access-control snapshot for off-chain authorization and audit |
-| `contracts/credence_multisig` | Multi-signer proposals | Signer set, threshold, proposal records | Proposal creation/approval/execution events | Pending governance action visibility |
-| `contracts/timelock` | Delayed execution | Queued operations with execution windows | Queue/execute/cancel events | Governance change forecasting and audit |
-| `contracts/fixed_duration_bond` | Simple fixed-term bond variant | Per-owner fixed bond record and fee config | `bond_created`, `bond_withdrawn`, `bond_early_exit`, `fees_collected` | Alternative bond model and fee tracking |
-
----
-
-## 3. State ownership and storage model
-
-The contracts mostly follow a simple pattern:
-
-- `instance()` storage holds configuration, counters, and contract-wide state.
-- `persistent()` storage holds per-record state such as bond records, attestations, disputes, and votes.
-- The bond contract is the biggest and most stateful contract in the workspace and holds the protocol's core business state.
-
-### Core bond contract state
-
-The bond contract owns the following categories of state:
-
-- Bond state: current principal, rolling status, duration, tier, and lifecycle status.
-- Attestation state: attestation records and subject-to-attestation indexes.
-- Governance and slash state: slash proposals, governor votes, quorum configuration, and upgrade authorization.
-- Supply state: total bonded amount and optional supply cap.
-- Emergency state: emergency mode toggle and audit records.
-
-### Registry state
-
-The registry stores:
-
-- Identity → bond contract address mapping.
-- Bond contract → identity reverse mapping.
-- A list of registered identities for discovery and enumeration.
-
-### Delegation state
-
-The delegation contract stores delegation records keyed by owner, delegate, and delegation type so callers can evaluate whether a delegate is currently authorized.
+| Crate | Package name | Purpose |
+|---|---|---|
+| `contracts/credence_bond` | `credence_bond` | Core identity bond, attestations, slashing, governance |
+| `contracts/credence_registry` | `credence_registry` | Identity ↔ bond-contract address mapping |
+| `contracts/credence_treasury` | `credence_treasury` | Fee accounting and multi-sig withdrawal |
+| `contracts/credence_delegation` | `credence_delegation` | Delegated attestation and management rights |
+| `contracts/credence_arbitration` | `credence_arbitration` | Weighted-vote dispute resolution |
+| `contracts/dispute_resolution` | `dispute_resolution` | Stake-backed slash dispute with arbitrator voting |
+| `contracts/admin` | `admin` | Hierarchical role management (SuperAdmin/Admin/Operator) |
+| `contracts/credence_multisig` | `credence_multisig` | Generic M-of-N multi-signature proposals |
+| `contracts/timelock` | `timelock` | Time-delayed operation execution |
+| `contracts/fixed_duration_bond` | `fixed_duration_bond` | Simple fixed-term bond with optional early-exit penalty |
+| `contracts/credence_errors` | `credence_errors` | Shared `ContractError` enum used across crates |
+| `contracts/credence_math` | `credence_math` | Overflow-safe arithmetic helpers (`add_i128`, `split_bps`, …) |
 
 ---
 
-## 4. Event model and backend expectations
+## Crate Details
 
-The contracts emit structured events so off-chain services can index state without polling every read-only entrypoint. The backend should prefer events for change tracking and use contract read methods for point-in-time state inspection.
+### `credence_bond`
 
-### Event patterns to follow
+**Responsibility:** The protocol's primary contract. Manages the full lifecycle of an identity bond, the attestation system, slashing with governance approval, tiered bond levels, rolling bonds, early-exit penalties, fee collection, batch operations, and upgrade authorization.
 
-- Use the `_v2` bond events whenever possible. They carry richer indexed data for efficient filtering and are the preferred integration surface.
-- Treat state-changing events as the primary source of truth for incremental indexing.
-- Use read-only entrypoints such as `get_identity_state()`, `get_total_supply()`, and `get_bond_contract()` for current-state lookups and backfills.
+**Internal modules:**
 
-### Bond contract event highlights
+| Module | Role |
+|---|---|
+| `access_control` | Verifier role add/remove |
+| `batch` | Atomic multi-bond creation (test/testutils-only — not compiled into the release wasm; see [docs/BATCH_ATOMICITY.md](BATCH_ATOMICITY.md)) |
+| `claims` | Pending verifier reward claims |
+| `cooldown` | Configurable withdrawal cooldown period |
+| `early_exit_penalty` | Penalty calculation and treasury transfer |
+| `emergency` | Dual-auth emergency withdrawal with audit records |
+| `events` | All event emission helpers |
+| `evidence` | IPFS/hash evidence storage for slash proposals |
+| `fees` | Bond-creation fee calculation and accumulation |
+| `governance_approval` | Governor-based slash proposal voting |
+| `leverage` | Max-leverage validation |
+| `liquidation_scanner` | Same-ledger collateral-increase guard |
+| `math` | Internal arithmetic (wraps `credence_math`) |
+| `nonce` | Permit-style replay prevention |
+| `normalization` | Amount normalization utilities |
+| `parameters` | Configurable tier thresholds and max leverage |
+| `pausable` | Multi-sig pause mechanism |
+| `rolling_bond` | Notice-period withdrawal for rolling bonds |
+| `safe_token` | Token transfer helpers |
+| `same_ledger_liquidation_guard` | Prevents same-ledger collateral manipulation |
+| `slash_history` | Immutable slash history log |
+| `slashing` | Core slash logic |
+| `tiered_bond` | Bronze/Silver/Gold/Platinum tier derivation |
+| `token_integration` | USDC transfer with balance-delta verification |
+| `types` | Shared `Attestation` type |
+| `upgrade_auth` | Proposer/approver upgrade authorization |
+| `validation` | Amount and duration validation |
+| `verifier` | Verifier stake, reputation, and attestation tracking |
+| `weighted_attestation` | Weight computation from verifier stake |
 
-The bond contract is the main event source for the backend:
+**State (instance storage):**
 
-- `bond_created_v2` and `bond_increased_v2` for bond lifecycle and amount changes.
-- `bond_withdrawn_v2` for redemption and early-exit flows.
-- `bond_slashed_v2` for slash history and risk monitoring.
-- `tier_changed` for reputation or scoring updates.
-- `attestation_added` and `attestation_revoked` for attestation graph updates.
-- `emergency_withdrawal` for incident response and audit.
+| Key | Type | Description |
+|---|---|---|
+| `Admin` | `Address` | Contract administrator |
+| `Bond` | `IdentityBond` | Single bond per contract instance |
+| `Token` / `BondToken` | `Address` | Configured USDC token |
+| `Attester(addr)` | `bool` | Registered attester flag |
+| `Attestation(u64)` | `Attestation` | Attestation record by ID |
+| `AttestationCounter` | `u64` | Auto-incrementing attestation ID |
+| `SubjectAttestations(addr)` | `Vec<u64>` | Attestation IDs for a subject |
+| `Nonce(addr)` | `u64` | Per-identity replay-prevention nonce |
+| `GovernanceProposal(u64)` | `SlashProposal` | Slash proposal record |
+| `GovernanceVote(u64, addr)` | `bool` | Vote record per (proposal, governor) |
+| `GovernanceGovernors` | `Vec<Address>` | Active governor list |
+| `GovernanceQuorumBps` | `u32` | Quorum threshold in basis points |
+| `FeeTreasury` | `Address` | Treasury address for fees |
+| `FeeBps` | `u32` | Creation fee in basis points |
+| `Evidence(u64)` | `Evidence` | Evidence record by ID |
+| `SupplyCap` | `i128` | Maximum total bonded amount (0 = uncapped) |
+| `TotalSupply` | `i128` | Current total bonded amount |
+| `UpgradeAuth(addr)` | `UpgradeRole` | Upgrade role per address |
+| `Paused` | `bool` | Pause flag |
 
-### Supporting contract event highlights
+**Events emitted:**
 
-- `credence_registry`: index `identity_registered` and related lifecycle events for identity discovery.
-- `credence_delegation`: index delegation create/revoke events to maintain the active delegation graph.
-- `credence_arbitration`: index `status_transition` and `dispute_resolved` for dispute outcomes.
-- `credence_treasury`: index fee and withdrawal proposal events for treasury accounting.
+| Symbol | Topics | Data | Trigger |
+|---|---|---|---|
+| `bond_created` | `(symbol, identity)` | `(amount, duration, is_rolling)` | Bond created (legacy) |
+| `bond_created_v2` | `(symbol, identity, amount, start_ts)` | `(duration, is_rolling, end_ts)` | Bond created |
+| `bond_increased_v2` | `(symbol, identity, added, new_total, ts)` | `(tier_changed, new_tier)` | Top-up |
+| `bond_withdrawn_v2` | `(symbol, identity, withdrawn, remaining, ts)` | `(is_early, penalty)` | Withdrawal |
+| `bond_slashed_v2` | `(symbol, identity, slash_amt, total_slashed, ts, admin)` | `(reason, is_full_slash)` | Slash executed |
+| `tier_changed` | `(symbol, identity)` | `new_tier` | Tier upgrade/downgrade |
+| `attestation_added` | `(symbol, subject)` | `(id, attester, data)` | Attestation created |
+| `attestation_revoked` | `(symbol, subject)` | `(id, attester)` | Attestation revoked |
+| `claim_added` | `(symbol, user)` | `(claim_type, amount, source_id)` | Verifier reward queued |
+| `claims_processed` | `(symbol, user)` | `(count, total, types)` | Claims paid out |
+| `supply_cap_updated` | `(symbol,)` | `(admin, cap)` | Supply cap changed |
+| `emergency_mode` | — | `(enabled, admin, governance, ts)` | Emergency mode toggled |
+| `emergency_withdrawal` | — | `(record_id, identity, gross, fee, net, reason, ts)` | Emergency withdrawal |
+| `upgrade_proposed` | `(symbol, proposer)` | `(proposal_id, new_impl)` | Upgrade proposed |
+| `upgrade_approved` | `(symbol, approver)` | `proposal_id` | Upgrade approved |
+| `upgrade_executed` | `(symbol, executor)` | `(new_impl, proposal_id)` | Upgrade executed |
+| `attester_registered` | `(symbol,)` | `attester` | Attester added |
+| `attester_unregistered` | `(symbol,)` | `attester` | Attester removed |
+
+**Backend consumption points:**
+
+- Index `bond_created_v2` to build the bond ledger (identity → bonded amount, start, end).
+- Index `bond_slashed_v2` to track slash history per identity.
+- Index `tier_changed` to maintain current tier per identity for reputation scoring.
+- Index `attestation_added` / `attestation_revoked` to build the attestation graph.
+- Poll `get_identity_state()` to read current bond state for a given contract instance.
+- Poll `get_total_supply()` / `get_supply_cap()` for market utilization metrics.
+- Index `emergency_withdrawal` for incident response and audit.
 
 ---
 
-## 5. Runtime flow
+### `credence_registry`
 
-A typical end-to-end flow looks like this:
+**Responsibility:** Bidirectional mapping between identity addresses and their deployed bond contract addresses. The backend uses this as the discovery layer to find which bond contract belongs to which identity.
 
-1. An identity is registered in the registry and mapped to its bond contract.
-2. The bond contract creates or updates the bond, emits the bond lifecycle event, and updates supply state.
-3. The backend indexes the event stream to build the bond ledger, tier view, attestation graph, and slash history.
-4. Delegation, disputes, and treasury actions layer on top of that core bond state without replacing it.
+**State (instance storage):**
 
-This makes the bond contract the center of gravity for protocol state, while the registry and delegation contracts provide lookup and authorization overlays.
+| Key | Type | Description |
+|---|---|---|
+| `Admin` | `Address` | Registry administrator |
+| `IdentityToBond(addr)` | `RegistryEntry` | Forward mapping: identity → entry |
+| `BondToIdentity(addr)` | `Address` | Reverse mapping: bond contract → identity |
+| `RegisteredIdentities` | `Vec<Address>` | Ordered list of all registered identities |
+
+**Events emitted:**
+
+| Symbol | Data | Trigger |
+|---|---|---|
+| `registry_initialized` | `admin` | Contract initialized |
+| `identity_registered` | `(entry, allow_non_interface)` | New identity registered |
+| `identity_deactivated` | `entry` | Registration deactivated |
+| `identity_reactivated` | `entry` | Registration reactivated |
+| `admin_transferred` | `new_admin` | Admin changed |
+
+**Backend consumption points:**
+
+- Index `identity_registered` to maintain the identity→bond-contract lookup table.
+- Use `get_bond_contract(identity)` for on-demand lookups.
+- Use `get_all_identities()` for full enumeration (note: unbounded — prefer event-based indexing at scale; see [known-simplifications.md](known-simplifications.md#7-get_all_identities-has-no-pagination)).
 
 ---
 
-## 6. Practical integration guidance
+### `credence_treasury`
 
-When building or extending a backend against these contracts:
+**Responsibility:** Pure accounting system for protocol fee revenue. Tracks fee balances and multi-sig withdrawal proposals. Does not hold tokens directly in the current implementation (see [known-simplifications.md](known-simplifications.md#3-treasury-is-a-pure-accounting-system-no-token-custody)).
 
-- Prefer event indexing for historical data and audit trails.
-- Use contract read methods for current state and reconciliation.
-- Treat the bond contract as the canonical state source for balances, tiers, slashes, and attestations.
-- Keep registry and delegation lookups separate from the bond ledger so contract ownership and authorization remain explicit.
+**State:** Defined in `contracts/credence_treasury/src/treasury.rs`. Includes signer list, threshold, proposal records, and approval tracking.
 
-For more detail on dependency structure and why the crates are split this way, see [crates.md](crates.md). For deeper runtime call paths and authorization flow, see [cross-contract-call-graph.md](cross-contract-call-graph.md).
+**Events emitted:** Fee receipt, withdrawal proposal creation, approval, and execution events (emitted from `treasury.rs`).
+
+**Backend consumption points:**
+
+- Index fee-receipt events to track protocol revenue by source.
+- Monitor withdrawal proposals for governance transparency.
+
+---
+
+### `credence_delegation`
+
+**Responsibility:** Allows bond owners to delegate attestation or management rights to another address for a bounded time period.
+
+**State (instance storage):**
+
+| Key | Type | Description |
+|---|---|---|
+| `Admin` | `Address` | Contract administrator |
+| `Delegation(owner, delegate, type)` | `Delegation` | Delegation record |
+
+**Events emitted:**
+
+| Symbol | Data | Trigger |
+|---|---|---|
+| `delegation_created` | `delegation` | New delegation stored |
+| `delegation_revoked` | `delegation` | Delegation revoked |
+
+**Backend consumption points:**
+
+- Index `delegation_created` / `delegation_revoked` to maintain the active delegation graph.
+- Query `is_valid_delegate(owner, delegate, type)` before allowing delegated actions.
+
+---
+
+### `credence_arbitration`
+
+**Responsibility:** Canonical dispute status machine with weighted arbitrator voting. Enforces `Open → Voting → Resolving → Resolved / Cancelled` transitions.
+
+**State (instance storage):**
+
+| Key | Type | Description |
+|---|---|---|
+| `Admin` | `Address` | Contract administrator |
+| `Arbitrator(addr)` | `i128` | Arbitrator voting weight |
+| `Dispute(u64)` | `Dispute` | Dispute record by ID |
+| `DisputeCounter` | `u64` | Auto-incrementing dispute ID |
+| `DisputeVotes(u64)` | `Map<u32, i128>` | Outcome → total weight |
+| `VoterCasted(u64, addr)` | `bool` | Double-vote prevention |
+
+**Events emitted:**
+
+| Symbol | Data | Trigger |
+|---|---|---|
+| `dispute_created` | `(id, creator)` | Dispute opened |
+| `status_transition` | `(from, to)` | Any status change |
+| `vote_cast` | `(dispute_id, voter, outcome, weight)` | Vote recorded |
+| `dispute_cancelled` | `(id, caller)` | Dispute cancelled |
+| `dispute_resolved` | `(id, winning_outcome)` | Dispute resolved |
+| `arbitrator_registered` | `(arbitrator, weight)` | Arbitrator added |
+| `arbitrator_unregistered` | `arbitrator` | Arbitrator removed |
+
+**Backend consumption points:**
+
+- Index `status_transition` to track dispute lifecycle.
+- Index `dispute_resolved` to feed outcomes back to the reputation engine.
+- Note: arbitrator weights are admin-assigned integers, not stake-backed (see [known-simplifications.md](known-simplifications.md#9-arbitration-voting-weights-are-not-stake-backed)).
+
+---
+
+### `dispute_resolution`
+
+**Responsibility:** Stake-backed slash dispute system. A disputer locks tokens as stake, arbitrators vote, and the outcome determines whether the stake is returned or forfeited.
+
+**State:**
+
+| Key | Storage tier | Description |
+|---|---|---|
+| `Admin` | `instance()` | Contract administrator |
+| `DisputeCounter` | `instance()` | Global dispute ID counter |
+| `Dispute(u64)` | `persistent()` | Full dispute record |
+| `Vote(u64, addr)` | `persistent()` | Per-(dispute, arbitrator) vote |
+
+**Events emitted (typed `#[contractevent]`):**
+
+| Type | Fields | Trigger |
+|---|---|---|
+| `DisputeCreated` | `dispute_id, disputer, slash_request_id, stake, deadline` | Dispute opened |
+| `VoteCast` | `dispute_id, arbitrator, favor_disputer` | Vote recorded |
+| `DisputeResolved` | `dispute_id, outcome, votes_for_disputer, votes_for_slasher` | Resolved |
+| `DisputeExpired` | `dispute_id, expired_at` | Deadline passed without resolution |
+
+**Backend consumption points:**
+
+- Index `DisputeCreated` to track open disputes against slash requests.
+- Index `DisputeResolved` to update slash status in the reputation engine.
+- Index `DisputeExpired` to clean up stale dispute records.
+
+---
+
+### `admin`
+
+**Responsibility:** Hierarchical role management. Defines `SuperAdmin > Admin > Operator` roles, enforces minimum admin count, and supports two-step ownership transfer.
+
+**State (instance storage):**
+
+| Key | Type | Description |
+|---|---|---|
+| `AdminList` | `Vec<Address>` | All admin addresses |
+| `AdminInfo(addr)` | `AdminInfo` | Role, assignment metadata, active flag |
+| `RoleAdmins(role)` | `Vec<Address>` | Addresses per role |
+| `Owner` | `Address` | Current contract owner |
+| `PendingOwner` | `Address` | Pending owner for two-step transfer |
+
+**Events emitted:**
+
+| Symbol | Data | Trigger |
+|---|---|---|
+| `admin_initialized` | `super_admin` | Contract initialized |
+| `admin_added` | `admin_info` | Admin added |
+| `admin_removed` | `admin_info` | Admin removed |
+| `admin_role_updated` | `(addr, old_role, new_role)` | Role changed |
+| `admin_deactivated` | `admin_info` | Admin deactivated |
+| `admin_reactivated` | `admin_info` | Admin reactivated |
+| `ownership_transfer_initiated` | `(current_owner, pending_owner)` | Transfer proposed |
+| `ownership_transfer_accepted` | `(previous_owner, new_owner)` | Transfer completed |
+
+**Backend consumption points:**
+
+- Index role events to maintain an up-to-date access control snapshot for off-chain authorization checks.
+
+---
+
+### `credence_multisig`
+
+**Responsibility:** Generic M-of-N multi-signature proposal system. Any operation can be proposed, approved by signers, and executed once the threshold is met.
+
+**State:** Defined in `contracts/credence_multisig/src/multisig.rs`. Includes signer list, threshold, and proposal records.
+
+**Events emitted:** Proposal creation, approval, and execution events.
+
+**Backend consumption points:**
+
+- Index proposal events to surface pending governance actions in dashboards.
+- Note: proposals have no expiry in the current implementation (see [known-simplifications.md](known-simplifications.md#11-multisig-proposals-have-no-expiry)).
+
+---
+
+### `timelock`
+
+**Responsibility:** Queues operations with a mandatory delay before execution. Prevents immediate execution of sensitive admin actions.
+
+**State:** Defined in `contracts/timelock/src/timelock.rs`. Includes queued operations and their earliest execution timestamps.
+
+**Events emitted:** Operation queued, executed, and cancelled events.
+
+**Backend consumption points:**
+
+- Index queued operations to surface upcoming protocol changes with their execution windows.
+- Note: executed operations are not permanently marked to prevent replay (see [known-simplifications.md](known-simplifications.md#10-timelock-has-no-execution-guard-against-replays)).
+
+---
+
+### `fixed_duration_bond`
+
+**Responsibility:** Simplified fixed-term bond for any address. One active bond per owner. Supports optional creation fee and early-exit penalty. Rejects fee-on-transfer tokens via balance-delta verification.
+
+**State (persistent storage per owner):**
+
+| Key | Type | Description |
+|---|---|---|
+| `Bond(addr)` | `FixedBond` | Bond record per owner |
+
+**State (instance storage):**
+
+| Key | Type | Description |
+|---|---|---|
+| `Admin` | `Address` | Contract administrator |
+| `Token` | `Address` | Configured token |
+| `FeeConfig` | `FeeConfig` | Treasury address and fee bps |
+| `PenaltyBps` | `u32` | Default early-exit penalty |
+| `AccruedFees` | `i128` | Accumulated uncollected fees |
+
+**Events emitted:**
+
+| Symbol | Data | Trigger |
+|---|---|---|
+| `bond_created` | `(net_amount, expiry)` | Bond created |
+| `bond_withdrawn` | `amount` | Matured withdrawal |
+| `bond_early_exit` | `(net_amount, penalty)` | Early withdrawal |
+| `fees_collected` | `(admin, recipient, amount)` | Fees collected |
+| `fee_config_updated` | `(old_treasury, old_bps, new_treasury, new_bps)` | Fee config changed |
+
+**Backend consumption points:**
+
+- Index `bond_created` / `bond_withdrawn` / `bond_early_exit` to track fixed-term bond positions.
+- Index `fees_collected` for revenue accounting.
+
+---
+
+### `credence_errors`
+
+**Responsibility:** Shared `ContractError` enum. Imported by `credence_registry`, `dispute_resolution`, and other crates to emit consistent typed errors via `panic_with_error!`.
+
+**No state. No events.**
+
+---
+
+### `credence_math`
+
+**Responsibility:** Overflow-safe arithmetic primitives used across contracts. Provides `add_i128`, `mul_i128`, `split_bps` (basis-point split), and related helpers.
+
+**No state. No events.**
+
+---
+
+## Cross-Crate Relationships
+
+For a detailed visual mapping of dynamic interactions, callbacks, token custody pathways, and authentication entrypoints, see the [Cross-Contract Call Graph & Authorization Flow](cross-contract-call-graph.md).
+
+```
+credence_bond
+  ├── uses credence_math        (arithmetic)
+  ├── uses credence_errors      (error types, indirectly via panic)
+  └── logically paired with credence_registry (manual admin step)
+
+credence_registry
+  └── uses credence_errors      (ContractError variants)
+
+dispute_resolution
+  └── uses credence_errors      (ContractError variants)
+
+fixed_duration_bond
+  └── uses credence_math        (split_bps, add_i128)
+
+All contracts
+  └── share pausable module pattern (copy per crate, not a shared lib)
+```
+
+---
+
+## Shared Patterns
+
+### Pause mechanism
+
+Every contract implements the same multi-sig pause pattern via a local `pausable` module. All state-changing functions call `pausable::require_not_paused(&e)` at entry. Read-only functions remain accessible when paused.
+
+Pause can be immediate (threshold = 0, admin-only) or multi-sig (threshold > 0, requires proposal + approvals + execution).
+
+### Storage tiers
+
+| Tier | Used for |
+|---|---|
+| `instance()` | Admin config, counters, current bond state — small, always loaded with the contract |
+| `persistent()` | Per-record data (attestations, disputes, votes) — independently rentable, unbounded sets |
+| `temporary()` | Not currently used in production paths |
+
+### Token safety
+
+All token transfers use balance-delta verification to reject fee-on-transfer tokens:
+
+```rust
+let before = token.balance(&contract);
+token.transfer_from(&contract, &owner, &contract, &amount);
+let after = token.balance(&contract);
+assert!(after - before == amount, "unsupported token");
+```
+
+This pattern is implemented in `credence_bond/src/token_integration.rs`, `dispute_resolution/src/lib.rs`, and `fixed_duration_bond/src/lib.rs`.
+
+### Event versioning
+
+`credence_bond` emits both `bond_created` (legacy) and `bond_created_v2` (indexed) for backward compatibility during migration. The `_v2` variants include additional indexed topics for efficient off-chain filtering. New integrations should consume `_v2` events.
+
+---
+
+## Backend Integration Summary
+
+| What the backend needs | Where to get it |
+|---|---|
+| Identity → bond contract address | `credence_registry`: index `identity_registered`, query `get_bond_contract` |
+| Current bond state (amount, tier, active) | `credence_bond`: poll `get_identity_state()` on the bond contract |
+| Bond creation / withdrawal history | `credence_bond`: index `bond_created_v2`, `bond_withdrawn_v2` |
+| Slash history | `credence_bond`: index `bond_slashed_v2` |
+| Current tier per identity | `credence_bond`: index `tier_changed` |
+| Attestation graph | `credence_bond`: index `attestation_added`, `attestation_revoked` |
+| Active delegations | `credence_delegation`: index `delegation_created`, `delegation_revoked` |
+| Dispute outcomes | `credence_arbitration`: index `dispute_resolved`; `dispute_resolution`: index `DisputeResolved` |
+| Protocol fee revenue | `credence_treasury`: index fee-receipt events; `fixed_duration_bond`: index `fees_collected` |
+| Admin / role changes | `admin`: index `admin_added`, `admin_removed`, `admin_role_updated` |
+| Pending governance actions | `credence_multisig`: index proposal events; `timelock`: index queued operations |
+| Supply utilization | `credence_bond`: poll `get_total_supply()`, `get_supply_cap()` |
+
+For known limitations affecting backend integration (unbounded registry pagination, treasury token custody, etc.) see [known-simplifications.md](known-simplifications.md).

@@ -293,4 +293,3 @@ pub fn require_not_borrow_frozen(e: &Env) {
 pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
     crate::parameters::set_borrow_frozen(e, admin, frozen);
 }
-

@@ -46,6 +46,19 @@ cargo build --target wasm32-unknown-unknown --release --locked -p credence_bond 
 cargo test --workspace
 ```
 
+### Reset the local network
+
+Wipe and restart a fresh local Soroban node in one command:
+
+```bash
+npm run reset-local-network
+# or directly:
+sh scripts/reset_local_network.sh
+```
+
+The script is idempotent — safe to re-run at any time. It stops and removes any existing `soroban-local` Docker container, removes the `local` network config, and starts a clean instance.
+
+**Requirements:** [Soroban CLI](https://developers.stellar.org/docs/smart-contracts/getting-started/setup) and [Docker](https://docs.docker.com/get-docker/) must be installed.
 ### Run a single test
 
 Use the [`justfile`](justfile) recipe to run tests for one crate or a single
@@ -405,6 +418,7 @@ When filing an issue, include:
 | Document | What it covers |
 |---|---|
 | [`README.md`](README.md) | Project overview, build setup |
+| [`docs/CI.md`](docs/CI.md) | CI linting guide — exact commands before PR review |
 | [`docs/architecture.md`](docs/architecture.md) | Crate responsibilities, state layout, events |
 | [`docs/testing.md`](docs/testing.md) | Running tests, coverage setup, CI integration |
 | [`docs/fuzz-testing.md`](docs/fuzz-testing.md) | Bond fuzz harness internals and failure interpretation |

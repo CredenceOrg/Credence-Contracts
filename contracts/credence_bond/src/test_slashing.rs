@@ -214,7 +214,7 @@ fn test_slash_overflow_prevention() {
     let bond = client.slash(&admin, &crate::validation::MAX_BOND_AMOUNT);
     assert_eq!(bond.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
 
-    // Further slash is capped at available (0) — no overflow, no panic
+    // Further slash is capped at available (0) â€” no overflow, no panic
     let bond2 = client.slash(&admin, &i128::MAX);
     assert_eq!(bond2.slashed_amount, crate::validation::MAX_BOND_AMOUNT);
 }
@@ -704,7 +704,7 @@ fn test_slash_history_get_all_records() {
 #[should_panic]
 fn test_slash_reverts_when_treasury_not_configured() {
     let e = Env::default();
-    // Use setup_with_token directly — no set_slash_treasury call.
+    // Use setup_with_token directly â€” no set_slash_treasury call.
     let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
     client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);

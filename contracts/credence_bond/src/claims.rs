@@ -513,11 +513,7 @@ pub fn process_claims(
 ///
 /// # Panics
 /// * If claim is not found, expired, or already processed
-pub fn process_claim_by_id(
-    e: &Env,
-    user: &Address,
-    claim_id: u64,
-) -> ClaimResult {
+pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResult {
     user.require_auth();
 
     let now = e.ledger().timestamp();
@@ -547,40 +543,62 @@ pub fn process_claim_by_id(
     let claim_by_id_key = DataKey::ClaimById(claim_id);
     let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
     e.storage().persistent().set(&claim_by_id_key, &paid_claim);
-    e.storage().persistent().extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+    e.storage()
+        .persistent()
+        .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
 
     claims.remove(idx as u32);
-    
+
     if claims.is_empty() {
-        e.storage().persistent().remove(&DataKey::PendingClaims(user.clone()));
-        e.storage().persistent().remove(&DataKey::ClaimableAmount(user.clone()));
+        e.storage()
+            .persistent()
+            .remove(&DataKey::PendingClaims(user.clone()));
+        e.storage()
+            .persistent()
+            .remove(&DataKey::ClaimableAmount(user.clone()));
     } else {
         let pending_key = DataKey::PendingClaims(user.clone());
         e.storage().persistent().set(&pending_key, &claims);
-        e.storage().persistent().extend_ttl(&pending_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+        e.storage().persistent().extend_ttl(
+            &pending_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
 
         let current_amount = get_claimable_amount(e, user);
-        let remaining_amount = current_amount.checked_sub(claim.amount).expect("amount underflow");
+        let remaining_amount = current_amount
+            .checked_sub(claim.amount)
+            .expect("amount underflow");
         let claimable_key = DataKey::ClaimableAmount(user.clone());
-        e.storage().persistent().set(&claimable_key, &remaining_amount);
-        e.storage().persistent().extend_ttl(&claimable_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+        e.storage()
+            .persistent()
+            .set(&claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(
+            &claimable_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
     }
 
     if claim.amount > 0 {
-        let token: Address = e.storage().instance().get(&DataKey::BondToken).expect("token not configured");
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::BondToken)
+            .expect("token not configured");
         let contract = e.current_contract_address();
         soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &claim.amount);
     }
 
     let mut claim_types = Vec::new(e);
     claim_types.push_back(claim.claim_type);
-    
+
     let result = ClaimResult {
         processed_count: 1,
         total_amount: claim.amount,
         claim_types,
     };
-    
+
     let mut processed_claims = Vec::new(e);
     processed_claims.push_back(paid_claim);
     events::emit_claims_processed(e, user, &result, &processed_claims);
@@ -627,8 +645,12 @@ pub fn process_claims_paginated(
         }
     }
 
-    let actual_limit = if limit == 0 { MAX_BATCH_CLAIMS } else { limit.min(MAX_BATCH_CLAIMS) };
-    
+    let actual_limit = if limit == 0 {
+        MAX_BATCH_CLAIMS
+    } else {
+        limit.min(MAX_BATCH_CLAIMS)
+    };
+
     let mut processed_claims = Vec::new(e);
     let mut valid_claims = Vec::new(e);
     let mut total_amount = 0i128;
@@ -657,11 +679,15 @@ pub fn process_claims_paginated(
         let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
         let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
         e.storage().persistent().set(&claim_by_id_key, &paid_claim);
-        e.storage().persistent().extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+        e.storage()
+            .persistent()
+            .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
 
         processed_claims.push_back(paid_claim.clone());
-        total_amount = total_amount.checked_add(claim.amount).expect("claim total overflow");
-        
+        total_amount = total_amount
+            .checked_add(claim.amount)
+            .expect("claim total overflow");
+
         let mut type_exists = false;
         for j in 0..processed_types.len() {
             if processed_types.get(j).unwrap() == claim.claim_type {
@@ -677,25 +703,45 @@ pub fn process_claims_paginated(
     }
 
     if valid_claims.is_empty() {
-        e.storage().persistent().remove(&DataKey::PendingClaims(user.clone()));
-        e.storage().persistent().remove(&DataKey::ClaimableAmount(user.clone()));
+        e.storage()
+            .persistent()
+            .remove(&DataKey::PendingClaims(user.clone()));
+        e.storage()
+            .persistent()
+            .remove(&DataKey::ClaimableAmount(user.clone()));
     } else {
         let remaining_pending_key = DataKey::PendingClaims(user.clone());
-        e.storage().persistent().set(&remaining_pending_key, &valid_claims);
-        e.storage().persistent().extend_ttl(&remaining_pending_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
-        
+        e.storage()
+            .persistent()
+            .set(&remaining_pending_key, &valid_claims);
+        e.storage().persistent().extend_ttl(
+            &remaining_pending_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
+
         let mut remaining_amount = 0i128;
         for claim in valid_claims.iter() {
             remaining_amount += claim.amount;
         }
-        
+
         let remaining_claimable_key = DataKey::ClaimableAmount(user.clone());
-        e.storage().persistent().set(&remaining_claimable_key, &remaining_amount);
-        e.storage().persistent().extend_ttl(&remaining_claimable_key, crate::PERSISTENT_TTL_MAX / 2, crate::PERSISTENT_TTL_MAX);
+        e.storage()
+            .persistent()
+            .set(&remaining_claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(
+            &remaining_claimable_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
     }
 
     if total_amount > 0 {
-        let token: Address = e.storage().instance().get(&DataKey::BondToken).expect("token not configured");
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::BondToken)
+            .expect("token not configured");
         let contract = e.current_contract_address();
         soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &total_amount);
     }
@@ -705,11 +751,11 @@ pub fn process_claims_paginated(
         total_amount,
         claim_types: processed_types,
     };
-    
+
     if processed_count_in_batch > 0 {
         events::emit_claims_processed(e, user, &result, &processed_claims);
     }
-    
+
     result
 }
 

@@ -125,7 +125,13 @@ fn unregister_attester_succeeds_when_admin_authorizes() {
 fn create_bond_succeeds_when_identity_authorizes() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
-    let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.identity, identity);
     assert_eq!(bond.bonded_amount, 1000_i128);
     assert!(bond.active);
@@ -141,9 +147,14 @@ fn add_attestation_succeeds_when_registered_attester_authorizes() {
     let (env, _admin, client) = setup();
     let attester = Address::generate(&env);
     let subject = Address::generate(&env);
-    client.register_attester(&attester);
+    let contract_id = env.register(CredenceBond, ());
+    let client2 = CredenceBondClient::new(&env, &contract_id);
+    client2.initialize(&Address::generate(&env), &None);
+    client2.register_attester(&attester);
     let data = soroban_sdk::String::from_str(&env, "kyc:verified");
-    let attestation = client.add_attestation(&attester, &subject, &data, &0_u64);
+    let deadline = env.ledger().timestamp() + 3600;
+    let nonce = client2.get_nonce(&attester);
+    let attestation = client2.add_attestation(&attester, &subject, &data, &contract_id, &deadline, &nonce);
     assert_eq!(attestation.verifier, attester);
     assert_eq!(attestation.identity, subject);
     assert!(!attestation.revoked);
@@ -157,8 +168,10 @@ fn add_attestation_rejected_when_attester_is_not_registered() {
     let unregistered = Address::generate(&env);
     let subject = Address::generate(&env);
     let data = soroban_sdk::String::from_str(&env, "kyc:verified");
+    let contract_id = env.current_contract_address();
+    let deadline = env.ledger().timestamp() + 3600;
     // Should panic: unregistered attester ? UnauthorizedAttester.
-    client.add_attestation(&unregistered, &subject, &data, &0_u64);
+    client.add_attestation(&unregistered, &subject, &data, &contract_id, &deadline, &0_u64);
 }
 
 // ---------------------------------------------------------------------------
@@ -169,12 +182,16 @@ fn add_attestation_rejected_when_attester_is_not_registered() {
 #[test]
 fn revoke_attestation_succeeds_when_attester_authorizes() {
     let (env, _admin, client) = setup();
+    let contract_id = env.current_contract_address();
     let attester = Address::generate(&env);
     let subject = Address::generate(&env);
     client.register_attester(&attester);
     let data = soroban_sdk::String::from_str(&env, "kyc:verified");
-    let att = client.add_attestation(&attester, &subject, &data, &0_u64);
-    client.revoke_attestation(&attester, &att.id, &1_u64);
+    let deadline = env.ledger().timestamp() + 3600;
+    let nonce = client.get_nonce(&attester);
+    let att = client.add_attestation(&attester, &subject, &data, &contract_id, &deadline, &nonce);
+    let rev_nonce = client.get_nonce(&attester);
+    client.revoke_attestation(&attester, &att.id, &contract_id, &deadline, &rev_nonce);
     let revoked = client.get_attestation(&att.id);
     assert!(revoked.revoked);
 }
@@ -280,7 +297,13 @@ fn set_slash_treasury_rejected_when_non_admin_calls() {
 fn top_up_succeeds_when_identity_authorizes() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     let bond = client.top_up(&identity, &500_i128);
     assert_eq!(bond.bonded_amount, 1500_i128);
 }
@@ -292,7 +315,13 @@ fn top_up_rejected_when_stranger_calls() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
     let stranger = Address::generate(&env);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     client.top_up(&identity, &500_i128);
 }
 
@@ -305,7 +334,13 @@ fn top_up_rejected_when_stranger_calls() {
 fn extend_duration_succeeds_when_identity_authorizes() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     let bond = client.extend_duration(&identity, &3600_u64);
     assert_eq!(bond.bond_duration, 90000_u64);
 }
@@ -317,7 +352,13 @@ fn extend_duration_rejected_when_stranger_calls() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
     let stranger = Address::generate(&env);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     client.extend_duration(&identity, &3600_u64);
 }
 
@@ -331,7 +372,13 @@ fn request_withdrawal_succeeds_when_identity_authorizes() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
     // notice_period_duration = 0 for simplicity
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &true,
+        &0_u64,
+    );
     // Advance past timestamp 0 so withdrawal_requested_at records a non-zero value.
     env.ledger().with_mut(|l| l.timestamp = 1_000);
     let bond = client.request_withdrawal(&identity);
@@ -345,7 +392,13 @@ fn request_withdrawal_rejected_when_stranger_calls() {
     let (env, _admin, client) = setup();
     let identity = Address::generate(&env);
     let stranger = Address::generate(&env);
-    client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &0_u64);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &true,
+        &0_u64,
+    );
     client.request_withdrawal(&stranger);
 }
 
