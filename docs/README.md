@@ -66,7 +66,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [EVENTS.md](EVENTS.md) | Integrator / Indexer | Canonical event catalog with topics and payloads |
-| [event-indexing.md](event-indexing.md) | Indexer | Indexer architecture, cursor management, replay |
+| [event-indexing.md](event-indexing.md) | Backend Consumer / Indexer | Indexing guidance, idempotency patterns, versioning strategy, query patterns |
 | [EVENT_INDEXING_MIGRATION.md](EVENT_INDEXING_MIGRATION.md) | Operator | Migration guide for indexer schema changes |
 | [indexer-replay-contract.md](indexer-replay-contract.md) | Operator | Replay contract for backfilling |
 
