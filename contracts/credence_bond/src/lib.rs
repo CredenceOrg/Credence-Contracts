@@ -537,7 +537,7 @@ pub struct TierThresholds {
 }
 
 /// Maximum bond duration in seconds (365 days).
-pub(crate) const MAX_BOND_DURATION_SECONDS: u64 = 31_536_000;
+pub(crate) const MAX_BOND_DURATION_SECONDS: u64 = credence_math::SECONDS_PER_YEAR;
 /// Soroban ledger TTLs are expressed in ledgers; assume a 5s ledger cadence.
 const SECONDS_PER_LEDGER: u64 = 5;
 /// Keep instance-storage entries alive for the full maximum bond duration.
