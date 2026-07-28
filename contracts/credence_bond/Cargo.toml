@@ -16,6 +16,10 @@ autobenches = false
 autobins = false
 
 [[test]]
+name = "test_bond_pausable"
+path = "tests/test_bond_pausable.rs"
+
+[[test]]
 name = "proptest_tier"
 path = "tests/proptest_tier.rs"
 

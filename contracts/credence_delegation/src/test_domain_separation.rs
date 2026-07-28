@@ -8,8 +8,9 @@
 //! 3. A stale / replayed nonce is rejected after it has been consumed.
 //! 4. The nonce increments correctly after each delegated call.
 //! 5. Cross-method replay: a revoke payload cannot be reused as a delegate payload.
-//! 6. Cross-contract replay is prevented via contract_id validation (SIGNATURE_DOMAIN
-//!    constant is reserved for future payload-level domain binding).
+//! 6. Cross-contract replay is prevented via contract_id validation.
+//! 7. Field-value binding: altering any field in the payload (signature_domain,
+//!    scheme, ledger_number) must be detectable through contract-level checks.
 
 use super::*;
 use soroban_sdk::Env;
@@ -45,8 +46,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
-        ledger_number: 0,
-        signature_domain: String::from_str(&Env::default(), "CredenceDelegation"),
+        ledger_number: e.ledger().sequence(),
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 

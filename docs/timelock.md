@@ -37,6 +37,57 @@ Execution time boundaries are deterministic and inclusive across the full lifecy
 - **Inclusive Range**: An operation is executable on any ledger timestamp `now` satisfying `eta <= now <= expires_at`.
 - **Regression Suite**: Fully tested in `contracts/timelock/src/test_timelock.rs` covering all boundary conditions (`eta - 1`, `eta`, `eta + 1`, `expires_at - 1`, `expires_at`, `expires_at + 1`).
 
+## Event Ordering and State Machine
+
+Every operation moves through exactly one of two terminal paths. `Pending` is
+the only non-terminal status; `Executed` and `Cancelled` are permanent and
+cannot transition to any other status.
+
+```
+                    ┌────────────────────┐
+                    │       Pending       │◄── created by queue_operation
+                    └──────────┬──────────┘
+              eta <= now       │      admin calls
+              <= expires_at    │      cancel_operation
+                    │          │      (any time before execution)
+                    ▼          ▼
+          ┌──────────────┐ ┌──────────────┐
+          │   Executed   │ │  Cancelled   │
+          └──────────────┘ └──────────────┘
+             (terminal)        (terminal)
+```
+
+### Valid event sequences
+
+| # | Sequence | Notes |
+|---|----------|-------|
+| 1 | `operation_queued` → `operation_executed` | Normal path once `now` reaches `[eta, expires_at]`. |
+| 2 | `operation_queued` → `operation_cancelled` | Admin discards the operation before it executes. |
+
+`operation_queued` always precedes any other event for a given `op_id`,
+and exactly one of `operation_executed` or `operation_cancelled` may follow
+it — never both, and never more than once.
+
+### Invalid transitions
+
+These transitions are rejected by the contract and can never appear in the
+on-chain event log for a single `op_id`:
+
+| Attempted transition | Rejected by | Error |
+|-----------------------|-------------|-------|
+| `Executed` → `Executed` (double execution) | `execute_operation` status check | `ContractError::ProposalAlreadyExecuted` |
+| `Executed` → `Cancelled` | `cancel_operation` status check | `ContractError::ProposalAlreadyExecuted` |
+| `Cancelled` → `Executed` | `execute_operation` status check | `ContractError::ProposalAlreadyExecuted` |
+| `Cancelled` → `Cancelled` (double cancel) | `cancel_operation` status check | `ContractError::ProposalAlreadyExecuted` |
+| `Pending` → `Executed` before `eta` | `execute_operation` ETA check | `ContractError::TimelockNotReady` |
+| `Pending` → `Executed` after `expires_at` | `execute_operation` expiry check | `ContractError::SignatureExpired` |
+| Re-queueing an already-executed `op_hash` | `queue_operation` replay guard | `ContractError::ProposalAlreadyExecuted` |
+
+Both status checks in `execute_operation` and `cancel_operation` test for
+`op.status != OperationStatus::Pending`, so `Executed` and `Cancelled` are
+indistinguishable to a caller trying to act on them again — either terminal
+status surfaces the same `ProposalAlreadyExecuted` error.
+
 ## Function Reference
 
 ### `initialize(admin)`

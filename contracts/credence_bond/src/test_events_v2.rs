@@ -250,7 +250,13 @@ fn test_event_indexing_query_efficiency() {
         let identity = if i % 2 == 0 { &identity1 } else { &identity2 };
         timestamps.push(e.ledger().timestamp());
 
-        client.create_bond_with_rolling(identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+        client.create_bond_with_rolling(
+            identity,
+            &amount,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &false,
+            &0_u64,
+        );
 
         // Advance time for uniqueness
         let mut ledger_info = e.ledger().get();
@@ -333,7 +339,13 @@ fn test_event_schema_compatibility() {
     client.set_token(&admin, &token_addr);
 
     // Test that both old and new events are emitted for backward compatibility
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let events = e.events().all();
 
@@ -413,8 +425,7 @@ fn test_tier_changed_v2_event_on_create_bond() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
-                    == Symbol::new(&e, "tier_changed_v2")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "tier_changed_v2")
         })
         .collect();
 
@@ -436,10 +447,7 @@ fn test_tier_changed_v2_event_on_create_bond() {
         Symbol::from_val(&e, &v2_event.1.get(0).unwrap()),
         Symbol::new(&e, "tier_changed_v2")
     );
-    assert_eq!(
-        Address::from_val(&e, &v2_event.1.get(1).unwrap()),
-        identity
-    );
+    assert_eq!(Address::from_val(&e, &v2_event.1.get(1).unwrap()), identity);
     let v2_data = <(crate::BondTier, crate::BondTier, u64)>::from_val(&e, &v2_event.2);
     assert!(
         core::mem::discriminant(&v2_data.0) == core::mem::discriminant(&crate::BondTier::Bronze)
@@ -507,8 +515,7 @@ fn test_bond_slashed_v2_pays_out_legacy_v1_and_indexed_v2() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
-                    == Symbol::new(&e, "bond_slashed_v2")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "bond_slashed_v2")
         })
         .collect();
 
@@ -529,8 +536,14 @@ fn test_bond_slashed_v2_pays_out_legacy_v1_and_indexed_v2() {
 
     assert_eq!(topic_ident, identity);
     assert_eq!(topic_amount, slash_amount);
-    assert_eq!(topic_total, slash_amount, "cumulative total after a single slash == per-event delta");
-    assert!(topic_ts >= ts_before, "v2 slash timestamp must reflect ledger time");
+    assert_eq!(
+        topic_total, slash_amount,
+        "cumulative total after a single slash == per-event delta"
+    );
+    assert!(
+        topic_ts >= ts_before,
+        "v2 slash timestamp must reflect ledger time"
+    );
     assert_eq!(topic_admin, admin);
 
     // Data: (reason: String, is_full_slash: bool)
@@ -610,7 +623,10 @@ fn test_bond_withdrawn_v2_flags_early_withdrawal_and_penalty() {
     // Data: (is_early: bool, penalty_amount: i128)
     let (is_early, penalty) = <(bool, i128)>::from_val(&e, &ev.2);
     assert!(is_early, "withdraw_early must flag is_early=true");
-    assert_eq!(penalty, expected_penalty, "v2 penalty must match calculate_penalty");
+    assert_eq!(
+        penalty, expected_penalty,
+        "v2 penalty must match calculate_penalty"
+    );
 }
 
 #[test]
@@ -637,13 +653,7 @@ fn test_bond_liquidated_v2_payload_after_full_slash() {
     let slash_treasury = Address::generate(&e);
     client.set_slash_treasury(&admin, &slash_treasury);
 
-    client.create_bond_with_rolling(
-        &identity,
-        &1_000_i128,
-        &86_400_u64,
-        &false,
-        &0_u64,
-    );
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     client.slash(&admin, &1_000_i128); // fully slash
     let ts_before = e.ledger().timestamp();
     client.liquidate(&admin);
@@ -653,8 +663,7 @@ fn test_bond_liquidated_v2_payload_after_full_slash() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
-                    == Symbol::new(&e, "bond_liquidated")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "bond_liquidated")
         })
         .collect();
 
@@ -667,8 +676,7 @@ fn test_bond_liquidated_v2_payload_after_full_slash() {
     assert_eq!(topic_ident, identity);
 
     // Data: (residual, reason Symbol, timestamp, admin)
-    let (residual, reason, ts, admin_addr) =
-        <(i128, Symbol, u64, Address)>::from_val(&e, &ev.2);
+    let (residual, reason, ts, admin_addr) = <(i128, Symbol, u64, Address)>::from_val(&e, &ev.2);
     assert_eq!(residual, 0, "fully-slashed → residual must be 0");
     assert_eq!(reason, Symbol::new(&e, "fully_slashed"));
     assert!(ts >= ts_before);
@@ -697,8 +705,7 @@ fn test_param_updated_v2_emits_keyed_topics_for_governance_setters() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
-                    == Symbol::new(&e, "param_updated")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "param_updated")
         })
         .collect();
 
@@ -767,4 +774,3 @@ fn test_attestation_added_emits_subject_in_topic_and_id_in_data() {
     assert_eq!(who, attester);
     assert_eq!(data_str, payload);
 }
-
