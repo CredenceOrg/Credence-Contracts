@@ -137,6 +137,8 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     for i in 0..params_list.len() {
         let _params = params_list.get(i).unwrap();
         let bond_key = DataKey::Bond; // Note: Current implementation uses single bond
+        // SIMPLIFICATION: See docs/known-simplifications.md § 1.1 (Single-Bond-Per-Contract-Instance)
+        // and § 4.1 (Batch Transfer Interface Not Fully Implemented)
 
         // In a multi-identity system, you'd check per-identity:
         // let bond_key = DataKey::IdentityBond(params.identity.clone());

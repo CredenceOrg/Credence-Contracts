@@ -144,6 +144,7 @@ pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000; // 1 * 10^18 (1 tok
 
 #[cfg(test)]
 /// Minimum bond amount in tests. Set to 1000 to match legacy tests.
+/// See docs/known-simplifications.md § 4.2 for production vs test bounds.
 pub const MIN_BOND_AMOUNT: i128 = 1_000;
 
 #[cfg(not(test))]
@@ -153,6 +154,7 @@ pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000; // 100M *
 
 #[cfg(test)]
 /// Maximum bond amount in tests. Set to 100_000_000_000_000 to match legacy tests.
+/// See docs/known-simplifications.md § 4.3 for production vs test bounds.
 pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000;
 
 /// Validates that a bond amount is within acceptable bounds.

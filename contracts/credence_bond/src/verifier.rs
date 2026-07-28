@@ -52,7 +52,8 @@ pub struct VerifierInfo {
 }
 
 /// @notice Returns the minimum required verifier stake.
-/// @dev Defaults to 0 if unset.
+/// @dev Defaults to 0 if unset. See docs/known-simplifications.md § 6.3.
+/// Admin must call set_min_stake() before deployment to enforce a real minimum.
 #[must_use]
 pub fn get_min_stake(e: &Env) -> i128 {
     e.storage().instance().get(&min_stake_key(e)).unwrap_or(0)
