@@ -356,5 +356,4 @@ This document consolidates known simplifications, stubs, and limitations across 
 - [docs/emergency.md](emergency.md) — Emergency mode and governance
 - [docs/token-integration.md](token-integration.md) — Token validation and transfer guards
 - [docs/crates.md](crates.md) — Crate dependency graph and responsibilities
-- [docs/event-indexing.md](event-indexing.md) — Indexing guidance for backend consumers
 
