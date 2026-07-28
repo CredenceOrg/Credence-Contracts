@@ -2945,3 +2945,9 @@ mod test_grace_window;
 /// Tests for the batch_transfer entrypoint (issue #917).
 #[cfg(test)]
 mod test_batch_transfer;
+
+#[cfg(test)]
+mod test_create_bond;
+
+#[cfg(test)]
+mod test_increase_bond;

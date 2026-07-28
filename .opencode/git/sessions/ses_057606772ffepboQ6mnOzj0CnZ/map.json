@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 1,
+  "sessionId": "ses_057606772ffepboQ6mnOzj0CnZ",
+  "repoId": "repo_6149ed72-ee8c-4210-81ad-dfbcfa01d2ba",
+  "baselineCommit": "1658b6487806d2e576f71bf051af25151077fd63",
+  "currentBaseCommit": "eda241db51611294a324742570ebe872e4074f2f",
+  "entries": [
+    {
+      "turnKey": "local-1785242113777-3",
+      "tmpKey": "tmp:1785242113784-yi4klhbz",
+      "assistantMsgId": "msg_fa8bc3957001qy3WlHxzq0HIxR",
+      "messageIndex": 2,
+      "commitHash": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+      "touchedFiles": [
+        "Cargo.lock",
+        "contracts/credence_bond/src/early_exit_penalty.rs",
+        "contracts/credence_bond/src/emergency_drain.rs",
+        "contracts/credence_bond/src/idempotency.rs",
+        "contracts/credence_bond/src/lib.rs",
+        "contracts/credence_bond/src/test_access_control.rs",
+        "contracts/credence_bond/src/test_auth.rs",
+        "contracts/credence_bond/src/test_chaos.rs",
+        "contracts/credence_bond/src/test_claim_expiry_sweep.rs",
+        "contracts/credence_bond/src/test_reentrancy.rs",
+        "contracts/credence_bond/src/test_slashing.rs",
+        "contracts/credence_bond/src/test_withdraw_bond.rs",
+        "contracts/credence_errors/src/lib.rs"
+      ],
+      "opType": "multi",
+      "timestamp": 1785242346449,
+      "finalAssistantMsgId": "msg_fa8bc3957001qy3WlHxzq0HIxR"
+    },
+    {
+      "turnKey": "local-1785242426046-5",
+      "tmpKey": "tmp:1785242426049-pwc8kq1v",
+      "assistantMsgId": "msg_fa8c3dd70001uoxSFPVmDedqaQ",
+      "messageIndex": 9,
+      "commitHash": "eda241db51611294a324742570ebe872e4074f2f",
+      "touchedFiles": [
+        "contracts/credence_bond/src/lib.rs",
+        "contracts/credence_bond/src/test_create_bond.rs",
+        "contracts/credence_bond/src/test_increase_bond.rs",
+        "contracts/credence_bond/src/test_withdraw_bond.rs"
+      ],
+      "opType": "multi",
+      "timestamp": 1785242849426,
+      "finalAssistantMsgId": "msg_fa8c3dd70001uoxSFPVmDedqaQ"
+    }
+  ],
+  "tmpToCommit": {
+    "tmp:1785242113784-yi4klhbz": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "tmp:1785242426049-pwc8kq1v": "eda241db51611294a324742570ebe872e4074f2f"
+  },
+  "tmpToBaseCommit": {
+    "tmp:1785242113784-yi4klhbz": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "tmp:1785242426049-pwc8kq1v": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b"
+  },
+  "msgToCommit": {
+    "msg_fa89f9910001VIcn2jSPZ4LP2q": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "msg_fa8b75817001Nbt4ABSXgtAfh7": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "msg_fa8bc3957001qy3WlHxzq0HIxR": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "msg_fa8b8d7b2001EAHaPq5Mz2Qcx1": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "msg_fa8c3dd70001uoxSFPVmDedqaQ": "eda241db51611294a324742570ebe872e4074f2f",
+    "msg_fa8bd9b26001s4fncKkFCweL43": "eda241db51611294a324742570ebe872e4074f2f"
+  },
+  "msgToBaseCommit": {
+    "msg_fa89f9910001VIcn2jSPZ4LP2q": "1658b6487806d2e576f71bf051af25151077fd63",
+    "msg_fa8b75817001Nbt4ABSXgtAfh7": "1658b6487806d2e576f71bf051af25151077fd63",
+    "msg_fa8bc3957001qy3WlHxzq0HIxR": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "msg_fa8b8d7b2001EAHaPq5Mz2Qcx1": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "msg_fa8c3dd70001uoxSFPVmDedqaQ": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "msg_fa8bd9b26001s4fncKkFCweL43": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b"
+  },
+  "continuation": {
+    "currentOwnerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2",
+    "predecessorOwnerMsgId": "msg_fa8c3dd70001uoxSFPVmDedqaQ",
+    "continuationSequence": 5,
+    "lifecycleState": "watching",
+    "postFinalWatchEntries": [
+      {
+        "filePath": "Cargo.lock",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/early_exit_penalty.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/emergency_drain.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/idempotency.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/lib.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_access_control.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_auth.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_chaos.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_claim_expiry_sweep.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_create_bond.rs",
+        "observedAt": 1785242849658,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_increase_bond.rs",
+        "observedAt": 1785242849658,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_reentrancy.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_slashing.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_bond/src/test_withdraw_bond.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      },
+      {
+        "filePath": "contracts/credence_errors/src/lib.rs",
+        "observedAt": 1785242346607,
+        "ownerMsgId": "msg_fa8c4e13c001Xo0hg0f1a51Jc2"
+      }
+    ]
+  },
+  "headCommit": "eda241db51611294a324742570ebe872e4074f2f"
+}
