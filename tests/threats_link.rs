@@ -13,6 +13,7 @@
 use regex::Regex;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 /// Negative test for issue #713: the dynamic-string (format! / write! /
 /// writeln! / format_args!) lint must be wired up in production-mode on

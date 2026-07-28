@@ -78,6 +78,28 @@ fn test_tier_unchanged_within_threshold() {
 }
 
 #[test]
+fn test_exact_threshold_transition_after_slashing_stays_stable() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (client, admin, identity, ..) = setup(&e);
+
+    client.create_bond_with_rolling(
+        &identity,
+        &TIER_SILVER_MAX,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    assert_eq!(client.get_tier(), BondTier::Gold);
+
+    client.slash(&admin, &(TIER_SILVER_MAX - TIER_BRONZE_MAX));
+
+    let state = client.get_identity_state();
+    assert_eq!(state.slashed_amount, TIER_SILVER_MAX - TIER_BRONZE_MAX);
+    assert_eq!(client.get_tier(), BondTier::Silver);
+}
+
+#[test]
 fn test_admin_set_tier_thresholds() {
     let e = Env::default();
     e.mock_all_auths();

@@ -26,6 +26,11 @@ use ethnum::U256;
 use soroban_sdk;
 
 pub mod rate;
+pub mod time;
+
+pub use time::{
+    SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
+};
 
 /// Fixed-point denominator for basis-point calculations.
 pub const BPS_DENOMINATOR: i128 = 10_000;
@@ -81,8 +86,7 @@ pub fn mul_u64(a: u64, b: u64, msg: &'static str) -> u64 {
 #[inline]
 #[must_use]
 pub fn floor_to_day(ts: u64) -> u64 {
-    const SECS_PER_DAY: u64 = 86_400;
-    (ts / SECS_PER_DAY) * SECS_PER_DAY
+    (ts / SECONDS_PER_DAY) * SECONDS_PER_DAY
 }
 
 /// Checked `i128` addition with a stable panic message.
@@ -1103,7 +1107,7 @@ pub struct Timestamp;
 
 impl Timestamp {
     /// The number of seconds in a standard UTC day (24 hours).
-    pub const SECONDS_PER_DAY: u64 = 86_400;
+    pub const SECONDS_PER_DAY: u64 = crate::time::SECONDS_PER_DAY;
 
     /// Truncates a timestamp (in seconds) to the start of its UTC day.
     #[inline]

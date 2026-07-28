@@ -87,7 +87,13 @@ mod tests {
         let admin = Address::generate(e);
         let identity = Address::generate(e);
         client.initialize(&admin, &None);
-        client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+        client.create_bond(
+            &identity,
+            &1000_i128,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &false,
+            &0_u64,
+        );
         (client, admin, identity)
     }
 
@@ -333,7 +339,13 @@ mod tests {
 
         client.initialize(&admin, &None);
         // Rolling bond: 24 h duration, 1 h notice period.
-        client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &3600_u64);
+        client.create_bond(
+            &identity,
+            &1000_i128,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &true,
+            &3600_u64,
+        );
 
         // Request withdrawal at t=1000; earliest_withdraw = 1000 + 3600 = 4600.
         client.request_withdrawal(&identity);

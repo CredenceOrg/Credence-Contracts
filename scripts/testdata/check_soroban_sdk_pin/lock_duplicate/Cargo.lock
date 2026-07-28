@@ -1,0 +1,13 @@
+version = 4
+
+[[package]]
+name = "soroban-sdk"
+version = "22.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "abc123"
+
+[[package]]
+name = "soroban-sdk"
+version = "22.0.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "def456"
