@@ -181,15 +181,22 @@ fn test_boundary_full_lifecycle_window_sweep() {
     let op_2 = client.get_operation(&id_2).unwrap();
     env.ledger().with_mut(|li| li.timestamp = op_2.eta);
     client.execute_operation(&id_2);
-    assert_eq!(client.get_operation(&id_2).unwrap().status, OperationStatus::Executed);
+    assert_eq!(
+        client.get_operation(&id_2).unwrap().status,
+        OperationStatus::Executed
+    );
 
     // 3. Middle of grace period -> Ok
     let hash_3 = BytesN::from_array(&env, &[23; 32]);
     let id_3 = client.queue_operation(&admin, &hash_3, &delay);
     let op_3 = client.get_operation(&id_3).unwrap();
-    env.ledger().with_mut(|li| li.timestamp = op_3.eta + GRACE_PERIOD / 2);
+    env.ledger()
+        .with_mut(|li| li.timestamp = op_3.eta + GRACE_PERIOD / 2);
     client.execute_operation(&id_3);
-    assert_eq!(client.get_operation(&id_3).unwrap().status, OperationStatus::Executed);
+    assert_eq!(
+        client.get_operation(&id_3).unwrap().status,
+        OperationStatus::Executed
+    );
 
     // 4. Exactly at expires_at -> Ok
     let hash_4 = BytesN::from_array(&env, &[24; 32]);
@@ -197,13 +204,17 @@ fn test_boundary_full_lifecycle_window_sweep() {
     let op_4 = client.get_operation(&id_4).unwrap();
     env.ledger().with_mut(|li| li.timestamp = op_4.expires_at);
     client.execute_operation(&id_4);
-    assert_eq!(client.get_operation(&id_4).unwrap().status, OperationStatus::Executed);
+    assert_eq!(
+        client.get_operation(&id_4).unwrap().status,
+        OperationStatus::Executed
+    );
 
     // 5. One second after expires_at -> SignatureExpired
     let hash_5 = BytesN::from_array(&env, &[25; 32]);
     let id_5 = client.queue_operation(&admin, &hash_5, &delay);
     let op_5 = client.get_operation(&id_5).unwrap();
-    env.ledger().with_mut(|li| li.timestamp = op_5.expires_at + 1);
+    env.ledger()
+        .with_mut(|li| li.timestamp = op_5.expires_at + 1);
     assert_eq!(
         client.try_execute_operation(&id_5).unwrap_err().unwrap(),
         ContractError::SignatureExpired
@@ -223,7 +234,10 @@ fn test_boundary_cancel_and_execute_prevention() {
     // Cancel before ETA
     env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
     client.cancel_operation(&admin, &op_id);
-    assert_eq!(client.get_operation(&op_id).unwrap().status, OperationStatus::Cancelled);
+    assert_eq!(
+        client.get_operation(&op_id).unwrap().status,
+        OperationStatus::Cancelled
+    );
 
     // Attempt execute at ETA must fail with ProposalAlreadyExecuted (cancelled ops cannot be executed)
     env.ledger().with_mut(|li| li.timestamp = op.eta);

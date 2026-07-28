@@ -11,6 +11,9 @@ members = ["contracts/credence_bond", "contracts/dispute_resolution", "contracts
 version = "0.1.0"
 edition = "2021"
 
+[dev-dependencies]
+regex = "1.11.1"
+
 [profile.release]
 opt-level = "z"
 lto = "fat"

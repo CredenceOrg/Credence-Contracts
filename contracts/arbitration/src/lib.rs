@@ -802,15 +802,30 @@ impl CredenceArbitration {
         let registry: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::ArbitratorRegistry)
-            .unwrap_or_else(|| Vec::new(&e));
-        for addr in registry.iter() {
-            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
-            e.storage().instance().remove(&voter_casted_key);
-        }
-        e.events().publish((Symbol::new(&e, "dispute_reopened"), dispute_id), from as u32);
-        e.events().publish((Symbol::new(&e, "status_transition"), dispute_id), (from as u32, DisputeStatus::Voting as u32));
-        Ok(())
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized));
+        admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for ArbitrationContract {
+    fn get_admin(e: Env) -> Address {
+        e.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized))
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }
 
