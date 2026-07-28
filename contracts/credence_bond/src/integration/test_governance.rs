@@ -59,7 +59,7 @@ fn test_governance_multisig_approval_and_execution() {
     let e = Env::default();
     let (client, admin, identity, g1, g2, _g3) = setup(&e);
 
-    let before = client.get_identity_state();
+    let before = client.get_identity_state(&identity);
     assert_eq!(before.identity, identity);
     assert_eq!(before.bonded_amount, 1_000);
     assert_eq!(before.slashed_amount, 0);
@@ -138,7 +138,7 @@ fn test_governance_multi_actor_delegation_flow() {
     let bond = client.execute_slash_with_governance(&admin, &proposal_id);
     assert_eq!(bond.slashed_amount, 125);
 
-    let final_state = client.get_identity_state();
+    let final_state = client.get_identity_state(&identity);
     assert_eq!(final_state.bonded_amount, 1_000);
     assert_eq!(final_state.slashed_amount, 125);
 }

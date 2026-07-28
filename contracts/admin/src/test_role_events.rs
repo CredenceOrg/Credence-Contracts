@@ -58,12 +58,7 @@ fn with_admin(env: &Env, contract: &Address, super_admin: &Address) -> Address {
 fn with_operator(env: &Env, contract: &Address, admin: &Address) -> Address {
     let op = Address::generate(env);
     env.as_contract(contract, || {
-        AdminContract::add_admin(
-            env.clone(),
-            admin.clone(),
-            op.clone(),
-            AdminRole::Operator,
-        );
+        AdminContract::add_admin(env.clone(), admin.clone(), op.clone(), AdminRole::Operator);
     });
     op
 }
@@ -71,10 +66,7 @@ fn with_operator(env: &Env, contract: &Address, admin: &Address) -> Address {
 // ── Event-scanning helpers ────────────────────────────────────────────────────
 
 /// Return the last event emitted whose first topic matches `name`.
-fn find_last_event_by_topic(
-    env: &Env,
-    name: &str,
-) -> Option<(SorobanVec<Val>, Val)> {
+fn find_last_event_by_topic(env: &Env, name: &str) -> Option<(SorobanVec<Val>, Val)> {
     let sym = Symbol::new(env, name);
     env.events()
         .all()
@@ -93,8 +85,8 @@ fn find_last_event_by_topic(
 /// Assert a `ROLE_ASSIGNED` event for `actor` was emitted with the correct
 /// `role` and `caller` in the data tuple.
 fn assert_role_assigned(env: &Env, actor: &Address, role: AdminRole, caller: &Address) {
-    let (topics, data) = find_last_event_by_topic(env, "ROLE_ASSIGNED")
-        .expect("expected a ROLE_ASSIGNED event");
+    let (topics, data) =
+        find_last_event_by_topic(env, "ROLE_ASSIGNED").expect("expected a ROLE_ASSIGNED event");
 
     // topic[0] = Symbol("ROLE_ASSIGNED")
     let t0: Symbol = topics
@@ -123,8 +115,8 @@ fn assert_role_assigned(env: &Env, actor: &Address, role: AdminRole, caller: &Ad
 /// Assert a `ROLE_REVOKED` event for `actor` was emitted with the correct
 /// `caller` in the data tuple.
 fn assert_role_revoked(env: &Env, actor: &Address, caller: &Address) {
-    let (topics, data) = find_last_event_by_topic(env, "ROLE_REVOKED")
-        .expect("expected a ROLE_REVOKED event");
+    let (topics, data) =
+        find_last_event_by_topic(env, "ROLE_REVOKED").expect("expected a ROLE_REVOKED event");
 
     // topic[0] = Symbol("ROLE_REVOKED")
     let t0: Symbol = topics
@@ -143,9 +135,7 @@ fn assert_role_revoked(env: &Env, actor: &Address, caller: &Address) {
     assert_eq!(&t1, actor);
 
     // data = (caller_address,)  — a 1-tuple
-    let (emitted_caller,): (Address,) = data
-        .try_into_val(env)
-        .expect("data should be (Address,)");
+    let (emitted_caller,): (Address,) = data.try_into_val(env).expect("data should be (Address,)");
     assert_eq!(&emitted_caller, caller);
 }
 
@@ -224,7 +214,11 @@ fn add_admin_emits_exactly_one_role_assigned_event() {
     });
     let after = count_role_events(&env);
 
-    assert_eq!(after - before, 1, "add_admin must emit exactly 1 role event");
+    assert_eq!(
+        after - before,
+        1,
+        "add_admin must emit exactly 1 role event"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -270,7 +264,11 @@ fn remove_admin_emits_exactly_one_role_revoked_event() {
     });
     let after = count_role_events(&env);
 
-    assert_eq!(after - before, 1, "remove_admin must emit exactly 1 role event");
+    assert_eq!(
+        after - before,
+        1,
+        "remove_admin must emit exactly 1 role event"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -315,7 +313,11 @@ fn update_admin_role_emits_exactly_one_role_assigned_event() {
     });
     let after = count_role_events(&env);
 
-    assert_eq!(after - before, 1, "update_admin_role must emit exactly 1 role event");
+    assert_eq!(
+        after - before,
+        1,
+        "update_admin_role must emit exactly 1 role event"
+    );
 }
 
 #[test]
@@ -371,7 +373,11 @@ fn deactivate_admin_emits_exactly_one_role_revoked_event() {
     });
     let after = count_role_events(&env);
 
-    assert_eq!(after - before, 1, "deactivate_admin must emit exactly 1 role event");
+    assert_eq!(
+        after - before,
+        1,
+        "deactivate_admin must emit exactly 1 role event"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -411,7 +417,11 @@ fn reactivate_admin_emits_exactly_one_role_assigned_event() {
     });
     let after = count_role_events(&env);
 
-    assert_eq!(after - before, 1, "reactivate_admin must emit exactly 1 role event");
+    assert_eq!(
+        after - before,
+        1,
+        "reactivate_admin must emit exactly 1 role event"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -472,17 +482,16 @@ fn admin_cannot_add_another_admin_emits_no_role_event() {
     // Admin (role=2) tries to assign Admin (requires SuperAdmin=3) — must panic.
     let panicked = expect_panic(std::panic::AssertUnwindSafe(|| {
         env.as_contract(&contract, || {
-            AdminContract::add_admin(
-                env.clone(),
-                admin.clone(),
-                target.clone(),
-                AdminRole::Admin,
-            );
+            AdminContract::add_admin(env.clone(), admin.clone(), target.clone(), AdminRole::Admin);
         });
     }));
 
     assert!(panicked, "Admin cannot assign Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 #[test]
@@ -507,7 +516,11 @@ fn operator_cannot_add_operator_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot add anyone — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 // ── 6b. Unauthorized remove_admin ────────────────────────────────────────
@@ -528,7 +541,11 @@ fn operator_cannot_remove_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot remove Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 #[test]
@@ -548,7 +565,11 @@ fn admin_cannot_remove_peer_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot remove peer Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 #[test]
@@ -568,7 +589,11 @@ fn non_admin_cannot_remove_operator_emits_no_role_event() {
     }));
 
     assert!(panicked, "Stranger cannot remove Operator — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 // ── 6c. Unauthorized update_admin_role ────────────────────────────────────
@@ -595,7 +620,11 @@ fn admin_cannot_promote_to_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot promote to Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 #[test]
@@ -620,7 +649,11 @@ fn operator_cannot_change_any_role_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot change roles — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 // ── 6d. Unauthorized deactivate_admin ─────────────────────────────────────
@@ -641,7 +674,11 @@ fn operator_cannot_deactivate_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot deactivate Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 #[test]
@@ -660,7 +697,11 @@ fn admin_cannot_deactivate_peer_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Admin cannot deactivate peer Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 // ── 6e. Unauthorized reactivate_admin ─────────────────────────────────────
@@ -686,7 +727,11 @@ fn operator_cannot_reactivate_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Operator cannot reactivate Admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 #[test]
@@ -709,7 +754,11 @@ fn stranger_cannot_reactivate_admin_emits_no_role_event() {
     }));
 
     assert!(panicked, "Stranger cannot reactivate admin — must panic");
-    assert_eq!(count_role_events(&env), before, "no role event on rejection");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no role event on rejection"
+    );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -736,7 +785,11 @@ fn adding_existing_admin_panics_and_emits_no_extra_role_event() {
     }));
 
     assert!(panicked, "duplicate add must panic");
-    assert_eq!(count_role_events(&env), before, "no extra role event on duplicate add");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no extra role event on duplicate add"
+    );
 }
 
 #[test]
@@ -758,7 +811,11 @@ fn deactivating_already_inactive_admin_panics_and_emits_no_extra_role_event() {
     }));
 
     assert!(panicked, "double deactivate must panic");
-    assert_eq!(count_role_events(&env), before, "no extra role event on double deactivate");
+    assert_eq!(
+        count_role_events(&env),
+        before,
+        "no extra role event on double deactivate"
+    );
 }
 
 #[test]

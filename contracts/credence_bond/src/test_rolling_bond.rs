@@ -57,7 +57,7 @@ fn test_renew_if_rolling_advances_period() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup(&e);
     client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &10_u64);
-    let bond = client.get_identity_state();
+    let bond = client.get_identity_state(&identity);
     assert_eq!(bond.bond_start, 1000);
 
     e.ledger().with_mut(|li| li.timestamp = 87401);

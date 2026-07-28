@@ -3,12 +3,16 @@ use soroban_sdk::contracterror;
 /// Canonical dispute status machine.
 ///
 /// Valid transitions:
-///   Open      → Voting    (voting period begins — implicit at creation)
-///   Voting    → Resolving (voting period ends, resolve_dispute called)
-///   Voting    → Cancelled (cancel_dispute called by creator or admin)
-///   Resolving → Resolved  (outcome tallied and stored, outcome != 0)
-///   Resolving → Tied      (votes tallied with tie, outcome = 0 is reserved)
-///   Open      → Cancelled (cancel before voting starts)
+///   Open      → Voting      (voting period begins — implicit at creation)
+///   Voting    → Resolving   (voting period ends, resolve_dispute called)
+///   Voting    → Cancelled   (cancel_dispute called by creator or admin)
+///   Resolving → Resolved    (outcome tallied and stored, outcome != 0)
+///   Resolving → Tied        (votes tallied with tie, outcome = 0 is reserved)
+///   Open      → Cancelled   (cancel before voting starts)
+///   Resolved  → Archived    (admin archives a finalized dispute)
+///   Tied      → Archived    (admin archives a tied dispute)
+///   Cancelled → Archived    (admin archives a cancelled dispute)
+///   Archived  → Voting      (admin reopens an archived dispute for new voting)
 ///
 /// Tied state indicates the voting outcome was ambiguous (two or more outcomes
 /// tied for the highest weight). This is distinct from a definite ruling and must
@@ -26,6 +30,9 @@ pub enum DisputeStatus {
     /// Vote resulted in a tie or no clear winner.
     /// outcome field will be 0 in this state.
     Tied = 5,
+    /// Dispute has been finalized and archived by an admin.
+    /// Archived disputes can be reopened by an admin via reopen_dispute().
+    Archived = 6,
 }
 
 #[contracterror]
@@ -50,6 +57,8 @@ pub enum ArbitrationError {
     /// Dispute is in an active state (Open, Voting, or Resolving) and the
     /// requested operation requires an inactive state (Resolved, Cancelled, or Tied).
     DisputeActive = 16,
+    /// A creator already has an unresolved dispute in progress and cannot open another.
+    OngoingDispute = 17,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -62,6 +71,10 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
             | (DisputeStatus::Voting, DisputeStatus::Cancelled)
             | (DisputeStatus::Resolving, DisputeStatus::Resolved)
             | (DisputeStatus::Resolving, DisputeStatus::Tied)
+            | (DisputeStatus::Resolved, DisputeStatus::Archived)
+            | (DisputeStatus::Tied, DisputeStatus::Archived)
+            | (DisputeStatus::Cancelled, DisputeStatus::Archived)
+            | (DisputeStatus::Archived, DisputeStatus::Voting)
     );
     if valid {
         Ok(())

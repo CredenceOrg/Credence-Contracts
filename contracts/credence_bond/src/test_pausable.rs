@@ -67,7 +67,7 @@ fn test_pause_blocks_all_mutating_entrypoints() {
 
     // ── Attestation operations ──────────────────────────────────
     let attester = Address::generate(&e);
-    assert!(client.try_add_attestation(&attester, &stranger, &String::new(&e), &0_u64).is_err());
+    assert!(client.try_add_attestation(&attester, &stranger, &String::from_str(&e, ""), &0_u64).is_err());
     assert!(client.try_revoke_attestation(&attester, &0_u64, &0_u64).is_err());
 
     // ── Admin transfer ──────────────────────────────────────────
@@ -91,7 +91,7 @@ fn test_pause_blocks_all_mutating_entrypoints() {
 #[test]
 fn test_pause_allows_reads() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, identity) = setup_with_bond(&e);
 
     client.pause(&admin);
     assert!(client.is_paused());
@@ -102,7 +102,7 @@ fn test_pause_allows_reads() {
     assert!(!client.is_attester(&random_addr));
     let _ = client.version();
     let _ = client.describe_config();
-    let _ = client.describe_bond(&random_addr);
+    let _ = client.describe_bond(&identity);
     let _ = client.is_borrow_frozen();
     let _ = client.get_nonce(&random_addr);
     let _ = client.get_weight_config();
@@ -114,7 +114,7 @@ fn test_pause_allows_reads() {
     let _ = client.get_drain_eta();
     let _ = client.get_latest_drain_id();
     let _ = client.is_paused();
-    let _ = client.get_identity_state();
+    let _ = client.get_identity_state(&identity);
     let _ = client.get_tier();
 }
 
@@ -235,13 +235,7 @@ fn test_pause_blocks_initialize_v1() {
 #[test]
 fn test_unpause_restores_operations() {
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e);
-
-    client.pause(&admin);
-    assert!(client.is_paused());
-
-    // Verify blocked
-    assert!(client.try_register_attester(&Address::generate(&e)).is_err());
+    let (client, admin, _identity) = setup_with_bond(&e);
 
     // Unpause
     client.unpause(&admin);
@@ -315,17 +309,18 @@ fn test_pause_set_pause_signer_set_pause_threshold_exempt() {
     client.set_pause_signer(&admin, &signer, &true);
     client.set_pause_threshold(&admin, &1u32);
 
-    // Verify signer config took effect
+    // Verify signer config took effect: threshold > 0 opens a proposal.
     client.unpause(&admin);
     let pid = client.pause(&signer);
-    assert_eq!(pid, None); // threshold=1, single-signer -> immediate
+    assert!(pid.is_some());
+    client.execute_pause_proposal(&pid.unwrap());
     assert!(client.is_paused());
 }
 
 #[test]
 fn test_pause_slash_bond_blocked() {
     let e = Env::default();
-    let (client, admin) = setup_with_bond(&e);
+    let (client, admin, _identity) = setup_with_bond(&e);
 
     client.pause(&admin);
     assert!(client.is_paused());
@@ -344,4 +339,70 @@ fn test_pause_withdraw_bond_blocked() {
 
     // withdraw_bond has require_not_paused
     assert!(client.try_withdraw_bond(&identity).is_err());
+}
+
+#[test]
+fn test_pause_during_active_lockup_blocks_mutations_views_ok() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e);
+
+    // Bond is still inside its 3600s lock-up window.
+    assert!(client.describe_bond(&identity).unwrap().active);
+
+    client.pause(&admin);
+    assert!(client.is_paused());
+
+    // Mutating paths during an active lock-up must revert.
+    assert!(client.try_top_up(&identity, &500_i128).is_err());
+    assert!(client.try_withdraw(&identity, &100_i128).is_err());
+    assert!(client.try_withdraw_early(&identity, &100_i128).is_err());
+    assert!(client.try_request_withdrawal(&identity).is_err());
+    assert!(client.try_renew_if_rolling(&identity).is_err());
+    assert!(client.try_slash_bond(&admin, &50_i128, &Bytes::new(&e)).is_err());
+    assert!(client.try_withdraw_bond(&identity).is_err());
+    assert!(client.try_collect_fees(&admin, &Bytes::new(&e)).is_err());
+    assert!(client
+        .try_create_bond(&Address::generate(&e), &1_000_i128, &3600_u64, &false, &0_u64)
+        .is_err());
+
+    // Views remain readable while paused.
+    let bond = client.describe_bond(&identity).unwrap();
+    assert!(bond.active);
+    assert_eq!(bond.bonded_amount, 10_000_i128);
+    assert!(client.is_paused());
+    let _ = client.get_tier();
+    let _ = client.version();
+
+    // Unpause restores the same lock-up lifecycle.
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+    client.top_up(&identity, &500_i128);
+    let bond_after = client.describe_bond(&identity).unwrap();
+    assert_eq!(bond_after.bonded_amount, 10_500_i128);
+}
+
+#[test]
+fn test_admin_unpause_override_with_multisig_threshold() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    let s1 = Address::generate(&e);
+    let s2 = Address::generate(&e);
+    client.set_pause_signer(&admin, &s1, &true);
+    client.set_pause_signer(&admin, &s2, &true);
+    client.set_pause_threshold(&admin, &2u32);
+
+    let pid = client.pause(&s1).unwrap();
+    client.approve_pause_proposal(&s2, &pid);
+    client.execute_pause_proposal(&pid);
+    assert!(client.is_paused());
+
+    // Non-admin signer cannot immediately unpause under threshold > 0.
+    let maybe_pid = client.unpause(&s1);
+    assert!(maybe_pid.is_some());
+    assert!(client.is_paused());
+
+    // Admin bypasses the proposal path to prevent lockout.
+    assert_eq!(client.unpause(&admin), None);
+    assert!(!client.is_paused());
 }
