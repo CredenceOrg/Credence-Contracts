@@ -269,13 +269,13 @@ fn test_increase_bond_does_not_clear_slashed_amount() {
 
     client.create_bond(&identity, &2_000_i128, &86_400_u64, &false, &0_u64);
     test_helpers::advance_ledger_sequence(&e);
-    client.slash(&admin, &500);
+    client.slash(&admin, &identity, &500);
 
-    let before = client.get_identity_state();
+    let before = client.get_identity_state(&identity);
     assert_eq!(before.slashed_amount, 500);
 
     client.top_up(&identity, &1_000_i128);
-    let after = client.get_identity_state();
+    let after = client.get_identity_state(&identity);
     assert_eq!(
         after.slashed_amount, 500,
         "top-up must not clear slashed_amount"

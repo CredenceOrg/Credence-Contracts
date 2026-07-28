@@ -282,41 +282,6 @@ pub fn verify_batch_size(e: &Env, len: u32, max_size: u32) {
     }
 }
 
-// ─── Finite Bytes Validation ───────────────────────────────────────────────
-
-/// Maximum accepted length of a finite bytes buffer.
-///
-/// This bound keeps validation cost and stack usage predictable. It matches
-/// the contract's existing [`MAX_STRINGIFIED_BYTES_LENGTH`] and prevents
-/// attackers from injecting oversized data that could exhaust ledger budgets.
-pub const MAX_FINITE_BYTES_LENGTH: u32 = 4_096;
-
-/// Require that `bytes` is non-empty and does not exceed the maximum allowed length.
-///
-/// This function locks in two boundaries:
-/// - **Lower bound (0)**: Empty bytes are rejected — callers must supply at least
-///   one byte. This prevents silent no-ops where empty data passes through
-///   validation and reaches storage or cross-contract calls.
-/// - **Upper bound ([`MAX_FINITE_BYTES_LENGTH`])**: Oversized inputs are rejected
-///   before they reach downstream decoders or storage, protecting against
-///   resource exhaustion.
-///
-/// # Arguments
-/// * `e` - The Soroban environment
-/// * `bytes` - The `Bytes` value to validate
-///
-/// # Panics
-/// * `ContractError::EmptyBatch` if `bytes.is_empty()` (0 bytes)
-/// * `ContractError::BatchTooLarge` if `bytes.len() > MAX_FINITE_BYTES_LENGTH`
-pub fn require_finite_bytes(e: &Env, bytes: &Bytes) {
-    if bytes.is_empty() {
-        panic_with_error!(e, ContractError::EmptyBatch);
-    }
-    if bytes.len() > MAX_FINITE_BYTES_LENGTH {
-        panic_with_error!(e, ContractError::BatchTooLarge);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -441,53 +406,4 @@ mod tests {
         validate_recipient(&address, &address);
     }
 
-    // ─── require_finite_bytes tests ────────────────────────────────────────
-
-    #[test]
-    #[should_panic]
-    fn require_finite_bytes_rejects_zero_length() {
-        let env = Env::default();
-        let empty = Bytes::new(&env);
-        require_finite_bytes(&env, &empty);
-    }
-
-    #[test]
-    fn require_finite_bytes_accepts_single_byte() {
-        let env = Env::default();
-        let bytes = Bytes::from_slice(&env, &[0x42]);
-        require_finite_bytes(&env, &bytes);
-    }
-
-    #[test]
-    fn require_finite_bytes_accepts_at_max_boundary() {
-        let env = Env::default();
-        let data = vec![0xAA; MAX_FINITE_BYTES_LENGTH as usize];
-        let bytes = Bytes::from_slice(&env, &data);
-        require_finite_bytes(&env, &bytes);
-    }
-
-    #[test]
-    #[should_panic]
-    fn require_finite_bytes_rejects_max_plus_one() {
-        let env = Env::default();
-        let data = vec![0xBB; MAX_FINITE_BYTES_LENGTH as usize + 1];
-        let bytes = Bytes::from_slice(&env, &data);
-        require_finite_bytes(&env, &bytes);
-    }
-
-    #[test]
-    fn require_finite_bytes_accepts_at_max_minus_one() {
-        let env = Env::default();
-        let data = vec![0xCC; MAX_FINITE_BYTES_LENGTH as usize - 1];
-        let bytes = Bytes::from_slice(&env, &data);
-        require_finite_bytes(&env, &bytes);
-    }
-
-    #[test]
-    fn require_finite_bytes_accepts_reasonable_mid_range() {
-        let env = Env::default();
-        let data = vec![0xDD; 256];
-        let bytes = Bytes::from_slice(&env, &data);
-        require_finite_bytes(&env, &bytes);
-    }
 }

@@ -33,15 +33,12 @@ const KEY_SLASHED_FUNDS_POOL: &str = "slashed_funds_pool";
 /// The accumulated slashed amount (i128). Returns 0 if no bond exists.
 #[allow(dead_code)]
 #[must_use]
-pub fn get_slashed_amount(e: &Env, _bond_identity: &Address) -> i128 {
-    let storage_key = crate::DataKey::Bond;
+pub fn get_slashed_amount(e: &Env, bond_identity: &Address) -> i128 {
+    let storage_key = crate::DataKey::Bond(bond_identity.clone());
     e.storage()
         .instance()
-        .get::<_, i128>(&storage_key)
-        .map(|_| {
-            // In a full implementation, retrieve from bond state
-            0 // Simplified: return 0
-        })
+        .get::<_, crate::IdentityBond>(&storage_key)
+        .map(|bond| bond.slashed_amount)
         .unwrap_or(0)
 }
 
@@ -95,9 +92,9 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// - Slashing is monotonic (always increases or stays same, never decreases)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 /// - Slasher receives 10% of slashed amount as reward (pull-payment)
-pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond {
-    if amount < 0 {
-        panic!("slash amount must be non-negative");
+pub fn slash_bond(e: &Env, admin: &Address, identity: &Address, amount: i128) -> crate::IdentityBond {
+    if amount <= 0 {
+        panic!("slash amount must be positive");
     }
     // 1. Authorization check
     validate_admin(e, admin);
@@ -105,7 +102,7 @@ pub fn slash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond
     crate::same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase(e);
 
     // 2. Retrieve current bond state
-    let key = crate::DataKey::Bond;
+    let key = crate::DataKey::Bond(identity.clone());
     let mut bond = e
         .storage()
         .instance()
@@ -240,13 +237,13 @@ fn get_next_slash_id(e: &Env) -> u64 {
 /// - "not admin" if not authorized
 /// - If amount would reduce slashed_amount below 0
 #[allow(dead_code)]
-pub fn unslash_bond(e: &Env, admin: &Address, amount: i128) -> crate::IdentityBond {
+pub fn unslash_bond(e: &Env, admin: &Address, identity: &Address, amount: i128) -> crate::IdentityBond {
     if amount < 0 {
         panic!("unslash amount must be non-negative");
     }
     validate_admin(e, admin);
 
-    let key = crate::DataKey::Bond;
+    let key = crate::DataKey::Bond(identity.clone());
     let mut bond = e
         .storage()
         .instance()
@@ -390,10 +387,10 @@ pub fn initialize_slashed_pool(e: &Env) {
 pub fn slash_bond_with_identity(
     e: &Env,
     admin: &Address,
-    _identity: &Address,
+    identity: &Address,
     slash_amount: i128,
 ) -> crate::IdentityBond {
-    slash_bond(e, admin, slash_amount)
+    slash_bond(e, admin, identity, slash_amount)
 }
 
 #[cfg(test)]
