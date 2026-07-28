@@ -177,7 +177,6 @@ pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
 pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
     let stake = get_attester_stake(e, attester);
     let (multiplier_bps, max_weight) = get_weight_config(e);
-    crate::bump_instance_ttl(e);
 
     // Short-circuit: zero (or missing) stake always returns the default weight.
     // This preserves the invariant that every registered attester can produce

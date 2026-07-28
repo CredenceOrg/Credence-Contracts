@@ -296,6 +296,7 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     // ── get_scale_info ────────────────────────────────────────────────────
 

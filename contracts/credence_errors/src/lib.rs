@@ -676,8 +676,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     MaxPauseSignersExceeded = 125,
 
-
-
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
@@ -1210,7 +1208,8 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::LeaseSignerMismatch => true, // correct signer and retry
+            | ContractError::LeaseSignerMismatch
+            | ContractError::OutsideBusinessHours => true, // retry within business hours / after lease fix
 
             // Admin can supply a valid value / remove a signer or raise the
             // cap, then retry.
@@ -1542,6 +1541,18 @@ pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Addres
 pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) {
     if lease != actor {
         panic_with_error!(e, ContractError::LeaseSignerMismatch);
+    }
+}
+
+/// Validates that an emergency-drain recipient is exactly the configured treasury.
+///
+/// # Panics
+/// Panics with `ContractError::TreasuryBeneficiaryMismatch` when
+/// `recipient != treasury`.
+#[inline]
+pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
+    if recipient != treasury {
+        panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
     }
 }
 

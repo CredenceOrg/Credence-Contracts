@@ -204,7 +204,7 @@ pub fn validate_and_consume_with_domain_string(
 fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
     e.storage()
         .instance()
-        .extend_ttl(MIN_NONCE_TTL, MIN_NONCE_TTL * 2);
+        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
 }
 
 // ============================================================================

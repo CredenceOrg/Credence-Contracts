@@ -86,7 +86,7 @@ mod tests {
 
         // Initialize sets DataKey::Admin.
         let client = crate::CredenceBondClient::new(&e, &contract_id);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Guard must not panic when the correct admin is supplied.
         e.as_contract(&contract_id, || {
@@ -104,7 +104,7 @@ mod tests {
         let impostor = Address::generate(&e);
 
         let client = crate::CredenceBondClient::new(&e, &contract_id);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Supplying the wrong address must panic (NotAdmin).
         e.as_contract(&contract_id, || {
@@ -135,7 +135,7 @@ mod tests {
         let client = crate::CredenceBondClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
         let identity = Address::generate(&e);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
 
         e.as_contract(&contract_id, || {

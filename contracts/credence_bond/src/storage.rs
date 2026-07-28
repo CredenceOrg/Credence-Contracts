@@ -1,5 +1,3 @@
-use crate::Bond;
-use credence_errors::ContractError;
 use soroban_sdk::{contracttype, Address, Env, Vec};
 
 /// Instance-storage keys owned by this module.

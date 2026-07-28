@@ -194,11 +194,22 @@ mod tests {
         // First call should succeed
         check_and_record(&e, &actor, &operation, &salt);
 
-        // Second call should panic
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            check_and_record(&e, &actor, &operation, &salt);
-        }));
-        assert!(result.is_err(), "Duplicate idempotency key should panic");
+        // Second call with a different salt should also succeed
+        let salt2 = Bytes::from_slice(&e, b"other_salt");
+        check_and_record(&e, &actor, &operation, &salt2);
+        assert!(is_used(&e, &actor, &operation, &salt));
+        assert!(is_used(&e, &actor, &operation, &salt2));
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #")]
+    fn test_check_and_record_panics_on_duplicate() {
+        let e = Env::default();
+        let actor = Address::generate(&e);
+        let operation = Symbol::new(&e, "test_op");
+        let salt = Bytes::from_slice(&e, b"test_salt");
+        check_and_record(&e, &actor, &operation, &salt);
+        check_and_record(&e, &actor, &operation, &salt);
     }
 
     #[test]
