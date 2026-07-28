@@ -115,7 +115,7 @@ fn test_pause_allows_reads() {
     let _ = client.get_latest_drain_id();
     let _ = client.is_paused();
     let _ = client.get_identity_state(&identity);
-    let _ = client.get_tier();
+    let _ = client.get_tier(&identity);
 }
 
 #[test]
@@ -383,7 +383,7 @@ fn test_pause_during_active_lockup_blocks_mutations_views_ok() {
     assert!(bond.active);
     assert_eq!(bond.bonded_amount, 10_000_i128);
     assert!(client.is_paused());
-    let _ = client.get_tier();
+    let _ = client.get_tier(&identity);
     let _ = client.version();
 
     // Unpause restores the same lock-up lifecycle.
