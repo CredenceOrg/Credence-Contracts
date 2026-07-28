@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};
 
 use crate::storage::DataKey;
 
@@ -248,7 +248,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u32) {
     }
 
     match action {
-        1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
+        1 => do_pause(e, Some(proposal_id as u64), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
     }

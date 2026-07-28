@@ -163,13 +163,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractPaused = 106,
 
-    /// A storage migration is currently in progress; state mutations are
-    /// rejected until it completes.
-    /// Raised by `require_no_ongoing_migration`.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 124,
-
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
@@ -860,14 +853,11 @@ impl ErrorExt for ContractError {
             | ContractError::MaxPauseSignersExceeded
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
+            | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::OutsideBusinessHours
-            | ContractError::CrossContractCallerMismatch
-            | ContractError::LeaseSignerMismatch => ErrorCategory::Authorization,
-            | ContractError::DuplicateIdempotencyKey
-            | ContractError::DeadlineExpired => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -958,8 +948,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted
-            | ContractError::DomainMismatch
+            | ContractError::EmergencyDrainNotPermitted => ErrorCategory::Authorization,
+            ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Authorization,
@@ -997,7 +987,6 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
-            ContractError::OutsideBusinessHours => "Operation attempted outside permitted business hours",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1155,9 +1144,6 @@ impl ErrorExt for ContractError {
             ContractError::CrossContractCallerMismatch => {
                 "Cross-contract caller does not match the configured partner address"
             }
-            ContractError::OutsideBusinessHours => {
-                "Scheduled operation is outside permitted UTC business hours (Mon-Fri 09:00-17:00)"
-            }
             ContractError::InvalidMaxPauseSigners => {
                 "Max-pause-signers value must be greater than zero and within the hard cap"
             }
@@ -1173,14 +1159,9 @@ impl ErrorExt for ContractError {
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
-            ContractError::BondNotFound => "No bond exists for the given address",
-            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
-            ContractError::EmptyBatch => "Batch input is empty",
-            ContractError::AmountMustBePositive => "Amount must be positive",
-            ContractError::InvalidFlashLoanCallback => "Invalid flash loan callback",
-            ContractError::FlashLoanRepaymentFailed => "Flash loan repayment failed",
-            ContractError::DeadlineExpired => "Signature/operation deadline has passed",
-            _ => "Unknown error",
+            ContractError::InvalidPercentSplit => {
+                "Percentage splits do not sum to exactly 10,000 basis points"
+            }
         }
     }
 
@@ -1229,10 +1210,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::OutsideBusinessHours   // retry within business hours
-            | ContractError::MigrationInProgress    // retry after migration completes
-            | ContractError::LeaseSignerMismatch    // fix lease signer
-            => true,
+            | ContractError::LeaseSignerMismatch => true,
 
 
             // Admin can supply a valid value / remove a signer or raise the

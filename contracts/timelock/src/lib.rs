@@ -269,7 +269,6 @@ impl TimelockContract {
     }
 }
 
-#[contractimpl]
 impl interfaces::governable::Governable for TimelockContract {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)
