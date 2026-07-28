@@ -261,7 +261,7 @@ impl TimelockContract {
         current_admin.require_auth();
 
         e.storage().instance().set(&DataKey::Admin, &new_admin);
-        
+
         e.events().publish(
             (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
             (current_admin, new_admin),
@@ -269,8 +269,7 @@ impl TimelockContract {
     }
 }
 
-#[contractimpl]
-impl interfaces::governable::Governable for Timelock {
+impl interfaces::governable::Governable for TimelockContract {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)
     }

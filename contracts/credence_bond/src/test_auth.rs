@@ -24,6 +24,7 @@ fn setup() -> (Env, Address, CredenceBondClient<'static>) {
 }
 
 // ---------------------------------------------------------------------------
+// initialize — admin must authorize
 // initialize � admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -50,6 +51,7 @@ fn initialize_rejected_when_called_twice() {
 }
 
 // ---------------------------------------------------------------------------
+// set_early_exit_config — admin must authorize
 // set_early_exit_config � admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -71,11 +73,13 @@ fn set_early_exit_config_rejected_when_non_admin_calls() {
     let (env, _admin, client) = setup();
     let stranger = Address::generate(&env);
     let treasury = Address::generate(&env);
+    // Passes stranger as admin — contract checks stranger != stored admin ? panic.
     // Passes stranger as admin � contract checks stranger != stored admin ? panic.
     client.set_early_exit_config(&stranger, &treasury, &500_u32);
 }
 
 // ---------------------------------------------------------------------------
+// register_attester / unregister_attester — stored admin must authorize
 // register_attester / unregister_attester � stored admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -89,6 +93,11 @@ fn register_attester_succeeds_when_admin_authorizes() {
 }
 
 /// Sad path: without mocked auth, the stored admin's require_auth() fires
+/// and panics — proving register_attester is gated by admin auth.
+#[test]
+#[should_panic]
+fn register_attester_requires_admin_auth() {
+    // No mock_all_auths — admin.require_auth() inside register_attester
 /// and panics � proving register_attester is gated by admin auth.
 #[test]
 #[should_panic]
@@ -117,6 +126,7 @@ fn unregister_attester_succeeds_when_admin_authorizes() {
 }
 
 // ---------------------------------------------------------------------------
+// create_bond — identity must authorize
 // create_bond � identity must authorize
 // ---------------------------------------------------------------------------
 
@@ -132,6 +142,7 @@ fn create_bond_succeeds_when_identity_authorizes() {
 }
 
 // ---------------------------------------------------------------------------
+// add_attestation — attester must be registered and must authorize
 // add_attestation � attester must be registered and must authorize
 // ---------------------------------------------------------------------------
 
@@ -169,6 +180,7 @@ fn add_attestation_rejected_when_attester_is_not_registered() {
 }
 
 // ---------------------------------------------------------------------------
+// revoke_attestation — original attester must authorize
 // revoke_attestation � original attester must authorize
 // ---------------------------------------------------------------------------
 
@@ -191,6 +203,7 @@ fn revoke_attestation_succeeds_when_attester_authorizes() {
 }
 
 // ---------------------------------------------------------------------------
+// set_weight_config — admin must authorize
 // set_weight_config � admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -214,6 +227,7 @@ fn set_weight_config_rejected_when_non_admin_calls() {
 }
 
 // ---------------------------------------------------------------------------
+// transfer_admin — dual-auth: both current and new admin must authorize
 // transfer_admin � dual-auth: both current and new admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -237,6 +251,7 @@ fn transfer_admin_rejected_when_new_admin_equals_current() {
 }
 
 // ---------------------------------------------------------------------------
+// set_liquidation_treasury — admin must authorize
 // set_liquidation_treasury � admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -260,6 +275,7 @@ fn set_liquidation_treasury_rejected_when_non_admin_calls() {
 }
 
 // ---------------------------------------------------------------------------
+// set_slash_treasury — admin must authorize
 // set_slash_treasury � admin must authorize
 // ---------------------------------------------------------------------------
 
@@ -283,6 +299,7 @@ fn set_slash_treasury_rejected_when_non_admin_calls() {
 }
 
 // ---------------------------------------------------------------------------
+// top_up — identity must authorize
 // top_up � identity must authorize
 // ---------------------------------------------------------------------------
 
@@ -308,6 +325,7 @@ fn top_up_rejected_when_stranger_calls() {
 }
 
 // ---------------------------------------------------------------------------
+// extend_duration — identity must authorize
 // extend_duration � identity must authorize
 // ---------------------------------------------------------------------------
 
@@ -333,6 +351,7 @@ fn extend_duration_rejected_when_stranger_calls() {
 }
 
 // ---------------------------------------------------------------------------
+// request_withdrawal — identity must authorize
 // request_withdrawal � identity must authorize
 // ---------------------------------------------------------------------------
 
@@ -361,6 +380,7 @@ fn request_withdrawal_rejected_when_stranger_calls() {
 }
 
 // ---------------------------------------------------------------------------
+// renew_if_rolling — identity must authorize
 // renew_if_rolling � identity must authorize
 // ---------------------------------------------------------------------------
 
@@ -381,6 +401,7 @@ fn renew_if_rolling_succeeds_when_identity_authorizes() {
         min_persistent_entry_ttl: 16,
         max_entry_ttl: 1_000_000,
     });
+    // Should succeed — no panic means auth passed and renewal ran.
     // Should succeed � no panic means auth passed and renewal ran.
     client.renew_if_rolling(&identity);
 }

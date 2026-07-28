@@ -41,6 +41,15 @@ pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
         e.panic_with_error(ContractError::AlreadyInitialized);
     }
 }
+/// Panic with  if .
+/// Defence-in-depth guard that rejects treasury-flow payments to any
+/// recipient other than the configured treasury.
+pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
+    if recipient != treasury {
+        e.panic_with_error(ContractError::TreasuryBeneficiaryMismatch);
+    }
+}
+
 
 /// Simple role enum for admin checks.
 #[contracttype]
@@ -662,6 +671,24 @@ pub enum ContractError {
     ///
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
+    TimestampInFuture = 118,
+
+    /// Requested max-pause-signers value is zero or exceeds the hard cap.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    InvalidMaxPauseSigners = 119,
+
+    /// Registering another pause signer would exceed the configured cap.
+    /// Contracts: multisig
+    /// Wire-stable: do not renumber this error code.
+    MaxPauseSignersExceeded = 125,
+
+
+
+    /// Cross-contract caller does not match the configured partner address.
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    CrossContractCallerMismatch = 123,
     RoleNotHeldAtLedger = 116,
 
     // --- Treasury (600-699) ---
@@ -827,6 +854,18 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientSignatures
             | ContractError::AdminSuspended
             | ContractError::RoleNotHeldAtLedger
+            | ContractError::ZeroBytes32
+            | ContractError::TimestampInFuture
+            | ContractError::InvalidMaxPauseSigners
+            | ContractError::MaxPauseSignersExceeded
+            | ContractError::LeaseScopeMismatch
+            | ContractError::LeaseExpired
+            | ContractError::OutsideBusinessHours
+            | ContractError::StaleAdminEpoch
+            | ContractError::StaleSignerEpoch
+            | ContractError::OutsideBusinessHours
+            | ContractError::CrossContractCallerMismatch
+            | ContractError::LeaseSignerMismatch => ErrorCategory::Authorization,
             | ContractError::DuplicateIdempotencyKey
             | ContractError::DeadlineExpired => ErrorCategory::Authorization,
 
@@ -1191,7 +1230,9 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
             | ContractError::OutsideBusinessHours   // retry within business hours
-            | ContractError::MigrationInProgress => true, // retry after migration completes
+            | ContractError::MigrationInProgress    // retry after migration completes
+            | ContractError::LeaseSignerMismatch    // fix lease signer
+            => true,
 
 
             // Admin can supply a valid value / remove a signer or raise the
