@@ -258,7 +258,7 @@ entry point — see note).
 | Variant | Used for |
 |---|---|
 | `Admin` | Admin address |
-| `Paused`, `PauseSigner(Address)`, `PauseSignerCount`, `PauseThreshold`, `PauseProposalCounter`, `PauseProposal(u32)`, `PauseApproval(u32, Address)`, `PauseApprovalCount(u32)` | Pause multisig — note the proposal id here is `u32`, not `u64` as in every other contract's pause subsystem |
+| `Paused`, `PauseSigner(Address)`, `PauseSignerCount`, `PauseThreshold`, `PauseProposalCounter`, `PauseProposal(u32)`, `PauseApproval(u32, Address)`, `PauseApprovalCount(u32)` | Pause multisig — proposal ids are `u32`; `PauseProposal` stores the action as the `Symbol` `pause` or `unpause` |
 | `IdentityToBond(Address)` | Forward mapping: identity → registry entry |
 | `BondToIdentity(Address)` | Reverse mapping: bond contract → identity |
 | `RegisteredIdentities` | Insertion-ordered `Vec<Address>` of all registered identities |
