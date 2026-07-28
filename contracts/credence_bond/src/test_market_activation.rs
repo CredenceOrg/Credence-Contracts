@@ -164,7 +164,72 @@ fn test_activation_fails_with_zero_amount() {
     client.create_bond(&identity, &0_i128, &VALID_DURATION);
 }
 
+// ── fee config: missing ──────────────────────────────────────────────────────────
+
+#[test]
+#[should_panic]
+fn test_activation_fails_without_fee_config() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _cid) = setup_with_token(&e);
+    // client.set_fee_config omitted
+    client.set_bronze_threshold(&admin, &100_000_000_i128);
+    client.set_silver_threshold(&admin, &1_000_000_000_i128);
+    client.set_gold_threshold(&admin, &10_000_000_000_i128);
+    client.set_platinum_threshold(&admin, &100_000_000_000_i128);
+    client.set_max_leverage(&admin, &100_000_u32);
+    client.create_bond(&identity, &VALID_AMOUNT, &VALID_DURATION);
+}
+
+// ── bronze threshold: missing ──────────────────────────────────────────────────
+
+#[test]
+#[should_panic]
+fn test_activation_fails_without_bronze_threshold() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _cid) = setup_with_token(&e);
+    client.set_fee_config(&admin, &admin, &50);
+    // client.set_bronze_threshold omitted
+    client.set_silver_threshold(&admin, &1_000_000_000_i128);
+    client.set_gold_threshold(&admin, &10_000_000_000_i128);
+    client.set_platinum_threshold(&admin, &100_000_000_000_i128);
+    client.set_max_leverage(&admin, &100_000_u32);
+    client.create_bond(&identity, &VALID_AMOUNT, &VALID_DURATION);
+}
+
+// ── silver threshold: missing ──────────────────────────────────────────────────
+
+#[test]
+#[should_panic]
+fn test_activation_fails_without_silver_threshold() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _cid) = setup_with_token(&e);
+    client.set_fee_config(&admin, &admin, &50);
+    client.set_bronze_threshold(&admin, &100_000_000_i128);
+    // client.set_silver_threshold omitted
+    client.set_gold_threshold(&admin, &10_000_000_000_i128);
+    client.set_platinum_threshold(&admin, &100_000_000_000_i128);
+    client.set_max_leverage(&admin, &100_000_u32);
+    client.create_bond(&identity, &VALID_AMOUNT, &VALID_DURATION);
+}
+
+// ── max leverage: missing ────────────────────────────────────────────────────
+
+#[test]
+#[should_panic]
+fn test_activation_fails_without_max_leverage() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _cid) = setup_with_token(&e);
+    client.set_fee_config(&admin, &admin, &50);
+    client.set_bronze_threshold(&admin, &100_000_000_i128);
+    client.set_silver_threshold(&admin, &1_000_000_000_i128);
+    client.set_gold_threshold(&admin, &10_000_000_000_i128);
+    client.set_platinum_threshold(&admin, &100_000_000_000_i128);
+    // client.set_max_leverage omitted
+    client.create_bond(&identity, &VALID_AMOUNT, &VALID_DURATION);
+}
+
 // ── valid activation succeeds ─────────────────────────────────────────────────
+
 
 #[test]
 fn test_valid_bond_activation_succeeds() {
