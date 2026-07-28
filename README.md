@@ -56,6 +56,9 @@ cargo test -p credence_bond
 cargo test -p credence_delegation
 ```
 
+For the per-crate 95% coverage check and local `cargo-llvm-cov` setup, see
+[docs/testing.md](docs/testing.md).
+
 ### Using `just`
 
 The repo includes a [`justfile`](justfile) with common recipes. Install
