@@ -1,5 +1,5 @@
 use crate::*;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Symbol};
 
 mod pausable_tests {
     use super::*;
@@ -71,10 +71,10 @@ mod pausable_tests {
 
     #[test]
     fn test_get_pause_state_multisig_flow() {
-        let (_e, client, admin) = setup();
+        let (e, client, admin) = setup();
 
-        let s1 = Address::generate(&_e);
-        let s2 = Address::generate(&_e);
+        let s1 = Address::generate(&e);
+        let s2 = Address::generate(&e);
 
         // Configure multisig pause
         client.set_pause_signer(&admin, &s1, &true);
@@ -88,6 +88,13 @@ mod pausable_tests {
 
         // Propose pause — not yet executed, so contract is still not paused
         let pid = client.pause(&s1).unwrap();
+        let stored_action: Symbol = e.as_contract(&client.address, || {
+            e.storage()
+                .instance()
+                .get(&crate::storage::DataKey::PauseProposal(pid))
+                .unwrap()
+        });
+        assert_eq!(stored_action, Symbol::new(&e, "pause"));
         let state = client.get_pause_state();
         assert!(
             !state.is_paused,
@@ -114,6 +121,28 @@ mod pausable_tests {
         assert!(
             !state.is_paused,
             "contract should be unpaused after execution"
+        );
+    }
+
+    #[test]
+    fn invalid_pause_action_symbol_is_rejected() {
+        let (e, client, admin) = setup();
+        let signer = Address::generate(&e);
+
+        client.set_pause_signer(&admin, &signer, &true);
+        client.set_pause_threshold(&admin, &1_u32);
+        let proposal_id = client.pause(&signer).unwrap();
+
+        e.as_contract(&client.address, || {
+            e.storage().instance().set(
+                &crate::storage::DataKey::PauseProposal(proposal_id),
+                &Symbol::new(&e, "invalid"),
+            );
+        });
+
+        assert!(
+            client.try_execute_pause_proposal(&proposal_id).is_err(),
+            "unknown pause action symbols must be rejected"
         );
     }
 

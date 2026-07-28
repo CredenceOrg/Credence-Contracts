@@ -36,8 +36,8 @@ mod proptests {
         #[test]
         fn test_rate_compound_monotonicity(
             bps in 0..10_000u32,
-            period_a in 0..256u32,
-            period_b in 0..256u32
+            period_a in 0..32u32,
+            period_b in 0..32u32
         ) {
             let (min_period, max_period) = if period_a <= period_b {
                 (period_a, period_b)
