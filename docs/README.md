@@ -7,6 +7,14 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [architecture.md](architecture.md) | Contributor / Operator | System-wide component diagram, data flows, trust boundaries |
+
+## Per-crate entrypoint guides
+
+These compact pages list the main public entrypoints, required roles, and backend integration notes for each contract crate. They are intended to be quick review aids for contributors and downstream integrators.
+
+- [credence-bond.md](credence-bond.md)
+- [credence-delegation.md](credence-delegation.md)
+- [credence-timelock.md](credence-timelock.md)
 | [access-control.md](access-control.md) | Contributor / Integrator | RBAC modifiers, entrypoint authority matrix, event schemas |
 | [CONSTRUCTOR_PATTERNS.md](CONSTRUCTOR_PATTERNS.md) | Contributor | One-shot `initialize` pattern: re-init guard, auth, storage, event |
 | [DEDUP_POLICY.md](DEDUP_POLICY.md) | Contributor | When we dedupe input, when we reject on duplicate, and why |

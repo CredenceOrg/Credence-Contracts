@@ -23,7 +23,7 @@ pub struct StorageResult {
 
 /// Idempotency errors
 #[contracterror]
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IdempotencyError {
     /// Transaction ID already used by a different caller
     DuplicateDifferentCaller = 1,

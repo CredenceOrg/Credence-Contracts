@@ -14,6 +14,7 @@ on:
       - rust-toolchain.toml
       - contracts/**
       - crates/**
+      - scripts/**
       - .github/workflows/contracts-lints.yml
       - README.md
   pull_request:
@@ -28,6 +29,7 @@ on:
       - rust-toolchain.toml
       - contracts/**
       - crates/**
+      - scripts/**
       - .github/workflows/contracts-lints.yml
       - README.md
   workflow_dispatch:
@@ -53,6 +55,12 @@ jobs:
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
+      - name: Test soroban-sdk pin checker
+        run: python3 -m unittest scripts.tests.test_check_soroban_sdk_pin
+
+      - name: Verify soroban-sdk pin
+        run: python3 scripts/check_soroban_sdk_pin.py
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -72,6 +80,12 @@ jobs:
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Test soroban-sdk pin checker
+        run: python3 -m unittest scripts.tests.test_check_soroban_sdk_pin
+
+      - name: Verify soroban-sdk pin
+        run: python3 scripts/check_soroban_sdk_pin.py
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings

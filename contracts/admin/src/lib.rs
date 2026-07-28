@@ -23,12 +23,12 @@
 
 pub mod pausable;
 
-#[cfg(test)]
-mod test_ownership_transfer;
 /// Event schema regression tests — verifies topic/data layout for every
 /// role event without involving contract storage.
 #[cfg(test)]
 mod test_events_schema;
+#[cfg(test)]
+mod test_ownership_transfer;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
@@ -1276,6 +1276,9 @@ mod test_auth_entrypoints;
 
 #[cfg(test)]
 mod test_require_role_at_least;
+
+#[cfg(test)]
+mod test_emergency;
 
 #[cfg(test)]
 mod test_role_events;

@@ -17,7 +17,10 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     // Initial upgrade admin is correct
     let stored: Address = e.as_contract(&contract_id, || {
-        e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::Admin)).unwrap()
+        e.storage()
+            .instance()
+            .get(&DataKey::Upgrade(UpgradeKey::Admin))
+            .unwrap()
     });
     assert_eq!(stored, admin);
 
@@ -37,7 +40,10 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     // New admin is now the upgrade admin
     let stored: Address = e.as_contract(&contract_id, || {
-        e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::Admin)).unwrap()
+        e.storage()
+            .instance()
+            .get(&DataKey::Upgrade(UpgradeKey::Admin))
+            .unwrap()
     });
     assert_eq!(stored, new_admin);
 
