@@ -9,8 +9,12 @@ on:
       - ci/**
     paths:
       - Cargo.toml
+      - Cargo.lock
+      - clippy.toml
       - rust-toolchain.toml
       - contracts/**
+      - crates/**
+      - scripts/**
       - .github/workflows/contracts-lints.yml
       - README.md
   pull_request:
@@ -20,8 +24,12 @@ on:
       - develop
     paths:
       - Cargo.toml
+      - Cargo.lock
+      - clippy.toml
       - rust-toolchain.toml
       - contracts/**
+      - crates/**
+      - scripts/**
       - .github/workflows/contracts-lints.yml
       - README.md
   workflow_dispatch:
@@ -37,13 +45,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      # Reads the pinned channel and components from rust-toolchain.toml.
+      # The file already lists rustfmt, so no extra `components:` key needed.
+      - name: Install Rust toolchain (pinned)
+        uses: dtolnay/rust-toolchain@master
         with:
-          components: rustfmt
+          toolchain: file
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Test soroban-sdk pin checker
+        run: python3 -m unittest scripts.tests.test_check_soroban_sdk_pin
+
+      - name: Verify soroban-sdk pin
+        run: python3 scripts/check_soroban_sdk_pin.py
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -55,13 +71,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      # Reads the pinned channel and components from rust-toolchain.toml.
+      # The file already lists clippy, so no extra `components:` key needed.
+      - name: Install Rust toolchain (pinned)
+        uses: dtolnay/rust-toolchain@master
         with:
-          components: clippy
+          toolchain: file
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Test soroban-sdk pin checker
+        run: python3 -m unittest scripts.tests.test_check_soroban_sdk_pin
+
+      - name: Verify soroban-sdk pin
+        run: python3 scripts/check_soroban_sdk_pin.py
 
       - name: Run clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings

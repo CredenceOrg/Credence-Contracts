@@ -1,9 +1,33 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
 };
+
+/// Signature domain identifier for the Timelock contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "Timelock";
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 
@@ -58,9 +82,10 @@ impl TimelockContract {
     /// Initialize the timelock contract with the admin address.
     pub fn initialize(e: Env, admin: Address) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage()
             .instance()
@@ -229,7 +254,23 @@ impl TimelockContract {
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
 }
+
+#[cfg(test)]
+mod test_timelock;
 
 #[cfg(test)]
 mod tests {
@@ -347,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_boundaries() {
+    fn test_execute_succeeds_at_expiry_boundary() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[1; 32]);
         let delay = 86_400;
@@ -355,9 +396,15 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        // At expires_at: must succeed
+        // At expires_at: must succeed. The lifecycle window [eta, expires_at]
+        // is inclusive on both ends (see execute_operation's `now > op.expires_at`
+        // check, which only rejects strictly-after-expiry timestamps).
         env.ledger().with_mut(|li| li.timestamp = op.expires_at);
         client.execute_operation(&op_id);
+
+        let op = client.get_operation(&op_id).unwrap();
+        assert_eq!(op.status, OperationStatus::Executed);
+        assert!(client.is_operation_executed(&op_hash));
     }
 
     #[test]

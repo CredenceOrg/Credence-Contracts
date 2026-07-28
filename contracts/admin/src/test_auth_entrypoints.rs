@@ -14,7 +14,10 @@
 //! an unauthorised caller is rejected.
 
 use crate::*;
-use soroban_sdk::{testutils::Address as _, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env,
+};
 use testutils::{admin as test_admin, user};
 
 // ---------------------------------------------------------------------------
@@ -66,7 +69,13 @@ fn advance(env: &Env, secs: u64) {
 fn update_admin_role_succeeds_when_super_admin_authorizes() {
     let (env, contract, super_admin) = setup_env();
     let operator = user(&env);
-    add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
     let info = env.as_contract(&contract, || {
         AdminContract::update_admin_role(
@@ -127,7 +136,7 @@ fn deactivate_admin_rejected_when_caller_does_not_outrank_target() {
     add_admin(&env, &contract, &super_admin, &admin2, AdminRole::Admin);
 
     env.as_contract(&contract, || {
-        AdminContract::deactivate_admin(env.clone(), operator.clone(), admin.clone());
+        AdminContract::deactivate_admin(env.clone(), admin1.clone(), admin2.clone());
     });
 }
 
@@ -201,8 +210,14 @@ fn suspend_admin_succeeds_when_super_admin_authorizes() {
     });
 
     // Admin should appear inactive while timestamp < until_ts.
-    let admin_role = env.as_contract(&contract, || AdminContract::is_admin(env.clone(), admin.clone()));
-    assert_eq!(admin_role, Role::User, "suspended admin must not be active before expiry");
+    let admin_role = env.as_contract(&contract, || {
+        AdminContract::is_admin(env.clone(), admin.clone())
+    });
+    assert_eq!(
+        admin_role,
+        Role::User,
+        "suspended admin must not be active before expiry"
+    );
 }
 
 /// Sad path: suspension with a past timestamp must be rejected.
@@ -253,7 +268,13 @@ fn transfer_ownership_succeeds_when_owner_authorizes() {
     let (env, contract, super_admin) = setup_env();
     // Create a second SuperAdmin to transfer ownership to.
     let new_super = test_admin(&env);
-    add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &new_super,
+        AdminRole::SuperAdmin,
+    );
 
     env.as_contract(&contract, || {
         AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());
@@ -294,7 +315,13 @@ fn transfer_ownership_rejected_when_caller_is_not_owner() {
 fn accept_ownership_succeeds_when_pending_owner_authorizes() {
     let (env, contract, super_admin) = setup_env();
     let new_super = test_admin(&env);
-    add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &new_super,
+        AdminRole::SuperAdmin,
+    );
 
     env.as_contract(&contract, || {
         AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());
@@ -314,7 +341,13 @@ fn accept_ownership_rejected_when_caller_is_not_pending_owner() {
     let (env, contract, super_admin) = setup_env();
     let new_super = test_admin(&env);
     let stranger = user(&env);
-    add_admin(&env, &contract, &super_admin, &new_super, AdminRole::SuperAdmin);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &new_super,
+        AdminRole::SuperAdmin,
+    );
 
     env.as_contract(&contract, || {
         AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());

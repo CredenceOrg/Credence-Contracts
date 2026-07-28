@@ -1,3 +1,8 @@
+// This is an off-chain integration test binary, not deployed WASM. Issue #713
+// disallows `format!`/`write!`/`writeln!`/`format_args!` in production contract
+// code; integration tests aren't on chain, so we silence the lint locally.
+#![allow(clippy::disallowed_macros)]
+
 //! Storage-key fingerprint snapshot for `credence_delegation::DataKey`.
 //!
 //! Every `DataKey` variant encodes to a specific byte sequence that becomes the
@@ -134,6 +139,7 @@ fn previous_snapshot_deserialises_with_new_spec() {
             .collect();
 
         let bytes = Bytes::from_slice(&env, &bytes_vec);
-        let _ = DataKey::from_xdr(&env, &bytes).expect("Failed to deserialize DataKey from snapshot hex");
+        let _ = DataKey::from_xdr(&env, &bytes)
+            .expect("Failed to deserialize DataKey from snapshot hex");
     }
 }

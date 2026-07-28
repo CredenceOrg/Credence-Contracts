@@ -1,4 +1,4 @@
-﻿//! Security tests for reentrancy protection in the Credence Bond contract.
+//! Security tests for reentrancy protection in the Credence Bond contract.
 //!
 //! These tests verify that:
 //! - Reentrancy in `withdraw_bond_full` is blocked
@@ -336,13 +336,13 @@ use withdraw_attacker::{WithdrawAttacker, WithdrawAttackerClient};
 // ---------------------------------------------------------------------------
 fn setup_bond(e: &Env) -> (Address, Address, Address) {
     let (client, admin, identity, _token_id, contract_id) = test_helpers::setup_with_token(e);
-    client.create_bond(&identity, &10_000_i128, &86400_u64);
+    client.create_bond(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
 
     (contract_id, admin, identity)
 }
 
 // ===========================================================================
-// 1. Reentrancy in full withdrawal — MUST be blocked
+// 1. Reentrancy in full withdrawal - MUST be blocked
 // ===========================================================================
 #[test]
 #[should_panic(expected = "HostError")]
@@ -361,7 +361,7 @@ fn test_withdraw_reentrancy_blocked() {
 }
 
 // ===========================================================================
-// 2. Reentrancy in slashing — SHOULD be blocked
+// 2. Reentrancy in slashing - SHOULD be blocked
 // ===========================================================================
 /// THREAT: T-010
 /// Ensures reentrancy guard prevents double-slash attacks via reentry.
@@ -382,7 +382,7 @@ fn test_slash_reentrancy_blocked() {
 }
 
 // ===========================================================================
-// 3. Reentrancy in fee collection — MUST be blocked
+// 3. Reentrancy in fee collection - MUST be blocked
 // ===========================================================================
 /// THREAT: T-009
 /// Validates reentrancy guard prevents fee collection reentry attacks.
@@ -609,7 +609,7 @@ fn test_cross_function_reentrancy_blocked() {
 }
 
 // ===========================================================================
-// 16. Reentrancy in partial withdrawal (withdraw_bond) — attacker harness regression
+// 16. Reentrancy in partial withdrawal (withdraw_bond) - attacker harness regression
 // ===========================================================================
 #[test]
 #[should_panic(expected = "HostError")]
@@ -632,7 +632,7 @@ fn test_partial_withdraw_reentrancy_blocked() {
 }
 
 // ===========================================================================
-// 17. Reentrancy in early withdrawal — attacker harness regression
+// 17. Reentrancy in early withdrawal - attacker harness regression
 // ===========================================================================
 #[test]
 #[should_panic(expected = "HostError")]
@@ -654,7 +654,7 @@ fn test_withdraw_early_reentrancy_blocked() {
 }
 
 // ===========================================================================
-// 18. Reentrancy in cooldown withdrawal — attacker harness regression
+// 18. Reentrancy in cooldown withdrawal - attacker harness regression
 // ===========================================================================
 #[test]
 #[should_panic(expected = "HostError")]
@@ -677,7 +677,7 @@ fn test_cooldown_withdrawal_reentrancy_blocked() {
 }
 
 // ===========================================================================
-// 19. Non-admin cannot set callback — admin gate regression
+// 19. Non-admin cannot set callback - admin gate regression
 // ===========================================================================
 #[test]
 #[should_panic(expected = "not admin")]

@@ -1,3 +1,5 @@
+extern crate std;
+
 use crate::*;
 use credence_errors::Role;
 use soroban_sdk::{

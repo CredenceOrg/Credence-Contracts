@@ -1,25 +1,52 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Env, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};
 
-use crate::DataKey;
+use crate::storage::DataKey;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[repr(u32)]
-pub enum PauseAction {
-    Pause = 1,
-    Unpause = 2,
+/// Read-only snapshot of the contract's current pause state, for
+/// off-chain monitoring and operator dashboards.
+///
+/// Returned by [`get_pause_state`].  Exposes the core pause configuration
+/// without leaking internal identifiers.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub struct PauseState {
+    /// `true` when the contract is paused (state-mutating operations blocked).
+    pub is_paused: bool,
+    /// Minimum number of signer approvals required to execute a pause
+    /// or unpause proposal. `0` means the admin can pause/unpause directly.
+    pub threshold: u32,
+    /// Total number of authorised pause signers.
+    pub signer_count: u32,
 }
 
-fn require_admin_auth(e: &Env, admin: &Address) {
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored_admin != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum PauseAction {
+    Pause,
+    Unpause,
+}
+
+impl PauseAction {
+    fn symbol(self, e: &Env) -> Symbol {
+        match self {
+            Self::Pause => Symbol::new(e, "pause"),
+            Self::Unpause => Symbol::new(e, "unpause"),
+        }
     }
-    admin.require_auth();
+
+    fn from_symbol(e: &Env, symbol: Symbol) -> Option<Self> {
+        if symbol == Self::Pause.symbol(e) {
+            Some(Self::Pause)
+        } else if symbol == Self::Unpause.symbol(e) {
+            Some(Self::Unpause)
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) fn require_admin_auth(e: &Env, admin: &Address) {
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 pub fn is_paused(e: &Env) -> bool {
@@ -116,8 +143,8 @@ fn require_pause_signer(e: &Env, signer: &Address) {
     }
 }
 
-fn next_proposal_id(e: &Env) -> u64 {
-    let id: u64 = e
+fn next_proposal_id(e: &Env) -> u32 {
+    let id: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposalCounter)
@@ -131,7 +158,7 @@ fn next_proposal_id(e: &Env) -> u64 {
     id
 }
 
-fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
+fn record_approval(e: &Env, proposal_id: u32, signer: &Address) {
     let approval_key = DataKey::PauseApproval(proposal_id, signer.clone());
     if e.storage().instance().has(&approval_key) {
         return;
@@ -150,7 +177,7 @@ fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
         .set(&DataKey::PauseApprovalCount(proposal_id), &new_count);
 }
 
-pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
+pub fn pause(e: &Env, caller: &Address) -> Option<u32> {
     let threshold: u32 = e
         .storage()
         .instance()
@@ -158,14 +185,14 @@ pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
         .unwrap_or(0);
     if threshold == 0 {
         require_admin_auth(e, caller);
-        do_pause(e, None);
+        do_pause(e, None, &caller.to_string());
         None
     } else {
         propose_action(e, caller, PauseAction::Pause)
     }
 }
 
-pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
+pub fn unpause(e: &Env, caller: &Address) -> Option<u32> {
     let threshold: u32 = e
         .storage()
         .instance()
@@ -180,13 +207,13 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
     }
 }
 
-fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64> {
+fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u32> {
     require_pause_signer(e, caller);
 
     let id = next_proposal_id(e);
     e.storage()
         .instance()
-        .set(&DataKey::PauseProposal(id), &(action as u32));
+        .set(&DataKey::PauseProposal(id), &action.symbol(e));
     e.storage()
         .instance()
         .set(&DataKey::PauseApprovalCount(id), &0_u32);
@@ -194,15 +221,15 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
     record_approval(e, id, caller);
 
     e.events()
-        .publish((Symbol::new(e, "pause_proposed"), id), action as u32);
+        .publish((Symbol::new(e, "pause_proposed"), id), action.symbol(e));
 
     Some(id)
 }
 
-pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
+pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u32) {
     require_pause_signer(e, signer);
 
-    let _action: u32 = e
+    let _action: Symbol = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
@@ -216,8 +243,8 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     );
 }
 
-pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
-    let action: u32 = e
+pub fn execute_pause_proposal(e: &Env, proposal_id: u32) {
+    let action: Symbol = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
@@ -238,10 +265,10 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         panic_with_error!(e, ContractError::InsufficientApprovals);
     }
 
-    match action {
-        1 => do_pause(e, Some(proposal_id)),
-        2 => do_unpause(e, Some(proposal_id)),
-        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    match PauseAction::from_symbol(e, action) {
+        Some(PauseAction::Pause) => do_pause(e, Some(proposal_id as u64), &String::from_str(e, "")),
+        Some(PauseAction::Unpause) => do_unpause(e, Some(proposal_id)),
+        None => panic_with_error!(e, ContractError::InvalidPauseAction),
     }
 
     e.storage()
@@ -249,13 +276,40 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .remove(&DataKey::PauseProposal(proposal_id));
 }
 
-fn do_pause(e: &Env, proposal_id: Option<u64>) {
+fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
     e.storage().instance().set(&DataKey::Paused, &true);
-    e.events().publish((Symbol::new(e, "paused"),), proposal_id);
+    e.events()
+        .publish((Symbol::new(e, "paused"),), (proposal_id, reason.clone()));
 }
 
-fn do_unpause(e: &Env, proposal_id: Option<u64>) {
+fn do_unpause(e: &Env, proposal_id: Option<u32>) {
     e.storage().instance().set(&DataKey::Paused, &false);
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);
+}
+
+/// Return a structured view of the contract's current pause state.
+///
+/// This is a **read-only** entrypoint: it performs no authorisation checks
+/// and never mutates storage, so it is safe to expose publicly.
+///
+/// Aggregates the three core pause-control values into a single
+/// [`PauseState`] struct:
+/// * `is_paused` — whether state-mutating operations are currently blocked.
+/// * `threshold`  — minimum approvals required to execute a proposal.
+/// * `signer_count` — total number of authorised pause signers.
+pub fn get_pause_state(e: &Env) -> PauseState {
+    PauseState {
+        is_paused: is_paused(e),
+        threshold: e
+            .storage()
+            .instance()
+            .get(&DataKey::PauseThreshold)
+            .unwrap_or(0),
+        signer_count: e
+            .storage()
+            .instance()
+            .get(&DataKey::PauseSignerCount)
+            .unwrap_or(0),
+    }
 }
