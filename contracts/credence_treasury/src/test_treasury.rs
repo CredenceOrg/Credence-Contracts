@@ -857,7 +857,7 @@ fn test_ttl_zero_never_expires() {
 }
 
 #[test]
-#[should_panic(expected = "AmountMustBePositive")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_receive_fee_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, _token) = setup(&e);
@@ -866,7 +866,7 @@ fn test_receive_fee_rejects_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "AmountMustBePositive")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_receive_fee_rejects_negative_amount() {
     let e = Env::default();
     let (client, admin, _token) = setup(&e);
@@ -875,7 +875,7 @@ fn test_receive_fee_rejects_negative_amount() {
 }
 
 #[test]
-#[should_panic(expected = "AmountMustBePositive")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_propose_withdrawal_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, _token) = setup(&e);
@@ -890,7 +890,7 @@ fn test_propose_withdrawal_rejects_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "AmountMustBePositive")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_rescue_native_rejects_zero_amount() {
     let e = Env::default();
     let (client, admin, token) = setup(&e);

@@ -70,7 +70,7 @@
 //! attestation captures the weight that was in effect when it was created.
 
 use crate::math;
-use crate::types::attestation::MAX_ATTESTATION_WEIGHT;
+use crate::types::attestation::{DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT};
 use crate::DataKey;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
@@ -93,36 +93,55 @@ pub const MAX_WEIGHT_MULTIPLIER_BPS: u32 = 10_000;
 /// Default maximum attestation weight when no config is set.
 pub const DEFAULT_MAX_WEIGHT: u32 = 100_000;
 
-fn weight_config_key(e: &Env) -> Symbol {
-    Symbol::new(e, "weight_cfg")
-}
-
 /// Returns `(multiplier_bps, max_weight)`.
 ///
-/// Falls back to `(DEFAULT_WEIGHT_MULTIPLIER_BPS, DEFAULT_MAX_WEIGHT)` when
-/// the config has never been written.
+/// Falls back to `(0, DEFAULT_MAX_WEIGHT)` when the config has never been written.
 #[must_use]
 pub fn get_weight_config(e: &Env) -> (u32, u32) {
-    e.storage()
-        .instance()
-        .get::<_, (u32, u32)>(&weight_config_key(e))
-        .unwrap_or((DEFAULT_WEIGHT_MULTIPLIER_BPS, DEFAULT_MAX_WEIGHT))
+    let key = DataKey::WeightConfig;
+    let config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_MAX_WEIGHT,
+    });
+    crate::bump_instance_ttl(e);
+    (config.multiplier_bps, config.max_weight)
 }
 
-/// Persists the weight config, silently clamping both fields to their
-/// respective protocol ceilings.
-///
-/// - `multiplier_bps` is clamped to [`MAX_WEIGHT_MULTIPLIER_BPS`] (10_000).
-/// - `max_weight` is clamped to [`MAX_ATTESTATION_WEIGHT`] (1_000_000).
-///
-/// The stored values are what `get_weight_config` returns afterwards; callers
-/// must use `get_weight_config` to inspect the effective (post-clamp) config.
+/// Persists weight config and emits a `weight_config_set` event.
 pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
-    let multiplier = core::cmp::min(multiplier_bps, MAX_WEIGHT_MULTIPLIER_BPS);
-    let cap = core::cmp::min(max_weight, MAX_ATTESTATION_WEIGHT);
-    e.storage()
-        .instance()
-        .set(&weight_config_key(e), &(multiplier, cap));
+    if multiplier_bps > MAX_WEIGHT_MULTIPLIER_BPS {
+        panic!("multiplier_bps exceeds maximum");
+    }
+    if max_weight > MAX_ATTESTATION_WEIGHT {
+        panic!("max_weight exceeds maximum");
+    }
+
+    let key = DataKey::WeightConfig;
+    let old_config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_MAX_WEIGHT,
+    });
+
+    let new_config = WeightConfig {
+        multiplier_bps,
+        max_weight,
+    };
+    e.storage().instance().set(&key, &new_config);
+    crate::bump_instance_ttl(e);
+
+    e.events().publish(
+        (Symbol::new(e, "weight_config_set"),),
+        (
+            old_config.multiplier_bps,
+            old_config.max_weight,
+            multiplier_bps,
+            max_weight,
+        ),
+    );
+}
+
+fn weight_config_key(e: &Env) -> Symbol {
+    Symbol::new(e, "weight_cfg")
 }
 
 /// Returns the stake (non-negative token units) recorded for `attester`.
@@ -152,42 +171,10 @@ pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
     e.storage()
         .instance()
         .set(&DataKey::AttesterStake(attester.clone()), &amount);
+    crate::bump_instance_ttl(e);
 }
 
-/// Derives the attestation weight for `attester` from its stored stake and
-/// the contract-wide weight config.
-///
-/// # Formula
-///
-/// ```text
-/// weight = max(DEFAULT_ATTESTATION_WEIGHT,
-///              min(floor(stake × multiplier_bps / 10_000),
-///                  config_max,
-///                  MAX_ATTESTATION_WEIGHT))
-/// ```
-///
-/// # Rounding
-///
-/// Integer floor division is used throughout; the fractional part is always
-/// **discarded**.  This means a stake that is not an exact multiple of
-/// `BPS_DENOMINATOR / multiplier_bps` produces a weight strictly less than the
-/// corresponding real-valued result.  See the module-level documentation for
-/// concrete examples.
-///
-/// # Determinism
-///
-/// This function is a pure function of contract storage.  Calling it twice
-/// with the same stored state always returns the same value.  See the
-/// module-level docs for the full determinism guarantee.
-///
-/// # Return value
-///
-/// Always returns a value in `[DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT]`,
-/// i.e. `[1, 1_000_000]`.
-#[must_use]
 pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
-    use crate::types::attestation::DEFAULT_ATTESTATION_WEIGHT;
-
     let stake = get_attester_stake(e, attester);
     let (multiplier_bps, max_weight) = get_weight_config(e);
 

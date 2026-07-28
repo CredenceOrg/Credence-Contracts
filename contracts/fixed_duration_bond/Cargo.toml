@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }
+interfaces = { path = "../../crates/interfaces" }
 soroban-sdk = "22.0"
 
 [dev-dependencies]

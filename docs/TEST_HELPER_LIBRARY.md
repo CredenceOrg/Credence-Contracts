@@ -52,6 +52,38 @@ fn test_batch_processing() {
 }
 ```
 
+### Consecutive-pair iteration
+
+Use `pair_iter` to iterate over every consecutive `(this, next)` pair from a
+Soroban `Vec<T>`. This is the idiomatic way to assert monotonicity, ordering
+invariants, or transition guards without writing the sliding-window boilerplate
+by hand.
+
+For a vector of length `n` the function returns `n − 1` pairs. An empty or
+single-element vector returns an empty `Vec`.
+
+```rust
+use soroban_sdk::{Env, Vec};
+use testutils::pair_iter;
+
+#[test]
+fn test_sorted_ascending() {
+    let env = Env::default();
+    let mut scores: Vec<u32> = Vec::new(&env);
+    scores.push_back(10);
+    scores.push_back(20);
+    scores.push_back(30);
+
+    // Assert every adjacent pair is strictly increasing
+    for (a, b) in pair_iter(&env, &scores) {
+        assert!(a < b, "scores must be strictly ascending");
+    }
+}
+```
+
+The helper lives in `crates/testutils/src/vec.rs` and is re-exported at the
+crate root as `testutils::pair_iter`.
+
 ## Contract-Specific Helpers (Feature Gated)
 
 Many contracts compile test-only helpers when the `testutils` feature is enabled. For example, `credence_bond` exposes internal getters that bypass pagination for easier assertions in tests.

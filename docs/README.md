@@ -7,6 +7,14 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [architecture.md](architecture.md) | Contributor / Operator | System-wide component diagram, data flows, trust boundaries |
+
+## Per-crate entrypoint guides
+
+These compact pages list the main public entrypoints, required roles, and backend integration notes for each contract crate. They are intended to be quick review aids for contributors and downstream integrators.
+
+- [credence-bond.md](credence-bond.md)
+- [credence-delegation.md](credence-delegation.md)
+- [credence-timelock.md](credence-timelock.md)
 | [access-control.md](access-control.md) | Contributor / Integrator | RBAC modifiers, entrypoint authority matrix, event schemas |
 | [CONSTRUCTOR_PATTERNS.md](CONSTRUCTOR_PATTERNS.md) | Contributor | One-shot `initialize` pattern: re-init guard, auth, storage, event |
 | [DEDUP_POLICY.md](DEDUP_POLICY.md) | Contributor | When we dedupe input, when we reject on duplicate, and why |
@@ -34,6 +42,7 @@ This directory contains all design docs, API references, and operational guides 
 | [slashing-history.md](slashing-history.md) | Integrator / Auditor | Append-only slash record storage |
 | [withdrawal.md](withdrawal.md) | Integrator | Normal and early withdrawal flows |
 | [bond-invariants.md](bond-invariants.md) | Contributor | Mathematical invariants tested in fuzz suite |
+| [bond-upgrade-auth-checklist.md](bond-upgrade-auth-checklist.md) | Operator / Auditor | Pre-upgrade authorization & safety checklist |
 | [bond-drift-detection.md](bond-drift-detection.md) | Operator | Detecting storage drift across deployments |
 | [bond-introspection.md](bond-introspection.md) | Integrator | Read-only view functions |
 | [bond-crate-layout.md](bond-crate-layout.md) | Contributor | Module map, public re-exports |
@@ -65,7 +74,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [EVENTS.md](EVENTS.md) | Integrator / Indexer | Canonical event catalog with topics and payloads |
-| [event-indexing.md](event-indexing.md) | Indexer | Indexer architecture, cursor management, replay |
+| [event-indexing.md](event-indexing.md) | Backend Consumer / Indexer | Indexing guidance, idempotency patterns, versioning strategy, query patterns |
 | [EVENT_INDEXING_MIGRATION.md](EVENT_INDEXING_MIGRATION.md) | Operator | Migration guide for indexer schema changes |
 | [indexer-replay-contract.md](indexer-replay-contract.md) | Operator | Replay contract for backfilling |
 
@@ -95,6 +104,7 @@ This directory contains all design docs, API references, and operational guides 
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Operator | Testnet/mainnet deploy runbook, cross-contract wiring |
 | [admin-cli.md](admin-cli.md) | Operator | CLI for admin operations |
 | [STORAGE_KEYS.md](STORAGE_KEYS.md) | Contributor / Operator | Storage key enum, TTL policies |
+| [STORAGE_KEY_LAYOUT.md](STORAGE_KEY_LAYOUT.md) | Contributor | Per-contract storage key catalog and collision-safety rules |
 | [storage-ttl.md](storage-ttl.md) | Contributor | TTL extension strategies |
 | [wasm-reproducibility.md](wasm-reproducibility.md) | Operator | Reproducible build verification |
 | [wasm-size-budget.md](wasm-size-budget.md) | Contributor | Per-contract size ceilings, CI gate |
@@ -116,6 +126,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [datakey-fingerprint.md](datakey-fingerprint.md) | Contributor | Storage key fingerprinting for upgrades |
+| [ARITHMETIC_HELPERS.md](ARITHMETIC_HELPERS.md) | Contributor | Complete reference for all `credence_math` arithmetic helpers, rounding modes, and overflow semantics |
 | [decimal-handling.md](decimal-handling.md) | Contributor | Fixed-point arithmetic patterns |
 | [PERCENT_SPLIT_MODEL.md](PERCENT_SPLIT_MODEL.md) | Integrator | Multi-recipient percent splits in bps; must sum to 10_000 |
 | [error-codes-wire.md](error-codes-wire.md) | Integrator | On-chain error code → off-chain mapping |

@@ -313,9 +313,9 @@ fn test_snapshot_does_not_mutate_bond() {
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &200_i128);
 
-    let before = client.get_identity_state();
+    let before = client.get_identity_state(&identity);
     let _ = client.get_bond_status_snapshot();
-    let after = client.get_identity_state();
+    let after = client.get_identity_state(&identity);
 
     assert_eq!(before.bonded_amount, after.bonded_amount);
     assert_eq!(before.slashed_amount, after.slashed_amount);

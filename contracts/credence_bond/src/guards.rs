@@ -35,36 +35,30 @@ use crate::{bump_instance_ttl, DataKey, IdentityBond};
 /// }
 /// ```
 pub fn require_admin(e: &Env, admin: &Address) {
-    let stored: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
-/// Load the bond from instance storage and bump the TTL.
+/// Load the bond for `identity` from instance storage and bump the TTL.
 ///
-/// Reads `DataKey::Bond` from instance storage, bumps the instance TTL via
-/// [`bump_instance_ttl`], and returns the bond.
+/// Reads `DataKey::Bond(identity)` from instance storage, bumps the instance
+/// TTL via [`bump_instance_ttl`], and returns the bond.
 ///
 /// # Errors
-/// - Panics with [`ContractError::BondNotFound`] when no bond has been stored.
+/// - Panics with [`ContractError::BondNotFound`] when no bond has been stored
+///   for `identity`.
 ///
 /// # Example
 /// ```ignore
-/// pub fn read_bond_fn(e: Env) -> IdentityBond {
-///     let bond = guards::load_bond(&e);
+/// pub fn read_bond_fn(e: Env, identity: Address) -> IdentityBond {
+///     let bond = guards::load_bond(&e, &identity);
 ///     bond
 /// }
 /// ```
-pub fn load_bond(e: &Env) -> IdentityBond {
+pub fn load_bond(e: &Env, identity: &Address) -> IdentityBond {
     let bond: IdentityBond = e
         .storage()
         .instance()
-        .get(&DataKey::Bond)
+        .get(&DataKey::Bond(identity.clone()))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
     bump_instance_ttl(e);
     bond
@@ -93,7 +87,7 @@ mod tests {
 
         // Initialize sets DataKey::Admin.
         let client = crate::CredenceBondClient::new(&e, &contract_id);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Guard must not panic when the correct admin is supplied.
         e.as_contract(&contract_id, || {
@@ -111,7 +105,7 @@ mod tests {
         let impostor = Address::generate(&e);
 
         let client = crate::CredenceBondClient::new(&e, &contract_id);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
 
         // Supplying the wrong address must panic (NotAdmin).
         e.as_contract(&contract_id, || {
@@ -142,11 +136,11 @@ mod tests {
         let client = crate::CredenceBondClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
         let identity = Address::generate(&e);
-        client.initialize(&admin);
+        client.initialize(&admin, &None);
         client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
 
         e.as_contract(&contract_id, || {
-            let bond = load_bond(&e);
+            let bond = load_bond(&e, &identity);
             assert_eq!(bond.bonded_amount, 1000);
             assert_eq!(bond.identity, identity);
         });
@@ -160,7 +154,7 @@ mod tests {
 
         // No bond stored — must panic (BondNotFound).
         e.as_contract(&contract_id, || {
-            load_bond(&e);
+            load_bond(&e, &identity);
         });
     }
 }

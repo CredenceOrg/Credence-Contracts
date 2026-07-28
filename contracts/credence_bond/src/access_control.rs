@@ -56,15 +56,7 @@ pub enum AccessError {
 /// ```
 pub fn require_admin(e: &Env, caller: &Address) {
     let admin_key = Symbol::new(e, ADMIN_KEY);
-
-    match e.storage().instance().get::<Symbol, Address>(&admin_key) {
-        Some(admin) => {
-            require_role(e, Role::Admin, caller, caller == &admin);
-        }
-        None => {
-            panic_with_error!(e, ContractError::NotInitialized);
-        }
-    }
+    credence_errors::require_admin!(e, caller, admin_key);
 }
 
 /// @notice Require that the caller is a registered verifier.

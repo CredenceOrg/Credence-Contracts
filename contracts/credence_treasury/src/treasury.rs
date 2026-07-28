@@ -592,13 +592,14 @@ impl CredenceTreasury {
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
-        if crate::is_expired(&e, proposal.expires_at) {
+        if credence_errors::is_expired(&e, proposal.expires_at) {
             e.events().publish(
                 (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
+                (),
             );
             panic_with_error!(&e, ContractError::ProposalExpired);
         }
-let already = e
+        let already = e
             .storage()
             .instance()
             .get(&DataKey::Approval(proposal_id, approver.clone()))
@@ -659,13 +660,13 @@ let already = e
             .instance()
             .get(&DataKey::Proposal(proposal_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
-        if crate::is_expired(&e, proposal.expires_at) {
+        if credence_errors::is_expired(&e, proposal.expires_at) {
             e.events().publish(
                 (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
+                (),
             );
             panic_with_error!(&e, ContractError::ProposalExpired);
         }
-
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
@@ -1235,5 +1236,30 @@ let already = e
 
         e.events()
             .publish((Symbol::new(&e, "native_rescued"),), (to, amount, admin));
+    }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        Self::require_not_paused(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceTreasury {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }

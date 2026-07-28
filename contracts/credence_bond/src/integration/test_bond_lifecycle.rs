@@ -28,7 +28,7 @@ fn test_lifecycle_create_then_withdraw() {
     let amount = 1000_i128;
     let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &amount, &duration, &false, &0_u64);
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.bonded_amount, amount);
     assert_eq!(state.slashed_amount, 0);
     assert!(state.active);
@@ -54,7 +54,7 @@ fn test_lifecycle_create_topup_withdraw() {
     // Advance past lock-up before withdrawing.
     e.ledger().with_mut(|li| li.timestamp = duration + 1);
     client.withdraw(&identity, &2000_i128);
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.bonded_amount, 0);
 }
 
@@ -87,14 +87,14 @@ fn test_lifecycle_create_topup_slash_withdraw() {
     client.create_bond_with_rolling(&identity, &1000_i128, &duration, &false, &0_u64);
     client.top_up(&identity, &1000_i128);
     client.slash(&admin, &300_i128);
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.bonded_amount, 2000);
     assert_eq!(state.slashed_amount, 300);
     let available = 2000 - 300;
     // Advance past lock-up before withdrawing.
     e.ledger().with_mut(|li| li.timestamp = duration + 1);
     client.withdraw(&identity, &available);
-    let final_state = client.get_identity_state();
+    let final_state = client.get_identity_state(&identity);
     assert_eq!(final_state.bonded_amount, 300);
 }
 
@@ -105,21 +105,21 @@ fn test_lifecycle_state_consistency() {
     let (client, admin, identity) = setup(&e);
     let duration = credence_math::Timestamp::SECONDS_PER_DAY;
     client.create_bond_with_rolling(&identity, &2000_i128, &duration, &false, &0_u64);
-    let s1 = client.get_identity_state();
-    let s2 = client.get_identity_state();
+    let s1 = client.get_identity_state(&identity);
+    let s2 = client.get_identity_state(&identity);
     assert_eq!(s1.bonded_amount, s2.bonded_amount);
     assert_eq!(s1.slashed_amount, s2.slashed_amount);
 
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &500_i128);
-    let s3 = client.get_identity_state();
+    let s3 = client.get_identity_state(&identity);
     assert_eq!(s3.slashed_amount, 500);
     assert_eq!(s3.bonded_amount, 2000);
 
     // Advance past lock-up before withdrawing.
     e.ledger().with_mut(|li| li.timestamp = duration + 1);
     client.withdraw(&identity, &1500_i128);
-    let s4 = client.get_identity_state();
+    let s4 = client.get_identity_state(&identity);
     assert_eq!(s4.bonded_amount, 500);
     assert_eq!(s4.slashed_amount, 500);
 }
@@ -130,9 +130,9 @@ fn test_lifecycle_extend_duration() {
     let e = Env::default();
     let (client, _admin, identity) = setup(&e);
     client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
-    let before = client.get_identity_state();
+    let before = client.get_identity_state(&identity);
     client.extend_duration(&identity, &credence_math::Timestamp::SECONDS_PER_DAY);
-    let after = client.get_identity_state();
+    let after = client.get_identity_state(&identity);
     assert_eq!(after.bond_duration, before.bond_duration + credence_math::Timestamp::SECONDS_PER_DAY);
     assert_eq!(after.bonded_amount, before.bonded_amount);
 }

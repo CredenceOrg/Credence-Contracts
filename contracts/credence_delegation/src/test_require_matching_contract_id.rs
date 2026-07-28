@@ -38,6 +38,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>, Address) {
 }
 
 fn make_payload(
+    e: &Env,
     domain: DomainTag,
     owner: &Address,
     target: &Address,
@@ -51,6 +52,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
+        ledger_number: e.ledger().sequence(),
+        signature_domain: soroban_sdk::String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -64,7 +67,7 @@ fn delegate_succeeds_with_right_contract_id() {
     let delegate = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
 
-    let payload = make_payload(DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
+    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
     client.execute_delegated_delegate(
         &owner,
         &delegate,
@@ -86,6 +89,7 @@ fn delegate_returns_mismatch_for_wrong_contract_id() {
 
     let other_contract_id = e.register(CredenceDelegation, ());
     let payload = make_payload(
+        &e,
         DomainTag::Delegate,
         &owner,
         &delegate,
@@ -103,7 +107,7 @@ fn delegate_returns_mismatch_for_wrong_contract_id() {
         )
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ContractError::ContractIdMismatch);
+    assert!(err == ContractError::ContractIdMismatch.into());
     assert_eq!(client.get_nonce(&owner), 0);
 }
 
@@ -118,6 +122,7 @@ fn delegate_returns_mismatch_for_unset_contract_id() {
 
     let unset_contract_id = Address::generate(&e);
     let payload = make_payload(
+        &e,
         DomainTag::Delegate,
         &owner,
         &delegate,
@@ -135,7 +140,7 @@ fn delegate_returns_mismatch_for_unset_contract_id() {
         )
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ContractError::ContractIdMismatch);
+    assert!(err == ContractError::ContractIdMismatch.into());
     assert_eq!(client.get_nonce(&owner), 0);
 }
 
@@ -149,7 +154,7 @@ fn revoke_succeeds_with_right_contract_id() {
     let delegate = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
 
-    let create_payload = make_payload(DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
+    let create_payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
     client.execute_delegated_delegate(
         &owner,
         &delegate,
@@ -158,8 +163,14 @@ fn revoke_succeeds_with_right_contract_id() {
         &create_payload,
     );
 
-    let revoke_payload =
-        make_payload(DomainTag::RevokeDelegation, &owner, &delegate, &contract_id, 1);
+    let revoke_payload = make_payload(
+        &e,
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &contract_id,
+        1,
+    );
     client.execute_delegated_revoke(
         &owner,
         &delegate,
@@ -179,6 +190,7 @@ fn revoke_returns_mismatch_for_wrong_contract_id() {
 
     let other_contract_id = e.register(CredenceDelegation, ());
     let payload = make_payload(
+        &e,
         DomainTag::RevokeDelegation,
         &owner,
         &delegate,
@@ -190,7 +202,7 @@ fn revoke_returns_mismatch_for_wrong_contract_id() {
         .try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ContractError::ContractIdMismatch);
+    assert!(err == ContractError::ContractIdMismatch.into());
     assert_eq!(client.get_nonce(&owner), 0);
 }
 
@@ -204,6 +216,7 @@ fn revoke_returns_mismatch_for_unset_contract_id() {
 
     let unset_contract_id = Address::generate(&e);
     let payload = make_payload(
+        &e,
         DomainTag::RevokeDelegation,
         &owner,
         &delegate,
@@ -215,7 +228,7 @@ fn revoke_returns_mismatch_for_unset_contract_id() {
         .try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ContractError::ContractIdMismatch);
+    assert!(err == ContractError::ContractIdMismatch.into());
     assert_eq!(client.get_nonce(&owner), 0);
 }
 
@@ -229,15 +242,27 @@ fn revoke_attest_succeeds_with_right_contract_id() {
     let attester = Address::generate(&e);
     let subject = Address::generate(&e);
 
+    // Create the attestation delegation entry first (consumes nonce 0 via direct path)
+    let expiry = e.ledger().timestamp() + 86_400;
+    client.delegate(
+        &attester,
+        &subject,
+        &DelegationType::Attestation,
+        &expiry,
+        &0_u64,
+    );
+
+    // Revoke via delegated path (nonce 1)
     let payload = make_payload(
+        &e,
         DomainTag::RevokeAttestation,
         &attester,
         &subject,
         &contract_id,
-        0,
+        1,
     );
     client.execute_delegated_revoke_attest(&attester, &subject, &payload);
-    assert_eq!(client.get_nonce(&attester), 1);
+    assert_eq!(client.get_nonce(&attester), 2);
 }
 
 /// Wrong ID: revoking an attestation with a different, real deployed
@@ -250,6 +275,7 @@ fn revoke_attest_returns_mismatch_for_wrong_contract_id() {
 
     let other_contract_id = e.register(CredenceDelegation, ());
     let payload = make_payload(
+        &e,
         DomainTag::RevokeAttestation,
         &attester,
         &subject,
@@ -261,7 +287,7 @@ fn revoke_attest_returns_mismatch_for_wrong_contract_id() {
         .try_execute_delegated_revoke_attest(&attester, &subject, &payload)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ContractError::ContractIdMismatch);
+    assert!(err == ContractError::ContractIdMismatch.into());
     assert_eq!(client.get_nonce(&attester), 0);
 }
 
@@ -275,6 +301,7 @@ fn revoke_attest_returns_mismatch_for_unset_contract_id() {
 
     let unset_contract_id = Address::generate(&e);
     let payload = make_payload(
+        &e,
         DomainTag::RevokeAttestation,
         &attester,
         &subject,
@@ -286,6 +313,6 @@ fn revoke_attest_returns_mismatch_for_unset_contract_id() {
         .try_execute_delegated_revoke_attest(&attester, &subject, &payload)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ContractError::ContractIdMismatch);
+    assert!(err == ContractError::ContractIdMismatch.into());
     assert_eq!(client.get_nonce(&attester), 0);
 }
