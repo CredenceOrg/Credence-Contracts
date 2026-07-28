@@ -1,6 +1,5 @@
-use soroban_sdk::{Env, TryFromVal, Vec as SorobanVec};
 use alloc::vec::Vec as StdVec;
-use soroban_sdk::{Env, Vec as SorobanVec};
+use soroban_sdk::{Env, TryFromVal, Vec as SorobanVec};
 
 pub fn deduplicate_stable<T>(e: &Env, v: &SorobanVec<T>) -> SorobanVec<T>
 where

@@ -152,44 +152,63 @@ pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
     e.storage()
         .instance()
         .set(&DataKey::AttesterStake(attester.clone()), &amount);
+    crate::bump_instance_ttl(e);
 }
 
-/// Derives the attestation weight for `attester` from its stored stake and
-/// the contract-wide weight config.
-///
-/// # Formula
-///
-/// ```text
-/// weight = max(DEFAULT_ATTESTATION_WEIGHT,
-///              min(floor(stake × multiplier_bps / 10_000),
-///                  config_max,
-///                  MAX_ATTESTATION_WEIGHT))
-/// ```
-///
-/// # Rounding
-///
-/// Integer floor division is used throughout; the fractional part is always
-/// **discarded**.  This means a stake that is not an exact multiple of
-/// `BPS_DENOMINATOR / multiplier_bps` produces a weight strictly less than the
-/// corresponding real-valued result.  See the module-level documentation for
-/// concrete examples.
-///
-/// # Determinism
-///
-/// This function is a pure function of contract storage.  Calling it twice
-/// with the same stored state always returns the same value.  See the
-/// module-level docs for the full determinism guarantee.
-///
-/// # Return value
-///
-/// Always returns a value in `[DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT]`,
-/// i.e. `[1, 1_000_000]`.
-#[must_use]
+#[allow(dead_code)]
+pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
+    if multiplier_bps > MAX_WEIGHT_CONFIG_MULTIPLIER_BPS {
+        panic!("multiplier_bps exceeds maximum");
+    }
+    if max_weight > MAX_ATTESTATION_WEIGHT {
+        panic!("max_weight exceeds maximum");
+    }
+
+    let key = DataKey::WeightConfig;
+    let old_config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT,
+    });
+
+    let new_config = WeightConfig {
+        multiplier_bps,
+        max_weight,
+    };
+    e.storage().instance().set(&key, &new_config);
+    crate::bump_instance_ttl(e);
+
+    e.events().publish(
+        (Symbol::new(e, "weight_config_set"),),
+        (
+            old_config.multiplier_bps,
+            old_config.max_weight,
+            multiplier_bps,
+            max_weight,
+        ),
+    );
+}
+
+pub fn get_weight_config(e: &Env) -> (u32, u32) {
+    let key = DataKey::WeightConfig;
+    let config: WeightConfig = e.storage().instance().get(&key).unwrap_or(WeightConfig {
+        multiplier_bps: 0,
+        max_weight: DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT,
+    });
+    crate::bump_instance_ttl(e);
+    (config.multiplier_bps, config.max_weight)
+}
+
 pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
     use crate::types::attestation::DEFAULT_ATTESTATION_WEIGHT;
 
     let stake = get_attester_stake(e, attester);
     let (multiplier_bps, max_weight) = get_weight_config(e);
+    let stake: i128 = e
+        .storage()
+        .instance()
+        .get(&DataKey::AttesterStake(attester.clone()))
+        .unwrap_or(0);
+    crate::bump_instance_ttl(e);
 
     // Short-circuit: zero (or missing) stake always returns the default weight.
     // This preserves the invariant that every registered attester can produce

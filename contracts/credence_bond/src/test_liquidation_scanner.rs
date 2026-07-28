@@ -254,6 +254,21 @@ fn test_advance_keeper_cursor_backwards_rejected() {
 }
 
 #[test]
+#[should_panic(expected = "keeper cursor: invalid advance")]
+fn test_advance_keeper_cursor_rejects_skipped_positions() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let keeper = Address::generate(&e);
+    for _ in 0..10 {
+        client.register_bond_holder(&admin, &Address::generate(&e));
+    }
+
+    let page = client.scan_liquidation_candidates(&keeper, &0, &3, &0, &0);
+    assert_eq!(page.next_cursor, 3);
+    client.advance_keeper_cursor(&keeper, &5);
+}
+
+#[test]
 #[should_panic(expected = "cursor out of range")]
 fn test_scan_with_cursor_beyond_registry_panics() {
     let e = Env::default();

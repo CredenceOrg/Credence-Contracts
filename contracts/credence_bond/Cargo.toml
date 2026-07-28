@@ -55,6 +55,7 @@ path = "tests/test_cost_regression.rs"
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }
 timelock = { path = "../timelock" }
+interfaces = { path = "../../crates/interfaces" }
 # soroban-sdk is always required; testutils APIs are only needed for test
 # builds and are gated via the `testutils` feature defined below.
 soroban-sdk = { version = "22.0" }

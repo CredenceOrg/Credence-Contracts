@@ -25,11 +25,10 @@ pub mod pausable;
 
 #[cfg(test)]
 mod test_ownership_transfer;
-// test_events_schema.rs targets an older soroban_sdk events API (`ContractEvent`,
-// `Events::get_all`) and does not compile against SDK 22; keep it out of the
-// default test build until it is rewritten.
-// #[cfg(test)]
-// mod test_events_schema;
+/// Event schema regression tests — verifies topic/data layout for every
+/// role event without involving contract storage.
+#[cfg(test)]
+mod test_events_schema;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
@@ -95,7 +94,7 @@ pub struct AdminInfo {
 /// Storage keys for the admin contract
 #[contracttype]
 #[derive(Clone)]
-enum DataKey {
+pub enum DataKey {
     /// List of all admin addresses
     AdminList,
     /// Admin information by address: Address -> AdminInfo
@@ -1188,12 +1187,7 @@ impl AdminContract {
     /// # Panics
     /// Panics via [`panic_with_error!`] — compatible with Soroban's error
     /// propagation model.
-    fn require_role_at_ledger(
-        e: &Env,
-        role: AdminRole,
-        actor: &Address,
-        at_ledger: u64,
-    ) {
+    fn require_role_at_ledger(e: &Env, role: AdminRole, actor: &Address, at_ledger: u64) {
         let admin_info: AdminInfo = e
             .storage()
             .instance()
@@ -1282,3 +1276,6 @@ mod test_auth_entrypoints;
 
 #[cfg(test)]
 mod test_require_role_at_least;
+
+#[cfg(test)]
+mod test_role_events;

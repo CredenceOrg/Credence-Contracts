@@ -395,7 +395,11 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        crate::require_within_ttl_panic(&e, proposal.expires_at, ContractError::ProposalAlreadyExecuted);
+        crate::require_within_ttl_panic(
+            &e,
+            proposal.expires_at,
+            ContractError::ProposalAlreadyExecuted,
+        );
 
         let already_signed = e
             .storage()
@@ -674,15 +678,7 @@ impl CredenceMultiSig {
     // ==================== Internal Helpers ====================
 
     fn require_admin(e: &Env, admin: &Address) {
-        admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != *admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        credence_errors::require_admin!(e, admin, DataKey::Admin);
     }
 
     fn require_signer(e: &Env, signer: &Address) {
@@ -778,5 +774,29 @@ impl CredenceMultiSig {
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
         bump_instance_ttl(&e);
         crate::pausable::execute_pause_proposal(&e, proposal_id)
+    }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceMultisigContract {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }

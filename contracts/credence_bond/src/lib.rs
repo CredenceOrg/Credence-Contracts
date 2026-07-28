@@ -37,6 +37,10 @@ mod weighted_attestation;
 mod test_weighted_attestation_rounding;
 
 #[cfg(test)]
+#[path = "fuzz/test_slashing_tier_invariants.rs"]
+mod test_slashing_tier_invariants;
+
+#[cfg(test)]
 mod test_weighted_attestation;
 
 #[cfg(test)]
@@ -49,10 +53,16 @@ pub mod types;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 mod test_unauthorized_token;
+/// Real on-chain USDC transfer integration tests for create_bond/top_up/
+/// withdraw/withdraw_early, plus the custody invariant test.
+#[cfg(test)]
+mod test_bond_token_transfers;
 #[cfg(test)]
 mod test_events_schema;
 #[cfg(test)]
 mod test_events_v2;
+#[cfg(test)]
+mod test_events;
 #[cfg(test)]
 mod test_validation;
 #[cfg(test)]
@@ -91,6 +101,11 @@ mod test_auth;
 #[cfg(test)]
 mod test_pagination;
 
+/// Regression tests codifying the deterministic-ordering guarantee for every
+/// list-returning read (no duplicates, no omissions, stable key order).
+#[cfg(test)]
+mod test_ordering_guarantees;
+
 /// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
 #[cfg(test)]
 mod test_rolling_notice;
@@ -110,6 +125,10 @@ mod test_max_leverage;
 
 #[cfg(test)]
 mod test_migration_guard;
+
+/// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
+#[cfg(test)]
+mod test_same_ledger_liquidation_guard;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -335,15 +354,20 @@ pub struct TierThresholds {
     pub gold_max: i128,
 }
 
-const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+/// Maximum bond duration in seconds (365 days).
+pub(crate) const MAX_BOND_DURATION_SECONDS: u64 = 31_536_000;
+/// Soroban ledger TTLs are expressed in ledgers; assume a 5s ledger cadence.
+const SECONDS_PER_LEDGER: u64 = 5;
+/// Keep instance-storage entries alive for the full maximum bond duration.
+pub(crate) const STORAGE_TTL_EXTEND_TO: u32 =
+    (MAX_BOND_DURATION_SECONDS / SECONDS_PER_LEDGER) as u32;
+/// Extend from the halfway point to the full configured lifetime.
+pub(crate) const STORAGE_TTL_THRESHOLD: u32 = STORAGE_TTL_EXTEND_TO / 2;
 
-/// Maximum persistent entry TTL (~6 months at 5 s/ledger; Soroban network cap).
-pub(crate) const PERSISTENT_TTL_MAX: u32 = 3_110_400;
-
-fn bump_instance_ttl(e: &Env) {
+pub(crate) fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
-        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+        .extend_ttl(STORAGE_TTL_THRESHOLD, STORAGE_TTL_EXTEND_TO);
 }
 
 /// Reason symbols for [`CredenceBond::liquidate`].
@@ -874,6 +898,26 @@ impl CredenceBond {
     /// assert_eq!(bond.slashed_amount, 0);
     /// assert!(!bond.is_rolling);
     /// ```
+    /// Create a new bond for an identity, escrowing real USDC tokens.
+    ///
+    /// Authority: `identity` must authorize the call.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token)
+    /// (storage key [`DataKey::BondToken`]), this entry point pulls `amount`
+    /// USDC from `identity` into the bond contract by calling
+    /// [`token_integration::transfer_into_contract`]. The caller must have
+    /// pre-approved the bond contract for at least `amount`. Fee-on-transfer
+    /// tokens are rejected by the balance-delta guard.
+    ///
+    /// If no token is configured (phantom-balance deployment) the entry
+    /// point only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The `IdentityBond` storage entry, `LastCollateralIncreaseLedger`,
+    /// tier events, and self-consistency invariants are all written **before**
+    /// the external `transfer_from` so a hostile token contract cannot
+    /// re-enter and double-spend against a stale pre-deposit state.
     pub fn create_bond(
         e: Env,
         identity: Address,
@@ -917,6 +961,13 @@ impl CredenceBond {
         bump_instance_ttl(&e);
         let tier = tiered_bond::get_tier_for_amount(&e, amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, BondTier::Bronze, tier);
+        // Issue #996: same-ledger sequencing guard — record this ledger sequence
+        // so that any subsequent same-ledger slash via `slashing::slash_bond` is
+        // blocked by `same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase`.
+        // Writing the recorder AFTER the bond + invariants check ensures we never
+        // trip the guard on an aborted or fixture-only flow: a Soroban tx is
+        // atomic, so a panic in `assert_self_consistent` reverts this write too.
+        crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -1062,6 +1113,7 @@ impl CredenceBond {
             .unwrap_or(Vec::new(&e));
         attestations.push_back(id);
         e.storage().instance().set(&subject_key, &attestations);
+        bump_instance_ttl(&e);
 
         let count_key = DataKey::SubjectAttestationCount(subject.clone());
         let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
@@ -1425,6 +1477,31 @@ impl CredenceBond {
     }
 
     /// Withdraw from bond after lock-up period has ended.
+    /// Withdraw `amount` USDC from a bond after lock-up has ended.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// this entry point pushes `amount` USDC from the bond contract back to
+    /// `identity` via [`token_integration::transfer_from_contract`]
+    /// (`try_transfer` with a balance-delta guard that rejects fee-on-
+    /// transfer tokens). The bond contract must hold at least `amount` USDC;
+    /// any shortfall aborts the entire transaction (atomic rollback).
+    ///
+    /// Without a configured token the entry point operates in phantom-
+    /// balance mode and only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The reduced `IdentityBond` storage entry is written **before** the
+    /// external `transfer` so a hostile token contract cannot re-enter and
+    /// double-spend against a post-withdrawal snapshot.
+    ///
+    /// # Errors
+    /// - `InvalidBondAmount` when `amount <= 0`.
+    /// - `LockupNotExpired` when called before the bond's lock-up end (use
+    ///   `withdraw_early` instead to exit early with a penalty).
+    /// - `InsufficientBalance` when `amount > bonded_amount - slashed_amount`.
+    /// - `SlashExceedsBond` when the subtraction would leave
+    ///   `slashed_amount > bonded_amount`.
     pub fn withdraw(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize withdrawals.
@@ -1477,8 +1554,21 @@ impl CredenceBond {
         let new_tier = tiered_bond::get_tier_for_amount(&e, new_available);
         tiered_bond::emit_tier_change_if_needed(&e, &bond.identity, old_tier, new_tier);
 
+        // Persist the reduced bond state (Effects) before the external
+        // token transfer (Interactions). See the function-level
+        // `# Checks–Effects–Interactions` docstring for the threat
+        // classification that motivates this ordering.
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
+
+        // Custody: push `amount` USDC back to the bond owner after
+        // lock-up. Gated by `has_token()` so phantom-balance deployments
+        // (no `DataKey::BondToken` configured) still record the on-paper
+        // withdrawal without performing an on-token move.
+        if token_integration::has_token(&e) {
+            token_integration::transfer_from_contract(&e, &bond.identity, amount);
+        }
+
         invariants::assert_self_consistent(&e);
         bond
     }
@@ -1610,6 +1700,7 @@ impl CredenceBond {
         }
         bond.withdrawal_requested_at = e.ledger().timestamp();
         e.storage().instance().set(&key, &bond);
+        bump_instance_ttl(&e);
         e.events().publish(
             (Symbol::new(&e, "withdrawal_requested"),),
             (bond.identity.clone(), bond.withdrawal_requested_at),
@@ -1684,6 +1775,23 @@ impl CredenceBond {
     /// wallet. State is committed after the token transfer completes.
     ///
     /// See also: [`docs/credence-bond.md`](../../../docs/credence-bond.md)
+    /// Top up an existing bond for `identity`, escrowing additional USDC.
+    ///
+    /// Authority: `identity` must authorize the call.
+    ///
+    /// # Custody semantics
+    /// If a USDC token has been configured via [`set_token`](Self::set_token),
+    /// this entry point pulls `amount` USDC from `identity` into the bond
+    /// contract via [`token_integration::transfer_into_contract`] (allowance
+    /// pre-check + balance-delta fee-on-transfer guard). The caller must have
+    /// pre-approved the bond contract for at least `amount`. Without a
+    /// configured token the entry point operates in phantom-balance mode
+    /// and only mutates the [`IdentityBond`] storage entry.
+    ///
+    /// # Checks–Effects–Interactions
+    /// The `IdentityBond` storage entry and tier events are updated **before**
+    /// the external `transfer_from` so a re-entering token contract cannot
+    /// observe stale state.
     pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
         // auth: bond owner must authorize top-ups.
@@ -1900,7 +2008,8 @@ impl CredenceBond {
             notice_period_duration: bond.notice_period_duration,
         };
         e.storage().instance().set(&bond_key, &updated);
-        invariants::assert_self_consistent(&e);
+        bump_instance_ttl(&e);
+        bump_instance_ttl(&e);
 
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
@@ -2602,6 +2711,7 @@ pub fn create_bond(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use soroban_sdk::testutils::{Address as _, Ledger};
 
     #[test]
     fn is_valid_bond_positive_amount() {
@@ -2754,6 +2864,93 @@ mod tests {
         let err = create_bond(100, 0, 0, true, 0).unwrap_err();
         assert_eq!(err, ContractError::InvalidBondDuration);
     }
+
+    #[test]
+    fn bond_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let identity = Address::generate(&e);
+        client.initialize(&admin);
+
+        client.create_bond(&identity, &50_i128, &MAX_BOND_DURATION_SECONDS as u64, &false, &0_u64);
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let bond = client.get_identity_state();
+        assert_eq!(bond.bonded_amount, 50);
+        assert_eq!(bond.identity, identity);
+    }
+
+    #[test]
+    fn attestation_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let attester = Address::generate(&e);
+        client.initialize(&admin);
+        client.register_attester(&attester);
+
+        let subject = Address::generate(&e);
+        let attestation = e.as_contract(&contract_id, || {
+            let deadline = e.ledger().timestamp() + 100_000;
+            let nonce = crate::nonce::get_nonce(&e, &attester);
+            client.add_attestation(
+                &attester,
+                &subject,
+                &String::from_str(&e, "ttl"),
+                &contract_id,
+                &deadline,
+                &nonce,
+            )
+        });
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let loaded = client.get_attestation(&attestation.id);
+        assert_eq!(loaded.id, attestation.id);
+        assert_eq!(loaded.identity, subject);
+    }
+
+    #[test]
+    fn attester_stake_state_survives_ledger_advance_after_ttl_bump() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let attester = Address::generate(&e);
+        client.initialize(&admin);
+        client.register_attester(&attester);
+
+        e.as_contract(&contract_id, || {
+            weighted_attestation::set_attester_stake(&e, &attester, 123);
+        });
+
+        let mut info = e.ledger().get();
+        info.sequence_number = (STORAGE_TTL_EXTEND_TO as u64).saturating_add(10_000);
+        info.timestamp = info.timestamp.saturating_add(
+            (STORAGE_TTL_EXTEND_TO as u64).saturating_mul(SECONDS_PER_LEDGER).saturating_add(1),
+        );
+        e.ledger().set(info);
+
+        let weight = e.as_contract(&contract_id, || weighted_attestation::compute_weight(&e, &attester));
+        assert_eq!(weight, 123u32);
+    }
 }
 
 #[cfg(test)]
@@ -2823,3 +3020,15 @@ mod test_grace_window;
 /// Tests for the batch_transfer entrypoint (issue #917).
 #[cfg(test)]
 mod test_batch_transfer;
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceBond {
+    fn get_admin(e: Env) -> Address {
+        storage::get_admin(&e).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        let current_admin = storage::get_admin(&e).unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        Self::transfer_admin(e, current_admin, new_admin);
+    }
+}

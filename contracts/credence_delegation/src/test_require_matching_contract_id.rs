@@ -158,8 +158,13 @@ fn revoke_succeeds_with_right_contract_id() {
         &create_payload,
     );
 
-    let revoke_payload =
-        make_payload(DomainTag::RevokeDelegation, &owner, &delegate, &contract_id, 1);
+    let revoke_payload = make_payload(
+        DomainTag::RevokeDelegation,
+        &owner,
+        &delegate,
+        &contract_id,
+        1,
+    );
     client.execute_delegated_revoke(
         &owner,
         &delegate,

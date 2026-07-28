@@ -131,6 +131,8 @@ Release Wasm for every deployable contract must stay within per-contract size ce
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.
 
+For a contracts-focused overview of responsibilities, state ownership, events, and backend integration points, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Deploy (Soroban CLI)
 
 Configure network and deploy:

@@ -509,6 +509,7 @@ name = "credence_arbitration"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -518,6 +519,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "credence_math",
+ "interfaces",
  "proptest",
  "soroban-sdk",
  "timelock",
@@ -559,6 +561,7 @@ name = "credence_multisig"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "proptest",
  "soroban-sdk",
 ]
@@ -568,7 +571,9 @@ name = "credence_registry"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
+ "timelock",
 ]
 
 [[package]]
@@ -577,8 +582,10 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "ethnum",
+ "interfaces",
  "proptest",
  "soroban-sdk",
+ "timelock",
 ]
 
 [[package]]
@@ -941,6 +948,15 @@ name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+
+[[package]]
+name = "fixed_duration_bond"
+version = "0.1.0"
+dependencies = [
+ "credence_errors",
+ "credence_math",
+ "soroban-sdk",
+]
 
 [[package]]
 name = "flate2"
@@ -1488,6 +1504,13 @@ dependencies = [
  "serde",
  "similar",
  "tempfile",
+]
+
+[[package]]
+name = "interfaces"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
@@ -2819,6 +2842,7 @@ name = "templates"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 
@@ -2905,6 +2929,7 @@ name = "timelock"
 version = "0.1.0"
 dependencies = [
  "credence_errors",
+ "interfaces",
  "soroban-sdk",
 ]
 

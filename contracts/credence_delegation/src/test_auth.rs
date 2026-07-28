@@ -170,7 +170,10 @@ fn invalidate_nonce_range_succeeds_when_identity_authorizes() {
 fn set_revocation_grace_period_succeeds_when_admin_authorizes() {
     let (env, admin, _owner, client) = setup();
     client.set_revocation_grace_period(&admin, &credence_math::Timestamp::SECONDS_PER_DAY);
-    assert_eq!(client.get_revocation_grace_period(), credence_math::Timestamp::SECONDS_PER_DAY);
+    assert_eq!(
+        client.get_revocation_grace_period(),
+        credence_math::Timestamp::SECONDS_PER_DAY
+    );
 }
 
 /// Sad path: a stranger (not the stored admin) is rejected with NotAdmin.

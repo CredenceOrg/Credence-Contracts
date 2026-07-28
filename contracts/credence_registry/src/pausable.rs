@@ -1,7 +1,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, String, Symbol};
 
-use crate::DataKey;
+use crate::storage::DataKey;
 
 /// Read-only snapshot of the contract's current pause state, for
 /// off-chain monitoring and operator dashboards.
@@ -28,15 +28,7 @@ pub enum PauseAction {
 }
 
 pub(crate) fn require_admin_auth(e: &Env, admin: &Address) {
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored_admin != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
-    admin.require_auth();
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 pub fn is_paused(e: &Env) -> bool {

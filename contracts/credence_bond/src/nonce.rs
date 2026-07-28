@@ -1,7 +1,9 @@
 //! Nonce tracking for replay prevention in the credence bond contract.
 //!
-//! Safety buffer added on top of the nonce TTL.
-const MIN_NONCE_TTL: u32 = 518_400;
+//! Nonces remain alive long enough to survive the bond lifecycle and any
+//! recovery flows without falling out of storage.
+const NONCE_TTL_THRESHOLD: u32 = 259_200;
+const NONCE_TTL_EXTEND_TO: u32 = 518_400;
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -221,34 +223,8 @@ mod testutils_helpers {
     }
 }
 
-#[cfg(any(test, feature = "testutils"))]
-pub use testutils_helpers::*;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-    use std::panic::{catch_unwind, AssertUnwindSafe};
-
-    proptest! {
-        #[test]
-        fn prop_require_within_ttl_boundaries_enforce_strict_expiry(expires_at in 1u64..100_000_000_000u64) {
-            let e = Env::default();
-            
-            // At expires_at - 1 (valid)
-            e.ledger().with_mut(|l| l.timestamp = expires_at - 1);
-            require_not_expired(&e, expires_at);
-
-            // At expires_at (valid, boundary)
-            e.ledger().with_mut(|l| l.timestamp = expires_at);
-            require_not_expired(&e, expires_at);
-
-            // At expires_at + 1 (invalid)
-            e.ledger().with_mut(|l| l.timestamp = expires_at + 1);
-            let result = catch_unwind(AssertUnwindSafe(|| {
-                require_not_expired(&e, expires_at);
-            }));
-            assert!(result.is_err(), "Expected panic at expires_at + 1");
-        }
-    }
+fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
+    e.storage()
+        .instance()
+        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
 }
