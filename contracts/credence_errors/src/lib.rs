@@ -653,6 +653,16 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 117,
 
+    /// Supplied timestamp or ledger number is ahead of the current ledger.
+    ///
+    /// Raised by `verify_no_future_ledger` when the caller-supplied
+    /// timestamp exceeds the on-chain ledger timestamp, indicating the
+    /// value could not have been produced by the network.
+    ///
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    TimestampInFuture = 118,
+
     /// Requested max-pause-signers value is zero or exceeds the hard cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
@@ -870,8 +880,6 @@ impl ErrorExt for ContractError {
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::AmountExplicitlyZero
-            | ContractError::InvalidStringifiedBytes
-            | ContractError::SnapshotGenerationMismatch
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
@@ -879,12 +887,14 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
+            | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
-            | ContractError::BytesTooLarge
-            | ContractError::EmptyBatch => ErrorCategory::Bond,
+            | ContractError::EmptyBatch
+            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1025,7 +1035,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
-            ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1318,8 +1327,10 @@ impl ErrorExt for ContractError {
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
+            ContractError::SignatureExpired => true,  // re-sign with later deadline
             ContractError::InvalidFlashLoanCallback => false,
             ContractError::FlashLoanRepaymentFailed => false,
+            ContractError::SnapshotGenerationMismatch => false, // epoch drift is not caller-fixable
         }
     }
 }

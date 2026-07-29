@@ -90,9 +90,6 @@ mod tests {
         assert_eq!(mul_wad(half, 2 * WAD, "mul"), WAD);
 
         // Truncation vs round-up on a fractional product:
-        // (1.5 WAD) * (1.5 WAD) / WAD = 2.25 WAD → down 2 WAD, up 3? wait
-        // 1.5e18 * 1.5e18 / 1e18 = 2.25e18 → Down = 2.25e18 exact? 3/2 * 3/2 = 9/4 = 2.25
-        // Use non-exact: 2 * 3 / WAD with WAD-scaled inputs.
         // a=2, b=WAD/2 → product/WAD = 1 (exact)
         assert_eq!(mul_wad(2, WAD / 2, "mul"), 1);
         assert_eq!(mul_wad_up(2, WAD / 2, "mul_up"), 1);
