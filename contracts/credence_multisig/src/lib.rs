@@ -50,6 +50,8 @@ pub use credence_errors::{is_expired, require_within_ttl_panic};
 pub use multisig::*;
 
 #[cfg(test)]
+mod test_access_control;
+#[cfg(test)]
 mod test_multisig;
 #[cfg(test)]
 mod test_pausable;
