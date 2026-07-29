@@ -40,7 +40,20 @@ Rejection: "not admin" panic if unauthorized
 
 ## Slashing Operations
 
-### slash_bond(admin, amount) → IdentityBond
+There are two admin-facing entrypoints that both slash a bond and share the
+same validation, arithmetic, and event contract described below:
+
+- **`slash(admin, identity, amount) → IdentityBond`** — thin wrapper around
+  the `slashing::slash_bond()` module function described in this section.
+  Also appends a `SlashRecord` to persistent slash history and pays the
+  caller a slashing reward.
+- **`slash_bond(admin, identity, slash_amount, idempotency_salt) → i128`** —
+  the reentrancy-guarded entrypoint documented in
+  [Reentrancy-Guarded Entrypoint](#reentrancy-guarded-entrypoint-slash_bond)
+  below. It does not append slash history or pay a reward, but emits the same
+  `bond_slashed` event.
+
+### slash(admin, identity, amount) → IdentityBond
 
 Core slashing function.
 
@@ -56,6 +69,7 @@ Core slashing function.
 
 **Arguments:**
 - `admin: Address` - Caller claiming admin authority
+- `identity: Address` - Bonded identity to slash
 - `amount: i128` - Positive amount to slash
 
 **Returns:**
@@ -72,11 +86,51 @@ Core slashing function.
 
 ```rust
 // Admin slashes 300 from a 1000-unit bond (0 previously slashed)
-let bond = contract.slash(admin_address, 300);
+let bond = contract.slash(admin_address, identity_address, 300);
 // bond.slashed_amount == 300
 // bond.bonded_amount == 1000 (unchanged)
 // available_balance == 700
 ```
+
+### Reentrancy-Guarded Entrypoint: slash_bond(admin, identity, slash_amount, idempotency_salt) → i128
+
+`slash_bond` is a second, reentrancy-guarded admin entrypoint used by callers
+that need idempotency-salt replay protection and an atomic-lock guarantee
+against callback reentrancy (see `on_slash` below). It shares the same
+validation and event contract as `slash()`/`slashing::slash_bond()` above,
+but does not append `SlashRecord` history or pay a slashing reward.
+
+**Behavior:**
+1. Validates the contract is not paused and the caller is the admin (panics if not).
+2. Rejects `slash_amount <= 0` before the reentrancy lock is acquired.
+3. Acquires the reentrancy lock.
+4. Loads the bond for `identity`; rejects if missing or inactive.
+5. Computes the new cumulative slashed amount with `checked_add` (rejects on
+   overflow) and rejects if it would exceed `bonded_amount`.
+6. Persists the updated bond state.
+7. Emits `bond_slashed` with `(identity, slash_amount, total_slashed_amount)`.
+8. Invokes the optional `on_slash` callback (if configured) while the lock is
+   still held, so a reentrant call from the callback is rejected.
+9. Releases the reentrancy lock and returns the new cumulative slashed amount.
+
+**Arguments:**
+- `admin: Address` — Caller claiming admin authority.
+- `identity: Address` — Bonded identity to slash.
+- `slash_amount: i128` — Positive amount to slash.
+- `idempotency_salt: Bytes` — Caller-supplied salt, bounded to
+  `validation::MAX_FINITE_BYTES_LENGTH` bytes.
+
+**Returns:**
+- The cumulative `slashed_amount` for `identity` after this call.
+
+**Errors (`ContractError`):**
+- `ContractPaused` if the contract is paused.
+- `NotAdmin` / `NotInitialized` if the caller is not the configured admin.
+- `InvalidBondAmount` if `slash_amount <= 0`.
+- `BondNotFound` / `BondNotActive` if the bond is missing or inactive.
+- `Overflow` if `slashed_amount + slash_amount` would overflow `i128`.
+- `SlashExceedsBond` if the cumulative slash would exceed `bonded_amount`.
+- `ReentrancyDetected` if called re-entrantly (e.g. from a hostile `on_slash` callback).
 
 ### Partial vs. Full Slashing
 
@@ -113,6 +167,12 @@ Final Slashed: 700
 
 This is stricter than capping at `bonded_amount` alone and prevents any scenario where `slashed_amount` could exceed `bonded_amount`.
 
+> **Note (issue #995):** Prior to this fix, `slashing::slash_bond()` silently capped
+> the slash at the available balance instead of rejecting. The behavior is now
+> consistent across both the `slash()` wrapper and the reentrancy-guarded
+> `slash_bond()` entrypoint: **all over-available slash requests are rejected**
+> (panic with `"slash exceeds bond"`), never silently capped.
+
 ## Slash History
 
 Every successful call to `slash_bond()` appends a normalized `SlashRecord` to persistent storage, keyed by identity address and index.
@@ -132,15 +192,24 @@ pub struct SlashRecord {
 ### Query Functions
 
 ```rust
-// Number of slash records for an identity
+// Number of slash records for an identity (O(1) read)
 get_slash_count(e, identity) -> u32
 
-// All records for an identity (ordered by index)
+// Paginated records — preferred for production use
+// offset: 0-based start index; limit: clamped to MAX_QUERY_LIMIT
+get_slash_history_page(e, identity, offset, limit) -> Vec<SlashRecord>
+
+// All records for an identity (ordered by index) — test/tooling only
 get_slash_history(e, identity) -> Vec<SlashRecord>
 
 // Single record by index
 get_slash_record(e, identity, index) -> SlashRecord
 ```
+
+> **Pagination:** For identities that may accumulate many slash records, prefer
+> `get_slash_history_page` over `get_slash_history` to avoid exceeding the
+> Soroban instruction budget. Use `get_slash_count` to drive the termination
+> condition.
 
 ### Notes
 
@@ -211,15 +280,15 @@ Emitted whenever a bond is successfully slashed.
 client.create_bond(identity, 1000, ...);
 
 // First slash: 300 units
-client.slash(admin, 300);
+client.slash(admin, identity, 300);
 // Event: (identity, 300, 300)
 
 // Second slash: 200 units
-client.slash(admin, 200);
+client.slash(admin, identity, 200);
 // Event: (identity, 200, 500)
 
 // Attempt third slash: 600 units (would exceed 1000)
-client.slash(admin, 600);
+client.slash(admin, identity, 600);
 // Reverts: "slash exceeds bond"
 ```
 
@@ -277,7 +346,27 @@ available = bonded_amount - slashed_amount
 
 ## Test Coverage
 
-### Test Categories (57 tests, 95%+ coverage)
+### Reentrancy-Guarded Entrypoint (`slash_bond`)
+
+[`contracts/credence_bond/tests/slash_bond_validation.rs`](../contracts/credence_bond/tests/slash_bond_validation.rs)
+covers the `slash_bond(admin, identity, slash_amount, idempotency_salt)`
+entrypoint specifically (issue #1039):
+
+- Negative and zero `slash_amount` panic before any state changes.
+- A positive slash succeeds, updates `slashed_amount`, and emits `bond_slashed`
+  with `(identity, slash_amount, total_slashed_amount)`.
+- The event's `total_slashed_amount` reflects the cumulative total across
+  repeated calls, while `slash_amount` reflects only the latest increment.
+- Slashing exactly up to `bonded_amount` succeeds; exceeding it (in a single
+  call or cumulatively) panics with `SlashExceedsBond` rather than silently
+  capping.
+- A rejected call does not leave the reentrancy lock held — a subsequent
+  valid call still succeeds.
+- A non-admin caller is rejected.
+
+Run in isolation with `cargo test -p credence_bond --test slash_bond_validation`.
+
+### Legacy `slash()` / `slashing::slash_bond()` Wrapper (57 tests, 95%+ coverage)
 
 1. **Basic Operations (4 tests)**
    - Successful slash execution
@@ -354,7 +443,7 @@ available = bonded_amount - slashed_amount
 
 ```rust
 // Admin slashes 10% of bond for minor violation
-let bond = contract.slash(admin, 100);
+let bond = contract.slash(admin, identity, 100);
 // slashed_amount increases from 0 to 100
 // bonded_amount remains 1000
 // withdrawable becomes 900
@@ -364,15 +453,15 @@ let bond = contract.slash(admin, 100);
 
 ```rust
 // First offense: 5%
-contract.slash(admin, 50);
+contract.slash(admin, identity, 50);
 // slashed_amount = 50
 
 // Second offense: 10%
-contract.slash(admin, 100);
+contract.slash(admin, identity, 100);
 // slashed_amount = 150 (cumulative)
 
 // Third offense: 20%
-contract.slash(admin, 200);
+contract.slash(admin, identity, 200);
 // slashed_amount = 350 (if bonded >= 350)
 ```
 
@@ -380,7 +469,7 @@ contract.slash(admin, 200);
 
 ```rust
 // Severe violation: slash the remaining bond exactly
-let bond = contract.slash(admin, 1000);
+let bond = contract.slash(admin, identity, 1000);
 // slashed_amount equals bonded_amount (1000)
 // bonded_amount remains 1000
 // withdrawable = 0
@@ -393,7 +482,7 @@ let bond = contract.slash(admin, 1000);
 let bond = contract.create_bond(identity, 1000, ...);
 
 // Slash 300
-contract.slash(admin, 300);
+contract.slash(admin, identity, 300);
 // available = 1000 - 300 = 700
 
 // Withdraw 500 (less than available)

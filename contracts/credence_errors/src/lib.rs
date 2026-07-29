@@ -350,11 +350,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     AmountExplicitlyZero = 215,
 
-    /// Currency symbol is empty or whitespace-only.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    InvalidCurrency = 225,
-
     /// Bond duration must be strictly positive (> 0).
     /// Triggered by: create_bond called with duration == 0
     /// Contracts: bond
@@ -383,6 +378,13 @@ pub enum ContractError {
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
     UnauthorizedToken = 231,
+
+    /// The supplied idempotency key has already been used for this operation.
+    /// Replaces: panic!("idempotency key already used")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DuplicateIdempotencyKey = 232,
+
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
@@ -429,7 +431,7 @@ pub enum ContractError {
     /// cost and persistent-storage growth before the value is used.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    BytesTooLarge = 233,
+    BytesTooLarge = 239,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -627,6 +629,12 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
+    /// A signed payload's deadline has passed.
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond, delegation, timelock
+    /// Wire-stable: do not renumber this error code.
+    SignatureExpired = 222,
+
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 115,
@@ -644,16 +652,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 117,
-
-    /// Supplied timestamp or ledger number is ahead of the current ledger.
-    ///
-    /// Raised by `verify_no_future_ledger` when the caller-supplied
-    /// timestamp exceeds the on-chain ledger timestamp, indicating the
-    /// value could not have been produced by the network.
-    ///
-    /// Contracts: general-purpose
-    /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
 
     /// Requested max-pause-signers value is zero or exceeds the hard cap.
     /// Contracts: multisig
@@ -877,19 +875,16 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::InvalidStringifiedBytes
             | ContractError::UnauthorizedToken
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
-            | ContractError::InvalidStringifiedBytes
-            | ContractError::SnapshotGenerationMismatch
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
-            | ContractError::EmptyBatch
-            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::EmptyBatch => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -920,9 +915,7 @@ impl ErrorExt for ContractError {
             | ContractError::DelegationInactive
             | ContractError::PayloadTooOld
             | ContractError::PromiseNotKept
-            | ContractError::StaleEpoch
-            | ContractError::StaleAdminEpoch
-            | ContractError::StaleSignerEpoch => ErrorCategory::Delegation,
+            | ContractError::StaleEpoch => ErrorCategory::Delegation,
 
             ContractError::AmountMustBePositive
             | ContractError::ThresholdExceedsSigners
@@ -1033,7 +1026,6 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
-            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1207,8 +1199,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::LeaseSignerMismatch
-            | ContractError::OutsideBusinessHours => true, // retry within business hours / after lease fix
+            | ContractError::LeaseSignerMismatch => true,
 
             // Admin can supply a valid value / remove a signer or raise the
             // cap, then retry.
@@ -1262,8 +1253,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::UnauthorizedToken => false,
-            ContractError::UnsupportedDecimals => false,
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1328,12 +1317,9 @@ impl ErrorExt for ContractError {
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
-            ContractError::UnsupportedInterface => false,
             ContractError::DivisionByZero => false,
-            ContractError::SignatureExpired => true,  // re-sign with later deadline
             ContractError::InvalidFlashLoanCallback => false,
             ContractError::FlashLoanRepaymentFailed => false,
-            ContractError::SnapshotGenerationMismatch => false, // epoch drift is not caller-fixable
         }
     }
 }

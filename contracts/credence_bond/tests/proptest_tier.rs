@@ -219,7 +219,7 @@ fn run_sequence(actions: &[BondAction]) {
                 client.top_up(amount);
             }
             BondAction::Slash { amount } => {
-                client.slash(&admin, amount);
+                client.slash(&admin, &identity, &amount);
             }
             BondAction::RollRenew => {
                 client.renew_if_rolling();
@@ -277,7 +277,7 @@ fn run_sequence(actions: &[BondAction]) {
                     after.available_amount
                 );
 
-                let calculated_tier = client.get_tier();
+                let calculated_tier = client.get_tier(&identity);
                 assert_eq!(
                     after.tier, calculated_tier,
                     "[Step {}] Invariant violation: described tier does not match get_tier()",
