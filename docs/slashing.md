@@ -167,6 +167,12 @@ Final Slashed: 700
 
 This is stricter than capping at `bonded_amount` alone and prevents any scenario where `slashed_amount` could exceed `bonded_amount`.
 
+> **Note (issue #995):** Prior to this fix, `slashing::slash_bond()` silently capped
+> the slash at the available balance instead of rejecting. The behavior is now
+> consistent across both the `slash()` wrapper and the reentrancy-guarded
+> `slash_bond()` entrypoint: **all over-available slash requests are rejected**
+> (panic with `"slash exceeds bond"`), never silently capped.
+
 ## Slash History
 
 Every successful call to `slash_bond()` appends a normalized `SlashRecord` to persistent storage, keyed by identity address and index.
@@ -186,15 +192,24 @@ pub struct SlashRecord {
 ### Query Functions
 
 ```rust
-// Number of slash records for an identity
+// Number of slash records for an identity (O(1) read)
 get_slash_count(e, identity) -> u32
 
-// All records for an identity (ordered by index)
+// Paginated records — preferred for production use
+// offset: 0-based start index; limit: clamped to MAX_QUERY_LIMIT
+get_slash_history_page(e, identity, offset, limit) -> Vec<SlashRecord>
+
+// All records for an identity (ordered by index) — test/tooling only
 get_slash_history(e, identity) -> Vec<SlashRecord>
 
 // Single record by index
 get_slash_record(e, identity, index) -> SlashRecord
 ```
+
+> **Pagination:** For identities that may accumulate many slash records, prefer
+> `get_slash_history_page` over `get_slash_history` to avoid exceeding the
+> Soroban instruction budget. Use `get_slash_count` to drive the termination
+> condition.
 
 ### Notes
 
