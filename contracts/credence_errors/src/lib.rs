@@ -195,6 +195,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ZeroBytes32 = 127,
 
+    /// Caller does not hold the required role.
+    /// Raised by `require_role` when the actor is not assigned the requested
+    /// `Role` at the time of the call.
+    /// Contracts: anywhere role-based `require_role` is enforced.
+    /// Wire-stable: do not renumber this error code.
+    RoleRequired = 128,
+
     /// Lease scope bitmask does not cover the requested operation.
     /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
     /// Contracts: general-purpose (lease auth)
@@ -850,9 +857,10 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseExpired
             | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
-            | ContractError::StaleAdminEpoch
+            |            ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch
+            | ContractError::RoleRequired => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -1210,6 +1218,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
+            | ContractError::RoleRequired
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
@@ -1565,7 +1574,7 @@ pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) 
 /// * `ContractError::NotAdmin` (code 100) when `role` is `Role::Admin` and
 ///   `has_role` is `false`, preserving backward compatibility with existing
 ///   callers that match on code 100.
-/// * `ContractError::RoleRequired` (code 127) when `role` is `Role::User`
+/// * `ContractError::RoleRequired` (code 128) when `role` is `Role::User`
 ///   and `has_role` is `false`.
 ///
 /// # Example
