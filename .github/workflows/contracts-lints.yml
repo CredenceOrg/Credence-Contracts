@@ -1,21 +1,21 @@
 name: Contracts Lints
-on:
+'on':
   push:
-    branches: [main, master]
-  pull_request:
-  workflow_dispatch:
-
+    branches:
+    - main
+    - master
+  pull_request: null
+  workflow_dispatch: null
 jobs:
   rustfmt:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - name: Rustfmt (paused — CI stabilization in progress)
-        run: echo 'Rustfmt check intentionally stubbed while main-branch CI is being stabilized.'
-
+    - name: "Rustfmt (paused \u2014 CI stabilization in progress)"
+      run: echo 'Rustfmt check intentionally stubbed while main-branch CI is being stabilized.'
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
     steps:
-      - name: Clippy (paused — CI stabilization in progress)
-        run: echo 'Clippy check intentionally stubbed while main-branch CI is being stabilized.'
+    - name: "Clippy (paused \u2014 CI stabilization in progress)"
+      run: echo 'Clippy check intentionally stubbed while main-branch CI is being stabilized.'
