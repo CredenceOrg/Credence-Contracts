@@ -1629,6 +1629,8 @@ impl CredenceBond {
 
     /// Withdraw before lock-up end; applies a time-decayed penalty.
     ///
+    /// Authority: `identity` must authorize the call.
+    ///
     /// Errors:
     /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
     ///   configuration exists. The call will revert instead of silently dropping
@@ -1671,6 +1673,8 @@ impl CredenceBond {
     /// Reverts with [`ContractError::ContractPaused`] when the contract is paused.
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
+        // auth: bond owner must authorize early withdrawals.
+        identity.require_auth();
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 

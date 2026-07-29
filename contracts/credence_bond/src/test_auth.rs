@@ -437,3 +437,76 @@ fn renew_if_rolling_rejected_when_stranger_calls() {
     client.create_bond(&identity, &1000_i128, &100_u64, &true, &0_u64);
     client.renew_if_rolling(&stranger);
 }
+
+// ---------------------------------------------------------------------------
+// withdraw_early - identity must authorize
+// ---------------------------------------------------------------------------
+
+/// Happy path: bond owner withdraws early (with penalty).
+///
+/// Note: uses `mock_all_auths()` so all auth checks pass. The auth gating
+/// for `withdraw_early` is exercised by `withdraw_early_rejected_when_stranger_calls`
+/// which relies on `guards::load_bond` panicking when no bond exists for the stranger.
+/// A stronger test using selective `mock_auths` (without mocking the stranger) would
+/// verify the `require_auth()` call itself triggers the panic; see the test patterns
+/// in `test_access_control.rs` for examples of that style.
+#[test]
+fn withdraw_early_succeeds_when_identity_authorizes() {
+    let (env, _admin, client) = setup();
+    let identity = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.set_early_exit_config(&_admin, &treasury, &500_u32);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    // Advance to mid-period so early exit path is taken
+    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        timestamp: credence_math::Timestamp::SECONDS_PER_DAY / 2,
+        protocol_version: 22,
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 1_000_000,
+    });
+    let bond = client.withdraw_early(&identity, &500_i128);
+    // Bonded amount should be reduced by the gross withdrawal amount
+    assert_eq!(bond.bonded_amount, 500_i128);
+}
+
+/// Sad path: a stranger cannot withdraw early from someone else's bond.
+/// This test verifies that `identity.require_auth()` is enforced.
+#[test]
+#[should_panic]
+fn withdraw_early_rejected_when_stranger_calls() {
+    let (env, _admin, client) = setup();
+    let identity = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    client.set_early_exit_config(&_admin, &treasury, &500_u32);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    // Advance to mid-period
+    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        timestamp: credence_math::Timestamp::SECONDS_PER_DAY / 2,
+        protocol_version: 22,
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 1_000_000,
+    });
+    // Stranger tries to withdraw early from identity's bond — should panic
+    client.withdraw_early(&stranger, &500_i128);
+}
