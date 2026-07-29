@@ -968,6 +968,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::MigrationInProgress => "Migration in progress",
             ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
+            ContractError::RoleRequired => "Caller does not hold the required role",
             ContractError::OutsideBusinessHours => {
                 "Scheduled operation falls outside UTC business hours (Mon-Fri 09:00-17:00)"
             }
@@ -1548,11 +1549,51 @@ pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) 
     }
 }
 
+/// @notice Require that `actor` holds the specified `role`.
+///
+/// This is a shared, tested RBAC helper that replaces bespoke role-check
+/// patterns (e.g. string-panicking `require_admin`, `require_verifier`)
+/// with a single typed helper.
+///
+/// # Arguments
+/// * `e` - The Soroban environment
+/// * `role` - The `Role` that the actor is expected to hold
+/// * `_actor` - The address being checked (reserved for future event emission)
+/// * `has_role` - `true` if the actor holds the required role
+///
+/// # Panics
+/// * `ContractError::NotAdmin` (code 100) when `role` is `Role::Admin` and
+///   `has_role` is `false`, preserving backward compatibility with existing
+///   callers that match on code 100.
+/// * `ContractError::RoleRequired` (code 127) when `role` is `Role::User`
+///   and `has_role` is `false`.
+///
+/// # Example
+/// ```ignore
+/// use credence_errors::{require_role, Role};
+///
+/// fn admin_only(e: Env, caller: Address) {
+///     caller.require_auth();
+///     let is_admin = /* check role against storage */;
+///     require_role(&e, Role::Admin, &caller, is_admin);
+///     // admin-only logic
+/// }
+/// ```
+#[inline]
+pub fn require_role(e: &Env, role: Role, _actor: &Address, has_role: bool) {
+    if !has_role {
+        match role {
+            Role::Admin => panic_with_error!(e, ContractError::NotAdmin),
+            Role::User => panic_with_error!(e, ContractError::RoleRequired),
+        }
+    }
+}
+
 /// Validates that the provided timestamp (seconds since UNIX epoch) falls
 /// within UTC business hours (Monday-Friday, 09:00:00 to 16:59:59).
 ///
 /// # Panics
-/// Panics with `ContractError::OutsideBusinessHours` (code 124) if it does
+/// Panics with `ContractError::OutsideBusinessHours` (code 120) if it does
 /// not.
 #[inline]
 pub fn require_within_business_hours(e: &Env, t: u64) {
