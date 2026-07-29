@@ -115,6 +115,7 @@ This design ensures:
 - External token transfers run through the bond reentrancy guard.
 - Withdrawing after lock-up must use `withdraw`, not `withdraw_early`.
 - Withdrawing before lock-up must use `withdraw_early`, not `withdraw`.
+- Withdraw flows (`withdraw`, `withdraw_early`, `withdraw_bond`) are fully atomic: on any failure (including callback failures), no partial state change occurs and balances remain consistent.
 
 ## Attack Prevention
 
