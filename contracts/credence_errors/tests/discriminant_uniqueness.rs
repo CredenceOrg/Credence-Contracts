@@ -49,6 +49,7 @@ const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "MaxPauseSignersExceeded",
         ContractError::MaxPauseSignersExceeded,
     ),
+    ("RoleRequired", ContractError::RoleRequired),
     ("ZeroBytes32", ContractError::ZeroBytes32),
     ("LeaseScopeMismatch", ContractError::LeaseScopeMismatch),
     ("LeaseExpired", ContractError::LeaseExpired),

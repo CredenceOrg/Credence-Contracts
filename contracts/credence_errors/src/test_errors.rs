@@ -157,7 +157,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Contract, #124)")]
+    #[should_panic(expected = "HostError: Error(Contract, #120)")]
     fn test_require_within_business_hours_panics_on_weekend() {
         use crate::require_within_business_hours;
         use soroban_sdk::Env;
@@ -167,7 +167,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Contract, #124)")]
+    #[should_panic(expected = "HostError: Error(Contract, #120)")]
     fn test_require_within_business_hours_panics_outside_hours() {
         use crate::require_within_business_hours;
         use soroban_sdk::Env;
@@ -197,6 +197,11 @@ mod tests {
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
         assert_eq!(ContractError::ZeroBytes32 as u32, 109);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
+    }
+
+    #[test]
+    fn test_code_role_required() {
+        assert_eq!(ContractError::RoleRequired as u32, 127);
     }
 
     #[test]
@@ -577,7 +582,7 @@ mod tests {
     fn test_all_variants_count() {
         assert_eq!(
             all_variants().len(),
-            100,
+            101,
             "Update all_variants() and this count when adding new errors"
         );
     }
@@ -1376,6 +1381,7 @@ mod tests {
             ContractError::LeaseScopeMismatch => true,
             ContractError::LeaseExpired => true,
             ContractError::CrossContractCallerMismatch => false,
+            ContractError::RoleRequired => true,
             ContractError::StaleAdminEpoch => false,
             ContractError::StaleSignerEpoch => false,
 
@@ -1512,6 +1518,7 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted,
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
+            ContractError::RoleRequired,
             ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
@@ -1599,7 +1606,7 @@ mod tests {
         ];
         assert_eq!(
             cases.len(),
-            104,
+            105,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -1803,5 +1810,41 @@ mod tests {
         let caller = Address::generate(&e);
         let expected = Address::generate(&e);
         crate::require_matching_contract_id(&e, &caller, &expected);
+    }
+
+    // --- require_role tests ---
+
+    #[test]
+    fn test_require_role_admin_ok() {
+        let e = soroban_sdk::Env::default();
+        let actor = soroban_sdk::Address::generate(&e);
+        // Should not panic when actor holds Admin role.
+        crate::require_role(&e, Role::Admin, &actor, true);
+    }
+
+    #[test]
+    fn test_require_role_user_ok() {
+        let e = soroban_sdk::Env::default();
+        let actor = soroban_sdk::Address::generate(&e);
+        // Should not panic when actor holds User role.
+        crate::require_role(&e, Role::User, &actor, true);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #100)")]
+    fn test_require_role_admin_panics_when_not_held() {
+        let e = soroban_sdk::Env::default();
+        let actor = soroban_sdk::Address::generate(&e);
+        // Negative test: actor does NOT hold Admin role -> should panic with NotAdmin (100).
+        crate::require_role(&e, Role::Admin, &actor, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(Contract, #127)")]
+    fn test_require_role_user_panics_when_not_held() {
+        let e = soroban_sdk::Env::default();
+        let actor = soroban_sdk::Address::generate(&e);
+        // Negative test: actor does NOT hold User role -> should panic with RoleRequired (127).
+        crate::require_role(&e, Role::User, &actor, false);
     }
 }

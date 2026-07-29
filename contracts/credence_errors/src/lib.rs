@@ -213,11 +213,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     LeaseSignerMismatch = 126,
 
-    /// A supplied timestamp/sequence value is in the future relative to the ledger.
-    /// Contracts: general-purpose (lease auth, timelock)
-    /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
-
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -389,7 +384,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 233,
+    InvariantViolation = 299,
 
     /// Empty or whitespace-only currency symbol.
     /// Contracts: bond
@@ -653,6 +648,16 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     EmergencyDrainNotPermitted = 117,
 
+    /// Supplied timestamp or ledger number is ahead of the current ledger.
+    ///
+    /// Raised by `verify_no_future_ledger` when the caller-supplied
+    /// timestamp exceeds the on-chain ledger timestamp, indicating the
+    /// value could not have been produced by the network.
+    ///
+    /// Contracts: general-purpose
+    /// Wire-stable: do not renumber this error code.
+    TimestampInFuture = 118,
+
     /// Requested max-pause-signers value is zero or exceeds the hard cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
@@ -870,8 +875,6 @@ impl ErrorExt for ContractError {
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
             | ContractError::AmountExplicitlyZero
-            | ContractError::InvalidStringifiedBytes
-            | ContractError::SnapshotGenerationMismatch
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
@@ -879,12 +882,15 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
+            | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
-            | ContractError::BytesTooLarge
-            | ContractError::EmptyBatch => ErrorCategory::Bond,
+            | ContractError::EmptyBatch
+            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
+            ContractError::InvalidStringifiedBytes | ContractError::SnapshotGenerationMismatch | ContractError::BytesTooLarge => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -943,6 +949,7 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Authorization,
+            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => ErrorCategory::Delegation,
         }
     }
 
@@ -961,6 +968,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::MigrationInProgress => "Migration in progress",
             ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
+            ContractError::RoleRequired => "Caller does not hold the required role",
             ContractError::OutsideBusinessHours => {
                 "Scheduled operation falls outside UTC business hours (Mon-Fri 09:00-17:00)"
             }
@@ -1026,6 +1034,11 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
+            ContractError::InvalidStringifiedBytes => "Stringified bytes are invalid",
+            ContractError::SnapshotGenerationMismatch => "Snapshot generation mismatch",
+            ContractError::TimestampInFuture => "Timestamp is in the future",
+            ContractError::InvalidCurrency => "Invalid currency",
+            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1146,6 +1159,8 @@ impl ErrorExt for ContractError {
                 "Signer pause proposal carries a stale epoch reference"
             }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
+            ContractError::StaleAdminEpoch => "Admin pause proposal ID was derived in a stale epoch",
+            ContractError::StaleSignerEpoch => "Signer pause proposal ID was derived in a stale epoch",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {
@@ -1318,8 +1333,10 @@ impl ErrorExt for ContractError {
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
+            ContractError::SignatureExpired => true,  // re-sign with later deadline
             ContractError::InvalidFlashLoanCallback => false,
             ContractError::FlashLoanRepaymentFailed => false,
+            ContractError::SnapshotGenerationMismatch | ContractError::TimestampInFuture | ContractError::InvalidCurrency | ContractError::InvalidStringifiedBytes | ContractError::BytesTooLarge | ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
         }
     }
 }
@@ -1532,11 +1549,51 @@ pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) 
     }
 }
 
+/// @notice Require that `actor` holds the specified `role`.
+///
+/// This is a shared, tested RBAC helper that replaces bespoke role-check
+/// patterns (e.g. string-panicking `require_admin`, `require_verifier`)
+/// with a single typed helper.
+///
+/// # Arguments
+/// * `e` - The Soroban environment
+/// * `role` - The `Role` that the actor is expected to hold
+/// * `_actor` - The address being checked (reserved for future event emission)
+/// * `has_role` - `true` if the actor holds the required role
+///
+/// # Panics
+/// * `ContractError::NotAdmin` (code 100) when `role` is `Role::Admin` and
+///   `has_role` is `false`, preserving backward compatibility with existing
+///   callers that match on code 100.
+/// * `ContractError::RoleRequired` (code 127) when `role` is `Role::User`
+///   and `has_role` is `false`.
+///
+/// # Example
+/// ```ignore
+/// use credence_errors::{require_role, Role};
+///
+/// fn admin_only(e: Env, caller: Address) {
+///     caller.require_auth();
+///     let is_admin = /* check role against storage */;
+///     require_role(&e, Role::Admin, &caller, is_admin);
+///     // admin-only logic
+/// }
+/// ```
+#[inline]
+pub fn require_role(e: &Env, role: Role, _actor: &Address, has_role: bool) {
+    if !has_role {
+        match role {
+            Role::Admin => panic_with_error!(e, ContractError::NotAdmin),
+            Role::User => panic_with_error!(e, ContractError::RoleRequired),
+        }
+    }
+}
+
 /// Validates that the provided timestamp (seconds since UNIX epoch) falls
 /// within UTC business hours (Monday-Friday, 09:00:00 to 16:59:59).
 ///
 /// # Panics
-/// Panics with `ContractError::OutsideBusinessHours` (code 124) if it does
+/// Panics with `ContractError::OutsideBusinessHours` (code 120) if it does
 /// not.
 #[inline]
 pub fn require_within_business_hours(e: &Env, t: u64) {

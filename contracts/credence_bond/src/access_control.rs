@@ -18,8 +18,8 @@
 //! }
 //! ```
 
-use credence_errors::Role;
-use soroban_sdk::{Address, Env, Symbol};
+use credence_errors::{require_role, ContractError, Role};
+use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 
 /// Storage keys for access control roles
 const ADMIN_KEY: &str = "admin";
@@ -79,19 +79,13 @@ pub fn require_admin(e: &Env, caller: &Address) {
 pub fn require_verifier(e: &Env, caller: &Address) {
     let verifier_key = build_verifier_key(e, caller);
 
-    match e
+    let is_verifier = e
         .storage()
         .instance()
         .get::<(Symbol, Address), bool>(&verifier_key)
-    {
-        Some(true) => {
-            // Caller is a registered verifier
-        }
-        _ => {
-            emit_access_denied(e, caller, "verifier", AccessError::NotVerifier);
-            panic!("not verifier");
-        }
-    }
+        .unwrap_or(false);
+
+    require_role(e, Role::User, caller, is_verifier);
 }
 
 /// @notice Require that the caller is the identity owner.
@@ -157,8 +151,7 @@ pub fn require_admin_or_verifier(e: &Env, caller: &Address) {
         .unwrap_or(false);
 
     if !is_verifier {
-        emit_access_denied(e, caller, "admin_or_verifier", AccessError::NotVerifier);
-        panic!("not authorized");
+        panic_with_error!(e, ContractError::NotAdmin);
     }
 }
 
