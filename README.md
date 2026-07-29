@@ -105,7 +105,7 @@ Per-contract STRIDE attack trees document every entrypoint, the concrete attack 
 - [`contracts/credence_bond/docs/ATTACK_TREE.md`](contracts/credence_bond/docs/ATTACK_TREE.md) — bond contract
 - [`contracts/credence_delegation/docs/ATTACK_TREE.md`](contracts/credence_delegation/docs/ATTACK_TREE.md) — delegation contract
 
-The workspace-level threat model and Soroban auth-tree analysis live in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/auth-tree-threats.md`](docs/auth-tree-threats.md). Balance key shapes for bond and treasury accounting are documented in [`docs/balance-keying.md`](docs/balance-keying.md).
+The workspace-level threat model and Soroban auth-tree analysis live in [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) and [`docs/auth-tree-threats.md`](docs/auth-tree-threats.md). The registry pause/unpause state machine is documented in [`docs/credence-registry-pause-state.md`](docs/credence-registry-pause-state.md).
 
 ## Release profile — WASM size
 
