@@ -55,6 +55,7 @@ These compact pages list the main public entrypoints, required roles, and backen
 | [fees.md](fees.md) | Integrator | Fee calculation and collection |
 | [fund-flow.md](fund-flow.md) | Operator | Token flows through the contract |
 | [liquidation.md](liquidation.md) | Operator | Liquidation mechanics |
+| [SNAPSHOT_GENERATIONS.md](SNAPSHOT_GENERATIONS.md) | Operator | Liquidation-scan snapshot generations: semantics and when they bump |
 | [treasury.md](treasury.md) | Operator | Treasury configuration and sweeping |
 | [TREASURY_INVARIANTS.md](TREASURY_INVARIANTS.md) | Contributor / Auditor | Treasury flow invariants and balance tracking |
 | [weighted-attestations.md](weighted-attestations.md) | Contributor | Attestation weighting system |
