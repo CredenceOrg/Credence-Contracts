@@ -33,18 +33,18 @@ pub fn is_token_accepted(e: &Env, token: &Address) -> bool {
 pub fn is_locked(e: &Env) -> bool {
     e.storage()
         .instance()
-        .get(&DataKey::SettlingFlag)
+        .get(&crate::DataKey::SettlingFlag)
         .unwrap_or(false)
 }
 
 pub fn set_lock(e: &Env, value: bool) {
     e.storage()
         .instance()
-        .set(&DataKey::SettlingFlag, &value);
+        .set(&crate::DataKey::SettlingFlag, &value);
 }
 
 pub fn get_admin(e: &Env) -> Option<Address> {
     e.storage()
         .instance()
-        .get(&DataKey::Admin)
+        .get(&crate::DataKey::Admin)
 }

@@ -1,13 +1,18 @@
 #![cfg(test)]
 
+use dispute_resolution::{
+    DisputeError, DisputeResolutionContract, DisputeResolutionContractClient,
+};
 use soroban_sdk::{testutils::Address as _, Address, Env};
-use dispute_resolution::{DisputeResolutionContract, DisputeResolutionContractClient, DisputeError};
 
 #[test]
 fn test_close_succeeds_for_resolver() {
     let env = Env::default();
     let resolver = Address::generate(&env);
-    let client = DisputeResolutionContractClient::new(&env, &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}));
+    let client = DisputeResolutionContractClient::new(
+        &env,
+        &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}),
+    );
 
     let dispute_id = client.create_dispute(&resolver);
 
@@ -21,7 +26,10 @@ fn test_close_succeeds_for_resolver() {
 fn test_double_close_fails() {
     let env = Env::default();
     let resolver = Address::generate(&env);
-    let client = DisputeResolutionContractClient::new(&env, &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}));
+    let client = DisputeResolutionContractClient::new(
+        &env,
+        &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}),
+    );
 
     let dispute_id = client.create_dispute(&resolver);
     client.close(&dispute_id).unwrap();
@@ -36,7 +44,10 @@ fn test_unauthorized_close_fails() {
     let env = Env::default();
     let resolver = Address::generate(&env);
     let attacker = Address::generate(&env);
-    let client = DisputeResolutionContractClient::new(&env, &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}));
+    let client = DisputeResolutionContractClient::new(
+        &env,
+        &env.register_contract(None, dispute_resolution::DisputeResolutionContract {}),
+    );
 
     let dispute_id = client.create_dispute(&resolver);
 
