@@ -45,7 +45,11 @@ const MAX_IDENTITIES_PAGE_SIZE: u32 = 200;
 
 pub mod pausable;
 
+#[cfg(test)]
 mod test_pausable;
+
+#[cfg(test)]
+mod test_access_control;
 
 #[cfg(test)]
 mod test_uniqueness;
