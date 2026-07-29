@@ -142,6 +142,7 @@ pub fn require_not_paused(e: &Env) {
 /// previously-true entry is removed. Tests should assert this invariant after
 /// every `set_pause_signer` call.
 pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: bool) {
+    require_not_paused(e);
     require_admin_auth(e, admin);
 
     // No-lockout invariants:
@@ -209,6 +210,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
 }
 
 pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
+    require_not_paused(e);
     require_admin_auth(e, admin);
     let count: u32 = e
         .storage()

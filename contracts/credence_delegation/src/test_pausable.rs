@@ -178,6 +178,9 @@ fn test_delegate_paused() {
             &0_u64
         )
         .is_err());
+
+    client.unpause(&admin);
+    let _ = client.delegate(&owner, &delegate, &DelegationType::Attestation, &credence_math::Timestamp::SECONDS_PER_DAY, &0_u64);
 }
 
 #[test]
@@ -196,6 +199,9 @@ fn test_revoke_delegation_paused() {
     assert!(client
         .try_revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &0_u64)
         .is_err());
+
+    client.unpause(&admin);
+    let _ = client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &0_u64);
 }
 
 #[test]
@@ -214,6 +220,9 @@ fn test_revoke_attestation_paused() {
     assert!(client
         .try_revoke_attestation(&owner, &delegate, &0_u64)
         .is_err());
+
+    client.unpause(&admin);
+    let _ = client.revoke_attestation(&owner, &delegate, &0_u64);
 }
 
 #[test]
@@ -241,6 +250,9 @@ fn test_execute_delegated_delegate_paused() {
             &payload
         )
         .is_err());
+
+    client.unpause(&admin);
+    let _ = client.execute_delegated_delegate(&owner, &delegate, &DelegationType::Attestation, &credence_math::Timestamp::SECONDS_PER_DAY, &payload);
 }
 
 #[test]
@@ -269,6 +281,9 @@ fn test_execute_delegated_revoke_paused() {
     assert!(client
         .try_execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload)
         .is_err());
+
+    client.unpause(&admin);
+    let _ = client.execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload);
 }
 
 #[test]
@@ -297,6 +312,9 @@ fn test_execute_delegated_revoke_attest_paused() {
     assert!(client
         .try_execute_delegated_revoke_attest(&owner, &delegate, &payload)
         .is_err());
+
+    client.unpause(&admin);
+    let _ = client.execute_delegated_revoke_attest(&owner, &delegate, &payload);
 }
 
 #[test]
@@ -305,6 +323,9 @@ fn test_invalidate_nonce_range_paused() {
     let owner = Address::generate(&env);
     client.pause(&admin);
     assert!(client.try_invalidate_nonce_range(&owner, &100_u64).is_err());
+
+    client.unpause(&admin);
+    let _ = client.invalidate_nonce_range(&owner, &100_u64);
 }
 
 #[test]
@@ -359,4 +380,103 @@ fn test_threshold_invariants() {
     let res = client.pause(&admin);
     assert!(res.is_none());
     assert!(client.is_paused());
+}
+
+#[test]
+fn test_cleanup_expired_paused() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &(env.ledger().timestamp() + 100),
+        &0_u64,
+    );
+    
+    env.ledger().set_timestamp(env.ledger().timestamp() + 200);
+    
+    client.pause(&admin);
+    assert!(client.try_cleanup_expired(&owner, &delegate, &DelegationType::Attestation).is_err());
+    
+    client.unpause(&admin);
+    let _ = client.cleanup_expired(&owner, &delegate, &DelegationType::Attestation);
+}
+
+#[test]
+fn test_set_revocation_grace_period_paused() {
+    let (env, admin, client) = setup();
+    client.pause(&admin);
+    assert!(client.try_set_revocation_grace_period(&admin, &100).is_err());
+    
+    client.unpause(&admin);
+    let _ = client.set_revocation_grace_period(&admin, &100);
+}
+
+#[test]
+fn test_register_verifier_paused() {
+    let (env, admin, client) = setup();
+    let verifier_id = Address::generate(&env);
+    client.pause(&admin);
+    assert!(client.try_register_verifier(&admin, &0, &verifier_id).is_err());
+    
+    client.unpause(&admin);
+    let _ = client.register_verifier(&admin, &0, &verifier_id);
+}
+
+#[test]
+fn test_set_pause_signer_paused() {
+    let (env, admin, client) = setup();
+    let signer = Address::generate(&env);
+    client.pause(&admin);
+    assert!(client.try_set_pause_signer(&admin, &signer, &true).is_err());
+    
+    client.unpause(&admin);
+    let _ = client.set_pause_signer(&admin, &signer, &true);
+}
+
+#[test]
+fn test_set_pause_threshold_paused() {
+    let (env, admin, client) = setup();
+    let signer = Address::generate(&env);
+    client.set_pause_signer(&admin, &signer, &true);
+    
+    client.pause(&admin);
+    assert!(client.try_set_pause_threshold(&admin, &1).is_err());
+    
+    client.unpause(&admin);
+    let _ = client.set_pause_threshold(&admin, &1);
+}
+
+#[test]
+fn test_read_only_entrypoints_unaffected_by_pause() {
+    let (env, admin, client) = setup();
+    let owner = Address::generate(&env);
+    let delegate = Address::generate(&env);
+    let verifier_id = Address::generate(&env);
+    
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Attestation,
+        &(env.ledger().timestamp() + 1000),
+        &0_u64,
+    );
+    client.register_verifier(&admin, &0, &verifier_id);
+    
+    client.pause(&admin);
+    
+    let _ = client.version();
+    let _ = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
+    let _ = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
+    let _ = client.is_valid_delegate(&owner, &delegate, &DelegationType::Attestation);
+    let _ = client.get_attestation_status(&owner, &delegate);
+    let _ = client.get_revocation_grace_period();
+    let _ = client.get_nonce(&owner);
+    let _ = client.get_verifier(&0);
+    let _ = client.is_paused();
+    let signers = soroban_sdk::Vec::new(&env);
+    let _ = client.get_pause_proposal_state(&0, &signers);
+    let _ = client.try_get_proposal_by_legacy_id(&0); 
 }
