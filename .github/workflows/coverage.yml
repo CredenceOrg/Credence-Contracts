@@ -1,14 +1,15 @@
 name: Coverage
-on:
+'on':
   push:
-    branches: [main, master]
-  pull_request:
-  workflow_dispatch:
-
+    branches:
+    - main
+    - master
+  pull_request: null
+  workflow_dispatch: null
 jobs:
   coverage:
     name: Per-crate coverage (llvm-cov)
     runs-on: ubuntu-latest
     steps:
-      - name: Per-crate coverage (llvm-cov) (paused — CI stabilization in progress)
-        run: echo 'Per-crate coverage (llvm-cov) check intentionally stubbed while main-branch CI is being stabilized.'
+    - name: "Per-crate coverage (llvm-cov) (paused \u2014 CI stabilization in progress)"
+      run: echo 'Per-crate coverage (llvm-cov) check intentionally stubbed while main-branch CI is being stabilized.'

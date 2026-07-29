@@ -1,28 +1,27 @@
 name: CI
-on:
+'on':
   push:
-    branches: [main, master]
-  pull_request:
-  workflow_dispatch:
-
+    branches:
+    - main
+    - master
+  pull_request: null
+  workflow_dispatch: null
 jobs:
   no-bare-panic:
     name: No bare panic!() in release code
     runs-on: ubuntu-latest
     steps:
-      - name: No bare panic!() in release code (paused — CI stabilization in progress)
-        run: echo 'No bare panic!() in release code check intentionally stubbed while main-branch CI is being stabilized.'
-
+    - name: "No bare panic!() in release code (paused \u2014 CI stabilization in progress)"
+      run: echo 'No bare panic!() in release code check intentionally stubbed while main-branch CI is being stabilized.'
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - name: Test (paused — CI stabilization in progress)
-        run: echo 'Test check intentionally stubbed while main-branch CI is being stabilized.'
-
+    - name: "Test (paused \u2014 CI stabilization in progress)"
+      run: echo 'Test check intentionally stubbed while main-branch CI is being stabilized.'
   build-release:
     name: Build release
     runs-on: ubuntu-latest
     steps:
-      - name: Build release (paused — CI stabilization in progress)
-        run: echo 'Build release check intentionally stubbed while main-branch CI is being stabilized.'
+    - name: "Build release (paused \u2014 CI stabilization in progress)"
+      run: echo 'Build release check intentionally stubbed while main-branch CI is being stabilized.'
