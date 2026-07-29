@@ -10,6 +10,7 @@ mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
 mod events;
+mod fees;
 mod guards;
 mod idempotency;
 mod invariants;
@@ -318,6 +319,15 @@ pub enum DataKey {
     /// Used by the same-ledger sequencing guard to prevent cooldown
     /// withdrawal execution in the same ledger as a collateral increase.
     CooldownRequestLedger,
+    /// Treasury address that receives bond-creation fees. Set by
+    /// [`CredenceBond::set_fee_config`]; absent ⇒ no fee collected.
+    /// Value: `Address`.
+    FeeTreasury,
+    /// Bond-creation fee rate in basis points. Set by
+    /// [`CredenceBond::set_fee_config`] and bounded to
+    /// `[crate::fees::MIN_FEE_BPS, crate::fees::MAX_FEE_BPS]` per
+    /// issue #1027. Value: `u32`.
+    FeeBps,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -1955,6 +1965,41 @@ impl CredenceBond {
         let key = Symbol::new(&e, "fees");
         let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
         e.storage().instance().set(&key, &(current + amount));
+    }
+
+    /// Configure the bond-creation fee (treasury recipient + basis-points rate).
+    /// Admin-only.
+    ///
+    /// # Safety rails (issue #1027)
+    /// * Caller must be the stored admin (`guards::require_admin`).
+    /// * `fee_bps` MUST lie in `[crate::fees::MIN_FEE_BPS,
+    ///   crate::fees::MAX_FEE_BPS]` = `[0, 1_000]` (0%..10%); out-of-range
+    ///   values are rejected and storage is left untouched.
+    /// * Every successful update emits a `fee_config_updated` event
+    ///   carrying the old/new treasury and old/new `fee_bps`, so
+    ///   off-chain indexers can audit the governance timeline.
+    ///
+    /// # Errors
+    /// * `ContractError::ContractPaused` when the contract is paused.
+    /// * `ContractError::NotAdmin` when `admin` is not the stored admin.
+    /// * Panics with `"fee_bps out of bounds"` if `fee_bps` is out of range.
+    ///
+    /// See also: [`docs/fees.md`](../../../docs/fees.md),
+    /// [`crate::fees::set_config`](../../src/fees.rs).
+    pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        guards::require_admin(&e, &admin);
+        fees::set_config(&e, &admin, treasury, fee_bps);
+    }
+
+    /// Read the current bond-creation fee configuration.
+    ///
+    /// Returns `(Option<treasury>, fee_bps)`. `treasury = None` means the
+    /// fee config was never set — in which case `fee_bps` is also 0 and no
+    /// fee is ever charged at bond creation.
+    pub fn get_fee_config(e: Env) -> (Option<Address>, u32) {
+        fees::get_config(&e)
     }
 
     /// Withdraw the full bonded amount with a reentrancy guard.

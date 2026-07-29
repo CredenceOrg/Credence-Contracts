@@ -51,6 +51,7 @@ dashboards, and audit runners.
 | `claims_processed`          | recipient                                 | `process_claims` / `process_claim_by_id`    |
 | `claims_expired`            | recipient                                 | claim expiry sweep                          |
 | `param_updated`             | key, category, admin                      | any governance `set_*`                      |
+| `fee_config_updated`        | admin                                     | `set_fee_config`                            |
 | `bond_drift_detected`       | subject                                   | post-write invariant drift detection        |
 | `admin_transferred`         | —                                         | `transfer_admin`                            |
 | `pause_*` / `unpaused`      | proposal_id / signer                      | see [`EVENTS.md`](EVENTS.md)                |
@@ -121,6 +122,23 @@ only.
 - Indexers can filter by `category` (`"fee"`, `"cooldown"`, `"tier"`, `"risk"`,
   `"borrow"`) for firehose subscription; `"key"` selects a single parameter
 
+### `fee_config_updated`
+
+Issue #1027 — emitted on every successful `set_fee_config` call. The event
+intentionally carries **both** the treasury and `fee_bps` deltas since
+`set_fee_config` updates both in a single call.
+
+- `topics = (Symbol("fee_config_updated"), admin: Address)`
+- `data = (old_treasury: Option<Address>, new_treasury: Address, old_fee_bps: u32, new_fee_bps: u32)`
+- `old_treasury = None` ⇒ config was previously unset (initialization state)
+- `old_fee_bps = 0` matches the same condition (defaults to 0)
+- `new_fee_bps` is guaranteed to lie in `[MIN_FEE_BPS, MAX_FEE_BPS] =
+  [0, 1_000]` (0%..10%) — see `fees.rs` for the bound constants
+- Rejected (out-of-range) calls do **NOT** emit this event; storage remains
+  unchanged
+- A replayer that has tracked fee config from `fee_config_updated` MUST
+  set `(treasury, fee_bps) = (data[1], data[3])`
+
 ### `claim_added`
 
 - `topics = (Symbol("claim_added"), recipient: Address)`
@@ -154,6 +172,7 @@ verify the ordering invariant for the flows marked with ✅.
 | `slash_bond(admin, amount)` ✅                  | `bond_slashed`, `bond_slashed_v2`, `claim_added` *(reward)* |
 | `liquidate(admin)` ✅                           | `bond_liquidated`                                           |
 | `set_*_protocol_parameter(...)`                | `param_updated`                                             |
+| `set_fee_config(admin, treasury, fee_bps)` ✅  | `fee_config_updated` *(carries both old/new)*                |
 | `add_attestation(...)`                          | `attestation_added`                                         |
 | `add_attestation_batch(...)`                    | `attestations_batch_added`                                  |
 | `revoke_attestation(...)`                       | `attestation_revoked`                                       |

@@ -551,6 +551,55 @@ pub fn emit_bond_drift_detected(e: &Env, details: &crate::invariants::BondDriftD
     e.events().publish(topics, data);
 }
 
+/// Emitted when the bond-creation fee config (treasury or fee_bps) changes
+/// (issue #1027 — fee config safety rails).
+///
+/// The event carries every relevant governance field before and after the
+/// update so auditors and indexers can reconstruct the diff without
+/// re-reading storage. `old_treasury = None` signals the config was
+/// previously unset (contract fresh or fee config never configured).
+///
+/// # Topics (Indexed)
+/// * `Symbol` - `"fee_config_updated"`
+/// * `Address` - The admin that authorised the change (indexed per-admin)
+///
+/// # Data
+/// * `Option<Address>` - Treasury address *before* the update (`None` if
+///   not previously set)
+/// * `Address` - Treasury address *after* the update
+/// * `u32` - `fee_bps` *before* the update (0 if not previously set)
+/// * `u32` - `fee_bps` *after* the update (already bounds-checked to
+///   `[MIN_FEE_BPS, MAX_FEE_BPS]`)
+///
+/// # Replay semantics
+/// A replayer that has tracked fee config from `fee_config_updated` MUST set
+/// `(treasury, fee_bps) = (topics[1].new, data[1])`, regardless of whether
+/// either field actually changed (callers may re-issue the same config to
+/// force a re-emission of the audit trail). Failed setter calls (rejected
+/// for out-of-range values) do **not** emit this event.
+///
+/// # Range invariants
+/// `new_fee_bps` is guaranteed to lie in `[MIN_FEE_BPS, MAX_FEE_BPS]` =
+/// `[0, 1 000]` (0%..10%) — see [`crate::fees`] for the governance bounds.
+#[allow(dead_code)]
+pub fn emit_fee_config_updated(
+    e: &Env,
+    admin: &Address,
+    old_treasury: Option<Address>,
+    new_treasury: &Address,
+    old_fee_bps: u32,
+    new_fee_bps: u32,
+) {
+    let topics = (Symbol::new(e, "fee_config_updated"), admin.clone());
+    let data = (
+        old_treasury,
+        new_treasury.clone(),
+        old_fee_bps,
+        new_fee_bps,
+    );
+    e.events().publish(topics, data);
+}
+
 /// Emitted when a bond is finalized through `liquidate` (issue #366).
 ///
 /// # Topics (Indexed)
