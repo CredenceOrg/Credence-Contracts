@@ -197,15 +197,13 @@ pub fn execute_drain(
     // dashboards can distinguish treasury-redirection attempts from generic panics.
     credence_errors::require_matching_treasury_beneficiary(e, recipient, treasury);
 
-    // Execute token transfer.
-    safe_token::safe_transfer(e, recipient, amount);
-
-    // Clear the drain ETA so it cannot be replayed without re-scheduling.
+    // Effects first (CEI pattern): clear ETA and persist audit record before
+    // external token interaction. If the transfer fails, Soroban rolls back
+    // the entire transaction, so no partial state remains.
     e.storage()
         .instance()
         .remove(&Symbol::new(e, KEY_DRAIN_ETA));
 
-    // Persist immutable audit record.
     let drain_id = increment_drain_seq(e);
     let record = DrainRecord {
         id: drain_id,
@@ -218,6 +216,9 @@ pub fn execute_drain(
     e.storage()
         .persistent()
         .set(&DrainDataKey::DrainRecord(drain_id), &record);
+
+    // Interaction: execute the token transfer (balance-delta guarded).
+    safe_token::safe_transfer(e, recipient, amount);
 
     // Emit event.
     e.events().publish(
