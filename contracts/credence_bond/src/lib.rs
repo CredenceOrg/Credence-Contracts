@@ -98,6 +98,10 @@ mod test_describe;
 #[cfg(test)]
 mod test_liquidate;
 
+/// Tests for slashing bounds enforcement and normalized slash history schema (issue #995).
+#[cfg(test)]
+mod test_slashing;
+
 /// Tests for the bounded claim expiry sweep (permissionless keeper).
 #[cfg(test)]
 mod test_claim_expiry_sweep;
@@ -2362,6 +2366,40 @@ impl CredenceBond {
     /// Read the currently configured slash treasury address, or `None`.
     pub fn get_slash_treasury(e: Env) -> Option<Address> {
         e.storage().instance().get(&DataKey::SlashTreasury)
+    }
+
+    /// Cursor-paginated read of slash history records for `identity`.
+    ///
+    /// Returns a bounded page of [`slash_history::SlashRecord`] entries,
+    /// starting at `offset` (0-based index into the slash history). Records
+    /// are in ascending insertion order (oldest first). `limit` is clamped
+    /// to [`parameters::MAX_QUERY_LIMIT`]; pass `0` to use the default
+    /// maximum.
+    ///
+    /// To paginate: pass `offset += page.len()` until an empty page is
+    /// returned, or compare `offset` against
+    /// [`get_slash_count`](Self::get_slash_count).
+    ///
+    /// Read-only; no auth required.
+    ///
+    /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
+    pub fn get_slash_history_page(
+        e: Env,
+        identity: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<slash_history::SlashRecord> {
+        slash_history::get_slash_history_page(&e, &identity, offset, limit)
+    }
+
+    /// Return the total number of slash records for `identity`. O(1).
+    ///
+    /// Use with [`get_slash_history_page`](Self::get_slash_history_page) for
+    /// paginated iteration. Read-only; no auth required.
+    ///
+    /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
+    pub fn get_slash_count(e: Env, identity: Address) -> u32 {
+        slash_history::get_slash_count(&e, &identity)
     }
 
     /// Has a bond been finalized via
