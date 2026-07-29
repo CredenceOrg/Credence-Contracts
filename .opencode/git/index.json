@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "sessionToRepo": {
+    "ses_0576b3112ffeyHk2HvQPQA6faM": "repo_41d530f7-99cf-4189-a2bc-d5c585655d58",
+    "ses_057606772ffepboQ6mnOzj0CnZ": "repo_6149ed72-ee8c-4210-81ad-dfbcfa01d2ba"
+  },
+  "turnToRepo": {
+    "local-1785239860635-0": "repo_41d530f7-99cf-4189-a2bc-d5c585655d58",
+    "baseline-1785240406923": "repo_6149ed72-ee8c-4210-81ad-dfbcfa01d2ba"
+  }
+}

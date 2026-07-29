@@ -115,7 +115,7 @@ fn test_pause_allows_reads() {
     let _ = client.get_latest_drain_id();
     let _ = client.is_paused();
     let _ = client.get_identity_state(&identity);
-    let _ = client.get_tier();
+    let _ = client.get_tier(&identity);
 }
 
 #[test]
@@ -330,6 +330,19 @@ fn test_pause_slash_bond_blocked() {
 }
 
 #[test]
+fn test_slash_bond_rejects_oversized_idempotency_salt() {
+    let e = Env::default();
+    let (client, admin) = setup_with_bond(&e);
+
+    // MAX_FINITE_BYTES_LENGTH is 512; one byte over must be rejected before
+    // the salt is hashed or written to storage.
+    let oversized_salt = Bytes::from_slice(&e, &[0_u8; 513]);
+    assert!(client
+        .try_slash_bond(&admin, &100_i128, &oversized_salt)
+        .is_err());
+}
+
+#[test]
 fn test_pause_withdraw_bond_blocked() {
     let e = Env::default();
     let (client, admin, identity) = setup_with_bond(&e);
@@ -370,7 +383,7 @@ fn test_pause_during_active_lockup_blocks_mutations_views_ok() {
     assert!(bond.active);
     assert_eq!(bond.bonded_amount, 10_000_i128);
     assert!(client.is_paused());
-    let _ = client.get_tier();
+    let _ = client.get_tier(&identity);
     let _ = client.version();
 
     // Unpause restores the same lock-up lifecycle.

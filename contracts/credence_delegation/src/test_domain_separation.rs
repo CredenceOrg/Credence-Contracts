@@ -1022,7 +1022,14 @@ fn require_matching_contract_id_rejects_wrong_contract() {
     let other_contract = Address::generate(&e);
 
     // Build a payload with a contract_id that differs from the current contract
-    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &other_contract, 0);
+    let payload = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &other_contract,
+        0,
+    );
 
     // This must panic with ContractIdMismatch
     client.execute_delegated_delegate(
@@ -1041,9 +1048,19 @@ fn require_matching_contract_id_rejects_zero_address() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
-    let zero_contract = Address::from_str(&e, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+    let zero_contract = Address::from_str(
+        &e,
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+    );
 
-    let payload = make_payload(&e, DomainTag::Delegate, &owner, &delegate, &zero_contract, 0);
+    let payload = make_payload(
+        &e,
+        DomainTag::Delegate,
+        &owner,
+        &delegate,
+        &zero_contract,
+        0,
+    );
 
     client.execute_delegated_delegate(
         &owner,

@@ -55,6 +55,11 @@ required-features = ["gas-bench"]
 name = "test_cost_regression"
 path = "tests/test_cost_regression.rs"
 
+# slash_bond validation/event/reentrancy-lock coverage (issue #1039).
+[[test]]
+name = "slash_bond_validation"
+path = "tests/slash_bond_validation.rs"
+
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }

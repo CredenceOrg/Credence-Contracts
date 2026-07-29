@@ -1,7 +1,7 @@
 //! Storage migration utilities for IdentityBond
 use crate::{DataKey, IdentityBond};
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Env};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env};
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub fn require_no_ongoing_migration(e: &Env, status: MigrationStatus) {
 ///
 /// The migration is idempotent and safe to call on every read; it only writes
 /// when a bond is present.
-pub fn migrate_v1_to_v2(e: &Env) {
+pub fn migrate_v1_to_v2(e: &Env, identity: &Address) {
     let key = DataKey::Bond(identity.clone());
     if let Some(old_bond) = e.storage().instance().get::<DataKey, IdentityBond>(&key) {
         e.storage().instance().set(&key, &old_bond);

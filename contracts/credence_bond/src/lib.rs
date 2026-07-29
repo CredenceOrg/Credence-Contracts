@@ -5,6 +5,7 @@
 #[cfg(test)]
 mod batch;
 mod claims;
+mod cooldown;
 mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
@@ -25,26 +26,26 @@ mod safe_token;
 mod same_ledger_liquidation_guard;
 mod slash_history;
 mod slashing;
+mod status_snapshot;
 mod storage;
 mod tiered_bond;
 mod token_integration;
 mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
-mod idempotency;
 
-#[cfg(test)]
+// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] #[path = "fuzz/test_weighted_attestation_rounding.rs"]
 // [pre-broken on main] mod test_weighted_attestation_rounding;
 
-#[cfg(test)]
+// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] #[path = "fuzz/test_slashing_tier_invariants.rs"]
 // [pre-broken on main] mod test_slashing_tier_invariants;
 
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_weighted_attestation;
 
-#[cfg(test)]
+// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] #[path = "fuzz/test_normalization_invariant.rs"]
 // [pre-broken on main] mod test_normalization_invariant;
 
@@ -73,6 +74,8 @@ pub mod types;
 pub mod test_invariants;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
+pub mod test_helpers;
+#[cfg(test)]
 mod test_unauthorized_token;
 #[cfg(test)]
 mod test_validation;
@@ -94,6 +97,10 @@ mod test_describe;
 /// Tests for the liquidate entrypoint (issue #366).
 #[cfg(test)]
 mod test_liquidate;
+
+/// Tests for slashing bounds enforcement and normalized slash history schema (issue #995).
+#[cfg(test)]
+mod test_slashing;
 
 /// Tests for the bounded claim expiry sweep (permissionless keeper).
 #[cfg(test)]
@@ -362,10 +369,8 @@ pub(crate) const STORAGE_TTL_EXTEND_TO: u32 =
     (MAX_BOND_DURATION_SECONDS / SECONDS_PER_LEDGER) as u32;
 /// Extend from the halfway point to the full configured lifetime.
 pub(crate) const STORAGE_TTL_THRESHOLD: u32 = STORAGE_TTL_EXTEND_TO / 2;
-/// Alias used by persistent-storage helpers (claims, slash history, emergency).
-pub const PERSISTENT_TTL_MAX: u32 = STORAGE_TTL_EXTEND_TO;
-
 /// Maximum persistent entry TTL (~6 months at 5 s/ledger; Soroban network cap).
+/// Used by persistent-storage helpers (claims, slash history, emergency).
 pub(crate) const PERSISTENT_TTL_MAX: u32 = 3_110_400;
 
 pub(crate) fn bump_instance_ttl(e: &Env) {
@@ -438,6 +443,9 @@ pub struct BondStateView {
     /// Derived tier based on `bonded_amount`.
     pub tier: BondTier,
 }
+
+#[contract]
+pub struct CredenceBond;
 
 #[contractimpl]
 impl CredenceBond {
@@ -572,8 +580,8 @@ impl CredenceBond {
     ///
     /// # Panics
     /// - `"no bond"` if no bond has been created for the current identity.
-    pub fn get_bond_status_snapshot(e: Env) -> status_snapshot::BondStatusSnapshot {
-        status_snapshot::get_bond_status_snapshot(&e)
+    pub fn get_bond_status_snapshot(e: Env, identity: Address) -> status_snapshot::BondStatusSnapshot {
+        status_snapshot::get_bond_status_snapshot(&e, &identity)
     }
 
     /// Configure early exit penalty parameters.
@@ -1021,9 +1029,9 @@ impl CredenceBond {
     /// assert_eq!(state.bonded_amount, 500);
     /// assert!(state.active);
     /// ```
-    pub fn get_identity_state(e: Env) -> IdentityBond {
+    pub fn get_identity_state(e: Env, identity: Address) -> IdentityBond {
         // Ensure storage is migrated from v1 to v2 before accessing bond state
-        migration::migrate_v1_to_v2(&e);
+        migration::migrate_v1_to_v2(&e, &identity);
         let bond: IdentityBond = guards::load_bond(&e, &identity);
         bond
     }
@@ -1111,7 +1119,12 @@ impl CredenceBond {
         e.storage().instance().set(&counter_key, &next_id);
 
         let weight = weighted_attestation::compute_weight(&e, &attester);
-        types::Attestation::validate_weight(weight);
+        // Centralised validation: rejects an out-of-range derived weight AND a
+        // caller-supplied `attestation_data` longer than the storage budget
+        // before any instance-storage writes occur. Routing through
+        // `validate_input` keeps every storage mutator using one helper so
+        // future bounds updates can be made in a single place.
+        types::Attestation::validate_input(weight, &attestation_data);
 
         let attestation = types::Attestation {
             id,
@@ -1216,13 +1229,19 @@ impl CredenceBond {
         // Get weight configuration
         let (_, max_weight) = weighted_attestation::get_weight_config(&e);
 
-        // Compute weights, validate weight limits, and accumulate total weight.
+        // Compute weights, validate the derived weight AND the caller-supplied
+        // `attestation_data` per item via the centralised helper, and
+        // accumulate total weight. Routing validation through
+        // `Attestation::validate_input` keeps the batch entry point symmetric
+        // with the singular `add_attestation` path: every storage mutator runs
+        // exactly the same (weight, data) checks before any instance-storage
+        // writes occur.
         let mut total_weight = 0u64;
         let mut weights = Vec::new(&e);
         for i in 0..n {
             let item = items.get(i).unwrap();
             let weight = weighted_attestation::compute_weight(&e, &item.attester);
-            types::Attestation::validate_weight(weight);
+            types::Attestation::validate_input(weight, &item.attestation_data);
             total_weight = total_weight
                 .checked_add(weight as u64)
                 .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
@@ -1660,7 +1679,7 @@ impl CredenceBond {
         }
 
         let cfg = early_exit_penalty::get_config(&e).unwrap_or_else(|_| {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(&e, ContractError::EarlyExitConfigNotSet)
         });
         let cfg = early_exit_penalty::get_config(&e)
@@ -1701,7 +1720,7 @@ impl CredenceBond {
             .checked_sub(amount)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
         if bond.slashed_amount > bond.bonded_amount {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::SlashExceedsBond);
         }
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
@@ -1724,7 +1743,7 @@ impl CredenceBond {
             crate::token_integration::transfer_from_contract(&e, &bond.identity, net_amount);
         }
 
-        release_lock(&e);
+        Self::release_lock(&e);
         invariants::assert_self_consistent(&e);
 
         bond
@@ -1803,8 +1822,8 @@ impl CredenceBond {
     }
 
     /// Get current tier for the bond's available (net) amount.
-    pub fn get_tier(e: Env) -> BondTier {
-        let bond = Self::get_identity_state(e.clone());
+    pub fn get_tier(e: Env, identity: Address) -> BondTier {
+        let bond = Self::get_identity_state(e.clone(), identity);
         let available_amount = bond.bonded_amount.saturating_sub(bond.slashed_amount);
         tiered_bond::get_tier_for_amount(&e, available_amount)
     }
@@ -1817,9 +1836,9 @@ impl CredenceBond {
     /// - `ContractError::SlashExceedsBond` when slash amount exceeds bonded amount.
     ///
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
-    pub fn slash(e: Env, admin: Address, amount: i128) -> IdentityBond {
+    pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
-        slashing::slash_bond(&e, &admin, amount)
+        slashing::slash_bond(&e, &admin, &identity, amount)
     }
 
     /// Top up the bond amount.
@@ -1955,23 +1974,23 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         // auth: tree shape [Identity] -> [Bond::withdraw_bond]; may be delegated.
         identity.require_auth();
-        acquire_lock(&e);
+        Self::acquire_lock(&e);
 
         let bond_key = DataKey::Bond(identity.clone());
         let bond: IdentityBond = guards::load_bond(&e, &identity);
 
         if bond.identity != identity {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotBondOwner);
         }
         if !bond.active {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotActive);
         }
 
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
-                release_lock(&e);
+                Self::release_lock(&e);
                 panic!("withdrawal not requested");
             }
             let earliest = bond
@@ -1979,7 +1998,7 @@ impl CredenceBond {
                 .checked_add(bond.notice_period_duration)
                 .expect("notice period overflow");
             if e.ledger().timestamp() < earliest {
-                release_lock(&e);
+                Self::release_lock(&e);
                 panic!("notice period not elapsed");
             }
         }
@@ -2009,7 +2028,7 @@ impl CredenceBond {
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        release_lock(&e);
+        Self::release_lock(&e);
         withdraw_amount
     }
 
@@ -2029,8 +2048,7 @@ impl CredenceBond {
     pub fn request_cooldown_withdrawal(e: Env, identity: Address, amount: i128) {
         Self::require_not_paused(&e);
         identity.require_auth();
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let bond: IdentityBond = guards::load_bond(&e, &identity);
         if bond.identity != identity {
             panic_with_error!(e, ContractError::BondNotFound);
         }
@@ -2071,15 +2089,14 @@ impl CredenceBond {
     pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         identity.require_auth();
-        let key = DataKey::Bond;
-        let mut bond: IdentityBond = guards::load_bond(&e);
+        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
         if bond.identity != identity {
             panic_with_error!(e, ContractError::BondNotFound);
         }
         let request = cooldown::get_cooldown_request(&e, &identity)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
         if request.requester != identity {
-            panic_with_error!(e, ContractError::Unauthorized);
+            panic_with_error!(e, ContractError::NotBondOwner);
         }
         same_ledger_liquidation_guard::require_cooldown_allowed_after_collateral_increase(&e);
         let now = e.ledger().timestamp();
@@ -2112,7 +2129,7 @@ impl CredenceBond {
         let request = cooldown::get_cooldown_request(&e, &identity)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
         if request.requester != identity {
-            panic_with_error!(e, ContractError::Unauthorized);
+            panic_with_error!(e, ContractError::NotBondOwner);
         }
         cooldown::clear_cooldown_request(&e, &identity);
         cooldown::emit_cooldown_cancelled(&e, &identity);
@@ -2125,13 +2142,26 @@ impl CredenceBond {
         cooldown::get_cooldown_request(&e, &identity)
     }
 
-    /// Slash a portion of the bond with a reentrancy guard.
+    /// Slash a portion of `identity`'s bond with a reentrancy guard.
     ///
     /// Returns the cumulative slashed amount after this operation.
+    ///
+    /// # Validation
+    /// - `slash_amount` must be strictly positive (`> 0`); zero and negative
+    ///   amounts are rejected before any state is read or mutated.
+    /// - The new cumulative slashed amount is computed with checked
+    ///   arithmetic and can never exceed `bonded_amount`.
+    ///
+    /// # Events
+    /// Emits `bond_slashed` with `(identity, slash_amount, total_slashed_amount)`
+    /// on every successful slash, matching the `slash()` wrapper documented in
+    /// [`docs/slashing.md`](../../../docs/slashing.md).
     ///
     /// Errors:
     /// - `ContractError::NotAdmin` when caller is not the admin.
     /// - `ContractError::BondNotFound` / `ContractError::BondNotActive` when bond is missing or inactive.
+    /// - `ContractError::InvalidBondAmount` when `slash_amount <= 0`.
+    /// - `ContractError::Overflow` if adding `slash_amount` to the existing slashed amount overflows `i128`.
     /// - `ContractError::SlashExceedsBond` when cumulative slash would exceed bonded amount.
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
@@ -2143,12 +2173,15 @@ impl CredenceBond {
     pub fn slash_bond(
         e: Env,
         admin: Address,
+        identity: Address,
         slash_amount: i128,
         idempotency_salt: Bytes,
     ) -> i128 {
         Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
-        admin.require_auth();
+        // (`guards::require_admin` below performs the actual `admin.require_auth()`.)
+
+        validation::require_finite_bytes(&e, &idempotency_salt, validation::MAX_FINITE_BYTES_LENGTH);
 
         // Check idempotency if a salt is provided (non-empty)
         // NOTE: idempotency module temporarily disabled during merge fix; re-enable when module is available
@@ -2161,21 +2194,33 @@ impl CredenceBond {
         //     );
         // }
 
-        acquire_lock(&e);
-
+        // Admin check happens before the lock is acquired so an unauthorized
+        // caller never leaves the reentrancy lock held.
         guards::require_admin(&e, &admin);
+
+        if slash_amount <= 0 {
+            panic_with_error!(e, ContractError::InvalidBondAmount);
+        }
+
+        Self::acquire_lock(&e);
 
         let bond_key = DataKey::Bond(identity.clone());
         let bond: IdentityBond = guards::load_bond(&e, &identity);
 
         if !bond.active {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotActive);
         }
 
-        let new_slashed = bond.slashed_amount + slash_amount;
+        let new_slashed = match bond.slashed_amount.checked_add(slash_amount) {
+            Some(v) => v,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::Overflow);
+            }
+        };
         if new_slashed > bond.bonded_amount {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::SlashExceedsBond);
         }
 
@@ -2192,7 +2237,8 @@ impl CredenceBond {
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
-        bump_instance_ttl(&e);
+
+        slashing::emit_slashing_event(&e, &identity, slash_amount, new_slashed);
 
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
@@ -2201,7 +2247,7 @@ impl CredenceBond {
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        release_lock(&e);
+        Self::release_lock(&e);
         new_slashed
     }
 
@@ -2218,6 +2264,8 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         admin.require_auth();
 
+        validation::require_finite_bytes(&e, &idempotency_salt, validation::MAX_FINITE_BYTES_LENGTH);
+
         // Check idempotency if a salt is provided (non-empty)
         // NOTE: idempotency module temporarily disabled during merge fix; re-enable when module is available
         // if idempotency_salt.len() > 0 {
@@ -2229,7 +2277,7 @@ impl CredenceBond {
         //     );
         // }
 
-        acquire_lock(&e);
+        Self::acquire_lock(&e);
 
         guards::require_admin(&e, &admin);
 
@@ -2244,7 +2292,7 @@ impl CredenceBond {
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
         }
 
-        release_lock(&e);
+        Self::release_lock(&e);
         fees
     }
 
@@ -2320,6 +2368,40 @@ impl CredenceBond {
         e.storage().instance().get(&DataKey::SlashTreasury)
     }
 
+    /// Cursor-paginated read of slash history records for `identity`.
+    ///
+    /// Returns a bounded page of [`slash_history::SlashRecord`] entries,
+    /// starting at `offset` (0-based index into the slash history). Records
+    /// are in ascending insertion order (oldest first). `limit` is clamped
+    /// to [`parameters::MAX_QUERY_LIMIT`]; pass `0` to use the default
+    /// maximum.
+    ///
+    /// To paginate: pass `offset += page.len()` until an empty page is
+    /// returned, or compare `offset` against
+    /// [`get_slash_count`](Self::get_slash_count).
+    ///
+    /// Read-only; no auth required.
+    ///
+    /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
+    pub fn get_slash_history_page(
+        e: Env,
+        identity: Address,
+        offset: u32,
+        limit: u32,
+    ) -> Vec<slash_history::SlashRecord> {
+        slash_history::get_slash_history_page(&e, &identity, offset, limit)
+    }
+
+    /// Return the total number of slash records for `identity`. O(1).
+    ///
+    /// Use with [`get_slash_history_page`](Self::get_slash_history_page) for
+    /// paginated iteration. Read-only; no auth required.
+    ///
+    /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
+    pub fn get_slash_count(e: Env, identity: Address) -> u32 {
+        slash_history::get_slash_count(&e, &identity)
+    }
+
     /// Has a bond been finalized via
     /// [`liquidate`](Self::liquidate)? Read-only, no auth required.
     ///
@@ -2373,17 +2455,17 @@ impl CredenceBond {
     ///
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
     /// [`docs/credence-bond.md`](../../../docs/credence-bond.md)
-    pub fn liquidate(e: Env, admin: Address) -> IdentityBond {
+    pub fn liquidate(e: Env, admin: Address, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         // auth: tree shape [Admin] -> [Bond::liquidate]; usually direct admin call.
         admin.require_auth();
-        acquire_lock(&e);
+        Self::acquire_lock(&e);
 
         let bond_key = DataKey::Bond(identity.clone());
         let bond: IdentityBond = match e.storage().instance().get::<_, IdentityBond>(&bond_key) {
             Some(b) => b,
             None => {
-                release_lock(&e);
+                Self::release_lock(&e);
                 panic_with_error!(e, ContractError::BondNotFound);
             }
         };
@@ -2393,19 +2475,19 @@ impl CredenceBond {
         {
             Some(a) => a,
             None => {
-                release_lock(&e);
+                Self::release_lock(&e);
                 panic_with_error!(e, ContractError::NotInitialized);
             }
         };
         if stored_admin != admin {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotAdmin);
         }
 
         // Idempotency: refuse to re-finalize an already-inactive bond so the
         // event stream records exactly one `bond_liquidated` per bond.
         if !bond.active {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotActive);
         }
 
@@ -2423,7 +2505,7 @@ impl CredenceBond {
         let fully_slashed = bond.slashed_amount >= bond.bonded_amount;
         let expired_unrenewed = !bond.is_rolling && now >= lockup_end;
         if !fully_slashed && !expired_unrenewed {
-            release_lock(&e);
+            Self::release_lock(&e);
             panic!("bond is not eligible for liquidation: must be fully slashed or expired (non-rolling) without renewal");
         }
 
@@ -2469,7 +2551,7 @@ impl CredenceBond {
         };
         events::emit_bond_liquidated(&e, &bond.identity, residual, reason_sym, now, &admin);
 
-        release_lock(&e);
+        Self::release_lock(&e);
         updated
     }
 
@@ -3260,6 +3342,11 @@ mod test_bps_denominator;
 #[cfg(test)]
 mod test_batch_transfer;
 
+#[cfg(test)]
+mod test_create_bond;
+
+#[cfg(test)]
+mod test_increase_bond;
 /// Emergency pause gating tests (issue #1042).
 #[cfg(test)]
 mod test_pausable;

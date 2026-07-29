@@ -173,8 +173,8 @@ fn test_operator_epoch_guard_unpause_off_by_one_fails() {
     // Pause first
     client.pause(&s1).unwrap();
     client.approve_pause_proposal(&s2, &0); // approve prior pause proposal
-    // ... actually pause directly since it was admin in setup
-    // Let's re-setup with proper pause
+                                            // ... actually pause directly since it was admin in setup
+                                            // Let's re-setup with proper pause
     drop(signers);
     let signers = add_signers(&env, &client, &admin, 2, 2);
     let s1 = signers.get(0).unwrap();
