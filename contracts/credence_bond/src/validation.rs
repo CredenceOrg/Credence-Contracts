@@ -405,4 +405,5 @@ mod tests {
         // Should panic when recipient equals contract
         validate_recipient(&address, &address);
     }
+
 }

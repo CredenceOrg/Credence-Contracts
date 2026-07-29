@@ -31,12 +31,12 @@ cargo install cargo-llvm-cov --locked
 cargo llvm-cov --package credence_bond --open
 
 # Enforce threshold (same check as CI)
-cargo llvm-cov --package credence_bond --fail-under-lines 95
-cargo llvm-cov --package credence_delegation --fail-under-lines 95
-cargo llvm-cov --package timelock --fail-under-lines 95
+cargo llvm-cov --locked --package credence_bond --fail-under-lines 95
+cargo llvm-cov --locked --package credence_delegation --fail-under-lines 95
+cargo llvm-cov --locked --package timelock --fail-under-lines 95
 
 # LCOV output (for editor integration)
-cargo llvm-cov --package credence_bond --lcov --output-path lcov.info
+cargo llvm-cov --locked --package credence_bond --lcov --output-path lcov.info
 ```
 
 ### CI workflow

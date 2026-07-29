@@ -3,7 +3,7 @@
 //! Read-only helper returning a stable, backend-friendly snapshot of the current
 //! bond state: tier, cooldown remaining, and emergency mode flag.
 
-use soroban_sdk::{contracttype, Env};
+use soroban_sdk::{contracttype, Address, Env};
 
 use crate::{tiered_bond, BondTier, DataKey};
 
@@ -34,7 +34,7 @@ pub struct BondStatusSnapshot {
 /// - `"emergency config not set"` if emergency config was never initialised
 ///   (only relevant when `emergency_mode` is read).
 #[must_use]
-pub fn get_bond_status_snapshot(e: &Env) -> BondStatusSnapshot {
+pub fn get_bond_status_snapshot(e: &Env, identity: &Address) -> BondStatusSnapshot {
     let bond = e
         .storage()
         .instance()

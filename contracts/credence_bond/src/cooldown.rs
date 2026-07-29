@@ -28,7 +28,7 @@
 //! so that a panicking `assert_self_consistent` call still rolls it back.
 
 use crate::DataKey;
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 const KEY_COOLDOWN_PERIOD: &str = "cooldown_period";
 const KEY_COOLDOWN_REQUEST: &str = "cooldown_request";
@@ -112,7 +112,7 @@ pub fn get_cooldown_request(e: &Env, identity: &Address) -> Option<CooldownReque
 pub fn clear_cooldown_request(e: &Env, identity: &Address) {
     e.storage()
         .instance()
-        .remove::<CooldownRequest>(&DataKey::CooldownRequest(identity.clone()));
+        .remove(&DataKey::CooldownRequest(identity.clone()));
 }
 
 /// Record the current ledger sequence for cooldown sequencing guard.

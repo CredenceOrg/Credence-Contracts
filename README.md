@@ -56,6 +56,9 @@ cargo test -p credence_bond
 cargo test -p credence_delegation
 ```
 
+For the per-crate 95% coverage check and local `cargo-llvm-cov` setup, see
+[docs/testing.md](docs/testing.md).
+
 ### Using `just`
 
 The repo includes a [`justfile`](justfile) with common recipes. Install
@@ -141,9 +144,10 @@ Release Wasm for every deployable contract must stay within per-contract size ce
   - Issuance: [who can create/top-up a bond, and under what conditions](docs/BOND_ISSUANCE.md)
   - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
   - Cross-Contract Trust: [Trust Models](docs/CROSS_CONTRACT_TRUST.md)
+  - Liquidation scan consistency: [snapshot generations and when they bump](docs/SNAPSHOT_GENERATIONS.md)
 - `contracts/credence_delegation/` — Delegation contract
 - `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `crates.md`, `CROSS_CONTRACT.md`)
-- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `TIME_UNITS.md`, `ADMIN_EPOCHS.md`, [`COMPOUND_RATE.md`](docs/COMPOUND_RATE.md))
+- `docs/` — Feature docs (`EVENTS.md`, `PATTERNS_EVENTS.md`, `DEDUP_POLICY.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`, `UPGRADE.md`, `TIME_UNITS.md`, `ADMIN_EPOCHS.md`, [`OPERATOR_EPOCHS.md`](docs/OPERATOR_EPOCHS.md), [`COMPOUND_RATE.md`](docs/COMPOUND_RATE.md))
 
 **Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths. See [docs/crates.md](docs/crates.md) for how the crates fit together, their dependency graph, and why they are structured this way.
 

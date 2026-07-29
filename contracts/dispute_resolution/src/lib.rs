@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec, symbol_short};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, Env, String, Vec};
 
 mod error;
 use error::DisputeError;
@@ -63,10 +63,8 @@ impl DisputeResolutionContract {
         env.storage().instance().set(&id, &dispute);
 
         // Emit event
-        env.events().publish(
-            (symbol_short!("closed"), id),
-            (symbol_short!("by"), caller),
-        );
+        env.events()
+            .publish((symbol_short!("closed"), id), (symbol_short!("by"), caller));
 
         Ok(())
     }
