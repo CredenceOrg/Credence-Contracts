@@ -1346,3 +1346,143 @@ mod proptests {
         }
     }
 }
+
+#[cfg(test)]
+mod proptest_extended {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        /// Rounding direction monotonicity: Up >= Down for all positive inputs.
+        #[test]
+        fn mul_div_up_ge_down(
+            a in -1_000_000_000i128..1_000_000_000i128,
+            b in -1_000_000_000i128..1_000_000_000i128,
+            d in 1i128..10_001i128
+        ) {
+            let down = mul_div_i128(a, b, d, Rounding::Down, "prop");
+            let up = mul_div_i128(a, b, d, Rounding::Up, "prop");
+            prop_assert!(up >= down, "Up {up} < Down {down} for {a}*{b}/{d}");
+        }
+    }
+
+    proptest! {
+        /// Nearest rounding is either floor or ceil (never outside).
+        #[test]
+        fn nearest_between_down_and_up(
+            a in -1_000_000i128..1_000_000i128,
+            b in 1i128..1_000i128,
+            d in 1i128..1_001i128
+        ) {
+            let nearest = mul_div_i128(a, b, d, Rounding::Nearest, "prop");
+            let down = mul_div_i128(a, b, d, Rounding::Down, "prop");
+            let up = mul_div_i128(a, b, d, Rounding::Up, "prop");
+            prop_assert!(nearest >= down && nearest <= up,
+                "Nearest {nearest} not between Down {down} and Up {up}");
+        }
+    }
+
+    proptest! {
+        /// For positive integers, mul_wad(a, b) / WAD == (a*b)/WAD (exact).
+        #[test]
+        fn mul_wad_overflow_safe(
+            a in 0i128..10_000_000_000i128,
+            b in 0i128..10_000_000_000i128
+        ) {
+            let result = mul_wad(a, b, "prop");
+            let expected = (a as i128 * b as i128) / WAD;
+            prop_assert_eq!(result, expected);
+        }
+    }
+
+    proptest! {
+        /// sat_mul_wad never panics and returns a value >= 0 for non-negative inputs.
+        #[test]
+        fn sat_mul_wad_non_negative(
+            a in 0i128..i128::MAX,
+            b in 0i128..1_000_000_000_000_000_000i128
+        ) {
+            let result = sat_mul_wad(a, b);
+            prop_assert!(result >= 0);
+        }
+    }
+
+    proptest! {
+        /// bps(N, BPS_DENOMINATOR) == N (identity for 100%).
+        #[test]
+        fn bps_identity(
+            amount in -1_000_000i128..1_000_000i128
+        ) {
+            let result = bps(amount, BPS_DENOMINATOR as u32, "mul", "div");
+            prop_assert_eq!(result, amount);
+        }
+    }
+
+    proptest! {
+        /// split_bps partitions amount into fee + net without loss.
+        #[test]
+        fn split_bps_conserves_value(
+            amount in 0i128..1_000_000i128,
+            bps_val in 0u32..=BPS_DENOMINATOR as u32
+        ) {
+            let (fee, net) = split_bps(amount, bps_val, "mul", "div", "sub");
+            if bps_val <= BPS_DENOMINATOR as u32 {
+                prop_assert_eq!(fee.checked_add(net), Some(amount),
+                    "fee {fee} + net {net} != amount {amount}");
+            }
+        }
+    }
+
+    proptest! {
+        /// ceil_div_i128(a, b) >= div_i128(a, b) for all positive b.
+        #[test]
+        fn ceil_div_ge_floor(
+            a in -10_000i128..10_000i128,
+            b in 1i128..10_000i128
+        ) {
+            let ceil = ceil_div_i128(a, b, "prop");
+            let floor = div_i128(a, b, "prop");
+            prop_assert!(ceil >= floor,
+                "ceil {ceil} < floor {floor} for {a}/{b}");
+        }
+    }
+
+    proptest! {
+        /// sat_bps never exceeds the amount (for bps <= 10_000).
+        #[test]
+        fn sat_bps_bounded(
+            amount in 0i128..i128::MAX,
+            bps_val in 0u32..=BPS_DENOMINATOR as u32
+        ) {
+            let result = sat_bps(amount, bps_val);
+            prop_assert!(result <= amount,
+                "sat_bps {result} > amount {amount} at {bps_val} bps");
+        }
+    }
+
+    proptest! {
+        /// floor_to_day is idempotent.
+        #[test]
+        fn floor_to_day_idempotent(ts in 0..=u64::MAX / 86400 * 86400) {
+            let first = floor_to_day(ts);
+            let second = floor_to_day(first);
+            prop_assert_eq!(first, second);
+        }
+    }
+
+    proptest! {
+        /// floor_to_day is monotonic with respect to its input.
+        #[test]
+        fn floor_to_day_monotonic(
+            a in 0u64..1_000_000_000u64,
+            b in 0u64..1_000_000_000u64
+        ) {
+            let fa = floor_to_day(a);
+            let fb = floor_to_day(b);
+            if a <= b {
+                prop_assert!(fa <= fb,
+                    "floor({a})={fa} > floor({b})={fb}");
+            }
+        }
+    }
+}
