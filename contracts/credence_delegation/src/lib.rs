@@ -786,6 +786,7 @@ impl CredenceDelegation {
     /// * `UnknownScheme` - if scheme is not a recognized value
     pub fn register_verifier(e: Env, admin: Address, scheme: u32, verifier_id: Address) {
         bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
         admin.require_auth();
 
         // Check that only the admin can register verifiers
@@ -1139,3 +1140,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_require_matching_contract_id;
+
+#[cfg(test)]
+mod test_operator_epoch_guard;

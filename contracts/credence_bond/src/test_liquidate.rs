@@ -126,9 +126,9 @@ fn liquidate_fully_slashed_succeeds() {
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
-    client.slash(&admin, &1_000_i128); // fully slash
+    client.slash(&admin, &identity, &1_000_i128); // fully slash
 
-    let bond = client.liquidate(&admin);
+    let bond = client.liquidate(&admin, &identity);
     assert!(!bond.active, "liquidated bonds must have active=false");
     assert_eq!(bond.bonded_amount, 1_000, "bonded_amount is preserved");
     assert_eq!(
@@ -147,7 +147,7 @@ fn liquidate_expired_unrenewed_succeeds() {
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     e.ledger().with_mut(|li| li.timestamp = 87_500);
 
-    let bond = client.liquidate(&admin);
+    let bond = client.liquidate(&admin, &identity);
     assert!(!bond.active);
     assert_eq!(bond.bonded_amount, 1_000);
     assert_eq!(bond.slashed_amount, 0, "no slashing occurred");
@@ -162,9 +162,23 @@ fn liquidate_expired_at_exact_boundary_succeeds() {
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     e.ledger().with_mut(|li| li.timestamp = 87_400); // exactly bond_start + duration
 
-    let bond = client.liquidate(&admin);
+    let bond = client.liquidate(&admin, &identity);
     assert!(!bond.active);
     assert!(client.is_liquidated(&identity));
+}
+
+#[test]
+fn liquidate_one_second_after_boundary_succeeds() {
+    let e = Env::default();
+    let (client, admin, identity, _treasury) = setup_with_treasury(&e);
+
+    make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
+    e.ledger().with_mut(|li| li.timestamp = 87_401);
+
+    let bond = client.liquidate(&admin, &identity);
+    assert!(!bond.active);
+    assert!(client.is_liquidated(&identity));
+    assert_eq!(bond.bonded_amount, 1_000);
 }
 
 #[test]
@@ -176,10 +190,10 @@ fn liquidate_preserves_slashed_and_bonded_amounts() {
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
-    client.slash(&admin, &700_i128); // partial slash
+    client.slash(&admin, &identity, &700_i128); // partial slash
 
     e.ledger().with_mut(|li| li.timestamp = 87_500);
-    let bond = client.liquidate(&admin);
+    let bond = client.liquidate(&admin, &identity);
 
     assert_eq!(bond.bonded_amount, 1_000);
     assert_eq!(bond.slashed_amount, 700);
@@ -194,10 +208,10 @@ fn liquidate_without_treasury_still_marks_bond_inactive() {
     // No `set_liquidation_treasury` call: treasury is `None`.
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
-    client.slash(&admin, &400_i128);
+    client.slash(&admin, &identity, &400_i128);
     e.ledger().with_mut(|li| li.timestamp = 87_500);
 
-    let bond = client.liquidate(&admin);
+    let bond = client.liquidate(&admin, &identity);
     assert!(!bond.active);
     assert!(client.is_liquidated(&identity));
 }
@@ -219,7 +233,7 @@ fn liquidate_one_second_before_expiry_rejected() {
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     e.ledger().with_mut(|li| li.timestamp = 87_399);
 
-    client.liquidate(&admin);
+    client.liquidate(&admin, &identity);
 }
 
 #[test]
@@ -230,7 +244,7 @@ fn liquidate_healthy_bond_rejected() {
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     // No slash, not past lockup.
-    client.liquidate(&admin);
+    client.liquidate(&admin, &identity);
 }
 
 #[test]
@@ -240,8 +254,8 @@ fn liquidate_partially_slashed_bond_rejected() {
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
-    client.slash(&admin, &500_i128); // partial slash
-    client.liquidate(&admin);
+    client.slash(&admin, &identity, &500_i128); // partial slash
+    client.liquidate(&admin, &identity);
 }
 
 #[test]
@@ -256,7 +270,7 @@ fn liquidate_rolling_bond_past_lockup_rejected() {
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, true, 100);
     e.ledger().with_mut(|li| li.timestamp = 87_500);
 
-    client.liquidate(&admin);
+    client.liquidate(&admin, &identity);
 }
 
 #[test]
@@ -265,7 +279,7 @@ fn liquidate_no_bond_rejected() {
     let e = Env::default();
     let (client, admin, _identity, _treasury) = setup_with_treasury(&e);
 
-    client.liquidate(&admin);
+    client.liquidate(&admin, &identity);
 }
 
 #[test]
@@ -275,10 +289,10 @@ fn liquidate_non_admin_rejected() {
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
-    client.slash(&admin, &1_000_i128);
+    client.slash(&admin, &identity, &1_000_i128);
 
     let stranger = Address::generate(&e);
-    client.liquidate(&stranger);
+    client.liquidate(&stranger, &identity);
 }
 
 // -----------------------------------------------------------------
@@ -292,10 +306,10 @@ fn liquidate_twice_rejected() {
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
-    client.slash(&admin, &1_000_i128);
-    client.liquidate(&admin);
+    client.slash(&admin, &identity, &1_000_i128);
+    client.liquidate(&admin, &identity);
     // Second liquidation must be rejected with BondNotActive.
-    client.liquidate(&admin);
+    client.liquidate(&admin, &identity);
 }
 
 #[test]
@@ -329,5 +343,5 @@ fn liquidate_after_withdraw_bond_panics() {
     e.ledger().with_mut(|li| li.timestamp = 87_500);
     let _withdraw_amount = client.withdraw_bond(&identity);
 
-    client.liquidate(&admin);
+    client.liquidate(&admin, &identity);
 }

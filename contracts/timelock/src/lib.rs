@@ -261,7 +261,7 @@ impl TimelockContract {
         current_admin.require_auth();
 
         e.storage().instance().set(&DataKey::Admin, &new_admin);
-        
+
         e.events().publish(
             (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
             (current_admin, new_admin),
@@ -388,7 +388,7 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_rejects_at_expiry() {
+    fn test_execute_succeeds_at_expiry_boundary() {
         let (env, client, admin) = setup_env();
         let op_hash = BytesN::from_array(&env, &[1; 32]);
         let delay = 86_400;

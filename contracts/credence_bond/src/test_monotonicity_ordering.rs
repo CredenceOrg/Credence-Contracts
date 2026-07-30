@@ -241,7 +241,7 @@ fn slashed_amount_never_exceeds_bonded_amount() {
     for _ in 0..3 {
         advance_ledger_sequence(&e);
         client.slash(&admin, &(bonded / 4));
-        let state = client.get_identity_state();
+        let state = client.get_identity_state(&identity);
         assert!(
             state.slashed_amount <= state.bonded_amount,
             "slashed {} must not exceed bonded {}",
@@ -262,7 +262,7 @@ fn slashed_amount_is_monotonic() {
     for amount in [10, 5, 3] {
         advance_ledger_sequence(&e);
         client.slash(&admin, &amount);
-        let state = client.get_identity_state();
+        let state = client.get_identity_state(&identity);
         assert!(
             state.slashed_amount >= prev_slashed,
             "slashed amount must not decrease: prev={prev_slashed}, current={}",
@@ -284,11 +284,11 @@ fn bonded_amount_never_decreases_from_top_up() {
     let initial_amount = 1_000_000_i128;
     client.create_bond(&identity, &initial_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
 
-    let mut prev_bonded = client.get_identity_state().bonded_amount;
+    let mut prev_bonded = client.get_identity_state(&identity).bonded_amount;
 
     for extra in [100, 200, 50] {
         client.top_up(&identity, &extra);
-        let current = client.get_identity_state().bonded_amount;
+        let current = client.get_identity_state(&identity).bonded_amount;
         assert!(
             current >= prev_bonded,
             "bonded amount must not decrease from top_up: prev={prev_bonded}, current={current}"

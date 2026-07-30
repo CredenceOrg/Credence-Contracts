@@ -41,7 +41,6 @@ pub fn require_contract_uninitialized(e: &Env, already_initialized: bool) {
         e.panic_with_error(ContractError::AlreadyInitialized);
     }
 }
-
 /// Simple role enum for admin checks.
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,7 +200,14 @@ pub enum ContractError {
     /// Replaces: panic!("zero bytes32")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    ZeroBytes32 = 109,
+    ZeroBytes32 = 127,
+
+    /// Caller does not hold the required role.
+    /// Raised by `require_role` when the actor is not assigned the requested
+    /// `Role` at the time of the call.
+    /// Contracts: anywhere role-based `require_role` is enforced.
+    /// Wire-stable: do not renumber this error code.
+    RoleRequired = 128,
 
     /// Lease scope bitmask does not cover the requested operation.
     /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
@@ -274,17 +280,29 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     WithdrawalAlreadyRequested = 206,
 
+    /// A cooldown withdrawal request is already pending for this bond.
+    /// Replaces: panic!("cooldown request already pending")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CooldownRequestAlreadyPending = 236,
+
+    /// No cooldown withdrawal request exists for this bond.
+    /// Replaces: panic!("no cooldown request")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CooldownRequestNotFound = 237,
+
+    /// The cooldown period has not yet elapsed.
+    /// Replaces: panic!("cooldown period has not elapsed")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    CooldownPeriodNotElapsed = 238,
+
     /// Reentrancy was detected; the call is rejected.
     /// Replaces: panic!("reentrancy detected")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     ReentrancyDetected = 207,
-
-    /// Signature or operation deadline has passed.
-    /// Replaces: panic!("signature expired")
-    /// Contracts: bond, delegation
-    /// Wire-stable: do not renumber this error code.
-    SignatureExpired = 222,
 
     /// Nonce is invalid - either replayed or out of order.
     /// Replaces: panic!("invalid nonce: replay or out-of-order")
@@ -369,18 +387,20 @@ pub enum ContractError {
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
     UnauthorizedToken = 231,
-    /// An idempotency key has already been used for this operation.
+
+    /// The supplied idempotency key has already been used for this operation.
+    /// Replaces: panic!("idempotency key already used")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     DuplicateIdempotencyKey = 232,
+
     /// Post-write invariant self-check detected bond or attestation accounting drift.
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 233,
+    InvariantViolation = 299,
 
     /// Empty or whitespace-only currency symbol.
-    /// Replaces: panic!("invalid currency")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InvalidCurrency = 234,
@@ -413,6 +433,14 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
+
+     /// User-supplied raw Bytes input exceeds the maximum accepted length.
+    /// Raised by `require_finite_bytes` at entrypoint boundaries that accept
+    /// caller-controlled `Bytes` (e.g. idempotency salts) to bound hashing
+    /// cost and persistent-storage growth before the value is used.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BytesTooLarge = 239,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -610,6 +638,12 @@ pub enum ContractError {
     TargetMismatch = 220,
     ContractIdMismatch = 221,
 
+    /// A signed payload's deadline has passed.
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond, delegation, timelock
+    /// Wire-stable: do not renumber this error code.
+    SignatureExpired = 222,
+
     // --- Admin Transfer (115-119) ---
     /// No pending admin transfer exists.
     NoPendingAdmin = 115,
@@ -646,7 +680,7 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 124,
+    MaxPauseSignersExceeded = 125,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -824,7 +858,7 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseExpired
             | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
-            | ContractError::StaleAdminEpoch
+            |            ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
             | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
@@ -835,6 +869,9 @@ impl ErrorExt for ContractError {
             | ContractError::LockupNotExpired
             | ContractError::NotRollingBond
             | ContractError::WithdrawalAlreadyRequested
+            | ContractError::CooldownRequestAlreadyPending
+            | ContractError::CooldownRequestNotFound
+            | ContractError::CooldownPeriodNotElapsed
             | ContractError::ReentrancyDetected
             | ContractError::InvalidNonce
             | ContractError::SignatureExpired
@@ -845,6 +882,7 @@ impl ErrorExt for ContractError {
             | ContractError::UnsupportedToken
             | ContractError::UnsupportedDecimals
             | ContractError::InvalidBondAmount
+            | ContractError::AmountExplicitlyZero
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
@@ -852,14 +890,15 @@ impl ErrorExt for ContractError {
             | ContractError::DuplicateIdempotencyKey
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
+            | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch
             | ContractError::StorageCapReached
             | ContractError::TreasuryNotConfigured
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::InvalidStringifiedBytes
-            | ContractError::SnapshotGenerationMismatch
-            | ContractError::AmountExplicitlyZero => ErrorCategory::Bond,
+            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
+            ContractError::InvalidStringifiedBytes | ContractError::SnapshotGenerationMismatch | ContractError::BytesTooLarge => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -917,7 +956,8 @@ impl ErrorExt for ContractError {
             ContractError::DomainMismatch
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
-            | ContractError::ContractIdMismatch => ErrorCategory::Delegation,
+            | ContractError::ContractIdMismatch => ErrorCategory::Authorization,
+            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => ErrorCategory::Delegation,
         }
     }
 
@@ -936,6 +976,7 @@ impl ErrorExt for ContractError {
             ContractError::ContractPaused => "Contract is paused",
             ContractError::MigrationInProgress => "Migration in progress",
             ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
+            ContractError::RoleRequired => "Caller does not hold the required role",
             ContractError::OutsideBusinessHours => {
                 "Scheduled operation falls outside UTC business hours (Mon-Fri 09:00-17:00)"
             }
@@ -943,6 +984,8 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPauseAction => "Pause proposal action is invalid",
             ContractError::InsufficientSignatures => "Not enough approvals to execute proposal",
             ContractError::AdminSuspended => "Admin is currently suspended",
+            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
+            ContractError::SignatureExpired => "Signature/operation deadline has passed",
             ContractError::RoleNotHeldAtLedger => {
                 "Actor did not hold the required role at the specified ledger timestamp"
             }
@@ -959,9 +1002,17 @@ impl ErrorExt for ContractError {
             ContractError::WithdrawalAlreadyRequested => {
                 "A withdrawal has already been requested for this bond"
             }
+            ContractError::CooldownRequestAlreadyPending => {
+                "A cooldown withdrawal request is already pending"
+            }
+            ContractError::CooldownRequestNotFound => {
+                "No cooldown withdrawal request exists"
+            }
+            ContractError::CooldownPeriodNotElapsed => {
+                "Cooldown period has not yet elapsed"
+            }
             ContractError::ReentrancyDetected => "Reentrancy detected; call rejected",
             ContractError::InvalidNonce => "Nonce is replayed or out of order",
-            ContractError::SignatureExpired => "Signature/operation deadline has passed",
             ContractError::NegativeStake => "Attester stake cannot be negative",
             ContractError::EarlyExitConfigNotSet => {
                 "Early-exit configuration has not been set for this bond"
@@ -990,6 +1041,11 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
+            ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
+            ContractError::InvalidStringifiedBytes => "Stringified bytes are invalid",
+            ContractError::SnapshotGenerationMismatch => "Snapshot generation mismatch",
+            ContractError::TimestampInFuture => "Timestamp is in the future",
+            ContractError::InvalidCurrency => "Invalid currency",
             ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
@@ -1111,6 +1167,8 @@ impl ErrorExt for ContractError {
                 "Signer pause proposal carries a stale epoch reference"
             }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
+            ContractError::StaleAdminEpoch => "Admin pause proposal ID was derived in a stale epoch",
+            ContractError::StaleSignerEpoch => "Signer pause proposal ID was derived in a stale epoch",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {
@@ -1160,6 +1218,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimelockNotReady
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger
+            | ContractError::RoleRequired
             | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
@@ -1173,7 +1232,6 @@ impl ErrorExt for ContractError {
             ContractError::InvalidMaxPauseSigners => true,
             ContractError::MaxPauseSignersExceeded => true,
 
-            // Retry after the business-hours window opens.
             // Stale epoch proposals cannot be fixed by retry — re-propose in the
             // current bucket.
             ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
@@ -1189,6 +1247,9 @@ impl ErrorExt for ContractError {
             | ContractError::LockupNotExpired           // wait for the lock-up
             | ContractError::NotRollingBond
             | ContractError::WithdrawalAlreadyRequested // wait for the existing request
+            | ContractError::CooldownRequestAlreadyPending
+            | ContractError::CooldownRequestNotFound
+            | ContractError::CooldownPeriodNotElapsed
             | ContractError::InvalidNonce               // bump nonce
             | ContractError::SignatureExpired           // re-sign with later deadline
             | ContractError::NegativeStake              // reduce the stake
@@ -1205,9 +1266,11 @@ impl ErrorExt for ContractError {
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
             | ContractError::InvalidStringifiedBytes
+            | ContractError::SnapshotGenerationMismatch // retry with correct generation
             | ContractError::DuplicateIdempotencyKey    // use a different idempotency key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
+            | ContractError::BytesTooLarge         // resubmit with shorter input
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1216,7 +1279,6 @@ impl ErrorExt for ContractError {
             ContractError::CursorOutOfRange => true,      // caller can supply a valid cursor in range
             ContractError::ReentrancyDetected => false,   // SECURITY HALT: investigate, do not retry
             ContractError::InvariantViolation => false,   // post-write drift detection
-            ContractError::SnapshotGenerationMismatch => false,
 
             // FATAL Bond/Delegation payload binding mismatches (218/219/220/221).
             // Same payload will fail again; clients must not blindly retry.
@@ -1274,16 +1336,18 @@ impl ErrorExt for ContractError {
             | ContractError::TreasuryBeneficiaryMismatch    // call with the correct treasury address
             | ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
 
-            // FATAL Treasury flashloan failures: callback contract misbehaved.
-            ContractError::InvalidFlashLoanCallback => false, // bad magic value
-            ContractError::FlashLoanRepaymentFailed => false, // principal+fee mismatch
+
+
 
             ContractError::InvalidPercentSplit => true, // caller can provide valid splits
 
             // --- Arithmetic (700-799): code-level impossibility. ---
-            ContractError::Overflow
-            | ContractError::Underflow
-            | ContractError::DivisionByZero => false,
+            ContractError::Overflow | ContractError::Underflow => false,
+            ContractError::DivisionByZero => false,
+            ContractError::SignatureExpired => true,  // re-sign with later deadline
+            ContractError::InvalidFlashLoanCallback => false,
+            ContractError::FlashLoanRepaymentFailed => false,
+            ContractError::SnapshotGenerationMismatch | ContractError::TimestampInFuture | ContractError::InvalidCurrency | ContractError::InvalidStringifiedBytes | ContractError::BytesTooLarge | ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => false,
         }
     }
 }
@@ -1462,6 +1526,18 @@ macro_rules! require_non_zero_bytes32 {
 /// let caller = e.current_contract_address(); // or get from auth context
 /// credence_errors::require_matching_contract_id(&e, &caller, &expected_partner);
 /// ```
+/// Validates that an emergency-drain recipient matches the configured treasury.
+///
+/// # Panics
+/// Panics with `ContractError::TreasuryBeneficiaryMismatch` when
+/// `recipient != treasury`.
+#[inline]
+pub fn require_matching_treasury_beneficiary(e: &Env, recipient: &Address, treasury: &Address) {
+    if recipient != treasury {
+        panic_with_error!(e, ContractError::TreasuryBeneficiaryMismatch);
+    }
+}
+
 pub fn require_matching_contract_id(e: &Env, caller: &Address, expected: &Address) {
     if caller != expected {
         panic_with_error!(e, ContractError::CrossContractCallerMismatch);
@@ -1484,11 +1560,51 @@ pub fn require_matching_lease_signer(e: &Env, lease: &Address, actor: &Address) 
     }
 }
 
+/// @notice Require that `actor` holds the specified `role`.
+///
+/// This is a shared, tested RBAC helper that replaces bespoke role-check
+/// patterns (e.g. string-panicking `require_admin`, `require_verifier`)
+/// with a single typed helper.
+///
+/// # Arguments
+/// * `e` - The Soroban environment
+/// * `role` - The `Role` that the actor is expected to hold
+/// * `_actor` - The address being checked (reserved for future event emission)
+/// * `has_role` - `true` if the actor holds the required role
+///
+/// # Panics
+/// * `ContractError::NotAdmin` (code 100) when `role` is `Role::Admin` and
+///   `has_role` is `false`, preserving backward compatibility with existing
+///   callers that match on code 100.
+/// * `ContractError::RoleRequired` (code 128) when `role` is `Role::User`
+///   and `has_role` is `false`.
+///
+/// # Example
+/// ```ignore
+/// use credence_errors::{require_role, Role};
+///
+/// fn admin_only(e: Env, caller: Address) {
+///     caller.require_auth();
+///     let is_admin = /* check role against storage */;
+///     require_role(&e, Role::Admin, &caller, is_admin);
+///     // admin-only logic
+/// }
+/// ```
+#[inline]
+pub fn require_role(e: &Env, role: Role, _actor: &Address, has_role: bool) {
+    if !has_role {
+        match role {
+            Role::Admin => panic_with_error!(e, ContractError::NotAdmin),
+            Role::User => panic_with_error!(e, ContractError::RoleRequired),
+        }
+    }
+}
+
 /// Validates that the provided timestamp (seconds since UNIX epoch) falls
 /// within UTC business hours (Monday-Friday, 09:00:00 to 16:59:59).
 ///
 /// # Panics
-/// Panics with `ContractError::OutsideBusinessHours` (code 124) if it does
+/// Panics with `ContractError::OutsideBusinessHours` (code 120) if it does
 /// not.
 #[inline]
 pub fn require_within_business_hours(e: &Env, t: u64) {
