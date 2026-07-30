@@ -143,6 +143,11 @@ mod test_claim_expiry_sweep;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_same_ledger_liquidation_guard;
 
+/// Tests for `verify_stringified_bytes` in validation.rs: valid, malformed,
+/// oversized, and injected-null cases (issue #770).
+#[cfg(test)]
+mod test_verify_stringified_bytes;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
