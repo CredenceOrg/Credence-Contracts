@@ -1663,19 +1663,15 @@ impl CredenceBond {
     /// external transfers so a hostile token contract cannot re-enter and
     /// double-spend against a post-withdrawal snapshot.
     ///
-    /// Errors:
-    /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
-    ///   configuration exists. The call will revert instead of silently dropping
-    ///   the penalty amount.
-    /// - `ContractError::Underflow` if arithmetic underflows.
-    /// - `ContractError::Overflow` if arithmetic overflows.
-    /// - `ContractError::InvariantViolation` if penalty arithmetic does not split
-    ///   the gross withdrawal exactly into treasury penalty plus identity payout.
+    /// # Auth
+    /// `identity` must authorize the call.
     ///
     /// # Pause
     /// Reverts with [`ContractError::ContractPaused`] when the contract is paused.
     pub fn withdraw_early(e: Env, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
+        // auth: bond owner must authorize early withdrawals.
+        identity.require_auth();
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
