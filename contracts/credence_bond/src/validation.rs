@@ -10,7 +10,7 @@
 
 #![allow(dead_code)]
 
-use soroban_sdk::Address;
+use soroban_sdk::{Address, Bytes, Env};
 
 // ─── Address Validation ─────────────────────────────────────────────────────
 
@@ -46,6 +46,61 @@ pub fn validate_recipient(recipient: &Address, contract: &Address) {
     // Note: In Soroban, addresses are validated through the auth system.
     // We don't need to check for "zero address" as that concept doesn't exist.
     // The require_auth() calls in the calling code provide the primary validation.
+}
+
+// ─── Stringified-Bytes Validation ───────────────────────────────────────────
+
+/// Maximum allowed length (in bytes) for a stringified-bytes value.
+///
+/// A 512-byte ceiling comfortably covers the longest real-world hash
+/// representations that the contract accepts (e.g. a 128-character hex
+/// SHA-512 digest, IPFS CIDs, URIs), while keeping ledger writes bounded.
+pub const MAX_STRINGIFIED_BYTES_LEN: u32 = 512;
+
+/// Validate a `Bytes` value that is expected to represent printable ASCII text.
+///
+/// Callers that store evidence hashes, metadata URIs, or any other externally-
+/// supplied byte sequence as a string must pass the value through this function
+/// before acting on it.  Three classes of attack / misconfiguration are blocked:
+///
+/// 1. **Injected nulls** — embedded `\x00` bytes that would cause C-style string
+///    truncation if the value is ever forwarded to a host SDK function or an
+///    off-chain indexer expecting a NUL-terminated string.
+/// 2. **Malformed / non-printable bytes** — any octet outside the printable ASCII
+///    range `0x20..=0x7E` (space through `~`).  This rejects high-byte sequences
+///    that look like raw binary data rather than a text hash, and it ensures the
+///    value can be round-tripped through JSON without escaping surprises.
+/// 3. **Oversized payload** — a length that exceeds `MAX_STRINGIFIED_BYTES_LEN`,
+///    preventing unbounded ledger writes and instruction-budget exhaustion.
+///
+/// # Arguments
+/// * `_e` — Soroban environment (reserved for future host-function use; currently
+///   unused because validation is pure computation over the byte slice).
+/// * `data` — The `Bytes` value to validate.
+///
+/// # Panics
+/// | Condition | Panic message |
+/// |-----------|---------------|
+/// | `data.len() > MAX_STRINGIFIED_BYTES_LEN` | `"stringified bytes too long"` |
+/// | Any byte is `\x00` | `"stringified bytes contain a null byte"` |
+/// | Any byte is outside `0x20..=0x7E` | `"stringified bytes contain a non-printable byte"` |
+///
+/// # Example
+/// ```ignore
+/// verify_stringified_bytes(&e, &Bytes::from_slice(&e, b"QmXoypiz..."));
+/// ```
+pub fn verify_stringified_bytes(_e: &Env, data: &Bytes) {
+    if data.len() > MAX_STRINGIFIED_BYTES_LEN {
+        panic!("stringified bytes too long");
+    }
+    for byte in data.iter() {
+        if byte == 0x00 {
+            panic!("stringified bytes contain a null byte");
+        }
+        if !(0x20..=0x7e).contains(&byte) {
+            panic!("stringified bytes contain a non-printable byte");
+        }
+    }
 }
 
 #[cfg(not(test))]
