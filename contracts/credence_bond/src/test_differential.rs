@@ -413,9 +413,9 @@ fn deliberate_divergence_is_caught() {
     // Divergent: any amount ≥ 1 → Gold.
     assert_ne!(
         canonical.get_tier(),
-        divergent.get_tier(),
+        divergent.get_tier(&identity),
         "divergent fork tier must differ from canonical"
     );
     assert_eq!(canonical.get_tier(), crate::BondTier::Bronze);
-    assert_eq!(divergent.get_tier(), crate::BondTier::Gold);
+    assert_eq!(divergent.get_tier(&identity), crate::BondTier::Gold);
 }

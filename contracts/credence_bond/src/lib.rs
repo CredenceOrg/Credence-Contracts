@@ -1634,6 +1634,8 @@ impl CredenceBond {
 
     /// Withdraw before lock-up end; applies a time-decayed penalty.
     ///
+    /// Authority: `identity` must authorize the call.
+    ///
     /// Errors:
     /// - `ContractError::EarlyExitConfigNotSet` when no early-exit treasury/penalty
     ///   configuration exists. The call will revert instead of silently dropping

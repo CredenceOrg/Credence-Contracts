@@ -51,7 +51,7 @@ impl CredenceBond {
         bond
     }
 
-    pub fn get_identity_state(e: Env) -> IdentityBond {
+    pub fn get_identity_state(e: Env, identity: Address) -> IdentityBond {
         e.storage()
             .instance()
             .get::<_, IdentityBond>(&DataKey::Bond(identity.clone()))
@@ -59,8 +59,8 @@ impl CredenceBond {
     }
 
     /// Deliberately wrong tier logic: everything >= 1 is Gold.
-    pub fn get_tier(e: Env) -> BondTier {
-        let bond = Self::get_identity_state(e);
+    pub fn get_tier(e: Env, identity: Address) -> BondTier {
+        let bond = Self::get_identity_state(e, identity);
         if bond.bonded_amount >= 1 {
             BondTier::Gold
         } else {
@@ -68,7 +68,7 @@ impl CredenceBond {
         }
     }
 
-    pub fn slash(e: Env, amount: i128) -> IdentityBond {
+    pub fn slash(e: Env, identity: Address, amount: i128) -> IdentityBond {
         let key = DataKey::Bond(identity.clone());
         let mut bond = e
             .storage()
@@ -85,7 +85,7 @@ impl CredenceBond {
         bond
     }
 
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
         let key = DataKey::Bond(identity.clone());
         let mut bond = e
             .storage()
