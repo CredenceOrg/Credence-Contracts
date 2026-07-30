@@ -18,3 +18,10 @@
 # Denote all files that are truly binary and should not be modified.
 *.png binary
 *.jpg binary
+
+# Scripts that run on Linux CI must use LF line endings
+scripts/panic_baseline.txt text eol=lf
+
+# Integration tests that run on Linux CI must use LF line endings
+tests/signature_domains_unique.rs text eol=lf
+tests/threats_link.rs text eol=lf

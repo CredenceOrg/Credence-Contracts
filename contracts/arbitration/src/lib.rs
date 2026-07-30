@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,17 +14,45 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
 };
 
+/// Signature domain identifier for the CredenceArbitration contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "CredenceArbitration";
+
 pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_transition, ArbitrationError, DisputeStatus};
+use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,6 +91,7 @@ pub enum DataKey {
     ArbitratorRegistry,
     MinTotalWeight,
     MinVoters,
+    ActiveDispute(Address),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
@@ -70,6 +100,22 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), ArbitrationError> {
+    // Prevent a creator from re-entering the dispute lifecycle while an
+    // unresolved dispute remains active for the same address.
+    let key = DataKey::ActiveDispute(creator.clone());
+    if e.storage().instance().has(&key) {
+        return Err(ArbitrationError::OngoingDispute);
+    }
+    Ok(())
+}
+
+fn clear_active_dispute(e: &Env, creator: &Address) {
+    e.storage()
+        .instance()
+        .remove(&DataKey::ActiveDispute(creator.clone()));
 }
 
 #[contract]
@@ -195,6 +241,8 @@ impl CredenceArbitration {
         pausable::require_not_paused(&e);
         creator.require_auth();
 
+        require_no_ongoing_dispute(&e, &creator)?;
+
         let counter_key = DataKey::DisputeCounter;
         let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
         let next_id = id
@@ -223,6 +271,9 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        e.storage()
+            .instance()
+            .set(&DataKey::ActiveDispute(creator.clone()), &id);
 
         // Lifecycle events: created + status transition
         e.events()
@@ -282,6 +333,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        clear_active_dispute(&e, &dispute.creator);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -477,18 +529,14 @@ impl CredenceArbitration {
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
+            clear_active_dispute(&e, &dispute.creator);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
-                (
-                    DisputeStatus::Resolving as u32,
-                    DisputeStatus::Tied as u32,
-                ),
+                (DisputeStatus::Resolving as u32, DisputeStatus::Tied as u32),
             );
-            e.events().publish(
-                (Symbol::new(&e, "dispute_tied"), dispute_id),
-                (),
-            );
+            e.events()
+                .publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
 
             Ok(0)
         } else {
@@ -499,6 +547,7 @@ impl CredenceArbitration {
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
+            clear_active_dispute(&e, &dispute.creator);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
@@ -699,6 +748,122 @@ impl CredenceArbitration {
         bump_instance_ttl(&e);
         pausable::execute_pause_proposal(&e, proposal_id)
     }
+
+    /// Archive a finalized dispute. Only callable by admin.
+    /// Dispute must be in Resolved, Tied, or Cancelled status.
+    pub fn archive_dispute(
+        e: Env,
+        admin: Address,
+        dispute_id: u64,
+    ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ArbitrationError::NotInitialized)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(ArbitrationError::NotAdmin);
+        }
+        let mut dispute: Dispute = e
+            .storage()
+            .instance()
+            .get(&DataKey::Dispute(dispute_id))
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+        let from = dispute.status;
+        require_transition(from, DisputeStatus::Archived)?;
+        dispute.status = DisputeStatus::Archived;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+        e.events().publish(
+            (Symbol::new(&e, "dispute_archived"), dispute_id),
+            from as u32,
+        );
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (from as u32, DisputeStatus::Archived as u32),
+        );
+        Ok(())
+    }
+
+    /// Reopen an archived dispute, moving it back to Voting status.
+    /// Only callable by admin. Voting period must be set fresh via duration parameter.
+    pub fn reopen_dispute(
+        e: Env,
+        admin: Address,
+        dispute_id: u64,
+        duration: u64,
+    ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ArbitrationError::NotInitialized)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(ArbitrationError::NotAdmin);
+        }
+        let mut dispute: Dispute = e
+            .storage()
+            .instance()
+            .get(&DataKey::Dispute(dispute_id))
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+        let from = dispute.status;
+        require_transition(from, DisputeStatus::Voting)?;
+        let now = e.ledger().timestamp();
+        let new_end = now
+            .checked_add(duration)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        dispute.status = DisputeStatus::Voting;
+        dispute.voting_start = now;
+        dispute.voting_end = new_end;
+        dispute.outcome = 0;
+        dispute.cancellation_reason = None;
+        dispute.cancelled_by_role = None;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+
+        // Clear vote tracking data for the reopened dispute
+        let voter_counter_key = DataKey::VoterCounter(dispute_id);
+        e.storage().instance().remove(&voter_counter_key);
+        let votes_key = DataKey::DisputeVotes(dispute_id);
+        e.storage().instance().remove(&votes_key);
+
+        // Clear VoterCasted entries for all registered arbitrators
+        let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized));
+        admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for ArbitrationContract {
+    fn get_admin(e: Env) -> Address {
+        e.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ArbitrationError::NotInitialized))
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
+    }
 }
 
 #[cfg(test)]
@@ -712,3 +877,6 @@ mod test_lifecycle;
 
 #[cfg(test)]
 mod test_auth;
+
+#[cfg(test)]
+mod test_archive_reopen;

@@ -1,4 +1,5 @@
 #![no_std]
+#![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
     unused_imports,
@@ -13,9 +14,19 @@
     clippy::cargo,
     clippy::restriction
 )]
+// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests
+// stay free to use format!/write! for diagnostics).
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 pub mod pausable;
 
+/// Event schema regression tests — verifies topic/data layout for every
+/// role event without involving contract storage.
+#[cfg(test)]
+mod test_events_schema;
 #[cfg(test)]
 mod test_ownership_transfer;
 
@@ -24,6 +35,28 @@ use soroban_sdk::panic_with_error;
 use soroban_sdk::{
     contract, contractimpl, contracttype, Address, Env, IntoVal, String, Symbol, Vec,
 };
+
+/// Signature domain identifier for the Admin contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+#[allow(dead_code)]
+const SIGNATURE_DOMAIN: &str = "Admin";
 
 /// Admin role hierarchy levels
 #[contracttype]
@@ -61,7 +94,7 @@ pub struct AdminInfo {
 /// Storage keys for the admin contract
 #[contracttype]
 #[derive(Clone)]
-enum DataKey {
+pub enum DataKey {
     /// List of all admin addresses
     AdminList,
     /// Admin information by address: Address -> AdminInfo
@@ -87,7 +120,14 @@ enum DataKey {
     Owner,
     /// Pending owner for two-step ownership transfer
     PendingOwner,
+    /// Timestamp (ledger seconds) when the current ownership transfer was proposed.
+    /// Used to enforce a timelock delay before acceptance.
+    TransferProposedAt,
 }
+
+/// Minimum delay (in ledger seconds) between `transfer_ownership` and `accept_ownership`.
+/// 86_400 seconds ≈ 24 hours at the one-second-per-ledger cadence.
+const OWNERSHIP_TRANSFER_TIMELOCK: u64 = 86_400;
 
 /// The zero/invalid address sentinel.
 ///
@@ -130,9 +170,10 @@ impl AdminContract {
     /// Emits `admin_initialized` with the super admin address
     pub fn initialize(e: Env, super_admin: Address, min_admins: u32, max_admins: u32) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Initialized) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Initialized),
+        );
 
         if min_admins == 0 {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
@@ -747,10 +788,13 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::AlreadyDeactivated);
         }
 
-        // Store pending owner
+        // Store pending owner and proposal timestamp for timelock
         e.storage()
             .instance()
             .set(&DataKey::PendingOwner, &new_owner.clone());
+        e.storage()
+            .instance()
+            .set(&DataKey::TransferProposedAt, &e.ledger().timestamp());
 
         e.events().publish(
             (Symbol::new(&e, "ownership_transfer_initiated"),),
@@ -758,14 +802,15 @@ impl AdminContract {
         );
     }
 
-    /// Accept ownership transfer (two-step acceptance).
+    /// Accept ownership transfer (two-step acceptance with timelock).
     ///
     /// # Arguments
     /// * `caller` - Address of the pending owner accepting the transfer
     ///
     /// # Panics
-    /// * If there is no pending owner
-    /// * If caller is not the pending owner
+    /// * `NoPendingAdmin` — no ownership transfer has been proposed
+    /// * `NotAdmin` — caller is not the pending owner
+    /// * `TimelockNotReady` — the minimum delay since proposal has not elapsed
     ///
     /// # Events
     /// Emits `ownership_transfer_accepted` with previous owner and new owner
@@ -773,6 +818,9 @@ impl AdminContract {
     /// # Notes
     /// This function completes the two-step ownership transfer process.
     /// The caller must be the address that was previously set as pending owner.
+    /// A minimum delay of `OWNERSHIP_TRANSFER_TIMELOCK` seconds must elapse
+    /// between `transfer_ownership` and `accept_ownership` to protect against
+    /// compromised-owner takeovers.
     pub fn accept_ownership(e: Env, caller: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -783,11 +831,25 @@ impl AdminContract {
             .storage()
             .instance()
             .get(&DataKey::PendingOwner)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
 
         // Verify caller is the pending owner
         if caller != pending_owner {
             panic_with_error!(&e, ContractError::NotAdmin);
+        }
+
+        // Enforce timelock: the transfer proposal must have aged past the minimum delay
+        let proposed_at: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TransferProposedAt)
+            .unwrap_or(0);
+        let now = e.ledger().timestamp();
+        let eligible_at = proposed_at
+            .checked_add(OWNERSHIP_TRANSFER_TIMELOCK)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        if now < eligible_at {
+            panic_with_error!(&e, ContractError::TimelockNotReady);
         }
 
         // Get current owner for event emission
@@ -802,8 +864,9 @@ impl AdminContract {
             .instance()
             .set(&DataKey::Owner, &pending_owner.clone());
 
-        // Clear pending owner
+        // Clear pending owner and transfer timestamp
         e.storage().instance().remove(&DataKey::PendingOwner);
+        e.storage().instance().remove(&DataKey::TransferProposedAt);
 
         // Emit admin rotated event with ledger sequence
         let ledger_seq: u32 = e.ledger().sequence();
@@ -929,6 +992,26 @@ impl AdminContract {
             }
             None => false,
         }
+    }
+
+    /// Historical role check: assert that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// Panics with [`ContractError::NotAdmin`] when `actor` is not a registered
+    /// admin or when their role is below the required level.
+    /// Panics with [`ContractError::RoleNotHeldAtLedger`] when the actor's role
+    /// was granted **after** `at_ledger`, meaning they were not authorised at
+    /// the time the signed action was created.
+    ///
+    /// See [`Self::require_role_at_ledger`] (private) for the full threat model.
+    ///
+    /// # Arguments
+    /// * `role`      - Minimum `AdminRole` that must have been held
+    /// * `actor`     - Address whose historical role is checked
+    /// * `at_ledger` - Unix timestamp (seconds) of the signed action
+    pub fn check_role_at_ledger(e: Env, role: AdminRole, actor: Address, at_ledger: u64) {
+        bump_instance_ttl(&e);
+        Self::require_role_at_ledger(&e, role, &actor, at_ledger);
     }
 
     /// Get all admin addresses.
@@ -1073,6 +1156,56 @@ impl AdminContract {
             Err(())
         }
     }
+
+    /// Historical role check: verify that `actor` held at least `role` at
+    /// ledger timestamp `at_ledger`.
+    ///
+    /// This is a **defence-in-depth** guard for delegated actions that carry
+    /// an off-chain signature produced at a past ledger. Without it an attacker
+    /// could:
+    ///
+    /// 1. Obtain a signature from an address that was *not yet* an admin at
+    ///    the time the signature was created.
+    /// 2. Wait until that address is later elevated, then replay the signed
+    ///    payload to authorise a historical action as if the signer had been
+    ///    an admin all along.
+    ///
+    /// By asserting `admin_info.assigned_at <= at_ledger` we ensure the role
+    /// assignment predates (or coincides with) the moment the signature covers.
+    ///
+    /// # Arguments
+    /// * `e`          - Soroban environment
+    /// * `role`       - Minimum `AdminRole` that must have been held
+    /// * `actor`      - Address whose historical role is checked
+    /// * `at_ledger`  - Ledger timestamp of the signed action
+    ///
+    /// # Errors
+    /// * [`ContractError::NotAdmin`] — `actor` is not a known admin at all.
+    /// * [`ContractError::RoleNotHeldAtLedger`] — `actor`'s role was assigned
+    ///   after `at_ledger`, meaning they were not yet authorised at that time.
+    ///
+    /// # Panics
+    /// Panics via [`panic_with_error!`] — compatible with Soroban's error
+    /// propagation model.
+    fn require_role_at_ledger(e: &Env, role: AdminRole, actor: &Address, at_ledger: u64) {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(actor.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+
+        // The actor must have the required role level.
+        if admin_info.role < role {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+
+        // The role must have been assigned at or before the ledger under review.
+        // If `assigned_at > at_ledger` the actor was not yet an admin when the
+        // action was signed, so the authorisation is invalid.
+        if admin_info.assigned_at > at_ledger {
+            panic_with_error!(e, ContractError::RoleNotHeldAtLedger);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1121,6 +1254,9 @@ impl AdminContract {
 mod test_pausable;
 
 #[cfg(test)]
+mod test_admin_epoch_guard;
+
+#[cfg(test)]
 mod test_basic;
 
 #[cfg(test)]
@@ -1137,3 +1273,12 @@ mod test_suspension;
 
 #[cfg(test)]
 mod test_auth_entrypoints;
+
+#[cfg(test)]
+mod test_require_role_at_least;
+
+#[cfg(test)]
+mod test_emergency;
+
+#[cfg(test)]
+mod test_role_events;

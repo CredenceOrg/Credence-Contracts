@@ -16,7 +16,8 @@
 //!    transaction.
 //! 4. **Treasury recipient** — the `recipient` argument must equal the treasury
 //!    address stored in the emergency config; any other recipient is rejected
-//!    with a descriptive panic.
+//!    with the typed `ContractError::TreasuryBeneficiaryMismatch` (code 610)
+//!    via `credence_errors::require_matching_treasury_beneficiary`.
 //!
 //! ## Immutable audit record
 //!
@@ -117,9 +118,7 @@ pub fn schedule_drain(e: &Env, admin: &Address, delay: u64) {
 
 /// Return the currently scheduled drain ETA, or `None` if not yet scheduled.
 pub fn get_drain_eta(e: &Env) -> Option<u64> {
-    e.storage()
-        .instance()
-        .get(&Symbol::new(e, KEY_DRAIN_ETA))
+    e.storage().instance().get(&Symbol::new(e, KEY_DRAIN_ETA))
 }
 
 /// Cancel a pending drain schedule (admin-only; contract must remain paused).
@@ -158,7 +157,9 @@ pub fn cancel_drain(e: &Env, admin: &Address) {
 /// - `ContractError::EmergencyDrainNotPermitted` — not paused or no ETA scheduled.
 /// - `ContractError::TimelockNotReady` — ETA has not yet been reached.
 /// - Panics with "not admin" — caller is not the stored admin.
-/// - Panics with "recipient must be treasury" — `recipient != treasury`.
+/// - Panics with `ContractError::TreasuryBeneficiaryMismatch` (code 610) —
+///   `recipient != treasury` (enforced by
+///   `credence_errors::require_matching_treasury_beneficiary`).
 /// - Panics with "amount must be positive" — `amount <= 0`.
 #[allow(clippy::too_many_arguments)]
 pub fn execute_drain(
@@ -191,19 +192,18 @@ pub fn execute_drain(
     }
 
     // Gate 4: recipient must be treasury.
-    if recipient != treasury {
-        panic!("recipient must be treasury");
-    }
+    // Typed defence-in-depth guard: any attempt to drain to a non-treasury recipient
+    // raises the stable error code TreasuryBeneficiaryMismatch so indexers and
+    // dashboards can distinguish treasury-redirection attempts from generic panics.
+    credence_errors::require_matching_treasury_beneficiary(e, recipient, treasury);
 
-    // Execute token transfer.
-    safe_token::safe_transfer(e, recipient, amount);
-
-    // Clear the drain ETA so it cannot be replayed without re-scheduling.
+    // Effects first (CEI pattern): clear ETA and persist audit record before
+    // external token interaction. If the transfer fails, Soroban rolls back
+    // the entire transaction, so no partial state remains.
     e.storage()
         .instance()
         .remove(&Symbol::new(e, KEY_DRAIN_ETA));
 
-    // Persist immutable audit record.
     let drain_id = increment_drain_seq(e);
     let record = DrainRecord {
         id: drain_id,
@@ -217,13 +217,12 @@ pub fn execute_drain(
         .persistent()
         .set(&DrainDataKey::DrainRecord(drain_id), &record);
 
+    // Interaction: execute the token transfer (balance-delta guarded).
+    safe_token::safe_transfer(e, recipient, amount);
+
     // Emit event.
     e.events().publish(
-        (
-            Symbol::new(e, "emergency_drain"),
-            drain_id,
-            admin.clone(),
-        ),
+        (Symbol::new(e, "emergency_drain"), drain_id, admin.clone()),
         (amount, recipient.clone(), now),
     );
 
@@ -261,8 +260,6 @@ fn increment_drain_seq(e: &Env) -> u64 {
         .get(&DrainDataKey::DrainSeq)
         .unwrap_or(0);
     let next = seq.checked_add(1).expect("drain sequence overflow");
-    e.storage()
-        .persistent()
-        .set(&DrainDataKey::DrainSeq, &next);
+    e.storage().persistent().set(&DrainDataKey::DrainSeq, &next);
     next
 }

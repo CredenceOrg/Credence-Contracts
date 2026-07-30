@@ -100,6 +100,9 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
+    /// Admin-configured cap on the number of registered pause signers.
+    /// Value: `u32`. Defaults to `pausable::DEFAULT_MAX_PAUSE_SIGNERS` when unset.
+    MaxPauseSigners,
     /// Tracks executed operations by their deterministic hash to prevent replay across proposals.
     ExecutedOp(BytesN<32>),
 }
@@ -131,6 +134,10 @@ impl CredenceMultiSig {
     /// @param threshold Required number of signatures for execution
     pub fn initialize(e: Env, admin: Address, signers: Vec<Address>, threshold: u32) {
         bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
 
         if signers.is_empty() {
@@ -161,9 +168,11 @@ impl CredenceMultiSig {
         e.storage().instance().set(&DataKey::SignerList, &signers);
 
         for signer in signers.iter() {
-            e.storage()
-                .instance()
-                .set(&DataKey::Signer(signer.clone()), &true);
+            let key = DataKey::Signer(signer.clone());
+            if e.storage().instance().has(&key) {
+                panic_with_error!(&e, ContractError::AlreadyActive);
+            }
+            e.storage().instance().set(&key, &true);
         }
 
         e.events().publish(
@@ -386,9 +395,11 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
-            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
-        }
+        crate::require_within_ttl_panic(
+            &e,
+            proposal.expires_at,
+            ContractError::ProposalAlreadyExecuted,
+        );
 
         let already_signed = e
             .storage()
@@ -436,7 +447,7 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
+        if crate::is_expired(&e, proposal.expires_at) {
             Self::expire_proposal(&e, proposal_id);
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
@@ -667,15 +678,7 @@ impl CredenceMultiSig {
     // ==================== Internal Helpers ====================
 
     fn require_admin(e: &Env, admin: &Address) {
-        admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != *admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        credence_errors::require_admin!(e, admin, DataKey::Admin);
     }
 
     fn require_signer(e: &Env, signer: &Address) {
@@ -750,6 +753,19 @@ impl CredenceMultiSig {
         crate::pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
+    /// Get the configured cap on the number of pause signers (or the
+    /// default if the admin has not configured one).
+    pub fn get_max_pause_signers(e: Env) -> u32 {
+        bump_instance_ttl(&e);
+        crate::pausable::get_max_pause_signers(&e)
+    }
+
+    /// Configure the cap on the number of pause signers. Admin-only.
+    pub fn set_max_pause_signers(e: Env, admin: Address, max_signers: u32) {
+        bump_instance_ttl(&e);
+        crate::pausable::set_max_pause_signers(&e, &admin, max_signers)
+    }
+
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
         bump_instance_ttl(&e);
         crate::pausable::approve_pause_proposal(&e, &signer, proposal_id)
@@ -758,5 +774,29 @@ impl CredenceMultiSig {
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
         bump_instance_ttl(&e);
         crate::pausable::execute_pause_proposal(&e, proposal_id)
+    }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceMultisigContract {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }

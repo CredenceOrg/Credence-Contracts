@@ -1,4 +1,4 @@
-﻿//! Chaos testing suite — bond contract host-function failure injection.
+//! Chaos testing suite - bond contract host-function failure injection.
 //!
 //! # Injection catalogue (9 points)
 //!
@@ -14,12 +14,12 @@
 //! | 8 | rolling-bond notice not elapsed | `withdraw_bond` | "notice period not elapsed" |
 //! | 9 | `ChaosToken` toggle failures | token client | panic surfaces correctly |
 
-// ──────────────────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------------------
 // Callback contracts: each lives in its own sub-module so the Soroban macro
 // does not generate colliding `__SPEC_XDR_FN_*` symbols.
-// ──────────────────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------------------
 
-/// chaos injection point #1/#2/#3 — every hook always panics.
+/// chaos injection point #1/#2/#3 - every hook always panics.
 ///
 /// Threat model: a malicious/broken downstream contract attempts to prevent
 /// the bond contract from committing state by reverting from inside a callback.
@@ -46,7 +46,7 @@ mod panicking_cb {
     }
 }
 
-/// No-op callback — used to verify invariants after a rollback by issuing a
+/// No-op callback - used to verify invariants after a rollback by issuing a
 /// clean second call and observing the restored state.
 mod noop_cb {
     use soroban_sdk::{contract, contractimpl, Env};
@@ -65,9 +65,9 @@ mod noop_cb {
 pub(crate) use noop_cb::NoOpCallback;
 pub(crate) use panicking_cb::PanickingCallback;
 
-// ──────────────────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------------------
 // Tests
-// ──────────────────────────────────────────────────────────────────────────────
+// ------------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -77,7 +77,7 @@ mod tests {
     use soroban_sdk::testutils::{Address as _, Ledger};
     use soroban_sdk::{Address, Env, Symbol};
 
-    // ─── Setup helper ────────────────────────────────────────────────────────
+    // --- Setup helper --------------------------------------------------------
 
     /// Create a bond contract + one active non-rolling bond (1 000 units, 24 h).
     fn setup_with_bond(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
@@ -87,13 +87,19 @@ mod tests {
         let admin = Address::generate(e);
         let identity = Address::generate(e);
         client.initialize(&admin, &None);
-        client.create_bond(&identity, &1000_i128, &86400_u64, &false, &0_u64);
+        client.create_bond(
+            &identity,
+            &1000_i128,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &false,
+            &0_u64,
+        );
         (client, admin, identity)
     }
 
-    // ── Injection #1 ─────────────────────────────────────────────────────────
+    // -- Injection #1 ---------------------------------------------------------
 
-    /// chaos injection point #1 — slash_bond writes `slashed_amount` then invokes
+    /// chaos injection point #1 - slash_bond writes `slashed_amount` then invokes
     /// `on_slash`.  A panicking callback must not leave the write committed.
     ///
     /// Soroban atomicity: the `try_*` variant rolls back all storage writes made
@@ -111,15 +117,15 @@ mod tests {
         let cb = e.register(PanickingCallback, ());
         client.set_callback(&cb);
 
-        assert_eq!(client.get_identity_state().slashed_amount, 0);
+        assert_eq!(client.get_identity_state(&identity).slashed_amount, 0);
         assert!(!client.is_locked());
 
-        // slash_bond: writes slashed_amount=50, then calls on_slash → panic.
+        // slash_bond: writes slashed_amount=50, then calls on_slash ? panic.
         let result = client.try_slash_bond(&admin, &50_i128);
         assert!(result.is_err(), "slash_bond must fail when callback panics");
 
         // INVARIANT: no state mutation may persist when an inner call panics.
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.slashed_amount, 0, "slashed_amount must revert to 0");
         assert_eq!(bond.bonded_amount, 1000, "bonded_amount must be unchanged");
         assert!(
@@ -128,12 +134,12 @@ mod tests {
         );
     }
 
-    // ── Injection #2 ─────────────────────────────────────────────────────────
+    // -- Injection #2 ---------------------------------------------------------
 
-    /// chaos injection point #2 — withdraw_bond sets `active=false` then calls
+    /// chaos injection point #2 - withdraw_bond sets `active=false` then calls
     /// `on_withdraw`.  A panicking callback must not leave the bond deactivated.
     ///
-    /// Threat model: grief attack — a hook panics to permanently lock collateral.
+    /// Threat model: grief attack - a hook panics to permanently lock collateral.
     #[test]
     fn chaos_injection_2_withdraw_bond_callback_panic_reverts_state() {
         let e = Env::default();
@@ -142,7 +148,7 @@ mod tests {
         let cb = e.register(PanickingCallback, ());
         client.set_callback(&cb);
 
-        assert!(client.get_identity_state().active);
+        assert!(client.get_identity_state(&identity).active);
 
         let result = client.try_withdraw_bond(&identity);
         assert!(
@@ -151,7 +157,7 @@ mod tests {
         );
 
         // INVARIANT
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert!(
             bond.active,
             "bond must remain active after callback-induced rollback"
@@ -160,13 +166,13 @@ mod tests {
         assert!(!client.is_locked(), "lock must be released");
     }
 
-    // ── Injection #3 ─────────────────────────────────────────────────────────
+    // -- Injection #3 ---------------------------------------------------------
 
-    /// chaos injection point #3 — collect_fees zeroes the fee balance then calls
+    /// chaos injection point #3 - collect_fees zeroes the fee balance then calls
     /// `on_collect`.  Without rollback the treasury is silently drained.
     ///
     /// Verification strategy: after the failed call, swap in a no-op callback
-    /// and call collect_fees again — it must return the original 500.
+    /// and call collect_fees again - it must return the original 500.
     #[test]
     fn chaos_injection_3_collect_fees_callback_panic_reverts_fees() {
         let e = Env::default();
@@ -180,7 +186,7 @@ mod tests {
         let cb = e.register(PanickingCallback, ());
         client.set_callback(&cb);
 
-        // collect_fees: zeros fee storage, calls on_collect → panic → rollback.
+        // collect_fees: zeros fee storage, calls on_collect ? panic ? rollback.
         let result = client.try_collect_fees(&admin);
         assert!(
             result.is_err(),
@@ -197,9 +203,9 @@ mod tests {
         );
     }
 
-    // ── Injection #4 ─────────────────────────────────────────────────────────
+    // -- Injection #4 ---------------------------------------------------------
 
-    /// chaos injection point #4 — Admin key removed; slash_bond panics before
+    /// chaos injection point #4 - Admin key removed; slash_bond panics before
     /// touching bond state.
     ///
     /// Threat model: storage TTL expiry evicts a key that must always present;
@@ -236,14 +242,14 @@ mod tests {
             e.storage().instance().set(&DataKey::Admin, &admin);
         });
 
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.slashed_amount, 0);
         assert_eq!(bond.bonded_amount, 1000);
     }
 
-    // ── Injection #5 ─────────────────────────────────────────────────────────
+    // -- Injection #5 ---------------------------------------------------------
 
-    /// chaos injection point #5 — Bond key removed; withdraw_bond panics with
+    /// chaos injection point #5 - Bond key removed; withdraw_bond panics with
     /// BondNotFound before any lock or state mutation.
     ///
     /// Threat model: TTL eviction of the bond record; without a guard the
@@ -261,9 +267,9 @@ mod tests {
         client.withdraw_bond(&identity);
     }
 
-    // ── Injection #6 ─────────────────────────────────────────────────────────
+    // -- Injection #6 ---------------------------------------------------------
 
-    /// chaos injection point #6 — slash_amount > bonded_amount is rejected with
+    /// chaos injection point #6 - slash_amount > bonded_amount is rejected with
     /// SlashExceedsBond.  The lock is safely released and bond state is pristine.
     ///
     /// Threat model: arithmetic exploitation to inflate slashed_amount beyond
@@ -273,20 +279,20 @@ mod tests {
         let e = Env::default();
         let (client, admin, _) = setup_with_bond(&e);
 
-        assert_eq!(client.get_identity_state().slashed_amount, 0);
+        assert_eq!(client.get_identity_state(&identity).slashed_amount, 0);
 
         let result = client.try_slash_bond(&admin, &2000_i128);
         assert!(result.is_err(), "slash exceeding bond must be rejected");
 
-        let bond = client.get_identity_state();
+        let bond = client.get_identity_state(&identity);
         assert_eq!(bond.slashed_amount, 0);
         assert_eq!(bond.bonded_amount, 1000);
         assert!(!client.is_locked());
     }
 
-    // ── Injection #7 ─────────────────────────────────────────────────────────
+    // -- Injection #7 ---------------------------------------------------------
 
-    /// chaos injection point #7 — reentrancy guard.  Pre-set the lock to `true`
+    /// chaos injection point #7 - reentrancy guard.  Pre-set the lock to `true`
     /// (simulating mid-execution state) and verify a concurrent slash_bond is
     /// rejected with ReentrancyDetected.
     ///
@@ -312,9 +318,9 @@ mod tests {
         );
     }
 
-    // ── Injection #8 ─────────────────────────────────────────────────────────
+    // -- Injection #8 ---------------------------------------------------------
 
-    /// chaos injection point #8 — rolling bond notice period.  Calling
+    /// chaos injection point #8 - rolling bond notice period.  Calling
     /// withdraw_bond before the notice window elapses must be rejected.
     ///
     /// Threat model: ledger timestamp manipulation collapses the notice window,
@@ -333,18 +339,24 @@ mod tests {
 
         client.initialize(&admin, &None);
         // Rolling bond: 24 h duration, 1 h notice period.
-        client.create_bond(&identity, &1000_i128, &86400_u64, &true, &3600_u64);
+        client.create_bond(
+            &identity,
+            &1000_i128,
+            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &true,
+            &3600_u64,
+        );
 
         // Request withdrawal at t=1000; earliest_withdraw = 1000 + 3600 = 4600.
         client.request_withdrawal(&identity);
 
-        // Attempt withdrawal at t=1000 — notice period not elapsed → panic.
+        // Attempt withdrawal at t=1000 - notice period not elapsed ? panic.
         client.withdraw_bond(&identity);
     }
 
-    // ── Injection #9 — ChaosToken failure toggles ────────────────────────────
+    // -- Injection #9 - ChaosToken failure toggles ----------------------------
 
-    /// chaos injection point #9a — `transfer` panic.
+    /// chaos injection point #9a - `transfer` panic.
     ///
     /// Threat model: host-level resource exhaustion or a compromised token.
     #[test]
@@ -376,7 +388,7 @@ mod tests {
         // Capture initial balance of `to` (ChaosToken returns a non-zero default
         // for addresses not yet written to storage).
         let to_initial = chaos.balance(&to);
-        // Enable then immediately disable — the toggle must be stateful.
+        // Enable then immediately disable - the toggle must be stateful.
         chaos.set_fail_transfer(&true);
         chaos.set_fail_transfer(&false);
         chaos.transfer(&from, &to, &100_i128);
@@ -384,7 +396,7 @@ mod tests {
         assert_eq!(chaos.balance(&to), to_initial + 100_i128);
     }
 
-    /// chaos injection point #9b — `balance` storage read failure.
+    /// chaos injection point #9b - `balance` storage read failure.
     ///
     /// Threat model: token storage key unexpectedly None (ledger compaction /
     /// wrong TTL), causing `unwrap()` sites to crash.
@@ -401,7 +413,7 @@ mod tests {
         chaos.balance(&addr); // must panic
     }
 
-    /// chaos injection point #9c — `transfer_from` panic.
+    /// chaos injection point #9c - `transfer_from` panic.
     ///
     /// Threat model: allowance-based transfer revert mid-execution; the caller
     /// must not be left with partial state.
@@ -421,7 +433,7 @@ mod tests {
         chaos.transfer_from(&spender, &from, &to, &100_i128); // must panic
     }
 
-    // ── Guard validation ─────────────────────────────────────────────────────
+    // -- Guard validation -----------------------------------------------------
 
     /// Validate: without the reentrancy guard, consecutive slash_bond calls
     /// both succeed.  This proves injection #7 uniquely tests the guard.

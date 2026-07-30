@@ -4,9 +4,11 @@
 //! Tracks fund sources (protocol fees vs slashed funds) and emits treasury events.
 
 use credence_errors::ContractError;
-use soroban_sdk::String;
 use ethnum::U256;
-use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256};
+use soroban_sdk::String;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256,
+};
 
 use crate::pausable;
 
@@ -96,6 +98,9 @@ pub enum DataKey {
     Token,
     /// Proposal TTL in seconds (default 7 days). Configurable by admin.
     ProposalTtl,
+    /// Admin-managed allowlist of settlement destinations. Only addresses
+    /// registered here may receive funds via `settle`.
+    Corridor(Address),
 }
 
 #[contract]
@@ -112,7 +117,7 @@ fn zero_cumulative_amount() -> CumulativeAmount {
 ///
 /// # Formula
 ///
-/// 
+///
 ///
 ///  alone overflows for multi-rollover sums, so rollover-safe storage
 /// splits the value across two fields.  This helper is the single canonical
@@ -209,6 +214,10 @@ impl CredenceTreasury {
     /// @param admin Address that can add/remove signers, set threshold, and manage depositors
     pub fn initialize(e: Env, admin: Address, token: Address) {
         bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Token, &token);
@@ -272,9 +281,7 @@ impl CredenceTreasury {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         from.require_auth();
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let admin: Address = e
             .storage()
             .instance()
@@ -391,7 +398,7 @@ impl CredenceTreasury {
     ///
     /// Idempotent: if  is already in the signer set this is a no-op.
     /// This invariant keeps  exactly equal to the distinct signer set size,
-    /// which is required for the  gate in 
+    /// which is required for the  gate in
     /// and  to remain meaningful.
     pub fn add_signer(e: Env, signer: Address) {
         bump_instance_ttl(&e);
@@ -510,9 +517,7 @@ impl CredenceTreasury {
         if !is_signer {
             panic_with_error!(&e, ContractError::NotSigner);
         }
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
         let total: i128 = e
             .storage()
             .instance()
@@ -587,7 +592,7 @@ impl CredenceTreasury {
         if proposal.executed {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
-        if e.ledger().timestamp() >= proposal.expires_at {
+        if credence_errors::is_expired(&e, proposal.expires_at) {
             e.events().publish(
                 (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
                 (),
@@ -655,7 +660,7 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::Proposal(proposal_id))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
-        if e.ledger().timestamp() >= proposal.expires_at {
+        if credence_errors::is_expired(&e, proposal.expires_at) {
             e.events().publish(
                 (Symbol::new(&e, "treasury_proposal_expired"), proposal_id),
                 (),
@@ -761,6 +766,180 @@ impl CredenceTreasury {
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
             (proposal.recipient.clone(), min_amount_out, actual_amount),
         );
+    }
+
+    /// Register a settlement destination as a corridor. Only admin can call.
+    ///
+    /// `settle` rejects any destination that has not been added here first.
+    /// Idempotent: registering an already-registered corridor is a no-op.
+    pub fn register_corridor(e: Env, admin: Address, destination: Address) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+        let already: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::Corridor(destination.clone()))
+            .unwrap_or(false);
+        if already {
+            return;
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::Corridor(destination.clone()), &true);
+        e.events()
+            .publish((Symbol::new(&e, "corridor_registered"),), destination);
+    }
+
+    /// Remove a destination from the corridor allowlist. Only admin can call.
+    pub fn remove_corridor(e: Env, admin: Address, destination: Address) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+        e.storage()
+            .instance()
+            .remove(&DataKey::Corridor(destination.clone()));
+        e.events()
+            .publish((Symbol::new(&e, "corridor_removed"),), destination);
+    }
+
+    /// Check whether a destination is a registered corridor.
+    pub fn is_corridor_registered(e: Env, destination: Address) -> bool {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::Corridor(destination))
+            .unwrap_or(false)
+    }
+
+    /// Settle funds directly from the treasury to a pre-registered corridor.
+    ///
+    /// Unlike `execute_withdrawal` (which allows any recipient behind a
+    /// multi-sig propose/approve gate), `settle` allows the admin to move
+    /// funds immediately, but only to a destination that has already been
+    /// vetted and added via `register_corridor`. This keeps the two paths
+    /// distinct: arbitrary recipients still require multi-sig approval,
+    /// while pre-approved corridors can be settled without re-running that
+    /// process for every payment.
+    ///
+    /// # Arguments
+    /// * `admin`       - Caller; must match the stored treasury admin.
+    /// * `destination` - Settlement destination; must be a registered corridor.
+    /// * `amount`      - Amount to settle (must be > 0).
+    ///
+    /// # Panics
+    /// * `NotAdmin` if caller is not the treasury admin.
+    /// * `AmountMustBePositive` if amount <= 0.
+    /// * `CorridorNotRegistered` if destination has not been registered via
+    ///   `register_corridor`. Checked at the boundary before any balance or
+    ///   transfer logic runs.
+    /// * `InsufficientTreasuryBalance` if funds are insufficient or the
+    ///   withdrawal would breach the `MinLiquidity` floor.
+    ///
+    /// # Returns
+    /// The actual amount transferred, measured via balance delta (protects
+    /// against fee-on-transfer tokens silently under-delivering).
+    pub fn settle(e: Env, admin: Address, destination: Address, amount: i128) -> i128 {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let stored_admin = Self::get_admin(e.clone());
+        if admin != stored_admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+        admin.require_auth();
+        credence_errors::require_positive_amount!(&e, amount);
+
+        let is_corridor: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::Corridor(destination.clone()))
+            .unwrap_or(false);
+        if !is_corridor {
+            panic_with_error!(&e, ContractError::CorridorNotRegistered);
+        }
+
+        let total: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TotalBalance)
+            .unwrap_or(0);
+        if amount > total {
+            panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
+        }
+
+        let min_liquidity: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MinLiquidity)
+            .unwrap_or(0);
+        let remaining = total
+            .checked_sub(amount)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+        if remaining < min_liquidity {
+            panic_with_error!(&e, ContractError::InsufficientTreasuryBalance);
+        }
+
+        let token_addr = Self::get_token(e.clone());
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+
+        let destination_balance_before = token_client.balance(&destination);
+        token_client.transfer(&contract_addr, &destination, &amount);
+        let destination_balance_after = token_client.balance(&destination);
+        let actual_amount = destination_balance_after
+            .checked_sub(destination_balance_before)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+
+        let new_total = total
+            .checked_sub(actual_amount)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+        let protocol_balance: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::BalanceBySource(FundSource::ProtocolFee))
+            .unwrap_or(0);
+        let slashed_balance: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::BalanceBySource(FundSource::SlashedFunds))
+            .unwrap_or(0);
+        let protocol_deduction = proportional_deduction(&e, protocol_balance, actual_amount, total);
+        let slashed_deduction = actual_amount
+            .checked_sub(protocol_deduction)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+        let new_protocol_balance = protocol_balance
+            .checked_sub(protocol_deduction)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+        let new_slashed_balance = slashed_balance
+            .checked_sub(slashed_deduction)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+
+        e.storage()
+            .instance()
+            .set(&DataKey::TotalBalance, &new_total);
+        e.storage().instance().set(
+            &DataKey::BalanceBySource(FundSource::ProtocolFee),
+            &new_protocol_balance,
+        );
+        e.storage().instance().set(
+            &DataKey::BalanceBySource(FundSource::SlashedFunds),
+            &new_slashed_balance,
+        );
+
+        e.events().publish(
+            (Symbol::new(&e, "treasury_corridor_settled"), destination),
+            (amount, actual_amount, admin),
+        );
+
+        actual_amount
     }
 
     /// Returns the configured token address.
@@ -879,7 +1058,7 @@ impl CredenceTreasury {
     /// Equivalent to  but flattens the rollover/remainder
     /// accounting into one comparable value using []:
     ///
-    /// 
+    ///
     ///
     /// Use this instead of [] when you need a single value
     /// for comparisons, dashboards, or indexers — it is the canonical on-chain source
@@ -1031,9 +1210,7 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
-        if amount <= 0 {
-            panic_with_error!(&e, ContractError::AmountMustBePositive);
-        }
+        credence_errors::require_positive_amount!(&e, amount);
 
         let token_addr = Self::get_token(e.clone());
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
@@ -1059,5 +1236,30 @@ impl CredenceTreasury {
 
         e.events()
             .publish((Symbol::new(&e, "native_rescued"),), (to, amount, admin));
+    }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        Self::require_not_paused(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for CredenceTreasury {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }

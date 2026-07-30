@@ -27,7 +27,7 @@
 #![allow(dead_code)]
 
 use crate::events::emit_parameter_updated;
-use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 /// Governance approval envelope for parameter mutations.
 #[contracttype]
@@ -63,14 +63,14 @@ pub const MIN_WITHDRAWAL_COOLDOWN_SECS: u64 = 0;
 /// Maximum withdrawal cooldown period in seconds (30 days)
 pub const MAX_WITHDRAWAL_COOLDOWN_SECS: u64 = 2_592_000;
 /// Default withdrawal cooldown period in seconds (7 days)
-pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = 604_800;
+pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 
 /// Minimum slash cooldown period in seconds (0 = no cooldown)
 pub const MIN_SLASH_COOLDOWN_SECS: u64 = 0;
 /// Maximum slash cooldown period in seconds (7 days)
-pub const MAX_SLASH_COOLDOWN_SECS: u64 = 604_800;
+pub const MAX_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 /// Default slash cooldown period in seconds (24 hours)
-pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = 86_400;
+pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_DAY;
 /// Maximum number of attestations per subject (ledger entry cap)
 pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)
@@ -91,6 +91,25 @@ pub const MAX_SLASH_RECORDS: u32 = 1_000;
 /// Value 200 matches `liquidation_scanner::MAX_ITER_HARD_CAP` so all
 /// collection-read caps stay consistent across the codebase.
 pub const MAX_QUERY_LIMIT: u32 = 200;
+
+// ============================================================================
+// Chunk Iteration Constants
+// ============================================================================
+
+/// Default number of items processed per chunk when iterating a `Vec` in
+/// fixed-size pieces for gas budgeting.
+///
+/// This is the single source of truth for the chunk size used by
+/// [`crate::iter_chunks::vec_chunks`]. Callers that need a different size pass
+/// it explicitly; this constant documents the safe, tested default.
+///
+/// The value 50 is chosen to keep each chunk well inside the Soroban
+/// instruction budget even for moderately expensive per-item work, while
+/// still amortising loop overhead across a non-trivial batch.
+///
+/// **Do not duplicate this constant.** Import it as
+/// `crate::parameters::DEFAULT_CHUNK_SIZE` wherever you need it.
+pub const DEFAULT_CHUNK_SIZE: u32 = 50;
 
 /// Minimum bronze tier threshold (0 = no minimum)
 pub const MIN_BRONZE_THRESHOLD: i128 = 0;
@@ -756,59 +775,57 @@ pub fn set_max_leverage_with_approval(
 // ============================================================================
 // Borrow Freeze (Governance-Controlled)
 // ============================================================================
-// NOTE: The BorrowFrozen variant was removed from DataKey, so these functions
-// are disabled. They remain for reference but should not be called.
 
-// /// Returns `true` when new borrows/increases are frozen.
-// #[must_use]
-// pub fn is_borrow_frozen(e: &Env) -> bool {
-//     e.storage()
-//         .instance()
-//         .get(&crate::DataKey::BorrowFrozen)
-//         .unwrap_or(false)
-// }
+/// Returns `true` when new borrows/increases are frozen.
+#[must_use]
+pub fn is_borrow_frozen(e: &Env) -> bool {
+    e.storage()
+        .instance()
+        .get(&crate::DataKey::BorrowFrozen)
+        .unwrap_or(false)
+}
 
-// /// Panics with `BorrowFrozen` if borrows are currently frozen.
-// pub fn require_not_borrow_frozen(e: &Env) {
-//     if is_borrow_frozen(e) {
-//         panic!("borrow frozen");
-//     }
-// }
+/// Panics with `BorrowFrozen` if borrows are currently frozen.
+pub fn require_not_borrow_frozen(e: &Env) {
+    if is_borrow_frozen(e) {
+        crate::panic_with_error!(e, credence_errors::ContractError::BorrowFrozen);
+    }
+}
 
-// /// Freeze or unfreeze new bond creation and top-ups. Governance-only.
-// ///
-// /// Repayments and withdrawals are unaffected.
-// ///
-// /// # Events
-// /// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
-// pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
-//     let approval = GovernanceApproval {
-//         approver: admin.clone(),
-//         expires_at: 0,
-//         category: symbol_short!("risk"),
-//     };
-//     set_borrow_frozen_with_approval(e, admin, frozen, &approval);
-// }
+/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
+///
+/// Repayments and withdrawals are unaffected.
+///
+/// # Events
+/// Emits `borrow_freeze_set(frozen, admin, timestamp)`.
+pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    let approval = GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: symbol_short!("risk"),
+    };
+    set_borrow_frozen_with_approval(e, admin, frozen, &approval);
+}
 
-// /// Set borrow freeze with explicit governance approval invariants.
-// pub fn set_borrow_frozen_with_approval(
-//     e: &Env,
-//     admin: &Address,
-//     frozen: bool,
-//     approval: &GovernanceApproval,
-// ) {
-//     validate_admin(e, admin);
-//     validate_governance_approval(e, admin, approval, symbol_short!("risk"));
-//     let old = is_borrow_frozen(e);
-//     e.storage()
-//         .instance()
-//         .set(&crate::DataKey::BorrowFrozen, &frozen);
-//     let timestamp = e.ledger().timestamp();
-//     e.events().publish(
-//         (Symbol::new(e, "borrow_freeze_set"),),
-//         (old, frozen, admin.clone(), timestamp),
-//     );
-// }
+/// Set borrow freeze with explicit governance approval invariants.
+pub fn set_borrow_frozen_with_approval(
+    e: &Env,
+    admin: &Address,
+    frozen: bool,
+    approval: &GovernanceApproval,
+) {
+    validate_admin(e, admin);
+    validate_governance_approval(e, admin, approval, symbol_short!("risk"));
+    let old = is_borrow_frozen(e);
+    e.storage()
+        .instance()
+        .set(&crate::DataKey::BorrowFrozen, &frozen);
+    let timestamp = e.ledger().timestamp();
+    e.events().publish(
+        (Symbol::new(e, "borrow_freeze_set"),),
+        (old, frozen, admin.clone(), timestamp),
+    );
+}
 
 // ============================================================================
 // Internal Helpers
@@ -850,32 +867,4 @@ fn validate_governance_approval(
     if approval.category != expected_category {
         panic!("governance approval category mismatch");
     }
-}
-
-/// Emits a parameter change event for off-chain tracking and auditing.
-///
-/// # Arguments
-/// * `e` - Soroban environment for event publishing
-/// * `parameter` - Name of the parameter that changed
-/// * `old_value` - Previous value (normalized to i128)
-/// * `new_value` - New value (normalized to i128)
-/// * `updated_by` - Address that performed the update
-fn emit_parameter_changed(
-    e: &Env,
-    parameter: &str,
-    old_value: i128,
-    new_value: i128,
-    updated_by: &Address,
-) {
-    let timestamp = e.ledger().timestamp();
-    e.events().publish(
-        (Symbol::new(e, "parameter_changed"),),
-        (
-            String::from_str(e, parameter),
-            old_value,
-            new_value,
-            updated_by.clone(),
-            timestamp,
-        ),
-    );
 }

@@ -54,21 +54,21 @@ fn test_validate_duration_mid_range() {
 
 /// Zero duration must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)")]
 fn test_validate_duration_zero() {
     validation::validate_bond_duration(0);
 }
 
 /// Duration one second below minimum must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)")]
 fn test_validate_duration_just_below_minimum() {
     validation::validate_bond_duration(MIN_BOND_DURATION - 1);
 }
 
 /// Very small duration (1 second) must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)")]
 fn test_validate_duration_one_second() {
     validation::validate_bond_duration(1);
 }
@@ -137,7 +137,7 @@ fn test_create_bond_typical_duration() {
 
 /// Bond creation with zero duration must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)")]
 fn test_create_bond_zero_duration_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -148,7 +148,7 @@ fn test_create_bond_zero_duration_rejected() {
 
 /// Bond creation with duration below minimum must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)")]
 fn test_create_bond_below_min_duration_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -199,7 +199,7 @@ fn test_create_rolling_bond_valid_duration() {
 
 /// Rolling bond creation with invalid duration must be rejected.
 #[test]
-#[should_panic(expected = "bond duration too short: minimum is 86400 seconds (1 day)")]
+#[should_panic(expected = "bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)")]
 fn test_create_rolling_bond_invalid_duration_rejected() {
     let e = Env::default();
     e.mock_all_auths();

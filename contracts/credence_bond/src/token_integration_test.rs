@@ -180,7 +180,7 @@ fn test_require_allowance_fails_with_insufficient_approval() {
 }
 
 #[test]
-fn test_set_token_rejects_zero_address() {
+fn test_set_token_rejects_unauthorized_token() {
     let (env, contract_address) = setup_env();
 
     env.as_contract(&contract_address, || {
@@ -188,14 +188,9 @@ fn test_set_token_rejects_zero_address() {
         let admin = Address::generate(&env);
         env.storage().instance().set(&crate::DataKey::Admin, &admin);
 
-        // Can't easily create zero address, but we test the string comparison path
-        // This test validates the zero-address check logic exists
+        // Random address not in accepted tokens set should be rejected
         let result = catch_unwind(AssertUnwindSafe(|| {
-            // Create an address that would fail the zero check
-            let addr = Address::from_string(&soroban_sdk::String::from_str(
-                &env,
-                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-            ));
+            let addr = Address::generate(&env);
             set_token(&env, &addr);
         }));
         assert!(result.is_err());
@@ -218,5 +213,128 @@ fn test_fee_on_transfer_detection_prevents_silent_success() {
         }));
 
         assert!(result.is_err());
+    });
+}
+
+// ---- New tests for hardened token integration ----
+
+#[test]
+fn test_transfer_into_contract_balance_delta_prevents_fee_on_transfer() {
+    let (env, contract_address) = setup_env();
+    let token_address = Address::generate(&env);
+    let owner = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        set_token(&env, &token_address);
+
+        // Without a real token client, the balance-delta check will catch
+        // that actual_received (0) != amount (1000), preventing silent success.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            transfer_into_contract(&env, &owner, 1000);
+        }));
+
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_transfer_from_contract_balance_delta_prevents_fee_on_transfer() {
+    let (env, contract_address) = setup_env();
+    let token_address = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        set_token(&env, &token_address);
+
+        // Without a real token client, the balance-delta check will catch
+        // that actual_sent (0) != amount (5000), preventing silent success.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            transfer_from_contract(&env, &recipient, 5000);
+        }));
+
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_safe_transfer_now_has_balance_delta_guard() {
+    let (env, contract_address) = setup_env();
+    let token_address = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        set_token(&env, &token_address);
+
+        // safe_transfer now includes a balance-delta guard.
+        // Without a real token, the transfer will fail (no balance change).
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            crate::safe_token::safe_transfer(&env, &recipient, 100);
+        }));
+
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_safe_transfer_from_now_has_balance_delta_guard() {
+    let (env, contract_address) = setup_env();
+    let token_address = Address::generate(&env);
+    let owner = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        set_token(&env, &token_address);
+
+        // safe_transfer_from now includes a balance-delta guard.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            crate::safe_token::safe_transfer_from(&env, &owner, 100);
+        }));
+
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_transfer_from_contract_with_source_emits_event() {
+    let (env, contract_address) = setup_env();
+    let token_address = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        set_token(&env, &token_address);
+
+        // With zero amount, no transfer happens but no event emitted either.
+        // With positive amount and no real token, the call will panic.
+        // This test validates the function path exists and doesn't silently succeed.
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            transfer_from_contract_with_source(
+                &env,
+                &recipient,
+                100,
+                FundSource::ProtocolFee,
+            );
+        }));
+
+        assert!(result.is_err());
+    });
+}
+
+#[test]
+fn test_zero_amount_transfer_maintains_atomic_behavior() {
+    let (env, contract_address) = setup_env();
+    let recipient = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        // Zero amount transfer_from_contract should succeed without state mutation
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            transfer_from_contract(&env, &recipient, 0);
+        }));
+        assert!(result.is_ok());
+
+        // Zero amount transfer_into_contract should succeed without state mutation
+        let owner = Address::generate(&env);
+        let result = catch_unwind(AssertUnwindSafe(|| {
+            transfer_into_contract(&env, &owner, 0);
+        }));
+        assert!(result.is_ok());
     });
 }

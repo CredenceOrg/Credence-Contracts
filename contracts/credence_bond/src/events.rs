@@ -229,6 +229,51 @@ pub fn emit_bond_slashed_v2(
     e.events().publish(topics, data);
 }
 
+/// Emitted when a bond crosses a tier threshold (v1).
+///
+/// # Topics
+/// * `Symbol` - `"tier_changed"`
+///
+/// # Data
+/// * `Address` - The identity whose tier changed
+/// * [`crate::BondTier`] - The new tier after the transition
+///
+/// @deprecated Use [`emit_tier_changed_v2`] for indexer-friendly old/new tier and timestamp
+#[allow(dead_code)]
+pub fn emit_tier_changed(e: &Env, identity: &Address, new_tier: crate::BondTier) {
+    let topics = (Symbol::new(e, "tier_changed"),);
+    let data = (identity.clone(), new_tier);
+    e.events().publish(topics, data);
+}
+
+/// Emitted when a bond crosses a tier threshold (v2).
+///
+/// # Topics (Indexed)
+/// * `Symbol` - `"tier_changed_v2"`
+/// * `Address` - The identity whose tier changed (indexed for per-identity queries)
+///
+/// # Data
+/// * [`crate::BondTier`] - Tier before the transition
+/// * [`crate::BondTier`] - Tier after the transition
+/// * `u64` - Ledger timestamp when the transition occurred
+///
+/// # Replay semantics
+/// Tier is derived from `bonded_amount`; indexers should treat this as an
+/// informational audit trail. Reconstruct current tier from the latest bond
+/// balance event or by recomputing from `bonded_amount`.
+#[allow(dead_code)]
+pub fn emit_tier_changed_v2(
+    e: &Env,
+    identity: &Address,
+    old_tier: crate::BondTier,
+    new_tier: crate::BondTier,
+    timestamp: u64,
+) {
+    let topics = (Symbol::new(e, "tier_changed_v2"), identity.clone());
+    let data = (old_tier, new_tier, timestamp);
+    e.events().publish(topics, data);
+}
+
 /// Emitted when a bond is slashed by an admin.
 ///
 /// # Topics
@@ -423,17 +468,44 @@ pub fn emit_upgrade_admin_transfer_completed(e: &Env, old_admin: &Address, new_a
     let data = new_admin.clone();
     e.events().publish(topics, data);
 }
-/// Emitted when a protocol parameter is updated.
+
+/// Emitted when an upgrade admin transfer is cancelled.
+pub fn emit_upgrade_admin_transfer_cancelled(e: &Env, admin: &Address, pending_admin: &Address) {
+    let topics = (
+        Symbol::new(e, "upgrade_admin_transfer_cancelled"),
+        admin.clone(),
+    );
+    let data = pending_admin.clone();
+    e.events().publish(topics, data);
+}
+/// Emitted when a governance-controlled protocol parameter is updated.
 ///
 /// # Topics (Indexed)
-/// * `Symbol` - "param_updated"
-/// * `Symbol` - Parameter Key (e.g., "leverage")
-/// * `Symbol` - Category (e.g., "risk")
-/// * `Address` - Admin who performed the update
+/// * `Symbol` (event type) - `"param_updated"`
+/// * `Symbol` (key) - Canonical parameter key (e.g., `"fee_prot"`, `"th_brnz"`, `"max_lev"`)
+/// * `Symbol` (category) - Parameter category (e.g., `"fee"`, `"cooldown"`, `"tier"`, `"risk"`)
+/// * `Address` (admin) - Governance address that authorised the change
 ///
 /// # Data
-/// * `i128` - Old value
-/// * `i128` - New value
+/// * `i128` - Old value (before the update)
+/// * `i128` - New value (after the update)
+///
+/// # Indexer guidance
+/// The event topics are designed so indexers can filter by:
+/// - **All parameter changes** — match topic[0] = `"param_updated"`
+/// - **Changes in a category** — match topic[2] = `Symbol("fee")` etc.
+/// - **Changes to a specific parameter** — match topic[1] = `Symbol("fee_prot")` etc.
+/// - **Changes by a specific admin** — match topic[3] = `Address`
+///
+/// The data payload carries `(old_value, new_value)` normalised to `i128`.
+/// Values that are stored natively as `u32` or `u64` are cast to `i128` and
+/// are guaranteed to fit (max stored value << i128::MAX).
+///
+/// # Replay semantics
+/// A replayer applies `new_value` to its local parameter state for the given
+/// `key`. The `old_value` is informational; replay order is the authoritative
+/// sequence of updates. Exactly one event is emitted per successful
+/// governance-aware setter call.
 #[allow(dead_code)]
 pub fn emit_parameter_updated(
     e: &Env,
@@ -475,6 +547,55 @@ pub fn emit_bond_drift_detected(e: &Env, details: &crate::invariants::BondDriftD
         details.slashed_amount,
         details.attestation_count,
         details.attestation_list_len,
+    );
+    e.events().publish(topics, data);
+}
+
+/// Emitted when the bond-creation fee config (treasury or fee_bps) changes
+/// (issue #1027 — fee config safety rails).
+///
+/// The event carries every relevant governance field before and after the
+/// update so auditors and indexers can reconstruct the diff without
+/// re-reading storage. `old_treasury = None` signals the config was
+/// previously unset (contract fresh or fee config never configured).
+///
+/// # Topics (Indexed)
+/// * `Symbol` - `"fee_config_updated"`
+/// * `Address` - The admin that authorised the change (indexed per-admin)
+///
+/// # Data
+/// * `Option<Address>` - Treasury address *before* the update (`None` if
+///   not previously set)
+/// * `Address` - Treasury address *after* the update
+/// * `u32` - `fee_bps` *before* the update (0 if not previously set)
+/// * `u32` - `fee_bps` *after* the update (already bounds-checked to
+///   `[MIN_FEE_BPS, MAX_FEE_BPS]`)
+///
+/// # Replay semantics
+/// A replayer that has tracked fee config from `fee_config_updated` MUST set
+/// `(treasury, fee_bps) = (topics[1].new, data[1])`, regardless of whether
+/// either field actually changed (callers may re-issue the same config to
+/// force a re-emission of the audit trail). Failed setter calls (rejected
+/// for out-of-range values) do **not** emit this event.
+///
+/// # Range invariants
+/// `new_fee_bps` is guaranteed to lie in `[MIN_FEE_BPS, MAX_FEE_BPS]` =
+/// `[0, 1 000]` (0%..10%) — see [`crate::fees`] for the governance bounds.
+#[allow(dead_code)]
+pub fn emit_fee_config_updated(
+    e: &Env,
+    admin: &Address,
+    old_treasury: Option<Address>,
+    new_treasury: &Address,
+    old_fee_bps: u32,
+    new_fee_bps: u32,
+) {
+    let topics = (Symbol::new(e, "fee_config_updated"), admin.clone());
+    let data = (
+        old_treasury,
+        new_treasury.clone(),
+        old_fee_bps,
+        new_fee_bps,
     );
     e.events().publish(topics, data);
 }

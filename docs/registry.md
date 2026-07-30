@@ -39,7 +39,7 @@ Restores a soft-deleted entry to `active = true`. Requires admin auth.
 
 ### `remove(identity)`
 
-Hard-deletes the entry. Removes both the forward mapping (`identity → bond`) and the reverse mapping (`bond → identity`) from storage, and removes the identity from the `RegisteredIdentities` list. After removal both the identity and the bond contract are free to be re-registered. Requires admin auth.
+Hard-deletes the entry. Removes the forward mapping (`identity → bond`), the reverse mapping (`bond → identity`), and the `AllowNonInterface(bond)` flag from storage, and removes the identity from the `RegisteredIdentities` list. After removal both the identity and the bond contract are free to be re-registered. Requires admin auth.
 
 - Panics `#402` if identity is not registered.
 - Works on both active and deactivated entries.

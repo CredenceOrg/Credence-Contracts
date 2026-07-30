@@ -1,3 +1,9 @@
+// Off-chain CLI binary — issue #713 silences dynamic-string macros in
+// ON-CHAIN contract code only. Production contract wasm cannot depend on
+// `format!` for event topics or reverts, but an admin CLI printing JSON
+// status text is allowed and uses format!() for diagnostics.
+#![allow(clippy::disallowed_macros)]
+
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use serde_json::json;

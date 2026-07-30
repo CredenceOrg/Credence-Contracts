@@ -26,7 +26,7 @@ fn test_lazy_migration() {
     e.storage().instance().set(&DataKey::Bond, &bond);
 
     // Invoke the getter which triggers lazy migration
-    let loaded = CredenceBond::get_identity_state(e.clone());
+    let loaded = CredenceBond::get_identity_state(e.clone(), identity.clone());
     assert_eq!(loaded.bonded_amount, bond.bonded_amount);
     assert_eq!(loaded.identity, bond.identity);
     // Ensure new fields have default values
