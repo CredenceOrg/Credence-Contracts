@@ -153,6 +153,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     ContractPaused = 106,
 
+    /// A storage migration is currently in progress; state mutations are
+    /// rejected until it completes.
+    /// Raised by `require_no_ongoing_migration`.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    MigrationInProgress = 125,
+
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
@@ -675,12 +682,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     MaxPauseSignersExceeded = 125,
 
-    /// A contract state migration is in progress; state-changing calls are
-    /// rejected until it completes.
-    /// Contracts: general-purpose
-    /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 124,
-
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
     /// Wire-stable: do not renumber this error code.
@@ -859,8 +860,7 @@ impl ErrorExt for ContractError {
             | ContractError::OutsideBusinessHours
             |            ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::CrossContractCallerMismatch
-            | ContractError::RoleRequired => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -1223,7 +1223,9 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
-            | ContractError::LeaseSignerMismatch => true,
+            | ContractError::LeaseSignerMismatch
+            => true, // retry after business hours
+
 
             // Admin can supply a valid value / remove a signer or raise the
             // cap, then retry.

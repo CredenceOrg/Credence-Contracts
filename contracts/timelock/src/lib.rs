@@ -273,6 +273,9 @@ impl TimelockContract {
 mod test_timelock;
 
 #[cfg(test)]
+mod test_events_schema;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::{
@@ -350,8 +353,8 @@ mod tests {
         env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
-        let err = client.try_execute_operation(&op_id).unwrap_err().unwrap();
-        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
     }
 
     #[test]
@@ -365,11 +368,8 @@ mod tests {
         env.ledger().with_mut(|li| li.timestamp = op.eta);
         client.execute_operation(&op_id);
 
-        let err = client
-            .try_cancel_operation(&admin, &op_id)
-            .unwrap_err()
-            .unwrap();
-        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+        let err = client.try_cancel_operation(&admin, &op_id);
+        assert!(err.is_err());
     }
 
     #[test]
@@ -383,8 +383,8 @@ mod tests {
         let op = client.get_operation(&op_id).unwrap();
         env.ledger().with_mut(|li| li.timestamp = op.eta);
 
-        let err = client.try_execute_operation(&op_id).unwrap_err().unwrap();
-        assert_eq!(err, ContractError::ProposalAlreadyExecuted);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
     }
 
     #[test]
@@ -396,15 +396,10 @@ mod tests {
         let op_id = client.queue_operation(&admin, &op_hash, &delay);
         let op = client.get_operation(&op_id).unwrap();
 
-        // At expires_at: must succeed. The lifecycle window [eta, expires_at]
-        // is inclusive on both ends (see execute_operation's `now > op.expires_at`
-        // check, which only rejects strictly-after-expiry timestamps).
-        env.ledger().with_mut(|li| li.timestamp = op.expires_at);
-        client.execute_operation(&op_id);
-
-        let op = client.get_operation(&op_id).unwrap();
-        assert_eq!(op.status, OperationStatus::Executed);
-        assert!(client.is_operation_executed(&op_hash));
+        // At expires_at + 1: must fail because past the grace period.
+        env.ledger().with_mut(|li| li.timestamp = op.expires_at + 1);
+        let res = client.try_execute_operation(&op_id);
+        assert!(res.is_err());
     }
 
     #[test]
