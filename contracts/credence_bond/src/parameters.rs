@@ -29,17 +29,8 @@
 use crate::events::emit_parameter_updated;
 use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
-/// Governance approval envelope for parameter mutations.
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct GovernanceApproval {
-    /// Governance actor authorizing this parameter change.
-    pub approver: Address,
-    /// Expiration timestamp (0 = no expiry).
-    pub expires_at: u64,
-    /// Parameter category this approval is valid for.
-    pub category: Symbol,
-}
+pub use crate::governance_approval::GovernanceApproval;
+pub use crate::governance_approval::validate_governance_approval;
 
 // ============================================================================
 // Parameter Bounds Constants
@@ -852,19 +843,4 @@ fn validate_admin(e: &Env, caller: &Address) {
     }
 }
 
-fn validate_governance_approval(
-    e: &Env,
-    admin: &Address,
-    approval: &GovernanceApproval,
-    expected_category: Symbol,
-) {
-    if approval.approver != *admin {
-        panic!("governance approver mismatch");
-    }
-    if approval.expires_at > 0 && e.ledger().timestamp() > approval.expires_at {
-        panic!("governance approval expired");
-    }
-    if approval.category != expected_category {
-        panic!("governance approval category mismatch");
-    }
-}
+

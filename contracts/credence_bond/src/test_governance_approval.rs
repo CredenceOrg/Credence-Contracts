@@ -229,3 +229,93 @@ fn test_quorum_checked_mul_div_majority_threshold() {
     let bond = client.execute_slash_with_governance(&admin, &0_u64);
     assert_eq!(bond.slashed_amount, 50);
 }
+
+// ============================================================================
+// Parameter Governance Approval Tests
+// ============================================================================
+
+#[test]
+fn test_validate_governance_approval_success() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let category = soroban_sdk::symbol_short!("fee");
+    
+    let approval = crate::governance_approval::GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: category.clone(),
+    };
+    
+    // Should not panic
+    crate::governance_approval::validate_governance_approval(&e, &admin, &approval, category);
+}
+
+#[test]
+#[should_panic(expected = "governance approver mismatch")]
+fn test_validate_governance_approval_approver_mismatch() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let other = Address::generate(&e);
+    let category = soroban_sdk::symbol_short!("fee");
+    
+    let approval = crate::governance_approval::GovernanceApproval {
+        approver: other,
+        expires_at: 0,
+        category: category.clone(),
+    };
+    
+    crate::governance_approval::validate_governance_approval(&e, &admin, &approval, category);
+}
+
+#[test]
+#[should_panic(expected = "governance approval expired")]
+fn test_validate_governance_approval_expired() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let category = soroban_sdk::symbol_short!("fee");
+    
+    let approval = crate::governance_approval::GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 100, // Expired
+        category: category.clone(),
+    };
+    
+    // Set ledger time past expiry
+    e.ledger().set_timestamp(150);
+    
+    crate::governance_approval::validate_governance_approval(&e, &admin, &approval, category);
+}
+
+#[test]
+fn test_validate_governance_approval_not_expired() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let category = soroban_sdk::symbol_short!("fee");
+    
+    e.ledger().set_timestamp(50);
+    
+    let approval = crate::governance_approval::GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 100, // Not expired
+        category: category.clone(),
+    };
+    
+    // Should not panic
+    crate::governance_approval::validate_governance_approval(&e, &admin, &approval, category);
+}
+
+#[test]
+#[should_panic(expected = "governance approval category mismatch")]
+fn test_validate_governance_approval_category_mismatch() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    
+    let approval = crate::governance_approval::GovernanceApproval {
+        approver: admin.clone(),
+        expires_at: 0,
+        category: soroban_sdk::symbol_short!("risk"),
+    };
+    
+    // Expected fee but got risk
+    crate::governance_approval::validate_governance_approval(&e, &admin, &approval, soroban_sdk::symbol_short!("fee"));
+}
