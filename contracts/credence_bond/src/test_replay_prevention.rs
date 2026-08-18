@@ -408,3 +408,52 @@ fn delegation_namespace_replay_rejected_on_revoke_without_consuming_bond_nonce()
     client.revoke_attestation(&attester, &attestation.id, &contract_id, &deadline, &1_u64);
     assert_eq!(client.get_nonce(&attester), 2);
 }
+
+// ── Persistent storage archival survival ──────────────────────────────────────
+
+/// Nonces stored in persistent storage must survive TTL advancement well past
+/// the old instance-storage threshold (~30 days). This is the core regression
+/// test for the instance → persistent migration: under the old scheme, advancing
+/// the ledger past NONCE_TTL_EXTEND_TO would archive the nonce and reset it to
+/// 0, enabling replay of previously valid signed payloads.
+#[test]
+fn nonce_survives_long_inactivity_period() {
+    let e = Env::default();
+    let (client, attester, contract_id) = setup(&e);
+    let subject = soroban_sdk::Address::generate(&e);
+    let deadline = e.ledger().timestamp() + 1000;
+
+    // Consume nonce 0 and advance to nonce 1.
+    client.add_attestation(
+        &attester,
+        &subject,
+        &String::from_str(&e, "before"),
+        &contract_id,
+        &deadline,
+        &0u64,
+    );
+    assert_eq!(client.get_nonce(&attester), 1);
+
+    // Simulate ~60 days of inactivity (well past the old 30-day instance TTL).
+    // At 5 s/ledger that is 1_036_800 ledgers.
+    e.ledger()
+        .with_mut(|l| l.timestamp = l.timestamp + 5_184_000);
+
+    // Nonce must NOT have reset to 0.
+    assert_eq!(client.get_nonce(&attester), 1);
+
+    // The next valid nonce is 1. Submitting 0 must fail (replay).
+    let result = client.try_add_attestation(
+        &attester,
+        &subject,
+        &String::from_str(&e, "replay-after-gap"),
+        &contract_id,
+        &(e.ledger().timestamp() + 1000),
+        &0u64,
+    );
+    assert!(
+        result.is_err(),
+        "old nonce 0 must be rejected after long inactivity gap"
+    );
+    assert_eq!(client.get_nonce(&attester), 1);
+}

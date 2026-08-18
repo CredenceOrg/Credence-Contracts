@@ -1,10 +1,18 @@
 //! Nonce tracking for replay prevention in the credence bond contract.
 //!
-//! Nonces remain alive long enough to survive the bond lifecycle and any
-//! recovery flows without falling out of storage.
-const NONCE_TTL_THRESHOLD: u32 = 259_200;
-const NONCE_TTL_EXTEND_TO: u32 = 518_400;
-const MIN_NONCE_TTL: u32 = NONCE_TTL_THRESHOLD;
+//! Nonces are stored in **persistent** storage so they survive across contract
+//! upgrades and are not archived by the Soroban TTL mechanism. This mirrors the
+//! pattern used by `credence_delegation::nonce`.
+//!
+//! # Storage TTL policy
+//!
+//! Nonce entries: TTL is `MIN_NONCE_TTL` (~30 days at 5 s/ledger), bumped on
+//! every read/write. This is the minimum guarantee; in practice the network cap
+//! (`MAX_TTL`) gives much more headroom.
+//!
+//! Grace window: configuration only, stored in **instance** storage.
+const MIN_NONCE_TTL: u32 = 518_400;
+const MAX_TTL: u32 = 3_110_400;
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -12,13 +20,33 @@ use soroban_sdk::{Address, Env};
 
 use crate::{DataKey, SIGNATURE_DOMAIN};
 
-/// Returns the current nonce for an identity.
+// ── TTL helpers ───────────────────────────────────────────────────────────────
+
+/// Bump the TTL for a `DataKey::Nonce` entry in persistent storage.
+///
+/// # Guarantees
+/// - Called on every read and write of `DataKey::Nonce(identity)`.
+/// - Prevents archival while the nonce is actively used.
+fn bump_nonce_ttl(e: &Env, key: &DataKey) {
+    if !e.storage().persistent().has(key) {
+        return;
+    }
+    let extend_to = MIN_NONCE_TTL;
+    let threshold = extend_to / 2;
+    e.storage()
+        .persistent()
+        .extend_ttl(key, threshold, extend_to);
+}
+
+// ── Nonce operations ──────────────────────────────────────────────────────────
+
+/// Returns the current nonce for an identity (starts at 0).
 #[must_use]
 pub fn get_nonce(e: &Env, identity: &Address) -> u64 {
-    e.storage()
-        .instance()
-        .get(&DataKey::Nonce(identity.clone()))
-        .unwrap_or(0)
+    let key = DataKey::Nonce(identity.clone());
+    let nonce: u64 = e.storage().persistent().get(&key).unwrap_or(0);
+    bump_nonce_ttl(e, &key);
+    nonce
 }
 
 /// Checks that the provided nonce matches the current nonce, then increments it.
@@ -26,15 +54,14 @@ pub fn get_nonce(e: &Env, identity: &Address) -> u64 {
 /// # Panics
 /// Panics with "invalid nonce" if `expected_nonce` does not match stored nonce.
 pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
-    let current = get_nonce(e, identity);
+    let key = DataKey::Nonce(identity.clone());
+    let current: u64 = e.storage().persistent().get(&key).unwrap_or(0);
     if current != expected_nonce {
         panic_with_error!(e, ContractError::InvalidNonce);
     }
     let next = current.checked_add(1).expect("nonce overflow");
-    e.storage()
-        .instance()
-        .set(&DataKey::Nonce(identity.clone()), &next);
-    bump_nonce_ttl(e, &DataKey::Nonce(identity.clone()), 0);
+    e.storage().persistent().set(&key, &next);
+    bump_nonce_ttl(e, &key);
 }
 
 /// Returns the configured grace window in seconds (0 = strict enforcement).
@@ -70,7 +97,6 @@ pub fn get_grace_window(e: &Env) -> u64 {
 pub fn set_grace_window(e: &Env, grace: u64) -> u64 {
     let old = get_grace_window(e);
     e.storage().instance().set(&DataKey::GraceWindow, &grace);
-    bump_nonce_ttl(e, &DataKey::GraceWindow, 0);
     old
 }
 
@@ -201,12 +227,6 @@ pub fn validate_and_consume_with_domain_string(
     consume_nonce(e, identity, nonce);
 }
 
-fn bump_nonce_ttl(e: &Env, _key: &DataKey, _ttl: u32) {
-    e.storage()
-        .instance()
-        .extend_ttl(NONCE_TTL_THRESHOLD, NONCE_TTL_EXTEND_TO);
-}
-
 // ============================================================================
 // Test/tooling helpers — excluded from release WASM
 // ============================================================================
@@ -219,7 +239,7 @@ mod testutils_helpers {
     /// Set the nonce for an identity to a specific value (test helper only).
     pub fn set_nonce(e: &Env, identity: &Address, nonce: u64) {
         e.storage()
-            .instance()
+            .persistent()
             .set(&DataKey::Nonce(identity.clone()), &nonce);
     }
 }
