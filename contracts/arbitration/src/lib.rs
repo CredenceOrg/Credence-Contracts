@@ -21,7 +21,6 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
@@ -510,15 +509,10 @@ impl CredenceArbitration {
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
-                (
-                    DisputeStatus::Resolving as u32,
-                    DisputeStatus::Tied as u32,
-                ),
+                (DisputeStatus::Resolving as u32, DisputeStatus::Tied as u32),
             );
-            e.events().publish(
-                (Symbol::new(&e, "dispute_tied"), dispute_id),
-                (),
-            );
+            e.events()
+                .publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
 
             Ok(0)
         } else {
@@ -656,10 +650,19 @@ impl CredenceArbitration {
     /// * `limit` - The maximum number of arbitrators to return.
     ///
     /// # Returns
-    /// A tuple containing:
+    /// A `Result` containing a tuple of:
     /// 1. A page of arbitrator addresses.
     /// 2. `Some(next_cursor)` if more results remain, or `None` if pagination is complete.
-    pub fn get_arbitrators_page(e: Env, cursor: u32, limit: u32) -> (Vec<Address>, Option<u32>) {
+    ///
+    /// # Errors
+    /// Returns [`ArbitrationError::CursorOutOfRange`] when `cursor >= registry_len`.
+    /// This prevents callers from synthesising a completed-scan response without
+    /// actually scanning any entries.
+    pub fn get_arbitrators_page(
+        e: Env,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<(Vec<Address>, Option<u32>), ArbitrationError> {
         bump_instance_ttl(&e);
         let registry: Vec<Address> = e
             .storage()
@@ -670,7 +673,7 @@ impl CredenceArbitration {
         let registry_len = registry.len();
 
         if cursor >= registry_len {
-            return (Vec::new(&e), None);
+            return Err(ArbitrationError::CursorOutOfRange);
         }
 
         const MAX_ITER_HARD_CAP: u32 = 200;
@@ -692,7 +695,7 @@ impl CredenceArbitration {
 
         let next_cursor = if end >= registry_len { None } else { Some(end) };
 
-        (page, next_cursor)
+        Ok((page, next_cursor))
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {

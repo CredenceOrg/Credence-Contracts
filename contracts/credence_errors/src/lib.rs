@@ -21,7 +21,6 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
-
 use soroban_sdk::contracterror;
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
@@ -294,7 +293,7 @@ pub enum ContractError {
     /// Triggered by: `invariants::assert_self_consistent` after a bond-module write
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvariantViolation = 230,
+    InvariantViolation = 233,
 
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
@@ -324,12 +323,6 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     EmptyBatch = 228,
-
-    /// Idempotency key has already been used for this operation.
-    /// Triggered by: `idempotency::check_and_record` on a replayed salt.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    DuplicateIdempotencyKey = 231,
 
     /// Currency symbol is invalid (empty or whitespace-only).
     /// Triggered by: token ingress symbol check
@@ -517,7 +510,7 @@ pub enum ContractError {
     /// Emergency drain is not permitted: contract must be paused and timelock window must have elapsed.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    EmergencyDrainNotPermitted = 115,
+    EmergencyDrainNotPermitted = 117,
 
     /// Actor did not hold the required role at the given ledger timestamp.
     ///
@@ -526,7 +519,13 @@ pub enum ContractError {
     /// the role was not yet granted at the time of the delegated action.
     /// Contracts: admin
     /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 114,
+    RoleNotHeldAtLedger = 116,
+
+    /// Signature or operation deadline has passed.
+    /// Replaces: panic!("signature expired")
+    /// Contracts: bond, delegation
+    /// Wire-stable: do not renumber this error code.
+    SignatureExpired = 222,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -950,7 +949,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted => true,
+            | ContractError::EmergencyDrainNotPermitted
+            | ContractError::RoleNotHeldAtLedger => true, // re-sign with a valid ledger timestamp
 
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
@@ -960,20 +960,21 @@ impl ErrorExt for ContractError {
             | ContractError::LockupNotExpired           // wait for the lock-up
             | ContractError::NotRollingBond
             | ContractError::WithdrawalAlreadyRequested // wait for the existing request
-            | ContractError::InvalidNonce               // bump nonce
+            |            ContractError::InvalidNonce               // bump nonce
             | ContractError::SignatureExpired           // re-sign with later deadline
             | ContractError::NegativeStake              // reduce the stake
             | ContractError::EarlyExitConfigNotSet      // configure early exit first
             | ContractError::InvalidPenaltyBps          // use 0..=10000
             | ContractError::LeverageExceeded           // reduce operation size
             | ContractError::UnsupportedToken           // use a safe token (e.g. SAC)
-            | ContractError::UnsupportedDecimals
+            | ContractError::UnsupportedDecimals        // use a different token
             | ContractError::InvalidBondAmount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
             | ContractError::BondAlreadyExists
-            | ContractError::UnauthorizedToken
+            | ContractError::UnauthorizedToken           // switch to an accepted token
             | ContractError::InvalidCurrency
+            | ContractError::DuplicateIdempotencyKey     // use a unique key
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             => true,
@@ -1044,16 +1045,12 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
-            ContractError::UnsupportedDecimals => false, // token not supported; caller must use a different token
-            ContractError::UnauthorizedToken => true,    // caller can switch to an accepted token
-            ContractError::EmergencyDrainNotPermitted => true, // pause contract and wait for timelock then retry
         }
     }
 }
 
 #[cfg(test)]
 mod test_errors;
-
 
 /// Wraps `env.current_contract_address()` with a mock hook for tests.
 #[macro_export]

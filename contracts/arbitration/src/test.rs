@@ -199,10 +199,12 @@ fn test_arbitrator_registry_and_pagination() {
 
     client.initialize(&admin);
 
-    // empty registry check
-    let (page, next_cursor) = client.get_arbitrators_page(&0, &10);
-    assert_eq!(page.len(), 0);
-    assert_eq!(next_cursor, None);
+    // empty registry: cursor 0 >= len 0 → CursorOutOfRange
+    let err = client
+        .try_get_arbitrators_page(&0, &10)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::CursorOutOfRange);
 
     // register arbitrators
     let mut arbs = soroban_sdk::Vec::new(&e);
@@ -262,7 +264,6 @@ fn test_arbitrator_registry_and_pagination() {
     client.unregister_arbitrator(&test_arb);
 
     // Should compact the list, and order remains deterministic
-    let (page_compact, _) = client.get_arbitrators_page(&0, &10);
     // Let's verify test_arb is not in the full list
     let mut found = false;
     let mut cursor = 0;
@@ -348,4 +349,306 @@ fn test_quorum_single_voter_under_min_voters() {
         .unwrap_err()
         .unwrap();
     assert_eq!(err, status::ArbitrationError::QuorumNotMet);
+}
+
+// ── Pagination edge-case tests (issue #1298) ──────────────────────────────────
+
+#[test]
+fn test_pagination_empty_registry_cursor_zero() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Empty registry: cursor 0 >= len 0 → CursorOutOfRange
+    let err = client
+        .try_get_arbitrators_page(&0, &10)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::CursorOutOfRange);
+}
+
+#[test]
+fn test_pagination_cursor_past_end() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let arb = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+    client.register_arbitrator(&arb, &10);
+
+    // 1 arbitrator registered; cursor = 5 is out of range
+    let err = client
+        .try_get_arbitrators_page(&5, &10)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::CursorOutOfRange);
+}
+
+#[test]
+fn test_pagination_cursor_at_boundary() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Register exactly 3 arbitrators
+    let mut arbs = soroban_sdk::Vec::new(&e);
+    for _ in 0..3 {
+        arbs.push_back(Address::generate(&e));
+    }
+    for arb in arbs.iter() {
+        client.register_arbitrator(&arb, &10);
+    }
+
+    // cursor = 3 equals registry_len → CursorOutOfRange
+    let err = client
+        .try_get_arbitrators_page(&3, &10)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::CursorOutOfRange);
+
+    // cursor = 2 is valid (last valid index for a list of 3)
+    let (page, next_cursor) = client.get_arbitrators_page(&2, &2);
+    assert_eq!(page.len(), 1);
+    assert_eq!(page.get(0).unwrap(), arbs.get(2).unwrap());
+    assert_eq!(next_cursor, None);
+}
+
+#[test]
+fn test_pagination_single_item_page() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    let arb = Address::generate(&e);
+    client.register_arbitrator(&arb, &10);
+
+    // Single arbitrator, limit = 1
+    let (page, next_cursor) = client.get_arbitrators_page(&0, &1);
+    assert_eq!(page.len(), 1);
+    assert_eq!(page.get(0).unwrap(), arb);
+    assert_eq!(next_cursor, None);
+}
+
+#[test]
+fn test_pagination_limit_zero_uses_default() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Register 5 arbitrators
+    let mut arbs = soroban_sdk::Vec::new(&e);
+    for _ in 0..5 {
+        arbs.push_back(Address::generate(&e));
+    }
+    for arb in arbs.iter() {
+        client.register_arbitrator(&arb, &10);
+    }
+
+    // limit = 0 → uses DEFAULT_MAX_ITER (50)
+    let (page, next_cursor) = client.get_arbitrators_page(&0, &0);
+    assert_eq!(page.len(), 5);
+    assert_eq!(next_cursor, None);
+}
+
+#[test]
+fn test_pagination_full_walk_reassembles() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Register 7 arbitrators
+    let mut arbs = soroban_sdk::Vec::new(&e);
+    for _ in 0..7 {
+        arbs.push_back(Address::generate(&e));
+    }
+    for arb in arbs.iter() {
+        client.register_arbitrator(&arb, &10);
+    }
+
+    // Walk the full list page by page (limit = 2)
+    let mut collected = soroban_sdk::Vec::new(&e);
+    let mut cursor = 0;
+    loop {
+        let (page, next) = client.get_arbitrators_page(&cursor, &2);
+        for addr in page.iter() {
+            collected.push_back(addr);
+        }
+        match next {
+            Some(n) => cursor = n,
+            None => break,
+        }
+    }
+
+    assert_eq!(collected.len(), 7);
+    for i in 0..7 {
+        assert_eq!(collected.get(i).unwrap(), arbs.get(i).unwrap());
+    }
+}
+
+#[test]
+fn test_pagination_deterministic_ordering() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    let mut arbs = soroban_sdk::Vec::new(&e);
+    for _ in 0..10 {
+        arbs.push_back(Address::generate(&e));
+    }
+    for arb in arbs.iter() {
+        client.register_arbitrator(&arb, &10);
+    }
+
+    // Two calls with same cursor should return same result
+    let (page_a, cursor_a) = client.get_arbitrators_page(&3, &4);
+    let (page_b, cursor_b) = client.get_arbitrators_page(&3, &4);
+
+    assert_eq!(page_a.len(), page_b.len());
+    assert_eq!(cursor_a, cursor_b);
+    for i in 0..page_a.len() {
+        assert_eq!(page_a.get(i).unwrap(), page_b.get(i).unwrap());
+    }
+}
+
+#[test]
+fn test_pagination_exact_boundary_split() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Register 6 arbitrators and split into 3 pages of 2
+    let mut arbs = soroban_sdk::Vec::new(&e);
+    for _ in 0..6 {
+        arbs.push_back(Address::generate(&e));
+    }
+    for arb in arbs.iter() {
+        client.register_arbitrator(&arb, &10);
+    }
+
+    let (p1, c1) = client.get_arbitrators_page(&0, &2);
+    assert_eq!(p1.len(), 2);
+    assert_eq!(c1, Some(2));
+
+    let (p2, c2) = client.get_arbitrators_page(&2, &2);
+    assert_eq!(p2.len(), 2);
+    assert_eq!(c2, Some(4));
+
+    let (p3, c3) = client.get_arbitrators_page(&4, &2);
+    assert_eq!(p3.len(), 2);
+    assert_eq!(c3, None);
+}
+
+#[test]
+fn test_pagination_after_unregister_compacts() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    let mut arbs = soroban_sdk::Vec::new(&e);
+    for _ in 0..5 {
+        arbs.push_back(Address::generate(&e));
+    }
+    for arb in arbs.iter() {
+        client.register_arbitrator(&arb, &10);
+    }
+
+    // Remove the 3rd arbitrator (index 2)
+    let removed = arbs.get(2).unwrap();
+    client.unregister_arbitrator(&removed);
+
+    // Walk the full list and verify removed arbitrator is absent
+    let mut collected = soroban_sdk::Vec::new(&e);
+    let mut cursor = 0;
+    loop {
+        let (page, next) = client.get_arbitrators_page(&cursor, &10);
+        for addr in page.iter() {
+            collected.push_back(addr);
+        }
+        match next {
+            Some(n) => cursor = n,
+            None => break,
+        }
+    }
+
+    assert_eq!(collected.len(), 4);
+    let mut found = false;
+    for i in 0..collected.len() {
+        if collected.get(i).unwrap() == removed {
+            found = true;
+        }
+    }
+    assert!(!found);
+}
+
+#[test]
+fn test_pagination_concurrent_insert_during_walk() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+    client.initialize(&admin);
+
+    // Register 2 arbitrators
+    let arb1 = Address::generate(&e);
+    let arb2 = Address::generate(&e);
+    client.register_arbitrator(&arb1, &10);
+    client.register_arbitrator(&arb2, &10);
+
+    // Walk page 1 (limit=1)
+    let (page1, cursor1) = client.get_arbitrators_page(&0, &1);
+    assert_eq!(page1.len(), 1);
+    assert_eq!(cursor1, Some(1));
+
+    // Register a new arbitrator mid-walk
+    let arb3 = Address::generate(&e);
+    client.register_arbitrator(&arb3, &10);
+
+    // Continue the walk from cursor1. The new arbitrator is at index 2,
+    // so the walk should still see arb2 at cursor=1 and then be done
+    // (since the Vec now has 3 items but we started mid-walk).
+    let mut collected = soroban_sdk::Vec::new(&e);
+    let mut cursor = 0;
+    loop {
+        let (page, next) = client.get_arbitrators_page(&cursor, &10);
+        for addr in page.iter() {
+            collected.push_back(addr);
+        }
+        match next {
+            Some(n) => cursor = n,
+            None => break,
+        }
+    }
+
+    // Full walk should see all 3 arbitrators in insertion order
+    assert_eq!(collected.len(), 3);
+    assert_eq!(collected.get(0).unwrap(), arb1);
+    assert_eq!(collected.get(1).unwrap(), arb2);
+    assert_eq!(collected.get(2).unwrap(), arb3);
 }
