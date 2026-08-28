@@ -107,9 +107,12 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
                 .instance()
                 .get(&DataKey::PauseSignerCount)
                 .unwrap_or(0);
+            let new_count = count
+                .checked_add(1)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
             e.storage()
                 .instance()
-                .set(&DataKey::PauseSignerCount, &count.saturating_add(1));
+                .set(&DataKey::PauseSignerCount, &new_count);
         }
     } else if existing {
         e.storage().instance().remove(&key);
@@ -118,24 +121,27 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
             .instance()
             .get(&DataKey::PauseSignerCount)
             .unwrap_or(0);
+        let new_count = count
+            .checked_sub(1)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
         e.storage()
             .instance()
-            .set(&DataKey::PauseSignerCount, &count.saturating_sub(1));
+            .set(&DataKey::PauseSignerCount, &new_count);
 
         let threshold: u32 = e
             .storage()
             .instance()
             .get(&DataKey::PauseThreshold)
             .unwrap_or(0);
-        let new_count: u32 = e
+        let current_count: u32 = e
             .storage()
             .instance()
             .get(&DataKey::PauseSignerCount)
             .unwrap_or(0);
-        if threshold > new_count {
+        if threshold > current_count {
             e.storage()
                 .instance()
-                .set(&DataKey::PauseThreshold, &new_count);
+                .set(&DataKey::PauseThreshold, &current_count);
         }
     }
 
