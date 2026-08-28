@@ -32,7 +32,6 @@ fn test_version() {
     assert_eq!(client.version(), String::from_str(&e, "0.1.0"));
 }
 
-
 // ── describe_config ──────────────────────────────────────────────────────────
 
 #[test]
@@ -171,7 +170,7 @@ fn test_describe_bond_reflects_slash() {
 
     client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
     advance_ledger_sequence(&e);
-    client.slash(&admin, &200_i128);
+    client.slash(&admin, &identity, &200_i128);
 
     let view = client.describe_bond(&identity).unwrap();
     assert_eq!(view.bonded_amount, 1000);

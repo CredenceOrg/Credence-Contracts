@@ -476,3 +476,60 @@ The `slash_bond()` core functionality has been successfully implemented with:
 - ✅ Production-ready code quality
 
 The implementation is ready for integration into the main deployment.
+
+## Addendum: Reentrancy-Guarded `CredenceBond::slash_bond` Entrypoint (Issue #1039)
+
+Everything above describes `slashing::slash_bond()` and the `slash()`
+contract wrapper. A **separate** entrypoint, `CredenceBond::slash_bond(admin,
+identity, slash_amount, idempotency_salt)`, exists on the contract for
+callers that need idempotency-salt replay protection and a reentrancy lock
+around an optional `on_slash` callback. Prior to this addendum, that
+entrypoint:
+
+- Accepted any `i128` `slash_amount`, including negative and zero values,
+  which could decrease `slashed_amount` or underflow the over-slash check.
+- Used unchecked `+` to compute the new cumulative slashed amount.
+- Never emitted a `bond_slashed` event, so indexers and the reputation engine
+  could not observe slashes performed through this path.
+- Did not compile at all (it referenced an `identity` binding that was not a
+  parameter of the function — a leftover from an earlier merge).
+
+This has been fixed to match the `slash()`/`slashing::slash_bond()` contract:
+
+- `slash_amount > 0` is required, checked before the reentrancy lock is
+  acquired (so an invalid call never has a lock to leak).
+- The cumulative slashed amount is computed with `checked_add`, and the
+  existing `new_slashed > bonded_amount` cap is preserved.
+- `bond_slashed` is emitted via `slashing::emit_slashing_event`, the same
+  emitter used by `slash()`, keeping the two entrypoints' event payloads
+  identical: `(identity, slash_amount, total_slashed_amount)`.
+- The reentrancy lock is released on every panic path within the function
+  (admin check happens before the lock is acquired at all; every panic after
+  that point calls `release_lock` first).
+- A duplicate, unconditional `admin.require_auth()` call was removed — the
+  entrypoint already goes through `guards::require_admin`, which performs the
+  auth check itself. Calling `require_auth()` twice on the same address
+  within one invocation caused the Soroban test host to reject the call with
+  `Error(Auth, ExistingValue)` ("frame is already authorized"), which is what
+  surfaced this while writing the new tests below.
+
+Coverage: [`contracts/credence_bond/tests/slash_bond_validation.rs`](contracts/credence_bond/tests/slash_bond_validation.rs)
+(9 tests — negative/zero rejection, event payload and cumulative totals,
+exact-cap and over-cap behavior, reentrancy-lock release after a rejected
+call, non-admin rejection). Run in isolation with
+`cargo test -p credence_bond --test slash_bond_validation`.
+
+Getting this entrypoint to compile also required fixing several unrelated
+pre-existing issues blocking the whole crate: duplicate/missing variants in
+`credence_errors::ContractError` (`TimestampInFuture`, `InvalidCurrency`,
+`BytesTooLarge`/`InvariantViolation`, `SignatureExpired`,
+`DuplicateIdempotencyKey`), a `guards::load_bond` signature that didn't match
+its callers, and several other functions (`get_identity_state`, `get_tier`,
+`get_bond_status_snapshot`, `migration::migrate_v1_to_v2`,
+`invariants::assert_self_consistent`, `slashing::slash_bond`/`unslash_bond`)
+that referenced an `identity` binding without declaring it as a parameter.
+See the PR for the full list. The wider pre-existing `#[cfg(test)]` test
+suite (~100 unrelated compile errors spanning stale API calls, a missing
+`credence_math::Timestamp` constant, and test fixtures for methods that no
+longer exist) was **not** touched — that is a separate, unrelated cleanup
+effort tracked outside this issue.

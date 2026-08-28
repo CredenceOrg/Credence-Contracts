@@ -60,7 +60,6 @@ fn fingerprints(env: &Env) -> Vec<(&'static str, String)> {
 fn render(fps: &[(&'static str, String)]) -> String {
     let mut out = String::new();
     for (name, hex) in fps {
-
         out.push_str(name);
         out.push_str(" = ");
         out.push_str(hex);
@@ -142,6 +141,7 @@ fn previous_snapshot_deserialises_with_new_spec() {
             .collect();
 
         let bytes = Bytes::from_slice(&env, &bytes_vec);
-        let _ = DataKey::from_xdr(&env, &bytes).expect("Failed to deserialize DataKey from snapshot hex");
+        let _ = DataKey::from_xdr(&env, &bytes)
+            .expect("Failed to deserialize DataKey from snapshot hex");
     }
 }

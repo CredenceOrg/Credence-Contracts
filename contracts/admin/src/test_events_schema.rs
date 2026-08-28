@@ -13,6 +13,8 @@ mod tests {
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Env, Symbol};
 
+    // ── ROLE_ASSIGNED ─────────────────────────────────────────────────────────
+
     #[test]
     fn admin_rotated_event_publishes() {
         let e = Env::default();
@@ -21,14 +23,12 @@ mod tests {
         let ledger_seq: u32 = e.ledger().sequence();
         // Should not panic
         e.events().publish(
-            (
-                Symbol::new(&e, "admin_rotated"),
-                previous_owner.clone(),
-                new_owner.clone(),
-            ),
-            ledger_seq,
+            (Symbol::new(&e, "ROLE_ASSIGNED"), actor.clone()),
+            (role, caller.clone()),
         );
     }
+
+    // ── ROLE_REVOKED ──────────────────────────────────────────────────────────
 
     #[test]
     fn ownership_transfer_initiated_event_publishes() {
@@ -36,10 +36,23 @@ mod tests {
         let current_owner = soroban_sdk::Address::generate(&e);
         let new_owner = soroban_sdk::Address::generate(&e);
         e.events().publish(
-            (Symbol::new(&e, "ownership_transfer_initiated"),),
-            (current_owner.clone(), new_owner.clone()),
+            (Symbol::new(&e, "ROLE_REVOKED"), actor.clone()),
+            (caller.clone(),),
+        );
+
+        let (topics, data) = only_event(&e);
+
+        assert_eq!(topics.len(), 2, "ROLE_REVOKED must have 2 topics");
+
+        let t0 = decode!(
+            &e,
+            topics.get(0).unwrap(),
+            Symbol,
+            "topic[0] must be Symbol"
         );
     }
+
+    // ── admin_rotated ─────────────────────────────────────────────────────────
 
     #[test]
     fn ownership_transfer_accepted_event_publishes() {
@@ -47,10 +60,12 @@ mod tests {
         let previous_owner = soroban_sdk::Address::generate(&e);
         let pending_owner = soroban_sdk::Address::generate(&e);
         e.events().publish(
-            (Symbol::new(&e, "ownership_transfer_accepted"),),
-            (previous_owner.clone(), pending_owner.clone()),
+            (Symbol::new(&e, "admin_rotated"), prev.clone(), next.clone()),
+            seq,
         );
     }
+
+    // ── ownership_transfer_initiated ─────────────────────────────────────────
 
     #[test]
     fn role_assigned_event_publishes() {
@@ -59,10 +74,12 @@ mod tests {
         let caller = soroban_sdk::Address::generate(&e);
         let role = AdminRole::Admin;
         e.events().publish(
-            (Symbol::new(&e, "ROLE_ASSIGNED"), admin.clone()),
-            (role, caller.clone()),
+            (Symbol::new(&e, "ownership_transfer_initiated"),),
+            (current.clone(), pending.clone()),
         );
     }
+
+    // ── ownership_transfer_accepted ──────────────────────────────────────────
 
     #[test]
     fn role_revoked_event_publishes() {
@@ -70,10 +87,12 @@ mod tests {
         let admin = soroban_sdk::Address::generate(&e);
         let caller = soroban_sdk::Address::generate(&e);
         e.events().publish(
-            (Symbol::new(&e, "ROLE_REVOKED"), admin.clone()),
-            (caller.clone(),),
+            (Symbol::new(&e, "ownership_transfer_accepted"),),
+            (prev.clone(), next.clone()),
         );
     }
+
+    // ── paused ────────────────────────────────────────────────────────────────
 
     #[test]
     fn paused_event_publishes() {
@@ -83,6 +102,8 @@ mod tests {
             .publish((Symbol::new(&e, "paused"),), proposal_id);
     }
 
+    // ── unpaused ──────────────────────────────────────────────────────────────
+
     #[test]
     fn unpaused_event_publishes() {
         let e = Env::default();
@@ -90,6 +111,8 @@ mod tests {
         e.events()
             .publish((Symbol::new(&e, "unpaused"),), proposal_id);
     }
+
+    // ── pause_approved ────────────────────────────────────────────────────────
 
     #[test]
     fn pause_approved_event_publishes() {
@@ -102,11 +125,14 @@ mod tests {
         );
     }
 
+    // ── pause_signer_set ──────────────────────────────────────────────────────
+
     #[test]
     fn pause_signer_set_event_publishes() {
         let e = Env::default();
         let signer = soroban_sdk::Address::generate(&e);
         let enabled = true;
+
         e.events().publish(
             (Symbol::new(&e, "pause_signer_set"), signer.clone()),
             enabled,

@@ -16,8 +16,16 @@ autobenches = false
 autobins = false
 
 [[test]]
+name = "test_bond_pausable"
+path = "tests/test_bond_pausable.rs"
+
+[[test]]
 name = "proptest_tier"
 path = "tests/proptest_tier.rs"
+
+[[test]]
+name = "proptest_batch_atomicity"
+path = "tests/proptest_batch_atomicity.rs"
 
 [lib]
 # `rlib` is added alongside `cdylib` so the cost harness (bench + bin) can link
@@ -47,10 +55,16 @@ required-features = ["gas-bench"]
 name = "test_cost_regression"
 path = "tests/test_cost_regression.rs"
 
+# slash_bond validation/event/reentrancy-lock coverage (issue #1039).
+[[test]]
+name = "slash_bond_validation"
+path = "tests/slash_bond_validation.rs"
+
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }
 timelock = { path = "../timelock" }
+interfaces = { path = "../../crates/interfaces" }
 # soroban-sdk is always required; testutils APIs are only needed for test
 # builds and are gated via the `testutils` feature defined below.
 soroban-sdk = { version = "22.0" }

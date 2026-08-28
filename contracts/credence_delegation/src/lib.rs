@@ -17,10 +17,9 @@
 // Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
 // `clippy::disallowed_macros` lint belongs to the `restriction` group, so
 // a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests + the testutils feature
+// is the only mode where this deny fires (tests
 // stay free to use format!/write! for diagnostics).
-#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
-
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
@@ -50,6 +49,7 @@ use soroban_sdk::String;
 #[allow(dead_code)]
 const SIGNATURE_DOMAIN: &str = "CredenceDelegation";
 
+pub mod audit;
 pub mod domain;
 pub mod nonce;
 pub mod pausable;
@@ -274,9 +274,10 @@ impl CredenceDelegation {
     /// Initialize the contract with an admin address.
     pub fn initialize(e: Env, admin: Address) {
         bump_instance_ttl(&e);
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.storage().instance().set(&DataKey::Paused, &false);
         e.storage()
@@ -785,6 +786,7 @@ impl CredenceDelegation {
     /// * `UnknownScheme` - if scheme is not a recognized value
     pub fn register_verifier(e: Env, admin: Address, scheme: u32, verifier_id: Address) {
         bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
         admin.require_auth();
 
         // Check that only the admin can register verifiers
@@ -1026,14 +1028,7 @@ impl CredenceDelegation {
     }
 
     fn require_admin(e: &Env, admin: &Address) {
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if admin != &stored_admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        credence_errors::require_admin!(e, admin, DataKey::Admin);
     }
 
     fn revocation_grace_period(e: &Env) -> u64 {
@@ -1144,4 +1139,7 @@ mod test_verifier_dispatch;
 mod test_auth;
 
 #[cfg(test)]
-mod test_payload_staleness;
+mod test_require_matching_contract_id;
+
+#[cfg(test)]
+mod test_operator_epoch_guard;

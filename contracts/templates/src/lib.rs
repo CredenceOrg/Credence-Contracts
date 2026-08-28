@@ -17,8 +17,7 @@
 //! Canonical starting point for new Soroban contracts in this workspace.
 //!
 //! ## Patterns demonstrated
-//! - `#![no_std]
-#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
+//! - `#![no_std]` + `#![deny(clippy::float_arithmetic)]` + `soroban_sdk` imports
 //! - `DataKey` enum for typed storage
 //! - `#[contracttype]` structs for on-chain data
 //! - Admin-gated initialisation (panic-on-reinit guard)
@@ -30,7 +29,7 @@
 
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::{contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol};
@@ -78,9 +77,10 @@ impl TemplateContract {
 
     /// Initialise the contract. Panics if already initialised.
     pub fn initialize(e: Env, admin: Address) {
-        if e.storage().instance().has(&DataKey::Admin) {
-            panic_with_error!(&e, ContractError::AlreadyInitialized);
-        }
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         e.storage().instance().set(&DataKey::Admin, &admin);
         e.events().publish((Symbol::new(&e, "initialized"),), admin);
     }
@@ -141,7 +141,7 @@ impl TemplateContract {
             .expect("record not found");
 
         // Reference expiry pattern: reject and purge on read if expired
-        if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+        if credence_errors::is_expired(&e, record.expires_at) {
             e.storage().instance().remove(&DataKey::Record(owner));
             panic_with_error!(&e, ContractError::SignatureExpired);
         }
@@ -156,7 +156,7 @@ impl TemplateContract {
             .instance()
             .get::<_, Record>(&DataKey::Record(owner.clone()))
         {
-            if record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at {
+            if credence_errors::is_expired(&e, record.expires_at) {
                 e.storage().instance().remove(&DataKey::Record(owner));
                 return false;
             }
@@ -173,7 +173,7 @@ impl TemplateContract {
             .instance()
             .get::<_, Record>(&DataKey::Record(owner))
         {
-            return record.expires_at != 0 && e.ledger().timestamp() >= record.expires_at;
+            return credence_errors::is_expired(&e, record.expires_at);
         }
         false
     }
@@ -184,6 +184,27 @@ impl TemplateContract {
             .instance()
             .get(&DataKey::Admin)
             .expect("not initialized")
+    }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+}
+
+#[contractimpl]
+impl interfaces::governable::Governable for TemplateContract {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
     }
 }
 

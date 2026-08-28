@@ -1,17 +1,25 @@
 use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
 
-use crate::parameters::MAX_QUERY_LIMIT;
-
+/// Normalized slash history record stored persistently per identity.
+///
+/// This schema is stable — the five fields are the canonical shape consumed by
+/// the backend reputation engine. Do NOT add fields without a migration step.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SlashRecord {
+    /// Address of the slashed identity.
     pub identity: Address,
+    /// Validated amount applied to the bond in this slash event.
     pub slash_amount: i128,
+    /// Reason symbol — currently always `"admin_slash"`.
     pub reason: Symbol,
+    /// Ledger timestamp at the time this slash was applied.
     pub timestamp: u64,
+    /// Cumulative `slashed_amount` for this identity after this slash.
     pub total_slashed_after: i128,
 }
 
+/// Storage key discriminator for per-identity slash history entries.
 // Use a proper contracttype enum for storage keys
 #[contracttype]
 #[derive(Clone)]
@@ -21,6 +29,9 @@ pub enum SlashStorageKey {
 }
 
 /// Append a new slash record for `identity`. Called by production slashing code.
+///
+/// Stores a [`SlashRecord`] at index `count` and increments the count.
+/// Both entries have their TTL extended to [`crate::PERSISTENT_TTL_MAX`].
 pub fn append_slash_history(
     e: &Env,
     identity: &Address,
@@ -57,8 +68,8 @@ pub fn append_slash_history(
 }
 
 // ============================================================================
-// Read helpers — available in tests, tooling, and release for the paginated
-// contract entry-points (get_slash_history_page / get_slash_count).
+// Read helpers — available in all build configurations (test and release)
+// for use by contract entry-points (get_slash_history_page / get_slash_count).
 // ============================================================================
 
 /// Return the number of slash records stored for `identity`. O(1).
@@ -76,71 +87,13 @@ pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
     count
 }
 
-/// Return a bounded page of slash records for `identity`.
+/// Return a single slash record by index.
 ///
-/// `limit` is silently clamped to [`crate::parameters::MAX_QUERY_LIMIT`] (200).
-/// Pass `0` to use the cap directly. Returns an empty vec when
-/// `offset >= get_slash_count(e, identity)`.
+/// Available in all build configurations (not test-only) so that contract
+/// entrypoints can read individual records.
 ///
-/// # Arguments
-/// * `e`        - Soroban environment
-/// * `identity` - Address whose slash history to page through
-/// * `offset`   - Zero-based start index within the slash-record sequence
-/// * `limit`    - Maximum records to return; clamped to `MAX_QUERY_LIMIT`
-///
-/// # Example — page through all records
-/// ```text
-/// let mut offset = 0u32;
-/// loop {
-///     let page = get_slash_history_page(e, &identity, offset, 50);
-///     if page.is_empty() { break; }
-///     offset += page.len();
-/// }
-/// ```
-#[must_use]
-pub fn get_slash_history_page(
-    e: &Env,
-    identity: &Address,
-    offset: u32,
-    limit: u32,
-) -> Vec<SlashRecord> {
-    use crate::parameters::MAX_QUERY_LIMIT;
-
-    let count = get_slash_count(e, identity);
-    let mut page = Vec::new(e);
-
-    if offset >= count {
-        return page;
-    }
-
-    let effective_limit = if limit == 0 {
-        MAX_QUERY_LIMIT
-    } else {
-        limit.min(MAX_QUERY_LIMIT)
-    };
-
-    let end = (offset + effective_limit).min(count);
-
-    for i in offset..end {
-        let key = SlashStorageKey::SlashRecord(identity.clone(), i);
-        if let Some(record) = e.storage().persistent().get(&key) {
-            page.push_back(record);
-            e.storage().persistent().extend_ttl(
-                &key,
-                crate::PERSISTENT_TTL_MAX / 2,
-                crate::PERSISTENT_TTL_MAX,
-            );
-            history.push_back(record);
-        }
-    }
-
-    page
-}
-
-// ============================================================================
-// Test/tooling helpers — excluded from release WASM
-// ============================================================================
-#[allow(dead_code)]
+/// # Panics
+/// Panics with `"slash record not found"` when `index >= slash_count`.
 #[must_use]
 pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
     let key = SlashStorageKey::SlashRecord(identity.clone(), index);
@@ -157,6 +110,63 @@ pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord 
     record
 }
 
+/// Return a bounded page of slash records for `identity`, starting at `offset`.
+///
+/// This is the canonical paginated read function used by the contract entrypoint
+/// `get_slash_history_page`. `limit` is clamped to
+/// [`crate::parameters::MAX_QUERY_LIMIT`] so a caller can never request an
+/// unbounded page. Pass `limit = 0` to use the default maximum.
+///
+/// Records are returned in ascending insertion order (index 0 first).
+///
+/// # Arguments
+/// * `e` - Soroban environment
+/// * `identity` - Identity whose history to read
+/// * `offset` - Starting index (0-based)
+/// * `limit` - Maximum records to return (clamped to MAX_QUERY_LIMIT)
+///
+/// # Returns
+/// A `Vec<SlashRecord>` of at most `effective_limit` records.
+#[must_use]
+pub fn get_slash_history_page(
+    e: &Env,
+    identity: &Address,
+    offset: u32,
+    limit: u32,
+) -> Vec<SlashRecord> {
+    let max_limit = crate::parameters::MAX_QUERY_LIMIT;
+    let effective_limit = if limit == 0 || limit > max_limit {
+        max_limit
+    } else {
+        limit
+    };
+
+    let count = get_slash_count(e, identity);
+    let mut page = Vec::new(e);
+
+    if offset >= count {
+        return page;
+    }
+
+    let end = count.min(offset.saturating_add(effective_limit));
+    for i in offset..end {
+        let key = SlashStorageKey::SlashRecord(identity.clone(), i);
+        if let Some(record) = e.storage().persistent().get::<_, SlashRecord>(&key) {
+            e.storage().persistent().extend_ttl(
+                &key,
+                crate::PERSISTENT_TTL_MAX / 2,
+                crate::PERSISTENT_TTL_MAX,
+            );
+            page.push_back(record);
+        }
+    }
+    page
+}
+
+// ============================================================================
+// Test/tooling helpers — excluded from release WASM
+// ============================================================================
+
 /// Full-history read helpers. Only needed by tests and off-chain tooling;
 /// excluded from release WASM via `#[cfg(any(test, feature = "testutils"))]`.
 #[cfg(any(test, feature = "testutils"))]
@@ -165,7 +175,7 @@ pub mod testutils {
 
     /// Return the complete slash history for `identity` as a single vec.
     ///
-    /// For large histories prefer iterating with [`super::get_slash_history_page`].
+    /// For large histories prefer the paginated [`super::get_slash_history_page`].
     #[must_use]
     pub fn get_slash_history(e: &Env, identity: &Address) -> Vec<SlashRecord> {
         let count = super::get_slash_count(e, identity);
@@ -204,55 +214,9 @@ pub mod testutils {
     }
 }
 
-/// Return a bounded page of slash records for `identity`.
+/// Re-export the full-history helper at module level for test convenience.
 ///
-/// `limit` is silently clamped to [`MAX_QUERY_LIMIT`] (200). Pass `0` to use
-/// the cap directly. Returns an empty vec when `offset >= get_slash_count(e, identity)`.
-///
-/// # Arguments
-/// * `e`        - Soroban environment
-/// * `identity` - Address whose slash history to page through
-/// * `offset`   - Zero-based start index within the slash-record sequence
-/// * `limit`    - Maximum records to return; clamped to `MAX_QUERY_LIMIT`
-///
-/// # Example — page through all records
-/// ```text
-/// let mut offset = 0u32;
-/// loop {
-///     let page = get_slash_history_page(e, &identity, offset, 50);
-///     if page.is_empty() { break; }
-///     offset += page.len();
-/// }
-/// ```
-#[allow(dead_code)]
-#[must_use]
-pub fn get_slash_history_page(
-    e: &Env,
-    identity: &Address,
-    offset: u32,
-    limit: u32,
-) -> Vec<SlashRecord> {
-    let count = get_slash_count(e, identity);
-    let mut page = Vec::new(e);
-
-    if offset >= count {
-        return page;
-    }
-
-    let effective_limit = if limit == 0 {
-        MAX_QUERY_LIMIT
-    } else {
-        limit.min(MAX_QUERY_LIMIT)
-    };
-
-    let end = (offset + effective_limit).min(count);
-
-    for i in offset..end {
-        let key = SlashStorageKey::SlashRecord(identity.clone(), i);
-        if let Some(record) = e.storage().persistent().get(&key) {
-            page.push_back(record);
-        }
-    }
-
-    page
-}
+/// This alias allows test code to call `slash_history::get_slash_history(&e, &identity)`
+/// without qualifying through the `testutils` submodule.
+#[cfg(any(test, feature = "testutils"))]
+pub use testutils::get_slash_history;

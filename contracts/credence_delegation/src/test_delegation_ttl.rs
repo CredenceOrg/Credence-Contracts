@@ -10,9 +10,11 @@
 //! 7. TTL is capped at MAX_TTL for very long-lived delegations.
 
 use super::*;
-use soroban_sdk::testutils::storage::Persistent as PersistentTestutils;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::Env;
+use soroban_sdk::{
+    testutils::storage::Persistent as PersistentTestutils,
+    testutils::{Address as _, Ledger as _},
+    Env, String,
+};
 
 use crate::nonce::{LEDGER_BUMP_BUFFER, MAX_TTL, MIN_NONCE_TTL};
 
@@ -189,6 +191,7 @@ fn test_nonce_ttl_set_on_consume() {
         nonce: 0,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
     client.execute_delegated_delegate(
         &owner,
@@ -231,6 +234,7 @@ fn test_nonce_ttl_covers_delegation_lifetime() {
         nonce: 0,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
     client.execute_delegated_delegate(
         &owner,
@@ -274,6 +278,7 @@ fn test_nonce_ttl_refreshed_on_get_nonce() {
         nonce: 0,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(&e, "CredenceDelegation"),
     };
     client.execute_delegated_delegate(
         &owner,

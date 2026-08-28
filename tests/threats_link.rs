@@ -10,9 +10,10 @@
 // 3. Test annotations (/// THREAT: T-NNN) are encouraged but optional during rollout
 // 4. No malformed threat IDs
 
+use regex::Regex;
 use std::fs;
 use std::path::Path;
-use regex::Regex;
+use std::process::Command;
 
 /// Negative test for issue #713: the dynamic-string (format! / write! /
 /// writeln! / format_args!) lint must be wired up in production-mode on
@@ -68,7 +69,8 @@ fn test_no_dynamic_strings_is_enforced() {
     //
     //     #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
     //
-    let required_attr = r#"#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]"#;
+    let required_attr =
+        r#"#![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]"#;
 
     let contract_crates = [
         "credence_bond",
@@ -93,9 +95,8 @@ fn test_no_dynamic_strings_is_enforced() {
 
     for crate_name in contract_crates {
         let lib_path = format!("contracts/{crate_name}/src/lib.rs");
-        let lib = fs::read_to_string(&lib_path).unwrap_or_else(|e| {
-            panic!("issue #713 regression: failed to read {lib_path}: {e}")
-        });
+        let lib = fs::read_to_string(&lib_path)
+            .unwrap_or_else(|e| panic!("issue #713 regression: failed to read {lib_path}: {e}"));
 
         if !lib.contains(required_attr) {
             missing.push(lib_path.clone());
@@ -121,7 +122,9 @@ fn test_no_dynamic_strings_is_enforced() {
                     // closing `)]` so a multi-line allow is collapsed to one
                     // boundary char.
                     let trimmed = l.trim_start();
-                    trimmed.starts_with("#![allow(") || trimmed == ")]" || trimmed.contains("clippy::restriction")
+                    trimmed.starts_with("#![allow(")
+                        || trimmed == ")]"
+                        || trimmed.contains("clippy::restriction")
                 }
             })
             .map(|(i, _)| i + 1)
@@ -205,7 +208,8 @@ fn test_no_dynamic_strings_is_enforced() {
     let try_read = |p: &str| fs::read_to_string(p).ok();
 
     let mut offenders: Vec<String> = Vec::new();
-    let target_dirs_unique: std::collections::BTreeSet<&str> = target_dirs.iter().copied().collect();
+    let target_dirs_unique: std::collections::BTreeSet<&str> =
+        target_dirs.iter().copied().collect();
     for dir in &target_dirs_unique {
         let entries = match std::fs::read_dir(dir) {
             Ok(e) => e,
@@ -267,9 +271,9 @@ fn threats_link_validation() {
 
     // Parse threat rows from markdown table
     // Table format: | T-NNN | ... | test_path::test_name | Status |
-    let threat_pattern = Regex::new(
-        r"\|\s*(\*\*)?T-\d{3}(\*\*)?\s*\|.*\|\s*`?([^|`\n]+?)::([^|`\n]+?)`?\s*\|"
-    ).expect("Failed to compile regex");
+    let threat_pattern =
+        Regex::new(r"\|\s*(\*\*)?T-\d{3}(\*\*)?\s*\|.*\|\s*`?([^|`\n]+?)::([^|`\n]+?)`?\s*\|")
+            .expect("Failed to compile regex");
 
     let mut threat_count = 0;
     let mut passed = 0;
@@ -285,16 +289,24 @@ fn threats_link_validation() {
 
         // Extract threat ID
         let id_pattern = Regex::new(r"T-(\d{3})").unwrap();
-        let id_cap = id_pattern.captures(threat_id).expect("Invalid threat ID format");
+        let id_cap = id_pattern
+            .captures(threat_id)
+            .expect("Invalid threat ID format");
         let id = id_cap.get(1).unwrap().as_str();
 
         // Verify test file exists
         match verify_test_file(test_path, test_name, id) {
             Ok(found_threat_annotation) => {
                 if found_threat_annotation {
-                    println!("  ✓ PASS: {}: {} [threat annotation found]", test_path, test_name);
+                    println!(
+                        "  ✓ PASS: {}: {} [threat annotation found]",
+                        test_path, test_name
+                    );
                 } else {
-                    println!("  ⚠ WARN: {}: {} [consider adding /// THREAT: T-{} annotation]", test_path, test_name, id);
+                    println!(
+                        "  ⚠ WARN: {}: {} [consider adding /// THREAT: T-{} annotation]",
+                        test_path, test_name, id
+                    );
                 }
                 passed += 1;
             }
@@ -363,8 +375,8 @@ fn verify_test_file(test_path: &str, test_name: &str, threat_id: &str) -> Result
     }
 
     // Read test file
-    let content = fs::read_to_string(&full_path)
-        .map_err(|e| format!("Failed to read test file: {}", e))?;
+    let content =
+        fs::read_to_string(&full_path).map_err(|e| format!("Failed to read test file: {}", e))?;
 
     // Search for test function (flexible matching for different test styles)
     let test_patterns = vec![
@@ -383,7 +395,10 @@ fn verify_test_file(test_path: &str, test_name: &str, threat_id: &str) -> Result
     }
 
     if !test_found {
-        return Err(format!("Test function '{}' not found in {}", test_name, full_path));
+        return Err(format!(
+            "Test function '{}' not found in {}",
+            test_name, full_path
+        ));
     }
 
     // Search for threat annotation near test function
@@ -394,7 +409,10 @@ fn verify_test_file(test_path: &str, test_name: &str, threat_id: &str) -> Result
 
     // Check within 15 lines before and 5 lines after test function to find annotation
     let lines: Vec<&str> = content.lines().collect();
-    if let Some(pos) = lines.iter().position(|l| l.contains(&format!("fn {}", test_name))) {
+    if let Some(pos) = lines
+        .iter()
+        .position(|l| l.contains(&format!("fn {}", test_name)))
+    {
         let search_start = if pos > 15 { pos - 15 } else { 0 };
         let search_end = (pos + 5).min(lines.len());
         let search_context = lines[search_start..search_end].join("\n");
@@ -412,8 +430,7 @@ fn verify_test_file(test_path: &str, test_name: &str, threat_id: &str) -> Result
 fn threats_markdown_wellformed() {
     // Parse THREATS.md and check for malformed markdown table entries
     let threats_path = "THREATS.md";
-    let threats_content = fs::read_to_string(threats_path)
-        .expect("Failed to read THREATS.md");
+    let threats_content = fs::read_to_string(threats_path).expect("Failed to read THREATS.md");
 
     println!("\n=== THREATS.md Markdown Validation ===\n");
 
@@ -450,8 +467,7 @@ fn threats_markdown_wellformed() {
 fn threat_ids_sequential() {
     // Verify threat IDs are sequential (no gaps like T-001, T-002, T-004)
     let threats_path = "THREATS.md";
-    let threats_content = fs::read_to_string(threats_path)
-        .expect("Failed to read THREATS.md");
+    let threats_content = fs::read_to_string(threats_path).expect("Failed to read THREATS.md");
 
     println!("\n=== Threat ID Sequencing ===\n");
 
@@ -464,7 +480,11 @@ fn threat_ids_sequential() {
     ids.sort_unstable();
     ids.dedup();
 
-    println!("Found threat IDs: T-{:03} through T-{:03}", ids.first().unwrap_or(&0), ids.last().unwrap_or(&0));
+    println!(
+        "Found threat IDs: T-{:03} through T-{:03}",
+        ids.first().unwrap_or(&0),
+        ids.last().unwrap_or(&0)
+    );
 
     // Check for gaps
     let mut gaps = Vec::new();
@@ -490,14 +510,11 @@ fn threat_ids_sequential() {
 fn stale_threat_detection() {
     // Detect if a test name is referenced but the test no longer exists or has been renamed
     let threats_path = "THREATS.md";
-    let threats_content = fs::read_to_string(threats_path)
-        .expect("Failed to read THREATS.md");
+    let threats_content = fs::read_to_string(threats_path).expect("Failed to read THREATS.md");
 
     println!("\n=== Stale Test Detection ===\n");
 
-    let test_pattern = Regex::new(
-        r"`([^`:]+)::([^`:]+)`"
-    ).expect("Failed to compile regex");
+    let test_pattern = Regex::new(r"`([^`:]+)::([^`:]+)`").expect("Failed to compile regex");
 
     let mut stale_count = 0;
 

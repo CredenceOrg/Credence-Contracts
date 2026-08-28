@@ -37,8 +37,11 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::Env;
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    String,
+};
 use std::vec::Vec as StdVec;
 
 // ---------------------------------------------------------------------------
@@ -72,6 +75,7 @@ fn delegate_payload(
         nonce,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -649,7 +653,7 @@ fn test_expiry_boundary_delegated_monotonic_advance_valid_sequence() {
 
         let delegate = Address::generate(&e);
         let now = e.ledger().timestamp();
-        let expires_at = now.saturating_add(86400); // +1 day
+        let expires_at = now.saturating_add(credence_math::Timestamp::SECONDS_PER_DAY); // +1 day
         let payload = delegate_payload(&e, &owner, &delegate, &client.address, i);
 
         let d = client.execute_delegated_delegate(

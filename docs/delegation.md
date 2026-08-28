@@ -82,12 +82,17 @@ Delegations expire at the exact `expires_at` timestamp. A record with `expires_a
 The contract implements a pause mechanism to protect the protocol in case of emergency.
 
 - **Mechanism**: Can be a direct pause by admin (if threshold is 0) or a multi-sig proposal process (if threshold > 0).
-- **Gated Functions**: All mutating functions related to delegation are gated and will panic if the contract is paused:
+- **Gated Functions**: All mutating functions are gated and will panic if the contract is paused:
   - `delegate` / `execute_delegated_delegate`
   - `revoke_delegation` / `execute_delegated_revoke`
   - `revoke_attestation` / `execute_delegated_revoke_attest`
   - `invalidate_nonce_range`
-- **Exempt Functions**: Query functions (`is_valid_delegate`, `get_delegation`, etc.) and pause-management functions remain active even when paused.
+  - `cleanup_expired`
+  - `set_revocation_grace_period`
+  - `register_verifier`
+  - `set_pause_signer`
+  - `set_pause_threshold`
+- **Exempt Functions**: Query functions (`is_valid_delegate`, `get_delegation`, etc.) and the core pause lifecycle functions (`pause`, `unpause`, `approve_pause_proposal`, `execute_pause_proposal`) remain active even when paused.
 
 ## Nonce Replay Model & Key Recovery
 

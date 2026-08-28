@@ -30,6 +30,28 @@ pub const MIN_NONCE_TTL: u32 = 518_400;
 /// ~6 months at 5 s/ledger.
 pub const MAX_TTL: u32 = 3_110_400;
 
+/// Maximum allowed gap between the stored nonce and the expected nonce in
+/// `consume_nonce`.
+///
+/// If a caller submits a payload where `expected_nonce > current + MAX_NONCE_FUTURE_WINDOW`,
+/// the call is rejected even before the equality check.
+/// This defence-in-depth guard prevents a compromised or buggy client from
+/// jumping the nonce stream forward by large amounts, which would require
+/// costly `invalidate_nonce_range` calls to recover.
+///
+/// Value: 1 000 nonces ≈ a generous gap for relayed batches while still
+/// bounding worst-case recovery cost.
+///
+/// # Edge case: saturation near `u64::MAX`
+///
+/// The guard uses `saturating_add` so when the stored nonce is within
+/// `MAX_NONCE_FUTURE_WINDOW` of `u64::MAX` the check becomes a no-op
+/// (the window extends to `u64::MAX`). This is practically unreachable —
+/// reaching `u64::MAX` requires ≈ 58 million years of sustained nonce
+/// consumption at 10 000 nonces/second — and the `InvalidNonce` equality
+/// guard still rejects any mismatched payload.
+pub const MAX_NONCE_FUTURE_WINDOW: u64 = 1_000;
+
 use credence_errors::ContractError;
 use soroban_sdk::panic_with_error;
 use soroban_sdk::{Address, Env};
@@ -107,11 +129,31 @@ pub fn get_nonce(e: &Env, identity: &Address) -> u64 {
 
 /// Asserts `expected_nonce` matches the stored nonce for `identity`, then
 /// increments.  Panics on mismatch (replay or out-of-order submission).
+///
+/// # Defence-in-depth: Future-nonce guard
+///
+/// Before the equality check, this function rejects any `expected_nonce` that
+/// exceeds `current + MAX_NONCE_FUTURE_WINDOW`.  Without this cap a buggy or
+/// compromised client could submit a payload with a very large nonce (e.g.
+/// `u64::MAX`), which would be rejected by the equality check anyway, but
+/// the guard makes the rejection **fast and explicit** and provides an
+/// invariant that the nonce stream always stays within a predictable band.
+///
+/// # Panics
+/// * `InvalidNonce` when `expected_nonce != current` (replay or out-of-order).
+/// * `InvalidNonce` when `expected_nonce > current + MAX_NONCE_FUTURE_WINDOW`.
 pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     let key = DataKey::Nonce(identity.clone());
     let current: u64 = e.storage().persistent().get(&key).unwrap_or(0);
-    // Log for debugging
-    // e.logger().info("consume_nonce current nonces");
+
+    // Fast-reject: future nonce that exceeds the allowed window.
+    // This check is evaluated before the exact-match check so that a
+    // severely out-of-range nonce is rejected deterministically without
+    // relying solely on the equality mismatch.
+    if expected_nonce > current.saturating_add(MAX_NONCE_FUTURE_WINDOW) {
+        panic_with_error!(e, ContractError::InvalidNonce);
+    }
+
     if current != expected_nonce {
         panic_with_error!(e, ContractError::InvalidNonce);
     }

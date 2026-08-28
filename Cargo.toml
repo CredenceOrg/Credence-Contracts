@@ -1,10 +1,18 @@
+[package]
+name = "credence-contracts"
+version.workspace = true
+edition.workspace = true
+
 [workspace]
 resolver = "2"
-members = ["contracts/credence_bond", "contracts/credence_delegation", "contracts/credence_registry", "contracts/credence_treasury", "contracts/timelock", "contracts/arbitration", "contracts/credence_multisig", "contracts/admin", "contracts/credence_errors", "contracts/credence_math", "contracts/templates", "crates/credence_admin_cli", "crates/testutils"]
+members = ["contracts/credence_bond", "contracts/dispute_resolution", "contracts/credence_delegation", "contracts/credence_registry", "contracts/credence_treasury", "contracts/timelock", "contracts/arbitration", "contracts/credence_multisig", "contracts/admin", "contracts/credence_errors", "contracts/credence_math", "contracts/fixed_duration_bond", "contracts/templates", "contracts/bounty-escrow", "crates/credence_admin_cli", "crates/testutils", "crates/interfaces"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+
+[dev-dependencies]
+regex = "1.11.1"
 
 [profile.release]
 opt-level = "z"
@@ -12,3 +20,10 @@ lto = "fat"
 codegen-units = 1
 strip = "symbols"
 panic = "abort"
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
