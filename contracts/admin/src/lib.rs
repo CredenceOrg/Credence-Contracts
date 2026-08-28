@@ -23,6 +23,8 @@
 
 pub mod pausable;
 
+#[cfg(test)]
+mod test_atomic_rollback;
 /// Event schema regression tests — verifies topic/data layout for every
 /// role event without involving contract storage.
 #[cfg(test)]
@@ -773,20 +775,10 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
-        // Verify new owner is a SuperAdmin
-        let new_owner_info: AdminInfo = e
-            .storage()
-            .instance()
-            .get(&DataKey::AdminInfo(new_owner.clone()))
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
-
-        if new_owner_info.role != AdminRole::SuperAdmin {
-            panic_with_error!(&e, ContractError::NotAdmin);
-        }
-
-        if !new_owner_info.active {
-            panic_with_error!(&e, ContractError::AlreadyDeactivated);
-        }
+        // A suspended or deactivated admin must not be able to receive durable
+        // ownership. This check is repeated by `accept_ownership`, because the
+        // candidate's status can change during the timelock.
+        Self::require_effective_super_admin(&e, &new_owner);
 
         // Store pending owner and proposal timestamp for timelock
         e.storage()
@@ -851,6 +843,12 @@ impl AdminContract {
         if now < eligible_at {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
+
+        // Revalidate immediately before the first ownership write. A proposal
+        // is only an intent: its candidate may have been removed, deactivated,
+        // suspended, or demoted while the timelock elapsed. Failing here leaves
+        // the owner, pending owner, timestamp, and event stream untouched.
+        Self::require_effective_super_admin(&e, &pending_owner);
 
         // Get current owner for event emission
         let previous_owner: Address = e
@@ -1154,6 +1152,30 @@ impl AdminContract {
             Ok(())
         } else {
             Err(())
+        }
+    }
+
+    /// Require an owner candidate to be an effective SuperAdmin now.
+    ///
+    /// Ownership proposals are intentionally revalidated at acceptance, not
+    /// trusted based on the state at proposal time. This preserves the
+    /// two-step transfer API while preventing a stale proposal from granting
+    /// durable authority to an inactive, suspended, removed, or demoted admin.
+    fn require_effective_super_admin(e: &Env, candidate: &Address) {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(candidate.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+
+        if admin_info.role != AdminRole::SuperAdmin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        if !admin_info.active {
+            panic_with_error!(e, ContractError::AlreadyDeactivated);
+        }
+        if e.ledger().timestamp() < admin_info.suspended_until {
+            panic_with_error!(e, ContractError::AdminSuspended);
         }
     }
 
