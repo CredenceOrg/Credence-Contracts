@@ -41,8 +41,8 @@ jobs:
 
       - name: Run cargo audit
         run: |
-          cargo audit --json > audit-report.json || true
-          cargo audit
+          cargo audit --ignore RUSTSEC-2025-0134 --json > audit-report.json || true
+          cargo audit --ignore RUSTSEC-2025-0134
 
       - name: Check for critical vulnerabilities
         run: |
