@@ -1,0 +1,11 @@
+[advisories]
+ignore = [
+    # rustls-pemfile is unmaintained (archived August 2025).
+    # Transitive dependency via reqwest -> soroban-client.
+    # Functionality has been incorporated into rustls-pki-types.
+    "RUSTSEC-2025-0134",
+    # h2 unbounded empty DATA frames (DoS).
+    # Transitive dependency via reqwest -> soroban-client.
+    # Requires h2 >= 0.4.16 which needs reqwest 0.12.x.
+    "RUSTSEC-2026-0258",
+]

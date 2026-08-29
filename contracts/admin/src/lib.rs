@@ -57,8 +57,6 @@
 
 pub mod pausable;
 
-/// Event schema regression tests — verifies topic/data layout for every
-/// role event without involving contract storage.
 #[cfg(test)]
 mod test_events_schema;
 #[cfg(test)]
@@ -173,6 +171,12 @@ const OWNERSHIP_TRANSFER_TIMELOCK: u64 = 86_400;
 /// address can permanently strand administration, so every privileged
 /// entrypoint that accepts a target `Address` MUST reject it.
 const INVALID_ADDRESS_SENTINEL: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+
+/// Hard cap on the page size accepted by paginated admin reads.
+///
+/// A caller requesting a larger `limit` is silently clamped to this value so a
+/// single read can never exceed the gas/read budget regardless of the argument.
+const MAX_PAGE_LIMIT: u32 = 200;
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 
@@ -1090,13 +1094,21 @@ impl AdminContract {
     /// * `at_ledger` - Unix timestamp (seconds) of the signed action
     pub fn check_role_at_ledger(e: Env, role: AdminRole, actor: Address, at_ledger: u64) {
         bump_instance_ttl(&e);
-        Self::require_role_at_ledger(&e, role, &actor, at_ledger);
+        Self::require_role_at_ledger(e, role, actor, at_ledger);
     }
 
     /// Get all admin addresses.
     ///
+    /// # Deprecated
+    /// This function returns an unbounded list that will eventually exceed
+    /// Soroban's per-transaction resource limits as the admin set grows.
+    ///
+    /// Use [`get_all_admins_page`] instead for bounded, paginated access.
+    /// For event-based discovery, listen to `admin_added` / `admin_removed` events.
+    ///
     /// # Returns
     /// A `Vec` of all admin addresses
+    #[deprecated(note = "Use get_all_admins_page for bounded pagination")]
     pub fn get_all_admins(e: Env) -> Vec<Address> {
         bump_instance_ttl(&e);
         e.storage()
@@ -1107,11 +1119,18 @@ impl AdminContract {
 
     /// Get all admins with a specific role.
     ///
+    /// # Deprecated
+    /// This function returns an unbounded list that will eventually exceed
+    /// Soroban's per-transaction resource limits as the admin set grows.
+    ///
+    /// Use [`get_admins_by_role_page`] instead for bounded, paginated access.
+    ///
     /// # Arguments
     /// * `role` - Role to filter by
     ///
     /// # Returns
     /// A `Vec` of admin addresses with the specified role
+    #[deprecated(note = "Use get_admins_by_role_page for bounded pagination")]
     pub fn get_admins_by_role(e: Env, role: AdminRole) -> Vec<Address> {
         bump_instance_ttl(&e);
         e.storage()
@@ -1120,12 +1139,120 @@ impl AdminContract {
             .unwrap_or(Vec::new(&e))
     }
 
+    /// Get a bounded, cursor-paginated page of all admin addresses.
+    ///
+    /// # Cursor contract
+    /// * `cursor` — the 0-based index to start from. Pass `0` for the first page.
+    /// * `limit` — maximum number of admins to return. Hard-capped at
+    ///   [`MAX_PAGE_LIMIT`]; a larger value is clamped, never honoured.
+    /// * Returns `(page, next_cursor)` where `next_cursor` is `Some(next_index)`
+    ///   when more results remain, or `None` when the page exhausted the set.
+    ///
+    /// Feeding `next_cursor` back as `cursor` walks the full set in bounded,
+    /// resumable pages; concatenating every page reproduces [`get_all_admins`].
+    ///
+    /// # Arguments
+    /// * `e` - Soroban environment
+    /// * `cursor` - 0-based start index
+    /// * `limit` - Maximum items to return (clamped to [`MAX_PAGE_LIMIT`])
+    ///
+    /// # Returns
+    /// A tuple of `(Vec<Address>, Option<u32>)` — the page and optional next cursor.
+    pub fn get_all_admins_page(e: Env, cursor: u32, limit: u32) -> (Vec<Address>, Option<u32>) {
+        bump_instance_ttl(&e);
+        let admin_list: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminList)
+            .unwrap_or(Vec::new(&e));
+
+        let total = admin_list.len();
+
+        if cursor >= total {
+            return (Vec::new(&e), None);
+        }
+
+        let effective_limit = if limit == 0 {
+            MAX_PAGE_LIMIT
+        } else {
+            limit.min(MAX_PAGE_LIMIT)
+        };
+
+        let end = (cursor + effective_limit).min(total);
+        let mut page = Vec::new(&e);
+        for i in cursor..end {
+            if let Some(addr) = admin_list.get(i) {
+                page.push_back(addr);
+            }
+        }
+
+        let next_cursor = if end >= total { None } else { Some(end) };
+
+        (page, next_cursor)
+    }
+
+    /// Get a bounded, cursor-paginated page of admin addresses with a specific role.
+    ///
+    /// # Cursor contract
+    /// * `cursor` — the 0-based index to start from. Pass `0` for the first page.
+    /// * `limit` — maximum number of admins to return. Hard-capped at
+    ///   [`MAX_PAGE_LIMIT`]; a larger value is clamped, never honoured.
+    /// * Returns `(page, next_cursor)` where `next_cursor` is `Some(next_index)`
+    ///   when more results remain, or `None` when the page exhausted the set.
+    ///
+    /// # Arguments
+    /// * `e` - Soroban environment
+    /// * `role` - Role to filter by
+    /// * `cursor` - 0-based start index
+    /// * `limit` - Maximum items to return (clamped to [`MAX_PAGE_LIMIT`])
+    ///
+    /// # Returns
+    /// A tuple of `(Vec<Address>, Option<u32>)` — the page and optional next cursor.
+    pub fn get_admins_by_role_page(
+        e: Env,
+        role: AdminRole,
+        cursor: u32,
+        limit: u32,
+    ) -> (Vec<Address>, Option<u32>) {
+        bump_instance_ttl(&e);
+        let role_admins: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::RoleAdmins(role))
+            .unwrap_or(Vec::new(&e));
+
+        let total = role_admins.len();
+
+        if cursor >= total {
+            return (Vec::new(&e), None);
+        }
+
+        let effective_limit = if limit == 0 {
+            MAX_PAGE_LIMIT
+        } else {
+            limit.min(MAX_PAGE_LIMIT)
+        };
+
+        let end = (cursor + effective_limit).min(total);
+        let mut page = Vec::new(&e);
+        for i in cursor..end {
+            if let Some(addr) = role_admins.get(i) {
+                page.push_back(addr);
+            }
+        }
+
+        let next_cursor = if end >= total { None } else { Some(end) };
+
+        (page, next_cursor)
+    }
+
     /// Get the total number of admins.
     ///
     /// # Returns
     /// The total count of admins
     pub fn get_admin_count(e: Env) -> u32 {
         bump_instance_ttl(&e);
+        #[allow(deprecated)]
         Self::get_all_admins(e).len()
     }
 
@@ -1135,6 +1262,7 @@ impl AdminContract {
     /// The count of active admins
     pub fn get_active_admin_count(e: Env) -> u32 {
         bump_instance_ttl(&e);
+        #[allow(deprecated)]
         let all_admins = Self::get_all_admins(e.clone());
         let mut active_count = 0;
         for admin in all_admins.iter() {
@@ -1286,23 +1414,23 @@ impl AdminContract {
     /// # Panics
     /// Panics via [`panic_with_error!`] — compatible with Soroban's error
     /// propagation model.
-    fn require_role_at_ledger(e: &Env, role: AdminRole, actor: &Address, at_ledger: u64) {
+    pub fn require_role_at_ledger(e: Env, role: AdminRole, actor: Address, at_ledger: u64) {
         let admin_info: AdminInfo = e
             .storage()
             .instance()
-            .get(&DataKey::AdminInfo(actor.clone()))
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+            .get(&DataKey::AdminInfo(actor))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
         // The actor must have the required role level.
         if admin_info.role < role {
-            panic_with_error!(e, ContractError::NotAdmin);
+            panic_with_error!(&e, ContractError::NotAdmin);
         }
 
         // The role must have been assigned at or before the ledger under review.
         // If `assigned_at > at_ledger` the actor was not yet an admin when the
         // action was signed, so the authorisation is invalid.
         if admin_info.assigned_at > at_ledger {
-            panic_with_error!(e, ContractError::RoleNotHeldAtLedger);
+            panic_with_error!(&e, ContractError::RoleNotHeldAtLedger);
         }
     }
 }

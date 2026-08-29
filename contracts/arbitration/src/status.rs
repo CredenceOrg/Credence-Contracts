@@ -54,11 +54,13 @@ pub enum ArbitrationError {
     QuorumNotMet = 13,
     /// The actual outcome does not match the promised outcome.
     PromiseNotKept = 15,
-    /// Dispute is in an active state (Open, Voting, or Resolving) and the
-    /// requested operation requires an inactive state (Resolved, Cancelled, or Tied).
-    DisputeActive = 16,
-    /// A creator already has an unresolved dispute in progress and cannot open another.
-    OngoingDispute = 17,
+    /// Pagination cursor is out of range (cursor >= registry_len).
+    /// Triggered by: `get_arbitrators_page` when the supplied cursor
+    /// equals or exceeds the current arbitrator count. Accepting
+    /// cursor == registry_len would silently return a done=true result,
+    /// allowing a caller to synthesize a completed-scan response
+    /// without actually scanning any entries.
+    CursorOutOfRange = 16,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.

@@ -375,6 +375,7 @@ mod comprehensive_tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_update_admin_role_updates_role_lists() {
         let env = Env::default();
         let (contract_address, super_admin, _admin, operator) = setup_multiple_admins(&env);
@@ -521,6 +522,7 @@ mod comprehensive_tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_role_hierarchy() {
         let env = Env::default();
         let (contract_address, super_admin, _admin, _operator) = setup_multiple_admins(&env);
@@ -557,6 +559,7 @@ mod comprehensive_tests {
     }
 
     #[test]
+    #[allow(deprecated)]
     fn test_get_all_admins() {
         let env = Env::default();
         let (contract_address, _super_admin, _admin, _operator) = setup_multiple_admins(&env);
@@ -602,5 +605,345 @@ mod comprehensive_tests {
         env.as_contract(&contract_address, || {
             AdminContract::get_admin_role(env.clone(), non_admin.clone())
         });
+    }
+
+    // ── Pagination tests (issue #1298) ───────────────────────────────────────────
+
+    #[test]
+    fn test_get_all_admins_page_empty_set() {
+        let env = Env::default();
+        let (contract_address, _super_admin) = setup_contract(&env);
+        // Remove the sole admin to get an empty list.
+        // Instead, use a fresh contract with no admins added beyond initialization.
+        // Actually, initialize creates 1 admin. Let's test with a cursor past the end.
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 100, 10)
+        });
+        assert_eq!(page.len(), 0);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_single_admin() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 10)
+        });
+        assert_eq!(page.len(), 1);
+        assert_eq!(page.get(0).unwrap(), super_admin);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_boundary_exact_fit() {
+        let env = Env::default();
+        let (contract_address, super_admin, admin, operator) = setup_multiple_admins(&env);
+
+        // limit exactly matches count
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 3)
+        });
+        assert_eq!(page.len(), 3);
+        assert_eq!(page.get(0).unwrap(), super_admin);
+        assert_eq!(page.get(1).unwrap(), admin);
+        assert_eq!(page.get(2).unwrap(), operator);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_multi_page_walk() {
+        let env = Env::default();
+        let (contract_address, super_admin, admin, operator) = setup_multiple_admins(&env);
+
+        // Page 1: limit 2
+        let (page_1, cursor_1) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 2)
+        });
+        assert_eq!(page_1.len(), 2);
+        assert_eq!(page_1.get(0).unwrap(), super_admin);
+        assert_eq!(page_1.get(1).unwrap(), admin);
+        assert_eq!(cursor_1, Some(2));
+
+        // Page 2: cursor 2, limit 2 (only 1 remaining)
+        let (page_2, cursor_2) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 2, 2)
+        });
+        assert_eq!(page_2.len(), 1);
+        assert_eq!(page_2.get(0).unwrap(), operator);
+        assert_eq!(cursor_2, None);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_cursor_past_end() {
+        let env = Env::default();
+        let (contract_address, _super_admin, _admin, _operator) = setup_multiple_admins(&env);
+
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 3, 10)
+        });
+        assert_eq!(page.len(), 0);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_limit_clamped_to_cap() {
+        let env = Env::default();
+        let (contract_address, _super_admin, _admin, _operator) = setup_multiple_admins(&env);
+
+        // limit = 250 exceeds MAX_PAGE_LIMIT (200), should clamp
+        let (page, _next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 250)
+        });
+        assert_eq!(page.len(), 3);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_zero_limit_uses_default() {
+        let env = Env::default();
+        let (contract_address, _super_admin, _admin, _operator) = setup_multiple_admins(&env);
+
+        // limit = 0 should use MAX_PAGE_LIMIT (200) as default
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 0)
+        });
+        assert_eq!(page.len(), 3);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_all_admins_page_deterministic_order() {
+        let env = Env::default();
+        let (contract_address, super_admin, admin, operator) = setup_multiple_admins(&env);
+
+        // Two calls with same cursor should return same order
+        let (page_a, _) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 3)
+        });
+        let (page_b, _) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 3)
+        });
+        assert_eq!(page_a.len(), page_b.len());
+        for i in 0..page_a.len() {
+            assert_eq!(page_a.get(i).unwrap(), page_b.get(i).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_get_admins_by_role_page_empty_role() {
+        let env = Env::default();
+        let (contract_address, _super_admin) = setup_contract(&env);
+
+        // Admin role list is empty in a fresh setup
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_admins_by_role_page(env.clone(), AdminRole::Admin, 0, 10)
+        });
+        assert_eq!(page.len(), 0);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_admins_by_role_page_single_role_admin() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_admins_by_role_page(env.clone(), AdminRole::SuperAdmin, 0, 10)
+        });
+        assert_eq!(page.len(), 1);
+        assert_eq!(page.get(0).unwrap(), super_admin);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_admins_by_role_page_multi_page() {
+        let env = Env::default();
+        let (contract_address, super_admin, admin, operator) = setup_multiple_admins(&env);
+
+        // Page through all admins
+        let (page_1, cursor_1) = env.as_contract(&contract_address, || {
+            AdminContract::get_admins_by_role_page(env.clone(), AdminRole::SuperAdmin, 0, 1)
+        });
+        assert_eq!(page_1.len(), 1);
+        assert_eq!(page_1.get(0).unwrap(), super_admin);
+        assert_eq!(cursor_1, None); // Only 1 super admin, so no next cursor
+
+        // Admin role has 1 member (admin + promoted operator)
+        let (page_admin, cursor_admin) = env.as_contract(&contract_address, || {
+            AdminContract::get_admins_by_role_page(env.clone(), AdminRole::Admin, 0, 1)
+        });
+        assert_eq!(page_admin.len(), 1);
+        assert_eq!(page_admin.get(0).unwrap(), admin);
+        assert_eq!(cursor_admin, None);
+    }
+
+    #[test]
+    fn test_get_admins_by_role_page_cursor_past_end() {
+        let env = Env::default();
+        let (contract_address, _super_admin) = setup_contract(&env);
+
+        let (page, next_cursor) = env.as_contract(&contract_address, || {
+            AdminContract::get_admins_by_role_page(env.clone(), AdminRole::SuperAdmin, 5, 10)
+        });
+        assert_eq!(page.len(), 0);
+        assert_eq!(next_cursor, None);
+    }
+
+    #[test]
+    fn test_get_admins_by_role_page_limit_clamped() {
+        let env = Env::default();
+        let (contract_address, _super_admin) = setup_contract(&env);
+
+        let (page, _) = env.as_contract(&contract_address, || {
+            AdminContract::get_admins_by_role_page(env.clone(), AdminRole::SuperAdmin, 0, 500)
+        });
+        assert_eq!(page.len(), 1);
+    }
+
+    #[test]
+    fn test_admin_pagination_matches_deprecated_full_list() {
+        let env = Env::default();
+        let (contract_address, super_admin, admin, operator) = setup_multiple_admins(&env);
+
+        // Collect all via pagination
+        let mut all_paginated = soroban_sdk::Vec::new(&env);
+        let mut cursor = 0;
+        loop {
+            let (page, next) = env.as_contract(&contract_address, || {
+                AdminContract::get_all_admins_page(env.clone(), cursor, 2)
+            });
+            for addr in page.iter() {
+                all_paginated.push_back(addr);
+            }
+            match next {
+                Some(n) => cursor = n,
+                None => break,
+            }
+        }
+
+        assert_eq!(all_paginated.len(), 3);
+        assert!(all_paginated.contains(&super_admin));
+        assert!(all_paginated.contains(&admin));
+        assert!(all_paginated.contains(&operator));
+    }
+
+    #[test]
+    fn test_admin_role_pagination_matches_deprecated_full_list() {
+        let env = Env::default();
+        let (contract_address, super_admin, admin, operator) = setup_multiple_admins(&env);
+
+        // Collect super admins via pagination
+        let mut all_super_admins = soroban_sdk::Vec::new(&env);
+        let mut cursor = 0;
+        loop {
+            let (page, next) = env.as_contract(&contract_address, || {
+                AdminContract::get_admins_by_role_page(
+                    env.clone(),
+                    AdminRole::SuperAdmin,
+                    cursor,
+                    1,
+                )
+            });
+            for addr in page.iter() {
+                all_super_admins.push_back(addr);
+            }
+            match next {
+                Some(n) => cursor = n,
+                None => break,
+            }
+        }
+        assert_eq!(all_super_admins.len(), 1);
+        assert!(all_super_admins.contains(&super_admin));
+
+        // Collect operators via pagination
+        let mut all_operators = soroban_sdk::Vec::new(&env);
+        cursor = 0;
+        loop {
+            let (page, next) = env.as_contract(&contract_address, || {
+                AdminContract::get_admins_by_role_page(env.clone(), AdminRole::Operator, cursor, 1)
+            });
+            for addr in page.iter() {
+                all_operators.push_back(addr);
+            }
+            match next {
+                Some(n) => cursor = n,
+                None => break,
+            }
+        }
+        assert_eq!(all_operators.len(), 1);
+        assert!(all_operators.contains(&operator));
+    }
+
+    #[test]
+    fn test_get_admin_count_matches_pagination_total() {
+        let env = Env::default();
+        let (contract_address, _super_admin, _admin, _operator) = setup_multiple_admins(&env);
+
+        let count = env.as_contract(&contract_address, || {
+            AdminContract::get_admin_count(env.clone())
+        });
+
+        let mut total = 0u32;
+        let mut cursor = 0;
+        loop {
+            let (page, next) = env.as_contract(&contract_address, || {
+                AdminContract::get_all_admins_page(env.clone(), cursor, 1)
+            });
+            total += page.len();
+            match next {
+                Some(n) => cursor = n,
+                None => break,
+            }
+        }
+        assert_eq!(count, total);
+    }
+
+    #[test]
+    fn test_concurrent_insert_during_pagination_walk() {
+        let env = Env::default();
+        let (contract_address, super_admin) = setup_contract(&env);
+
+        // Start with 1 admin. Walk page-by-page with limit=1.
+        let (page1, cursor1) = env.as_contract(&contract_address, || {
+            AdminContract::get_all_admins_page(env.clone(), 0, 1)
+        });
+        assert_eq!(page1.len(), 1);
+        assert_eq!(page1.get(0).unwrap(), super_admin);
+        // cursor1 should be None since there's only 1 admin
+        assert_eq!(cursor1, None);
+
+        // Now add a new admin mid-walk
+        let new_admin = Address::generate(&env);
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                new_admin.clone(),
+                AdminRole::Operator,
+            );
+        });
+
+        // Continue the walk from cursor 1 (if it had returned Some(1))
+        // Since cursor was None (exhausted), a new walk from 0 should now
+        // include both admins and produce a deterministic result.
+        let mut all = soroban_sdk::Vec::new(&env);
+        let mut cursor = 0;
+        loop {
+            let (page, next) = env.as_contract(&contract_address, || {
+                AdminContract::get_all_admins_page(env.clone(), cursor, 1)
+            });
+            for addr in page.iter() {
+                all.push_back(addr);
+            }
+            match next {
+                Some(n) => cursor = n,
+                None => break,
+            }
+        }
+        assert_eq!(all.len(), 2);
+        assert!(all.contains(&super_admin));
+        assert!(all.contains(&new_admin));
     }
 }
