@@ -211,9 +211,9 @@ pub const MAX_STRINGIFIED_BYTES_LEN: u32 = 512;
 ///
 /// # Example
 /// ```ignore
-/// verify_stringified_bytes(&e, &Bytes::from_slice(&e, b"QmXoypiz..."));
+/// verify_stringified_bytes_bytes(&e, &Bytes::from_slice(&e, b"QmXoypiz..."));
 /// ```
-pub fn verify_stringified_bytes(_e: &Env, data: &Bytes) {
+pub fn verify_stringified_bytes_bytes(_e: &Env, data: &Bytes) {
     if data.len() > MAX_STRINGIFIED_BYTES_LEN {
         panic!("stringified bytes too long");
     }

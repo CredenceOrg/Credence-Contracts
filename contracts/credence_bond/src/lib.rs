@@ -16,6 +16,7 @@ mod idempotency;
 mod invariants;
 pub mod iter_chunks;
 mod leverage;
+mod lifecycle;
 mod math;
 mod migration;
 mod nonce;
@@ -1569,6 +1570,9 @@ impl CredenceBond {
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
+
         let now = e.ledger().timestamp();
         let end = bond
             .bond_start
@@ -1677,6 +1681,9 @@ impl CredenceBond {
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
+
         let available = bond
             .bonded_amount
             .checked_sub(bond.slashed_amount)
@@ -1782,6 +1789,8 @@ impl CredenceBond {
         identity.require_auth();
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
         if !bond.is_rolling {
             panic_with_error!(e, ContractError::NotRollingBond);
         }
@@ -1813,6 +1822,8 @@ impl CredenceBond {
         identity.require_auth();
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
         if !bond.is_rolling {
             return bond;
         }
@@ -1896,6 +1907,9 @@ impl CredenceBond {
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
 
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
+
         // ── Acquire reentrancy lock before external token calls ──
         Self::acquire_lock(&e);
 
@@ -1942,6 +1956,9 @@ impl CredenceBond {
         identity.require_auth();
         let key = DataKey::Bond(identity.clone());
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
+
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
 
         bond.bond_duration = bond
             .bond_duration
@@ -2097,6 +2114,8 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         identity.require_auth();
         let bond: IdentityBond = guards::load_bond(&e, &identity);
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
         if bond.identity != identity {
             panic_with_error!(e, ContractError::BondNotFound);
         }
@@ -2138,6 +2157,8 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         identity.require_auth();
         let mut bond: IdentityBond = guards::load_bond(&e, &identity);
+        // #1273: lifecycle invariant — a closed bond must not be mutated.
+        lifecycle::require_bond_active(&e, &bond);
         if bond.identity != identity {
             panic_with_error!(e, ContractError::BondNotFound);
         }
@@ -2179,6 +2200,10 @@ impl CredenceBond {
         if request.requester != identity {
             panic_with_error!(e, ContractError::NotBondOwner);
         }
+        // #1273: lifecycle invariant — a closed bond must not have its
+        // cooldown request cancelled.
+        let bond: IdentityBond = guards::load_bond(&e, &identity);
+        lifecycle::require_bond_active(&e, &bond);
         cooldown::clear_cooldown_request(&e, &identity);
         cooldown::emit_cooldown_cancelled(&e, &identity);
     }

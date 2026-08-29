@@ -121,3 +121,35 @@ requested and elapsed.
 - State changes must continue to call `invariants::assert_self_consistent(&e)`.
 - Entrypoints must preserve `#![no_std]` discipline and use `soroban_sdk`
   primitives.
+
+## Enforced lifecycle invariant (#1273)
+
+Every mutating lifecycle entrypoint must reject a bond whose `active == false`
+(closed via `withdraw_bond` or `liquidate`). This is enforced centrally by
+`lifecycle::require_bond_active` in `src/lifecycle.rs`, which runs immediately
+after the bond is loaded and **before** any storage write, token transfer,
+external callback, or cooldown-request mutation.
+
+### Legal transition matrix
+
+| From | Allowed operations |
+| --- | --- |
+| `None` (no bond) | `create_bond` |
+| `Active` (`active == true`) | `top_up`, `extend_duration`, `withdraw`, `withdraw_early`, `request_withdrawal`, `renew_if_rolling`, `request_cooldown_withdrawal`, `execute_cooldown_withdrawal`, `cancel_cooldown`, `slash_bond`, `withdraw_bond`, `liquidate` |
+| `Withdrawn` (`active == false`) | terminal — no mutating operation is legal |
+| `Liquidated` (`active == false` + `DataKey::Liquidated`) | terminal — no mutating operation is legal |
+
+The guard was added to entrypoints that previously mutated a closed bond:
+`withdraw`, `withdraw_early`, `request_withdrawal`, `renew_if_rolling`,
+`top_up`, `extend_duration`, `request_cooldown_withdrawal`,
+`execute_cooldown_withdrawal`, and `cancel_cooldown`. (`withdraw_bond`,
+`slash_bond`, and `liquidate` already checked `active`.)
+
+### Failure-path guarantee
+
+Because the guard runs before any state mutation, a rejected transition (stale,
+repeated, or out-of-order) leaves no partial state: the bond's `active` flag,
+`bonded_amount`, `slashed_amount`, cooldown requests, and event stream are all
+unchanged when the operation panics.
+
+Regression coverage lives in `src/test_lifecycle_invariants.rs`.

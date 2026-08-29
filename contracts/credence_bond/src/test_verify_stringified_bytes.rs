@@ -1,4 +1,4 @@
-//! Tests for `verify_stringified_bytes`.
+//! Tests for `verify_stringified_bytes_bytes`.
 //!
 //! Covers four categories:
 //! * **Valid** — well-formed printable-ASCII byte strings that should pass.
@@ -12,7 +12,7 @@ extern crate std;
 
 use soroban_sdk::{Bytes, Env};
 
-use crate::validation::{verify_stringified_bytes, MAX_STRINGIFIED_BYTES_LEN};
+use crate::validation::{verify_stringified_bytes_bytes, MAX_STRINGIFIED_BYTES_LEN};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -29,7 +29,7 @@ fn repeat_byte(e: &Env, byte: u8, count: usize) -> Bytes {
 fn valid_single_printable_char() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"x");
-    verify_stringified_bytes(&e, &data); // must not panic
+    verify_stringified_bytes_bytes(&e, &data); // must not panic
 }
 
 /// A 64-character lowercase hex string — the canonical shape of a SHA-256 digest.
@@ -40,7 +40,7 @@ fn valid_sha256_hex_digest() {
         &e,
         b"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     );
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A 128-character lowercase hex string (SHA-512 digest).
@@ -50,7 +50,7 @@ fn valid_sha512_hex_digest() {
     let digest = b"cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce\
                    47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e";
     let data = Bytes::from_slice(&e, digest);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// An IPFS CIDv0 (base58 / printable ASCII). Verifies that the full set of
@@ -59,7 +59,7 @@ fn valid_sha512_hex_digest() {
 fn valid_ipfs_cid() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Exactly `MAX_STRINGIFIED_BYTES_LEN` printable bytes must be accepted (boundary).
@@ -67,7 +67,7 @@ fn valid_ipfs_cid() {
 fn valid_exactly_max_length() {
     let e = Env::default();
     let data = repeat_byte(&e, b'a', MAX_STRINGIFIED_BYTES_LEN as usize);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Printable ASCII space character (`0x20`) is the lower boundary of the allowed range.
@@ -75,7 +75,7 @@ fn valid_exactly_max_length() {
 fn valid_space_character_boundary() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b" ");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Tilde (`~`, `0x7E`) is the upper boundary of the printable ASCII range.
@@ -83,7 +83,7 @@ fn valid_space_character_boundary() {
 fn valid_tilde_character_boundary() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"~");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 // ─── Malformed cases ──────────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ fn valid_tilde_character_boundary() {
 fn malformed_high_byte_0x80() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, &[0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x80]); // "hello" + 0x80
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A lone byte `0xFF` (all-bits-set) — invalid in any ASCII / UTF-8 context.
@@ -103,7 +103,7 @@ fn malformed_high_byte_0x80() {
 fn malformed_byte_0xff() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, &[0xff]);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A DEL character (`0x7F`) sits just above the printable range and must be rejected.
@@ -112,7 +112,7 @@ fn malformed_byte_0xff() {
 fn malformed_del_character_0x7f() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"valid_prefix\x7f");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A non-printable control character (`\r`, `0x0D`) embedded in otherwise-valid text.
@@ -121,7 +121,7 @@ fn malformed_del_character_0x7f() {
 fn malformed_carriage_return_control_byte() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"line1\rline2");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A newline character (`\n`, `0x0A`) — below the printable ASCII floor of `0x20`.
@@ -130,7 +130,7 @@ fn malformed_carriage_return_control_byte() {
 fn malformed_newline_control_byte() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"data\ninjection");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Multi-byte UTF-8 sequence (`é` encodes as `0xC3 0xA9`). These bytes sit in
@@ -141,7 +141,7 @@ fn malformed_multibyte_utf8_sequence() {
     let e = Env::default();
     // "café" in UTF-8: b"caf\xc3\xa9"
     let data = Bytes::from_slice(&e, &[0x63, 0x61, 0x66, 0xc3, 0xa9]);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 // ─── Oversized cases ──────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ fn malformed_multibyte_utf8_sequence() {
 fn oversized_one_byte_above_limit() {
     let e = Env::default();
     let data = repeat_byte(&e, b'a', MAX_STRINGIFIED_BYTES_LEN as usize + 1);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A much-larger payload (double the limit) is also rejected.
@@ -161,7 +161,7 @@ fn oversized_one_byte_above_limit() {
 fn oversized_double_the_limit() {
     let e = Env::default();
     let data = repeat_byte(&e, b'x', MAX_STRINGIFIED_BYTES_LEN as usize * 2);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Size check is evaluated before content checks: an oversized payload of
@@ -173,7 +173,7 @@ fn oversized_takes_priority_over_malformed() {
     let e = Env::default();
     // All bytes are 0xFF (malformed), but the length check should fire first.
     let data = repeat_byte(&e, 0xff, MAX_STRINGIFIED_BYTES_LEN as usize + 1);
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 // ─── Injected-null cases ──────────────────────────────────────────────────────
@@ -184,7 +184,7 @@ fn oversized_takes_priority_over_malformed() {
 fn injected_null_single_nul_byte() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"\x00");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// A NUL byte embedded in the middle of otherwise-valid text — the classic
@@ -194,7 +194,7 @@ fn injected_null_single_nul_byte() {
 fn injected_null_in_middle_of_valid_string() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"abc\x00def");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// NUL at the very beginning of the payload.
@@ -203,7 +203,7 @@ fn injected_null_in_middle_of_valid_string() {
 fn injected_null_at_start() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"\x00validprefix");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// NUL at the very end of the payload — simulates a C-style null-terminator
@@ -213,7 +213,7 @@ fn injected_null_at_start() {
 fn injected_null_at_end() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"validprefix\x00");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Multiple NUL bytes scattered through the payload.
@@ -222,7 +222,7 @@ fn injected_null_at_end() {
 fn injected_null_multiple_nuls() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"a\x00b\x00c");
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
 
 /// Null-byte check fires even when the payload also has a high byte later.
@@ -234,5 +234,5 @@ fn injected_null_before_high_byte() {
     let e = Env::default();
     // NUL comes before 0xFF in the payload
     let data = Bytes::from_slice(&e, &[0x61, 0x00, 0xff]); // 'a', NUL, 0xFF
-    verify_stringified_bytes(&e, &data);
+    verify_stringified_bytes_bytes(&e, &data);
 }
