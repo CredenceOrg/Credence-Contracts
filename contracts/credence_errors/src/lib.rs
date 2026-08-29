@@ -680,7 +680,7 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    MaxPauseSignersExceeded = 125,
+    MaxPauseSignersExceeded = 124,
 
     /// Cross-contract caller does not match the configured partner address.
     /// Contracts: general-purpose
@@ -860,7 +860,8 @@ impl ErrorExt for ContractError {
             | ContractError::OutsideBusinessHours
             |            ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
-            | ContractError::CrossContractCallerMismatch => ErrorCategory::Authorization,
+            | ContractError::CrossContractCallerMismatch
+            | ContractError::RoleRequired => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
