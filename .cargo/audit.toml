@@ -1,0 +1,9 @@
+# `h2` is only present through the off-chain `credence_admin_cli` RPC client:
+# soroban-client 0.5.8 -> reqwest 0.11 -> hyper 0.14 -> h2 0.3. The advisory
+# is an unbounded-empty-DATA-frame client availability issue; it cannot affect
+# contract WASM, contract state, or submitted transactions. The upstream
+# soroban-client release line still requires reqwest 0.11, while the advisory
+# fix requires h2 >= 0.4.16. Reassess this exception when soroban-client moves
+# to reqwest/h2 0.4 or later.
+[advisories]
+ignore = ["RUSTSEC-2026-0258"]

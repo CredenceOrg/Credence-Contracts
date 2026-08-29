@@ -852,20 +852,10 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
-        // Verify new owner is a SuperAdmin
-        let new_owner_info: AdminInfo = e
-            .storage()
-            .instance()
-            .get(&DataKey::AdminInfo(new_owner.clone()))
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
-
-        if new_owner_info.role != AdminRole::SuperAdmin {
-            panic_with_error!(&e, ContractError::NotAdmin);
-        }
-
-        if !new_owner_info.active {
-            panic_with_error!(&e, ContractError::AlreadyDeactivated);
-        }
+        // A suspended or deactivated admin must not be able to receive durable
+        // ownership. This check is repeated by `accept_ownership`, because the
+        // candidate's status can change during the timelock.
+        Self::require_effective_super_admin(&e, &new_owner);
 
         bump_config_epoch(&e);
 
@@ -1381,6 +1371,30 @@ impl AdminContract {
             Ok(())
         } else {
             Err(())
+        }
+    }
+
+    /// Require an owner candidate to be an effective SuperAdmin now.
+    ///
+    /// Ownership proposals are intentionally revalidated at acceptance, not
+    /// trusted based on the state at proposal time. This preserves the
+    /// two-step transfer API while preventing a stale proposal from granting
+    /// durable authority to an inactive, suspended, removed, or demoted admin.
+    fn require_effective_super_admin(e: &Env, candidate: &Address) {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(candidate.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+
+        if admin_info.role != AdminRole::SuperAdmin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        if !admin_info.active {
+            panic_with_error!(e, ContractError::AlreadyDeactivated);
+        }
+        if e.ledger().timestamp() < admin_info.suspended_until {
+            panic_with_error!(e, ContractError::AdminSuspended);
         }
     }
 
