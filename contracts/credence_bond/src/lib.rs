@@ -3395,6 +3395,15 @@ mod test_create_bond;
 
 #[cfg(test)]
 mod test_increase_bond;
+
+/// Authorization-boundary regression tests for the bond lifecycle (creation,
+/// increase, cooldown, exit, liquidation). Uses selective `mock_auths` so the
+/// host-level `require_auth` guards are genuinely exercised, proving that
+/// allowed, denied, forged-identity, and cross-tenant calls behave correctly
+/// and leave no partial/unauthorized state (issue #1272).
+#[cfg(test)]
+mod test_lifecycle_auth;
+
 /// Emergency pause gating tests (issue #1042).
 #[cfg(test)]
 mod test_pausable;
