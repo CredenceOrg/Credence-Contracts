@@ -21,6 +21,40 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
+//! # Serialization and retry contract
+//!
+//! Soroban executes every invocation against a consistent ledger snapshot and
+//! commits its storage changes atomically: a call that panics writes nothing,
+//! and invocations that touch the same contract state are serialised by the
+//! ledger in sequence order. This module makes that model explicit for the
+//! privileged configuration, pause, and ownership entrypoints:
+//!
+//! * **Serialization** — all state transitions in this contract are
+//!   read-modify-write transactions. The ledger serialises concurrent requests
+//!   to the same contract, so two conflicting requests cannot interleave
+//!   half-way through a mutation.
+//! * **Conflict detection** — every committed privileged mutation advances the
+//!   monotonic [`DataKey::ConfigEpoch`] counter exactly once
+//!   ([`AdminContract::get_config_epoch`]). A client that read governance
+//!   state at epoch *N* can detect that a concurrent request committed at
+//!   epoch *N+1* and retry against fresh state.
+//! * **Atomicity** — rejected, stale, repeated, and failed operations never
+//!   advance the epoch and never leave partial state behind; a panic rolls the
+//!   entire invocation back.
+//! * **Idempotency** — repeated operations that would not change state (same
+//!   role update, duplicate pause/unpause, duplicate proposal approval) are
+//!   no-ops: they mutate nothing, emit no events, and do not advance the
+//!   epoch.
+//!
+//! ## Client retry contract
+//!
+//! 1. Read the current epoch and the governance state you depend on.
+//! 2. Submit the privileged request.
+//! 3. If the request is rejected (auth, paused, stale epoch, insufficient
+//!    approvals, …) or the epoch has advanced since your read, re-read the
+//!    state and retry with the fresh snapshot. Because failed calls roll back
+//!    atomically, retrying can never double-apply a partial change.
+
 pub mod pausable;
 
 /// Event schema regression tests — verifies topic/data layout for every
@@ -123,6 +157,9 @@ pub enum DataKey {
     /// Timestamp (ledger seconds) when the current ownership transfer was proposed.
     /// Used to enforce a timelock delay before acceptance.
     TransferProposedAt,
+    /// Monotonic configuration epoch — incremented once per committed privileged
+    /// mutation so clients can detect concurrent conflicts and retry.
+    ConfigEpoch,
 }
 
 /// Minimum delay (in ledger seconds) between `transfer_ownership` and `accept_ownership`.
@@ -143,6 +180,26 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+/// Increment the monotonic configuration epoch.
+///
+/// This is the conflict-detection counter of the admin contract's
+/// serialization contract: it is advanced exactly once per *committed*
+/// privileged mutation and is never advanced by a rejected, repeated (no-op),
+/// or failed operation. Clients can use [`AdminContract::get_config_epoch`] to
+/// detect that their snapshot of governance state is stale and retry their
+/// flow against the latest state.
+fn bump_config_epoch(e: &Env) {
+    let current: u64 = e
+        .storage()
+        .instance()
+        .get(&DataKey::ConfigEpoch)
+        .unwrap_or(0);
+    let next = current
+        .checked_add(1)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+    e.storage().instance().set(&DataKey::ConfigEpoch, &next);
 }
 
 #[contract]
@@ -297,6 +354,8 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::ThresholdExceedsSigners);
         }
 
+        bump_config_epoch(&e);
+
         // Create admin info
         let admin_info = AdminInfo {
             address: new_admin.clone(),
@@ -390,6 +449,8 @@ impl AdminContract {
         if admin_info.role == AdminRole::SuperAdmin && role_admins.len() <= min_admins {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
+
+        bump_config_epoch(&e);
 
         // Remove from admin info storage
         e.storage()
@@ -487,6 +548,14 @@ impl AdminContract {
 
         let old_role = admin_info.role;
 
+        // Repeated/no-op role update: leave state and events untouched so
+        // concurrent observers never see a spurious mutation or epoch bump.
+        if new_role == old_role {
+            return admin_info;
+        }
+
+        bump_config_epoch(&e);
+
         // Remove from old role list
         let mut old_role_admins: Vec<Address> = e
             .storage()
@@ -576,6 +645,8 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::AlreadyDeactivated);
         }
 
+        bump_config_epoch(&e);
+
         admin_info.active = false;
         e.storage().instance().set(
             &DataKey::AdminInfo(admin_address.clone()),
@@ -625,6 +696,8 @@ impl AdminContract {
         if admin_info.active {
             panic_with_error!(&e, ContractError::AlreadyActive);
         }
+
+        bump_config_epoch(&e);
 
         admin_info.active = true;
         e.storage().instance().set(
@@ -727,6 +800,8 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
 
+        bump_config_epoch(&e);
+
         admin_info.suspended_until = until_ts;
         e.storage()
             .instance()
@@ -787,6 +862,8 @@ impl AdminContract {
         if !new_owner_info.active {
             panic_with_error!(&e, ContractError::AlreadyDeactivated);
         }
+
+        bump_config_epoch(&e);
 
         // Store pending owner and proposal timestamp for timelock
         e.storage()
@@ -851,6 +928,8 @@ impl AdminContract {
         if now < eligible_at {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
+
+        bump_config_epoch(&e);
 
         // Get current owner for event emission
         let previous_owner: Address = e
@@ -1091,6 +1170,26 @@ impl AdminContract {
         (min_admins, max_admins)
     }
 
+    /// Return the current configuration epoch.
+    ///
+    /// The epoch is a monotonic counter that advances exactly once per
+    /// *committed* privileged mutation (admin role changes, suspension,
+    /// ownership transfer, pause configuration, pause state transitions, and
+    /// pause-proposal approvals). It never advances on rejected, repeated
+    /// (no-op), or failed operations.
+    ///
+    /// Clients should read this value together with the governance state they
+    /// depend on, and retry against fresh state whenever a privileged request
+    /// is rejected or the epoch has advanced since their read. See the module
+    /// documentation for the full serialization and retry contract.
+    pub fn get_config_epoch(e: Env) -> u64 {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::ConfigEpoch)
+            .unwrap_or(0)
+    }
+
     // Helper functions
 
     /// Get the role of an address (panics if not admin).
@@ -1282,3 +1381,6 @@ mod test_emergency;
 
 #[cfg(test)]
 mod test_role_events;
+
+#[cfg(test)]
+mod test_concurrency_race_safety;

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Admin configuration epoch**: Added a monotonic `ConfigEpoch` to the Admin contract that advances exactly once per committed privileged mutation (admin role changes, suspension, ownership transfer, pause configuration, pause state transitions, and pause-proposal approvals). Exposes `get_config_epoch()` so clients can detect concurrent conflicts and retry; rejected, stale, repeated, and failed operations never advance the epoch and leave no partial state. Documented in `docs/CONFIG_EPOCH.md` and covered by `test_concurrency_race_safety.rs` (closes #1297).
 - **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
 - **Expired-lease guard tests**: lock Fresh / Expiring soon / Expired behaviour for `require_no_expired_lease` (Closes #845).
 - **Timelock Timeout Test**: Added explicit timeout regression coverage for time-locked operation execution after the grace period (`timelock`).

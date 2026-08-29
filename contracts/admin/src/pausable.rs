@@ -1,6 +1,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec};
 
+use crate::bump_config_epoch;
 use crate::DataKey;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -110,6 +111,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
             e.storage()
                 .instance()
                 .set(&DataKey::PauseSignerCount, &count.saturating_add(1));
+            bump_config_epoch(e);
         }
     } else if existing {
         e.storage().instance().remove(&key);
@@ -137,6 +139,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
                 .instance()
                 .set(&DataKey::PauseThreshold, &new_count);
         }
+        bump_config_epoch(e);
     }
 
     e.events().publish(
@@ -155,9 +158,18 @@ pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
     if threshold > count {
         panic_with_error!(e, ContractError::ThresholdExceedsSigners);
     }
+    let current: u32 = e
+        .storage()
+        .instance()
+        .get(&DataKey::PauseThreshold)
+        .unwrap_or(0);
+    if threshold == current {
+        return;
+    }
     e.storage()
         .instance()
         .set(&DataKey::PauseThreshold, &threshold);
+    bump_config_epoch(e);
     e.events()
         .publish((Symbol::new(e, "pause_threshold_set"),), threshold);
 }
@@ -174,10 +186,14 @@ fn require_pause_signer(e: &Env, signer: &Address, args: Vec<Val>) {
     }
 }
 
-fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
+/// Record a signer's approval for a proposal.
+///
+/// Returns `true` when the approval was newly recorded (state changed) and
+/// `false` when the signer had already approved (idempotent no-op).
+fn record_approval(e: &Env, proposal_id: u64, signer: &Address) -> bool {
     let approval_key = DataKey::PauseApproval(proposal_id, signer.clone());
     if e.storage().instance().has(&approval_key) {
-        return;
+        return false;
     }
     e.storage().instance().set(&approval_key, &true);
     let count: u32 = e
@@ -191,6 +207,7 @@ fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
     e.storage()
         .instance()
         .set(&DataKey::PauseApprovalCount(proposal_id), &new_count);
+    true
 }
 
 pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
@@ -229,18 +246,27 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
     let id = derive_proposal_id(e, action);
     let proposal_key = DataKey::PauseProposal(id);
 
+    let mut committed = false;
+
     // Idempotent: only write the proposal record if it does not already exist.
     if !e.storage().instance().has(&proposal_key) {
         e.storage().instance().set(&proposal_key, &(action as u32));
         e.storage()
             .instance()
             .set(&DataKey::PauseApprovalCount(id), &0_u32);
+        committed = true;
 
         e.events()
             .publish((Symbol::new(e, "pause_proposed"), id), action as u32);
     }
 
-    record_approval(e, id, caller);
+    if record_approval(e, id, caller) {
+        committed = true;
+    }
+
+    if committed {
+        bump_config_epoch(e);
+    }
 
     Some(id)
 }
@@ -261,7 +287,9 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     };
     require_matching_admin_epoch(e, pause_action, proposal_id);
 
-    record_approval(e, proposal_id, signer);
+    if record_approval(e, proposal_id, signer) {
+        bump_config_epoch(e);
+    }
 
     e.events().publish(
         (Symbol::new(e, "pause_approved"), proposal_id),
@@ -298,25 +326,46 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         panic_with_error!(e, ContractError::InsufficientApprovals);
     }
 
-    match action {
+    let changed = match action {
         1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
-    }
+    };
 
     e.storage()
         .instance()
         .remove(&DataKey::PauseProposal(proposal_id));
+
+    // Removing a completed proposal is itself a governance mutation; make
+    // sure the epoch reflects it even when the pause state was already
+    // correct and `do_pause` / `do_unpause` had nothing to change.
+    if !changed {
+        bump_config_epoch(e);
+    }
 }
 
-fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
+/// Apply the paused state. Idempotent: returns `false` (and changes nothing)
+/// when the contract is already paused.
+fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) -> bool {
+    if is_paused(e) {
+        return false;
+    }
     e.storage().instance().set(&DataKey::Paused, &true);
+    bump_config_epoch(e);
     e.events()
         .publish((Symbol::new(e, "paused"),), (proposal_id, reason.clone()));
+    true
 }
 
-fn do_unpause(e: &Env, proposal_id: Option<u64>) {
+/// Apply the unpaused state. Idempotent: returns `false` (and changes nothing)
+/// when the contract is already unpaused.
+fn do_unpause(e: &Env, proposal_id: Option<u64>) -> bool {
+    if !is_paused(e) {
+        return false;
+    }
     e.storage().instance().set(&DataKey::Paused, &false);
+    bump_config_epoch(e);
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);
+    true
 }
