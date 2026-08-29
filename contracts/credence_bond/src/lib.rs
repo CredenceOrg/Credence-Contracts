@@ -3429,6 +3429,10 @@ mod test_increase_bond;
 #[cfg(test)]
 mod test_lifecycle_auth;
 
+/// Lifecycle state-transition invariant regression tests (issue #1273).
+#[cfg(test)]
+mod test_lifecycle_invariants;
+
 /// Emergency pause gating tests (issue #1042).
 #[cfg(test)]
 mod test_pausable;
