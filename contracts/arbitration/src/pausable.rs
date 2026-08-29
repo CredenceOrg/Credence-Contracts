@@ -242,12 +242,18 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
 }
 
 fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
+    if is_paused(e) {
+        panic_with_error!(e, ContractError::ContractPaused);
+    }
     e.storage().instance().set(&DataKey::Paused, &true);
     e.events()
         .publish((Symbol::new(e, "paused"),), (proposal_id, reason.clone()));
 }
 
 fn do_unpause(e: &Env, proposal_id: Option<u64>) {
+    if !is_paused(e) {
+        panic_with_error!(e, ContractError::InvalidPauseAction);
+    }
     e.storage().instance().set(&DataKey::Paused, &false);
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);

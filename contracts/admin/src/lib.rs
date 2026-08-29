@@ -849,7 +849,7 @@ impl AdminContract {
 
         // Verify new owner is different from current owner
         if new_owner == current_owner {
-            panic_with_error!(&e, ContractError::InvalidPauseAction);
+            panic_with_error!(&e, ContractError::AdminUnchanged);
         }
 
         // A suspended or deactivated admin must not be able to receive durable
