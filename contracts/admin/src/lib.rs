@@ -1526,3 +1526,6 @@ mod test_role_events;
 
 #[cfg(test)]
 mod test_concurrency_race_safety;
+
+#[cfg(test)]
+mod test_add_admin_failure_boundaries;
