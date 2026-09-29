@@ -1724,8 +1724,6 @@ impl CredenceBond {
             Self::release_lock(&e);
             panic_with_error!(&e, ContractError::EarlyExitConfigNotSet)
         });
-        let cfg = early_exit_penalty::get_config(&e)
-            .unwrap_or_else(|_| panic_with_error!(&e, ContractError::EarlyExitConfigNotSet));
         let penalty_bps = cfg.penalty_bps;
 
         let remaining = end.saturating_sub(now);
