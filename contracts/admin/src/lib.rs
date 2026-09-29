@@ -961,6 +961,13 @@ impl AdminContract {
 
     /// Get the current owner of the contract.
     ///
+    /// # Invariants
+    /// * **Deterministic Read**: Always returns the exact active owner.
+    /// * **Stale State Handling**: During a pending ownership transfer, this strictly returns the current owner, avoiding premature data exposure.
+    /// * **Permissions**: Permissionless access; does not require authorization or authentication.
+    /// * **Error Boundary**: Panics strictly and deterministically with `ContractError::NotInitialized` (Error #1) if the contract is not initialized.
+    /// * **Side Effects**: Read-only operations, except for safely bumping the instance TTL.
+    ///
     /// # Returns
     /// The address of the current owner
     ///
@@ -1526,3 +1533,7 @@ mod test_role_events;
 
 #[cfg(test)]
 mod test_concurrency_race_safety;
+
+#[cfg(test)]
+mod test_get_owner;
+
