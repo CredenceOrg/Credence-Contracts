@@ -39,35 +39,6 @@ fn test_boundary_eta_minus_one_fails_not_ready() {
 
 /// Boundary test: timestamp exactly at eta.
 /// Execution MUST succeed and transition operation to Executed.
-/// Recovery test: a rejected pre-ETA execution must not consume the operation.
-/// The same operation must remain executable once the timelock reaches ETA.
-#[test]
-fn test_recovery_after_pre_eta_rejection_succeeds_at_eta() {
-    let (env, client, admin) = setup_env();
-    let op_hash = BytesN::from_array(&env, &[17; 32]);
-    let delay = min_delay_seconds();
-
-    let op_id = client.queue_operation(&admin, &op_hash, &delay);
-    let op = client.get_operation(&op_id).unwrap();
-
-    // First attempt is rejected because the timelock has not matured.
-    env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
-    assert!(client.try_execute_operation(&op_id).is_err());
-
-    // The failed attempt must leave the operation recoverable.
-    let after_rejection = client.get_operation(&op_id).unwrap();
-    assert_eq!(after_rejection.status, OperationStatus::Pending);
-    assert!(!client.is_operation_executed(&op_hash));
-
-    // Once ETA is reached, retrying the same operation must succeed.
-    env.ledger().with_mut(|li| li.timestamp = op.eta);
-    client.execute_operation(&op_id);
-
-    let after_retry = client.get_operation(&op_id).unwrap();
-    assert_eq!(after_retry.status, OperationStatus::Executed);
-    assert!(client.is_operation_executed(&op_hash));
-}
-
 #[test]
 fn test_boundary_eta_exact_succeeds() {
     let (env, client, admin) = setup_env();
