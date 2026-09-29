@@ -96,6 +96,15 @@ mod test_describe;
 #[cfg(test)]
 mod test_claim_expiry_sweep;
 
+/// Boundary-case coverage for `safe_token.rs` (issue #1346).
+#[cfg(test)]
+mod test_safe_token_boundary;
+
+/// Adversarial-token and failure-recovery coverage for `safe_token.rs`
+/// (issue #1346).
+#[cfg(test)]
+mod test_safe_token_recovery;
+
 /// Authentication boundary tests — every non-view fn must require an auth'd address.
 // [pre-broken on main] mod test_auth;
 /// Tests for paginated reads — attestations, slash history, and pending claims.
