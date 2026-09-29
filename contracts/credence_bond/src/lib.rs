@@ -2097,6 +2097,37 @@ impl CredenceBond {
         withdraw_amount
     }
 
+    /// Set the global cooldown window duration (in seconds).
+    ///
+    /// Admin-gated. The new period takes effect immediately for any future
+    /// `request_cooldown_withdrawal` calls — existing pending requests are
+    /// evaluated against the period that was active at execution time, not at
+    /// request time (i.e. `execute_cooldown_withdrawal` reads the current
+    /// period from storage at the moment of execution).
+    ///
+    /// Setting `period` to `0` allows instant withdrawals.
+    ///
+    /// Emits [`cooldown::emit_cooldown_period_updated`].
+    ///
+    /// # Panics
+    /// - [`ContractError::NotAdmin`] if `admin` is not the stored admin.
+    /// - [`ContractError::ContractPaused`] if the contract is paused.
+    pub fn set_cooldown_period(e: Env, admin: Address, period: u64) {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        guards::require_admin(&e, &admin);
+        let old = cooldown::get_cooldown_period(&e);
+        cooldown::set_cooldown_period(&e, period);
+        cooldown::emit_cooldown_period_updated(&e, old, period);
+    }
+
+    /// Read the configured global cooldown window duration (in seconds).
+    ///
+    /// Returns `0` when no period has been set (instant withdrawals permitted).
+    pub fn get_cooldown_period(e: Env) -> u64 {
+        cooldown::get_cooldown_period(&e)
+    }
+
     /// Request a cooldown withdrawal.
     ///
     /// Records the current ledger timestamp and sequence in the cooldown
@@ -3436,6 +3467,12 @@ mod test_lifecycle_invariants;
 /// Emergency pause gating tests (issue #1042).
 #[cfg(test)]
 mod test_pausable;
+
+/// Cooldown window: period configuration, request, execute, cancel lifecycle,
+/// boundary/off-by-one timing, auth, same-ledger guard, slash-during-cooldown
+/// recovery, and cancel-then-rerequest regression scenarios.
+#[cfg(test)]
+mod test_cooldown;
 
 use interfaces::governable::Governable;
 
