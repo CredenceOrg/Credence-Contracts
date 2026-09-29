@@ -1010,6 +1010,16 @@ impl AdminContract {
     /// The admin role if the address is an admin, panics otherwise
     pub fn get_admin_role(e: Env, address: Address) -> AdminRole {
         bump_instance_ttl(&e);
+        // Failure-boundary invariant: `get_admin_role` is a read-only query
+        // that MUST NOT mutate state, advance the config epoch, or emit
+        // events. It is deterministic for all inputs:
+        //   * known admin (active, suspended, or deactivated) -> stored role
+        //   * unknown / never-registered address              -> NotAdmin panic
+        //   * zero/invalid sentinel address                   -> NotAdmin panic
+        // A suspended or deactivated admin still resolves to their stored
+        // role here; callers that need effective-authority semantics must
+        // use `is_admin` / `has_role_at_least` instead. This separation is
+        // intentional and covered by focused failure-boundary tests.
         let admin_info: AdminInfo = e
             .storage()
             .instance()
