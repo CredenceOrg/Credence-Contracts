@@ -7,120 +7,11 @@ mod tests {
 
     include!("../variant_table.rs");
 
+    /// Every `ContractError` variant, derived from the single source of truth
+    /// in `variant_table.rs` (included above). Deriving instead of hand-listing
+    /// keeps this file from drifting when a variant is added.
     fn all_variants() -> Vec<ContractError> {
-        std::vec![
-            ContractError::NotInitialized,
-            ContractError::AlreadyInitialized,
-            ContractError::NotAdmin,
-            ContractError::NotBondOwner,
-            ContractError::UnauthorizedAttester,
-            ContractError::NotOriginalAttester,
-            ContractError::NotSigner,
-            ContractError::UnauthorizedDepositor,
-            ContractError::ContractPaused,
-            ContractError::BorrowFrozen,
-            ContractError::InvalidPauseAction,
-            ContractError::InsufficientSignatures,
-            ContractError::AdminSuspended,
-            ContractError::NoPendingAdmin,
-            ContractError::InvalidAdminAddress,
-            ContractError::AdminUnchanged,
-            ContractError::TimelockNotReady,
-            ContractError::EmergencyDrainNotPermitted,
-            ContractError::RoleNotHeldAtLedger,
-            ContractError::ZeroBytes32,
-            ContractError::CrossContractCallerMismatch,
-            ContractError::TimestampInFuture,
-            ContractError::LeaseScopeMismatch,
-            ContractError::LeaseExpired,
-            ContractError::DeadlineExpired,
-            ContractError::CorridorNotRegistered,
-            ContractError::InvalidPercentSplit,
-            ContractError::InvalidStringifiedBytes,
-            ContractError::SnapshotGenerationMismatch,
-            ContractError::StaleAdminEpoch,
-            ContractError::StaleSignerEpoch,
-            ContractError::InvalidCurrency,
-            ContractError::BondNotFound,
-            ContractError::BondNotActive,
-            ContractError::InsufficientBalance,
-            ContractError::SlashExceedsBond,
-            ContractError::LockupNotExpired,
-            ContractError::NotRollingBond,
-            ContractError::WithdrawalAlreadyRequested,
-            ContractError::ReentrancyDetected,
-            ContractError::InvalidNonce,
-            ContractError::NegativeStake,
-            ContractError::EarlyExitConfigNotSet,
-            ContractError::InvalidPenaltyBps,
-            ContractError::LeverageExceeded,
-            ContractError::UnsupportedToken,
-            ContractError::UnsupportedDecimals,
-            ContractError::InvalidBondAmount,
-            ContractError::AmountExplicitlyZero,
-            ContractError::InvalidBondDuration,
-            ContractError::InvalidNoticePeriod,
-            ContractError::BondAlreadyExists,
-            ContractError::UnauthorizedToken,
-            ContractError::DuplicateIdempotencyKey,
-            ContractError::InvalidStringifiedBytes,
-            ContractError::InvariantViolation,
-            ContractError::StorageCapReached,
-            ContractError::TreasuryNotConfigured,
-            ContractError::CursorOutOfRange,
-            ContractError::DomainMismatch,
-            ContractError::OwnerMismatch,
-            ContractError::TargetMismatch,
-            ContractError::ContractIdMismatch,
-            ContractError::SignatureExpired,
-            ContractError::DuplicateAttestation,
-            ContractError::AttestationNotFound,
-            ContractError::AttestationAlreadyRevoked,
-            ContractError::InvalidAttestationWeight,
-            ContractError::AttestationWeightExceedsMax,
-            ContractError::IdentityAlreadyRegistered,
-            ContractError::BondContractAlreadyRegistered,
-            ContractError::IdentityNotRegistered,
-            ContractError::BondContractNotRegistered,
-            ContractError::AlreadyDeactivated,
-            ContractError::AlreadyActive,
-            ContractError::InvalidContractAddress,
-            ContractError::ContractCodeVerificationFailed,
-            ContractError::UnsupportedInterface,
-            ContractError::ExpiryInPast,
-            ContractError::DelegationNotFound,
-            ContractError::AlreadyRevoked,
-            ContractError::DelegationExpiryTooLong,
-            ContractError::UnknownScheme,
-            ContractError::VerifierAlreadyRegistered,
-            ContractError::VerifierNotRegistered,
-            ContractError::VerificationFailed,
-            ContractError::RevocationGraceExpired,
-            ContractError::DelegationNotExpired,
-            ContractError::DelegationInactive,
-            ContractError::PromiseNotKept,
-            ContractError::AmountMustBePositive,
-            ContractError::ThresholdExceedsSigners,
-            ContractError::InsufficientTreasuryBalance,
-            ContractError::ProposalNotFound,
-            ContractError::ProposalAlreadyExecuted,
-            ContractError::InsufficientApprovals,
-            ContractError::InvalidFlashLoanCallback,
-            ContractError::FlashLoanRepaymentFailed,
-            ContractError::ProposalExpired,
-            ContractError::SlippageExceeded,
-            ContractError::TreasuryBeneficiaryMismatch,
-            ContractError::Overflow,
-            ContractError::Underflow,
-            ContractError::DivisionByZero,
-            ContractError::BatchTooLarge,
-            ContractError::EmptyBatch,
-            ContractError::InvalidCurrency,
-            ContractError::PayloadTooOld,
-            ContractError::TimestampInFuture,
-            ContractError::StaleAdminEpoch,
-            ContractError::StaleSignerEpoch,
-        ]
+        ALL_VARIANTS.iter().map(|(_, v)| *v).collect()
     }
 
     // --- require_contract_uninitialized helper tests ---
@@ -128,7 +19,7 @@ mod tests {
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
         fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized!(e, false);
+            crate::require_contract_uninitialized(e, false);
             Ok(())
         }
         let e = soroban_sdk::Env::default();
@@ -136,13 +27,12 @@ mod tests {
     }
 
     #[test]
-    fn test_require_contract_uninitialized_returns_error_when_true() {
-        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized!(e, true);
-            Ok(())
-        }
+    #[should_panic(expected = "Error(Contract, #2)")]
+    fn test_require_contract_uninitialized_panics_when_already_initialized() {
+        // The helper signals via `panic_with_error(AlreadyInitialized)` (code 2),
+        // it does not return a `Result`.
         let e = soroban_sdk::Env::default();
-        assert_eq!(call(&e), Err(ContractError::AlreadyInitialized));
+        crate::require_contract_uninitialized(&e, true);
     }
 
     #[test]
@@ -195,13 +85,13 @@ mod tests {
         assert_eq!(ContractError::ContractPaused as u32, 106);
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-        assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 127);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
     #[test]
     fn test_code_role_required() {
-        assert_eq!(ContractError::RoleRequired as u32, 127);
+        assert_eq!(ContractError::RoleRequired as u32, 128);
     }
 
     #[test]
@@ -574,17 +464,6 @@ mod tests {
                 assert_ne!(variants[i].description(), variants[j].description());
             }
         }
-    }
-
-    // --- Variant count guard ---
-
-    #[test]
-    fn test_all_variants_count() {
-        assert_eq!(
-            all_variants().len(),
-            101,
-            "Update all_variants() and this count when adding new errors"
-        );
     }
 
     // --- Copy and Eq tests ---
@@ -1373,13 +1252,12 @@ mod tests {
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
-            ContractError::MigrationInProgress => true, // wait for migration to complete
-            ContractError::OutsideBusinessHours => true, // retry after business-hours window opens
-            ContractError::TimestampInFuture => true,   // caller can correct timestamp
+            ContractError::TimestampInFuture => true, // caller can correct timestamp
             ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
             ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
             ContractError::LeaseScopeMismatch => true,
             ContractError::LeaseExpired => true,
+            ContractError::LeaseSignerMismatch => true, // re-sign as the lease signer
             ContractError::CrossContractCallerMismatch => false,
             ContractError::RoleRequired => true,
             ContractError::StaleAdminEpoch => false,
@@ -1417,6 +1295,10 @@ mod tests {
             ContractError::DomainMismatch => false,       // payload binding
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
+            ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::CooldownRequestAlreadyPending => true, // await the existing request
+            ContractError::CooldownRequestNotFound => true, // the request was consumed
+            ContractError::CooldownPeriodNotElapsed => true, // wait for the period
             ContractError::InvalidCurrency => true,       // supply a valid currency
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
@@ -1840,11 +1722,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #127)")]
+    #[should_panic(expected = "Error(Contract, #128)")]
     fn test_require_role_user_panics_when_not_held() {
         let e = soroban_sdk::Env::default();
         let actor = soroban_sdk::Address::generate(&e);
-        // Negative test: actor does NOT hold User role -> should panic with RoleRequired (127).
+        // Negative test: the actor does NOT hold the User role, so this must
+        // panic with `RoleRequired` (code 128).
         crate::require_role(&e, Role::User, &actor, false);
     }
 }

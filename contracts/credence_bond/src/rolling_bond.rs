@@ -5,7 +5,7 @@ use crate::IdentityBond;
 /// These are explicit, non-panicking failure modes so callers can
 /// recover and report diagnosable errors without losing user data.
 #[derive(Debug, Clone, PartialEq, Eq)]
-public enum RollingBondError {
+pub enum RollingBondError {
     /// `bond_start + bond_duration` overflows u64.
     DurationOverflow,
     /// `bond_duration` is zero, so the period can never end.
@@ -23,7 +23,7 @@ pub fn period_end(bond_start: u64, bond_duration: u64) -> Result<u64, RollingBon
     }
     bond_start
         .checked_add(bond_duration)
-        .oka_or(Err(RollingBondError::DurationOverflow))
+        .ok_or(RollingBondError::DurationOverflow)
 }
 
 /// Returns true once `now` has reached or passed the bond period end.
@@ -56,10 +56,10 @@ pub fn apply_renewal(
     period_end(now, bond.bond_duration)?;
     bond.bond_start = now;
     bond.withdrawal_requested_at = 0;
-    Ok(()
+    Ok(())
 }
 
-#[cfg](test)]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::IdentityBond;
@@ -69,7 +69,7 @@ mod tests {
             bond_start,
             bond_duration,
             withdrawal_requested_at,
-            ...Default::default()
+            ..Default::default()
         }
     }
 
@@ -157,7 +157,7 @@ mod tests {
         assert_eq!(b.withdrawal_requested_at, 0);
     }
 
-    #[test\n]
+    #[test]
     fn renewal_recovery_after_failure() {
         // A failed renewal must not block a later valid renewal.
         let mut b: IdentityBond = bond(100, 2, 150);

@@ -216,63 +216,6 @@ impl AdminContract {
         String::from_str(&e, credence_errors::VERSION)
     }
 
-    /// Return whether `address` is currently an active admin.
-    ///
-    /// # Determinism and failure boundaries
-    ///
-    /// This is a pure read: it never mutates storage, never advances
-    /// [`DataKey::ConfigEpoch`], and never emits events. Given the same ledger
-    /// snapshot it always returns the same value, so it is safe to call from
-    /// other contracts and from off-chain simulations.
-    ///
-    /// An address is considered an admin if and only if **all** of the
-    /// following hold:
-    ///
-    /// 1. An [`AdminInfo`] record exists for the address.
-    /// 2. The record's `active` flag is `true`.
-    /// 3. The record is not currently suspended, i.e.
-    ///    `suspended_until == 0 || e.ledger().timestamp() >= suspended_until`.
-    ///
-    /// Suspension expires automatically once the ledger timestamp reaches
-    /// `suspended_until`, so no second transaction is required to restore
-    /// admin status.
-    ///
-    /// # Boundary cases
-    ///
-    /// * Uninitialized contract — returns `false` (no panic, no partial read).
-    /// * Unknown address — returns `false`.
-    /// * Deactivated admin — returns `false`.
-    /// * Suspended admin — returns `false` until the suspension expires.
-    /// * Suspension boundary — at exactly `suspended_until` the admin is
-    ///   active again (`>=` comparison).
-    ///
-    /// # Security
-    ///
-    /// This function performs no authorization check and exposes no sensitive
-    /// data: it only reveals whether a public address currently holds admin
-    /// privileges, which is already observable through privileged entrypoints.
-    pub fn is_admin(e: Env, address: Address) -> bool {
-        let info: Option<AdminInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::AdminInfo(address));
-
-        match info {
-            None => false,
-            Some(info) => {
-                if !info.active {
-                    return false;
-                }
-                if info.suspended_until != 0
-                    && e.ledger().timestamp() < info.suspended_until
-                {
-                    return false;
-                }
-                true
-            }
-        }
-    }
-
     /// Initialize the admin contract with a super admin.
     ///
     /// # Arguments
@@ -1126,6 +1069,40 @@ impl AdminContract {
     ///
     /// # Returns
     /// `Role::Admin` if the address is an active admin, `Role::User` otherwise.
+    ///
+    /// # Determinism and failure boundaries
+    ///
+    /// This is a pure read: it never mutates storage, never advances
+    /// [`DataKey::ConfigEpoch`], and never emits events. Given the same ledger
+    /// snapshot it always returns the same value, so it is safe to call from
+    /// other contracts and from off-chain simulations.
+    ///
+    /// An address is considered an admin if and only if **all** of the
+    /// following hold:
+    ///
+    /// 1. An [`AdminInfo`] record exists for the address.
+    /// 2. The record's `active` flag is `true`.
+    /// 3. The record is not currently suspended, that is
+    /// `suspended_until == 0 || e.ledger().timestamp() >= suspended_until`.
+    ///
+    /// Suspension expires automatically once the ledger timestamp reaches
+    /// `suspended_until`, so no second transaction is required to restore
+    /// admin status.
+    ///
+    /// # Boundary cases
+    ///
+    /// * Uninitialized contract — returns `Role::User` (no panic, no partial read).
+    /// * Unknown address — returns `Role::User`.
+    /// * Deactivated admin — returns `Role::User`.
+    /// * Suspended admin — returns `Role::User` until the suspension expires.
+    /// * Suspension boundary — at exactly `suspended_until` the admin is
+    ///   active again (`>=` comparison).
+    ///
+    /// # Security
+    ///
+    /// This function performs no authorization check and exposes no sensitive
+    /// data: it only reveals whether a public address currently holds admin
+    /// privileges, which is already observable through privileged entrypoints.
     pub fn is_admin(e: Env, address: Address) -> Role {
         match e
             .storage()
