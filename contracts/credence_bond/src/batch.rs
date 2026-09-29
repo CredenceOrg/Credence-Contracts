@@ -112,7 +112,7 @@ pub fn validate_batch_bonds(e: &Env, params_list: &Vec<BatchBondParams>) {
 ///     BatchBondParams {
 ///         identity: addr1,
 ///         amount: 1000,
-///         duration: credence_math::Timestamp::SECONDS_PER_DAY,
+///         duration: SECONDS_PER_DAY,
 ///         is_rolling: false,
 ///         notice_period_duration: 0,
 ///     },
@@ -132,16 +132,14 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
 
     let bond_start = e.ledger().timestamp();
     let mut bonds: Vec<IdentityBond> = Vec::new(e);
+    let mut identities: Vec<Address> = Vec::new(e);
 
     // Step 2: Check for existing bonds (before creating any)
     for i in 0..params_list.len() {
-        let _params = params_list.get(i).unwrap();
-        let bond_key = DataKey::Bond(identity.clone()); // Note: Current implementation uses single bond
-
-        // In a multi-identity system, you'd check per-identity:
-        // let bond_key = DataKey::IdentityBond(params.identity.clone());
+        let params = params_list.get(i).unwrap();
+        let bond_key = DataKey::Bond(params.identity.clone());
         if e.storage().instance().has(&bond_key) {
-            panic!("bond already exists");
+            panic_with_error!(e, ContractError::BondAlreadyExists);
         }
     }
 
@@ -161,8 +159,8 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
             notice_period_duration: params.notice_period_duration,
         };
 
-        // Store the bond
-        let bond_key = DataKey::Bond(identity.clone());
+        // Store the bond under its own identity.
+        let bond_key = DataKey::Bond(params.identity.clone());
         e.storage().instance().set(&bond_key, &bond);
 
         // Emit tier change event for this bond
@@ -170,6 +168,7 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
         tiered_bond::emit_tier_change_if_needed(e, &params.identity, BondTier::Bronze, tier);
 
         bonds.push_back(bond);
+        identities.push_back(params.identity);
     }
 
     crate::same_ledger_liquidation_guard::record_collateral_increase(e);
@@ -183,7 +182,7 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     e.events()
         .publish((Symbol::new(e, "batch_bonds_created"),), result.clone());
 
-    crate::invariants::assert_self_consistent(e);
+    crate::invariants::assert_self_consistent_for_bonds(e, &identities);
 
     result
 }
@@ -240,7 +239,9 @@ pub fn get_batch_total_amount(e: &Env, params_list: &Vec<BatchBondParams>) -> i1
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
+    use credence_math::SECONDS_PER_DAY;
     use soroban_sdk::testutils::Address as _;
 
     #[test]
@@ -254,7 +255,7 @@ mod tests {
         params_list.push_back(BatchBondParams {
             identity: addr1,
             amount: 1000,
-            duration: credence_math::Timestamp::SECONDS_PER_DAY,
+            duration: SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });
@@ -262,7 +263,7 @@ mod tests {
         params_list.push_back(BatchBondParams {
             identity: addr2,
             amount: 2000,
-            duration: credence_math::Timestamp::SECONDS_PER_DAY,
+            duration: SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });

@@ -74,6 +74,12 @@ pub mod types;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
+
+#[cfg(test)]
+mod test_invariants_boundary;
+#[cfg(test)]
+mod test_invariants_recovery;
+
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 pub mod test_helpers;
@@ -1036,7 +1042,7 @@ impl CredenceBond {
         // trip the guard on an aborted or fixture-only flow: a Soroban tx is
         // atomic, so a panic in `assert_self_consistent` reverts this write too.
         crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
         bond
     }
 
@@ -1654,7 +1660,7 @@ impl CredenceBond {
             token_integration::transfer_from_contract(&e, &bond.identity, amount);
         }
 
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
         bond
     }
 
@@ -1784,7 +1790,7 @@ impl CredenceBond {
         }
 
         Self::release_lock(&e);
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
 
         bond
     }
@@ -1824,7 +1830,7 @@ impl CredenceBond {
             (Symbol::new(&e, "withdrawal_requested"),),
             (bond.identity.clone(), bond.withdrawal_requested_at),
         );
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
         bond
     }
 
@@ -1861,7 +1867,7 @@ impl CredenceBond {
             (Symbol::new(&e, "bond_renewed"),),
             (bond.identity.clone(), bond.bond_start, bond.bond_duration),
         );
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
         bond
     }
 
@@ -1959,7 +1965,7 @@ impl CredenceBond {
         bump_instance_ttl(&e);
 
         Self::release_lock(&e);
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
         bond
     }
 
@@ -1992,7 +1998,7 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
         bond
     }
 
@@ -2103,7 +2109,7 @@ impl CredenceBond {
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
 
         // chaos: external callback panic must result in atomic state revert and lock release.
         let cb_key = Symbol::new(&e, "callback");
@@ -2256,6 +2262,11 @@ impl CredenceBond {
     /// - `ContractError::InvalidBondAmount` when `slash_amount <= 0`.
     /// - `ContractError::Overflow` if adding `slash_amount` to the existing slashed amount overflows `i128`.
     /// - `ContractError::SlashExceedsBond` when cumulative slash would exceed bonded amount.
+    /// - `ContractError::InvariantViolation` when the write it is about to make
+    ///   would leave `DataKey::Bond(identity)` failing the bond drift self-check
+    ///   (issue #1334). The `SlashExceedsBond` pre-check above makes the I2
+    ///   overshoot case unreachable from a consistent starting state; this
+    ///   guard covers state that was already inconsistent on entry.
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     ///
@@ -2330,6 +2341,13 @@ impl CredenceBond {
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
+
+        // #1334: this entry point writes `slashed_amount` directly instead of
+        // routing through `slashing::slash_bond`, so it needs its own
+        // self-check. Without one it was the single bond mutator with no drift
+        // detection, on the exact field I2 guards. The panic reverts the whole
+        // transaction, so a drifted record is never committed.
+        invariants::assert_self_consistent(&e, &identity);
 
         slashing::emit_slashing_event(&e, &identity, slash_amount, new_slashed);
 
@@ -2623,7 +2641,7 @@ impl CredenceBond {
             .instance()
             .set(&DataKey::Liquidated(bond.identity.clone()), &true);
         bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e);
+        invariants::assert_self_consistent(&e, &identity);
 
         // Residual sweep is delegated to off-chain indexers via the
         // `bond_liquidated` event. The contract intentionally does not move
@@ -3316,6 +3334,8 @@ mod tests {
             &attester,
             &subject,
             &String::from_str(&e, "ttl"),
+            &contract_id,
+            &e.ledger().timestamp().saturating_add(3_600),
             &0_u64,
         );
 
