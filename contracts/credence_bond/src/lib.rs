@@ -83,6 +83,8 @@ mod test_unauthorized_token;
 mod test_validation;
 #[cfg(test)]
 mod test_zero_address;
+#[cfg(test)]
+mod test_fork_divergent;
 
 /// Chaos testing suite for simulating host and token failures.
 // [pre-broken on main] #[cfg(test)]
