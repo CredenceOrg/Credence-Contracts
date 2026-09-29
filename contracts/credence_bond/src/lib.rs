@@ -149,6 +149,21 @@ mod test_claim_expiry_sweep;
 #[cfg(test)]
 mod test_verify_stringified_bytes;
 
+/// Boundary and edge-case tests for event emissions (#1324).
+/// Validates numeric boundaries, invalid inputs, empty values, and large collections.
+#[cfg(test)]
+mod test_events_boundary;
+
+/// Recovery and idempotence tests for event emissions (#1324).
+/// Validates duplicate emissions, retries, sequence consistency, and no-loss guarantees.
+#[cfg(test)]
+mod test_events_recovery;
+
+/// Invariant and correctness tests for event emissions (#1324).
+/// Validates event data correctness, invariant preservation, and schema immutability.
+#[cfg(test)]
+mod test_events_invariants;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
