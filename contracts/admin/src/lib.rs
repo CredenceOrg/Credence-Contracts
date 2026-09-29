@@ -741,6 +741,9 @@ impl AdminContract {
     /// * `NotAdmin`          — caller or target is not a known admin
     /// * `NotAdmin`          — caller role is strictly lower than target role
     /// * `AdminSuspended`    — `until_ts` is not in the future
+    /// * `AdminSuspended`    — target admin is already suspended at or beyond `until_ts`
+    ///                         (re-suspension must strictly extend the window)
+    /// * `AdminUnchanged`    — target admin is the caller (self-suspension is rejected)
     /// * `InvalidPauseAction` — suspending would drop active admins below `MinAdmins`
     /// * `AlreadyDeactivated` — target admin is permanently deactivated
     ///
@@ -750,6 +753,13 @@ impl AdminContract {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth_for_args((caller.clone(), admin.clone(), until_ts).into_val(&e));
+
+        // Self-suspension is rejected: an admin must not be able to lock
+        // themselves out, which would otherwise strand governance when the
+        // caller is the only effective admin of their role.
+        if caller == admin {
+            panic_with_error!(&e, ContractError::AdminUnchanged);
+        }
 
         // until_ts must be in the future
         if until_ts <= e.ledger().timestamp() {
@@ -767,6 +777,14 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::AlreadyDeactivated);
         }
 
+        // Re-suspension must strictly extend the existing window. A repeated
+        // or shorter suspension is a no-op rejection so observers never see a
+        // spurious epoch bump or event for a state that did not change.
+        let now = e.ledger().timestamp();
+        if admin_info.suspended_until > now && until_ts <= admin_info.suspended_until {
+            panic_with_error!(&e, ContractError::AdminSuspended);
+        }
+
         // Caller must have a role >= target's role (same rule as deactivate_admin)
         let caller_info: AdminInfo = e
             .storage()
@@ -779,7 +797,6 @@ impl AdminContract {
 
         // MinAdmins guard: count currently-effective active admins
         let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
-        let now = e.ledger().timestamp();
         let all_admins: Vec<Address> = e
             .storage()
             .instance()
