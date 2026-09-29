@@ -100,6 +100,13 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
     let key = DataKey::PauseSigner(signer.clone());
     let existing: bool = e.storage().instance().get(&key).unwrap_or(false);
 
+    // Idempotency (see the retry contract documented in `lib.rs`): enabling an
+    // already-enabled signer, or disabling one that was never enabled, must not
+    // mutate storage, emit an event, or advance the epoch. A client that retries
+    // a timed-out `set_pause_signer` therefore cannot desynchronise off-chain
+    // indexers that replay `pause_signer_set`.
+    let mut changed = false;
+
     if enabled {
         if !existing {
             e.storage().instance().set(&key, &true);
@@ -113,8 +120,9 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
                 .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
             e.storage()
                 .instance()
-                .set(&DataKey::PauseSignerCount, &count.saturating_add(1));
+                .set(&DataKey::PauseSignerCount, &new_count);
             bump_config_epoch(e);
+            changed = true;
         }
     } else if existing {
         e.storage().instance().remove(&key);
@@ -130,28 +138,29 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
             .instance()
             .set(&DataKey::PauseSignerCount, &new_count);
 
+        // Removing a signer must never leave the threshold above the number of
+        // remaining signers, or the contract could become permanently
+        // unpauseable. Clamp it to the new count (never raise it).
         let threshold: u32 = e
             .storage()
             .instance()
             .get(&DataKey::PauseThreshold)
             .unwrap_or(0);
-        let current_count: u32 = e
-            .storage()
-            .instance()
-            .get(&DataKey::PauseSignerCount)
-            .unwrap_or(0);
-        if threshold > current_count {
+        if threshold > new_count {
             e.storage()
                 .instance()
-                .set(&DataKey::PauseThreshold, &current_count);
+                .set(&DataKey::PauseThreshold, &new_count);
         }
         bump_config_epoch(e);
+        changed = true;
     }
 
-    e.events().publish(
-        (Symbol::new(e, "pause_signer_set"), signer.clone()),
-        enabled,
-    );
+    if changed {
+        e.events().publish(
+            (Symbol::new(e, "pause_signer_set"), signer.clone()),
+            enabled,
+        );
+    }
 }
 
 pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
@@ -293,14 +302,18 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     };
     require_matching_admin_epoch(e, pause_action, proposal_id);
 
+    // Idempotency (see the retry contract documented in `lib.rs`): a repeated
+    // approval from the same signer mutates nothing, so it must not emit an
+    // event or advance the epoch. Gating the event here is what lets an indexer
+    // treat each `pause_approved` emission as a distinct signer approval without
+    // double-counting a retried or replayed transaction.
     if record_approval(e, proposal_id, signer) {
         bump_config_epoch(e);
+        e.events().publish(
+            (Symbol::new(e, "pause_approved"), proposal_id),
+            signer.clone(),
+        );
     }
-
-    e.events().publish(
-        (Symbol::new(e, "pause_approved"), proposal_id),
-        signer.clone(),
-    );
 }
 
 pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
