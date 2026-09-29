@@ -22,7 +22,7 @@ use soroban_sdk::{contractclient, Address, Env};
 ///
 /// # Observability
 ///
-/// Implementations should emit a event on admin transfer so that operators
+/// Implementations should emit an event on admin transfer so that operators
 /// can diagnose failures without exposing sensitive data. The event must not
 /// contain anything other than the new admin address.
 #[contractclient(name = "GovernableClient")]
@@ -54,166 +54,188 @@ pub trait Governable {
     fn set_admin(env: Env, new_admin: Address);
 }
 
-/// Test module covering boundary and recovery scenarios for the
-/// `Governable` interface.
+/// Test module covering boundary and recovery scenarios for the `Governable`
+/// interface.
 ///
-/// These tests exercise the interface through a minimal in-memory
-/// implementation that enforces the documented invariants. They validate:
+/// The trait methods are associated functions (they take `Env`, not `self`),
+/// so the documented semantics are pinned here with a small in-memory
+/// reference model. Production contracts implement the trait on top of their
+/// own on-chain storage; the reference model exists only to check that those
+/// implementations uphold the contract below:
 ///
 /// - successful admin transfer,
 /// - rejection of unauthorized callers,
-/// - rejection of invalid (zero) admin addresses,
+/// - rejection of an invalid (zero/default) admin address,
 /// - boundary behavior for self-transfer,
 /// - recovery after a failed transfer (state must be unchanged),
 /// - determinism across repeated calls.
-#[config(test)]]
+///
+/// Admin identities are modelled as opaque integers rather than `Address`
+/// values. Distinct integers stand in for distinct addresses, which keeps the
+/// model deterministic and free of test-only SDK features. The `try_set_admin`
+/// model returns a deterministic error code rather than panicking so that
+/// failure *recovery* (state unchanged, retry succeeds) can be asserted
+/// directly. On-chain this maps to a reverted contract call.
+#[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
+    use crate::consts::{ERR_INVALID_INPUT, ERR_UNAUTHORIZED};
 
-    /// Minimal reference implementation of the `Governable` interface
-    /// used to drive the interface tests. This is not shipped in
-    /// production code; it exists only to validate the contract that
-/// consumers of the interface must uphold.
-    struct ReferenceGovernable;
+    /// Opaque stand-in for an `Address`; two distinct values are two distinct
+    /// administrators.
+    type AdminId = u32;
+
+    /// In-memory reference implementation of the `Governable` interface.
+    ///
+    /// Only the decision logic of `set_admin` is modelled; storage layout,
+    /// `require_auth` enforcement, and event emission are the responsibility
+    /// of the concrete contract.
+    struct ReferenceGovernable {
+        admin: AdminId,
+    }
 
     impl ReferenceGovernable {
-        const ADMIN_KEY: 'static str = "admin";
-
-        pub fn init(env: &Env, admin: Address) {
-            assert!(admin != Address::generate(env), "admin must not be the zero address");
-            env.storage().persistent().set(&ADDIN_KEY, &admin);
+        fn new(admin: AdminId) -> Self {
+            Self { admin }
         }
 
-        pub fn get_admin(env: Env) -> Address {
-            env.storage()
-                .persistent()
-                .get::<&str, Address>((&ADFIN_KEY,))
-                .expect("admin not initialized")
+        fn get_admin(&self) -> AdminId {
+            self.admin
         }
 
-        pub fn set_admin_auth(env: Env, caller: Address, new_admin: Address) {
-            caller.require_auth();
-            let current = Self::get_admin(env.clone());
-            assert!(caller == current, "caller is not the admin");
-            assert!(
-                new_admin != Address::generate(&env),
-                "new admin must not be the zero address"
-            );
-            env.storage().persistent().set(&ADFIN_KEY, &nEw_admin);
+        /// Applies the documented `set_admin` decision rules.
+        ///
+        /// `new_admin` is `None` when the caller supplies the zero/default
+        /// address, which the interface must reject without mutating state.
+        fn try_set_admin(
+            &mut self,
+            caller: AdminId,
+            new_admin: Option<AdminId>,
+        ) -> Result<(), &'static str> {
+            // Authorization is checked first: an unauthorized caller must not
+            // be able to distinguish an invalid admin from a valid one.
+            if caller != self.admin {
+                return Err(ERR_UNAUTHORIZED);
+            }
+            let new_admin = new_admin.ok_or(ERR_INVALID_INPUT)?;
+            // Atomic replace: there is no observable intermediate state.
+            self.admin = new_admin;
+            Ok(())
         }
     }
 
-    fn setup() -> (Env, Address, Address) {
-        let env = Env::default();
-        let admin = Address::generate(&env);
-        let other = Address::generate(&env);
-        ReferenceGovernable::init(&env, admin.clone());
-        (env, admin, other)
-    }
+    const ADMIN: AdminId = 1;
+    const OTHER: AdminId = 2;
+    const NEW_ADMIN: AdminId = 3;
 
-    /// Success: the current admin can transfer control to a new address.
+    // --- Success ---
+
     #[test]
     fn set_admin_success_transfers_control() {
-        let (env, admin, new_admin) = setup();
-        ReferenceGovernable::set_admin_auth(env.clone(), admin.clone(), new_admin.clone());
-        assert_eq!(ReferenceGovernable::get_admin(env.clone()), new_admin);
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        assert_eq!(gov.try_set_admin(ADMIN, Some(NEW_ADMIN)), Ok(()));
+        assert_eq!(gov.get_admin(), NEW_ADMIN);
     }
 
-    /// Rejection: a non-admin caller must not be able to transfer control.
+    // --- Rejection: authorization ---
+
     #[test]
-    #[should_panic]
     fn set_admin_rejects_unauthorized_caller() {
-        let (env, _admin, other) = setup();
-        let new_admin = Address::generate(&env);
-        ReferenceGovernable::set_admin_auth(env.clone(), other, new_admin);
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        assert_eq!(
+            gov.try_set_admin(OTHER, Some(NEW_ADMIN)),
+            Err(ERR_UNAUTHORIZED)
+        );
+        // Recovery: the rejected call must not have moved control.
+        assert_eq!(gov.get_admin(), ADMIN);
     }
 
-    /// Rejection: the zero address is not a valid admin.
     #[test]
-    #[should_panic]
-    fn set_admin_rejects_zero_address() {
-        let (env, admin, _) = setup();
-        let zero = Address::generate(&env);
-        ReferenceGovernable::set_admin_auth(env.clone(), admin, zero);
+    fn authorization_is_checked_before_validation() {
+        // An unauthorized caller must not learn whether the new admin is valid.
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        assert_eq!(gov.try_set_admin(OTHER, None), Err(ERR_UNAUTHORIZED));
+        assert_eq!(gov.get_admin(), ADMIN);
     }
 
-    /// Boundary: transferring to the current admin is a no-op and must not
-    /// corrupt state.
+    // --- Rejection: invalid input ---
+
+    #[test]
+    fn set_admin_rejects_invalid_admin() {
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        assert_eq!(gov.try_set_admin(ADMIN, None), Err(ERR_INVALID_INPUT));
+        // Recovery: invalid input must leave the admin untouched.
+        assert_eq!(gov.get_admin(), ADMIN);
+    }
+
+    // --- Boundary: self-transfer ---
+
     #[test]
     fn set_admin_self_transfer_is_no_op() {
-        let (env, admin, _) = setup();
-        ReferenceGovernable::set_admin_auth(env.clone(), admin.clone(), admin.clone());
-        assert_eq!(ReferenceGovernable::get_admin(env.clone()), admin);
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        assert_eq!(gov.try_set_admin(ADMIN, Some(ADMIN)), Ok(()));
+        assert_eq!(gov.get_admin(), ADMIN);
     }
 
-    /// Recovery: a failed transfer must leave the admin unchanged.
+    // --- Recovery: failed transfer preserves admin, retry succeeds ---
+
     #[test]
-    fn failed_transfer_preserves_admin() {
-        let (env, admin, other) = setup();
-        let new_admin = Address::generate(&env);
-        let result = catch_unwind(panic::catch_unwind(assert_uneq(), || {
-            ReferenceGovernable::set_admin_auth(env.clone(), other, new_admin.clone());
-        }));
-        assert!(result.is_err(), "expected unauthorized transfer to fail");
-        assert_eq!(ReferenceGovernable::get_admin(env.clone()), admin);
+    fn failed_transfer_preserves_admin_and_allows_retry() {
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        // Unauthorized attempt fails...
+        assert_eq!(
+            gov.try_set_admin(OTHER, Some(NEW_ADMIN)),
+            Err(ERR_UNAUTHORIZED)
+        );
+        assert_eq!(gov.get_admin(), ADMIN);
+
+        // ...and recovery succeeds once the real admin acts.
+        assert_eq!(gov.try_set_admin(ADMIN, Some(NEW_ADMIN)), Ok(()));
+        assert_eq!(gov.get_admin(), NEW_ADMIN);
     }
 
-    /// Determinism: repeated calls to `get_admin` return the same value.
+    // --- Recovery: old admin loses control, new admin gains it ---
+
+    #[test]
+    fn new_admin_gains_control_old_admin_loses_it() {
+        let mut gov = ReferenceGovernable::new(ADMIN);
+
+        assert_eq!(gov.try_set_admin(ADMIN, Some(NEW_ADMIN)), Ok(()));
+        assert_eq!(gov.get_admin(), NEW_ADMIN);
+
+        // The previous admin can no longer transfer control.
+        assert_eq!(gov.try_set_admin(ADMIN, Some(OTHER)), Err(ERR_UNAUTHORIZED));
+        assert_eq!(gov.get_admin(), NEW_ADMIN);
+
+        // The new admin can.
+        assert_eq!(gov.try_set_admin(NEW_ADMIN, Some(OTHER)), Ok(()));
+        assert_eq!(gov.get_admin(), OTHER);
+    }
+
+    // --- Determinism ---
+
     #[test]
     fn get_admin_is_deterministic() {
-        let (env, admin, _) = setup();
+        let gov = ReferenceGovernable::new(ADMIN);
+
         for _ in 0..8 {
-            assert_eq!(ReferenceGovernable::get_admin(env.clone()), admin);
+            assert_eq!(gov.get_admin(), ADMIN);
         }
     }
 
-    /// Recovery: after a successful transfer, the old admin can no longer
-    /// transfer control, and the new admin can.
-    #[test]
-    fn new_admin_gains_control() {
-        let (env, admin, new_admin) = setup();
-        ReferenceGovernable::set_admin_auth(env.clone(), admin.clone(), new_admin.clone());
+    // --- Boundary: the generated client type stays available ---
 
-        // Old admin is rejected.
-        let other = Address::generate(&env);
-        let result = catch_unwind(panic::catch_unwind(assert_uneq(), || {
-            ReferenceGovernable::set_admin_auth(env.clone(), admin.clone(), other.clone());
-        }));
-        assert!(result.is_err(), "old admin must lose control");
-
-        // New admin can transfer.
-        ReferenceGovernable::set_admin_auth(env.clone(), new_admin.clone(), other.clone());
-        assert_eq!(ReferenceGovernable::get_admin(env.clone()), other);
-    }
-
-    /// Boundary: the interface must be consumable through the generated
-    /// client type without additional adapters.
-    ///
-    /// This checks that the `GovernableClient` type exists and is bound to
-    /// the trait method signatures expected by callers.
-    /// It is a compile-time contract check rather than a runtime assertion.
     #[test]
     fn governable_client_is_available() {
-        // The client type is generated by the `#[contractclient]` attribute.
-        // Referencing it here ensures the attribute stays in place and the
-        // generated type remains publicly usable.
-        let _client_type = core::marker::PhantomData::<GovernableClient<'>::<'>>;
-    }
-
-    /// Determinism: the interface trait exposes exactly the expected methods.
-    ///
-    /// This is a compile-time check that the trait has not been silently
-    /// extended or removed in a way that would break existing callers.
-    #[test]
-    fn governable_trait_shape_is_stable() {
-        fn _assert_get_admin<T: Governable>() {}
-        fn _assert_set_admin<T: Governable>() {}
-        // The following lines are never executed; they exist to force
-        // compile-time validation of the trait shape.
-        if false {
-            _assert_get_admin::<ReferenceGovernable>();
-            _assert_set_admin::<ReferenceGovernable>();
-        }
+        // `GovernableClient` is generated by the `#[contractclient]` attribute
+        // on `Governable`. Referencing it here fails the build if the attribute
+        // is removed, which would break every cross-contract caller.
+        let _client: Option<GovernableClient<'_>> = None;
     }
 }
