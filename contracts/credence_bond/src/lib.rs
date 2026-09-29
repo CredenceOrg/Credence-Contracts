@@ -3316,6 +3316,8 @@ mod tests {
             &attester,
             &subject,
             &String::from_str(&e, "ttl"),
+            &contract_id,
+            &e.ledger().timestamp().saturating_add(3_600),
             &0_u64,
         );
 
