@@ -226,6 +226,7 @@ mod testutils_helpers {
 
 #[cfg(test)]
 mod boundary_recovery_tests {
+    extern crate std;
     use super::*;
     use crate::CredenceBond;
     use soroban_sdk::testutils::{Address as _, Ledger};
