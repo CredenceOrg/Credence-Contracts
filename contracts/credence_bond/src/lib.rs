@@ -3437,6 +3437,10 @@ mod test_lifecycle_invariants;
 #[cfg(test)]
 mod test_pausable;
 
+/// Boundary/recovery unit coverage for the `emergency` module (issue #1322).
+#[cfg(test)]
+mod test_emergency_boundaries;
+
 use interfaces::governable::Governable;
 
 #[contractimpl]
