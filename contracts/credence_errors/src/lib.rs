@@ -866,7 +866,7 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseExpired
             | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
-            |            ContractError::StaleAdminEpoch
+            | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
             | ContractError::CrossContractCallerMismatch
             | ContractError::RoleRequired => ErrorCategory::Authorization,
@@ -906,8 +906,7 @@ impl ErrorExt for ContractError {
             | ContractError::CursorOutOfRange
             | ContractError::BatchTooLarge
             | ContractError::EmptyBatch
-            | ContractError::UnsupportedDecimals => ErrorCategory::Bond,
-            ContractError::InvalidStringifiedBytes | ContractError::SnapshotGenerationMismatch | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -966,7 +965,6 @@ impl ErrorExt for ContractError {
             | ContractError::OwnerMismatch
             | ContractError::TargetMismatch
             | ContractError::ContractIdMismatch => ErrorCategory::Authorization,
-            ContractError::StaleAdminEpoch | ContractError::StaleSignerEpoch => ErrorCategory::Delegation,
         }
     }
 
@@ -1052,11 +1050,6 @@ impl ErrorExt for ContractError {
             ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
             ContractError::EmptyBatch => "Batch input must contain at least one item",
             ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
-            ContractError::InvalidStringifiedBytes => "Stringified bytes are invalid",
-            ContractError::SnapshotGenerationMismatch => "Snapshot generation mismatch",
-            ContractError::TimestampInFuture => "Timestamp is in the future",
-            ContractError::InvalidCurrency => "Invalid currency",
-            ContractError::DuplicateIdempotencyKey => "Idempotency key has already been used for this operation",
             ContractError::InvariantViolation => {
                 "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
             }
@@ -1177,8 +1170,6 @@ impl ErrorExt for ContractError {
                 "Signer pause proposal carries a stale epoch reference"
             }
             ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
-            ContractError::StaleAdminEpoch => "Admin pause proposal ID was derived in a stale epoch",
-            ContractError::StaleSignerEpoch => "Signer pause proposal ID was derived in a stale epoch",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {

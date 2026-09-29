@@ -1276,7 +1276,7 @@ mod tests {
             ContractError::StaleAdminEpoch => false,
             ContractError::StaleSignerEpoch => false,
             ContractError::LeaseSignerMismatch => true, // re-sign with the lease's signer
-            ContractError::DeadlineExpired => true,    // re-sign with a later deadline
+            ContractError::DeadlineExpired => true,     // re-sign with a later deadline
 
             // Bond: state/caller fixes; fatal cases are security/drift/capacity.
             ContractError::BondNotFound => true,
@@ -1312,8 +1312,8 @@ mod tests {
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
             ContractError::CooldownRequestAlreadyPending => true, // wait for the pending request
-            ContractError::CooldownRequestNotFound => true,      // admin configures cooldown first
-            ContractError::CooldownPeriodNotElapsed => true,    // wait out the cooldown period
+            ContractError::CooldownRequestNotFound => true, // admin configures cooldown first
+            ContractError::CooldownPeriodNotElapsed => true, // wait out the cooldown period
             ContractError::InvalidCurrency => true,       // supply a valid currency
             ContractError::OwnerMismatch => false,
             ContractError::TargetMismatch => false,
