@@ -1269,6 +1269,51 @@ impl AdminContract {
         active_count
     }
 
+    /// Get the number of currently-effective active admins.
+    ///
+    /// Unlike [`get_active_admin_count`], this counts only admins that are
+    /// both `active == true` **and** not currently suspended
+    /// (`e.ledger().timestamp() >= suspended_until`).  It is the count used
+    /// by the `MinAdmins` guard in [`suspend_admin`] and matches the
+    /// effective-admin semantics of [`is_admin`] and [`has_role_at_least`].
+    ///
+    /// # Determinism
+    /// The result is a pure function of the persisted `AdminList` and the
+    /// per-admin `AdminInfo` records at the current ledger timestamp.  It
+    /// performs no mutation, advances no epoch, and emits no events, so it is
+    /// safe to call from read-only paths and from within other entrypoints.
+    ///
+    /// # Boundary behaviour
+    /// * Empty / uninitialised `AdminList` → `0`.
+    /// * An `AdminList` entry with no matching `AdminInfo` (dangling entry)
+    ///   is skipped, never counted, and never panics.
+    /// * Suspension expiry is inclusive: at exactly `suspended_until` the
+    ///   admin is effective again.
+    ///
+    /// # Returns
+    /// The count of currently-effective active admins.
+    pub fn get_effective_active_admin_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
+        #[allow(deprecated)]
+        let all_admins = Self::get_all_admins(e.clone());
+        let now = e.ledger().timestamp();
+        let mut active_count: u32 = 0;
+        for admin in all_admins.iter() {
+            if let Some(admin_info) = e
+                .storage()
+                .instance()
+                .get::<_, AdminInfo>(&DataKey::AdminInfo(admin.clone()))
+            {
+                if admin_info.active && now >= admin_info.suspended_until {
+                    active_count = active_count
+                        .checked_add(1)
+                        .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+                }
+            }
+        }
+        active_count
+    }
+
     /// Get contract configuration.
     ///
     /// # Returns
