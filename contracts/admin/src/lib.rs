@@ -880,8 +880,11 @@ impl AdminContract {
     ///
     /// # Panics
     /// * `NoPendingAdmin` — no ownership transfer has been proposed
-    /// * `NotAdmin` — caller is not the pending owner
+    /// * `NotAdmin` — caller is not the pending owner, or the pending
+    ///   candidate is no longer a SuperAdmin
     /// * `TimelockNotReady` — the minimum delay since proposal has not elapsed
+    /// * `AlreadyDeactivated` — the pending candidate was deactivated
+    /// * `AdminSuspended` — the pending candidate is currently suspended
     ///
     /// # Events
     /// Emits `ownership_transfer_accepted` with previous owner and new owner
@@ -892,6 +895,12 @@ impl AdminContract {
     /// A minimum delay of `OWNERSHIP_TRANSFER_TIMELOCK` seconds must elapse
     /// between `transfer_ownership` and `accept_ownership` to protect against
     /// compromised-owner takeovers.
+    ///
+    /// The pending candidate is revalidated against *current* state immediately
+    /// before the ownership write. A candidate who was removed, demoted,
+    /// deactivated, or suspended during the timelock cannot accept; the
+    /// reverted call changes no state and emits no events, so the current owner
+    /// can recover by replacing the proposal.
     pub fn accept_ownership(e: Env, caller: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -922,6 +931,14 @@ impl AdminContract {
         if now < eligible_at {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
+
+        // Revalidate immediately before the first ownership write. A proposal is
+        // only an intent: the candidate may have been removed, demoted,
+        // deactivated, or suspended while the timelock elapsed (possibly by a
+        // concurrent transaction). Failing here leaves the owner, pending owner,
+        // proposal timestamp, config epoch, and event stream untouched, so the
+        // current owner can recover by replacing the proposal.
+        Self::require_effective_super_admin(&e, &pending_owner);
 
         bump_config_epoch(&e);
 
@@ -1526,3 +1543,6 @@ mod test_role_events;
 
 #[cfg(test)]
 mod test_concurrency_race_safety;
+
+#[cfg(test)]
+mod test_atomic_rollback;
