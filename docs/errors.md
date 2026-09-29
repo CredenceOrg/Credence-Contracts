@@ -70,6 +70,9 @@ error code instead of an opaque transaction failure.
 | 123 | `CrossContractCallerMismatch` | ✗ | Cross-contract caller does not match the configured partner |
 | 124 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
 | 125 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
+| 126 | `LeaseSignerMismatch` | ✓ | Caller is not the required lease signer |
+| 127 | `RoleRequired` | ✓ | Caller does not hold the required role |
+| 129 | `DeadlineExpired` | ✓ | Caller-supplied deadline has already elapsed at the current ledger |
 
 ### Bond (200–299)
 
@@ -111,6 +114,10 @@ error code instead of an opaque transaction failure.
 | 233 | `InvariantViolation` | ✗ | Post-write self-check detected bond/attestation accounting drift |
 | 234 | `InvalidCurrency` | ✓ | Empty or whitespace-only currency symbol |
 | 235 | `SnapshotGenerationMismatch` | ✗ | Snapshot generation does not match the current epoch |
+| 236 | `CooldownRequestAlreadyPending` | ✓ | A cooldown request for this identity is already pending |
+| 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this identity |
+| 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not yet elapsed |
+| 239 | `BytesTooLarge` | ✓ | User-supplied raw `Bytes` input exceeds the maximum accepted length |
 
 ### Attestation (300–399)
 

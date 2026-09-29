@@ -3,8 +3,9 @@
 //! Regression target: adding one enum variant used to require bumping unrelated
 //! manual counts (`ALL_VARIANTS_COUNT` vs `all_variants().len()` vs
 //! `test_is_recoverable_exhaustive` cases) that drifted to wildly different
-//! values (e.g. 94 vs 96). The shared `variant_table.rs` is authoritative;
-//! these tests fail if parallel counters reappear.
+//! values (e.g. 94 vs 96, later 102 vs 104 vs 110). The shared
+//! `variant_table.rs` is authoritative; these tests fail if parallel counters
+//! reappear.
 
 // Off-chain test binary, not deployed WASM (issue #713 exemption).
 #![allow(clippy::disallowed_macros)]
@@ -17,7 +18,7 @@ include!("../variant_table.rs");
 fn variant_table_length_is_the_canonical_generation() {
     assert_eq!(
         ALL_VARIANTS.len(),
-        110,
+        117,
         "Add one row to `variant_table.rs` per new `ContractError` variant; \
          do not maintain separate manual counts in other test files.",
     );

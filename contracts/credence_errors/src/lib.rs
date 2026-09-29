@@ -21,7 +21,8 @@
 // use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::contracterror;
+use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env};
+
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -158,7 +159,7 @@ pub enum ContractError {
     /// Raised by `require_no_ongoing_migration`.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    MigrationInProgress = 125,
+    MigrationInProgress = 124,
 
     /// Borrows are currently frozen; new bond creation and top-ups are not allowed.
     /// Contracts: bond
@@ -200,14 +201,14 @@ pub enum ContractError {
     /// Replaces: panic!("zero bytes32")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    ZeroBytes32 = 127,
+    ZeroBytes32 = 109,
 
     /// Caller does not hold the required role.
     /// Raised by `require_role` when the actor is not assigned the requested
     /// `Role` at the time of the call.
     /// Contracts: anywhere role-based `require_role` is enforced.
     /// Wire-stable: do not renumber this error code.
-    RoleRequired = 128,
+    RoleRequired = 127,
 
     /// Lease scope bitmask does not cover the requested operation.
     /// Raised by `require_matching_lease_scope` when `(lease.scope & op) != op`.
@@ -220,6 +221,11 @@ pub enum ContractError {
     /// Contracts: general-purpose (lease auth)
     /// Wire-stable: do not renumber this error code.
     LeaseExpired = 122,
+
+    /// Cross-contract caller does not match the configured partner address.
+    /// Contracts: admin, multisig
+    /// Wire-stable: do not renumber this error code.
+    CrossContractCallerMismatch = 123,
 
     /// Caller is not the required lease signer.
     /// Raised by `require_matching_lease_signer` when `lease.signer != caller`.
@@ -433,7 +439,15 @@ pub enum ContractError {
     /// Triggered by: token ingress symbol check
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvalidCurrency = 232,
+    InvalidCurrency = 234,
+
+    /// User-supplied raw `Bytes` input exceeds the maximum accepted length.
+    /// Raised by `require_finite_bytes` at entrypoint boundaries that accept
+    /// caller-controlled `Bytes` (e.g. idempotency salts) to bound hashing
+    /// cost and persistent-storage growth before the value is used.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BytesTooLarge = 239,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -673,13 +687,12 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 116,
+    MaxPauseSignersExceeded = 125,
 
-    /// Signature or operation deadline has passed.
-    /// Replaces: panic!("signature expired")
+    /// A caller-supplied deadline has already elapsed at the current ledger.
     /// Contracts: bond, delegation
     /// Wire-stable: do not renumber this error code.
-    SignatureExpired = 222,
+    DeadlineExpired = 129,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -848,6 +861,7 @@ impl ErrorExt for ContractError {
             | ContractError::TimestampInFuture
             | ContractError::InvalidMaxPauseSigners
             | ContractError::MaxPauseSignersExceeded
+            | ContractError::DeadlineExpired
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
             | ContractError::LeaseSignerMismatch
@@ -988,6 +1002,7 @@ impl ErrorExt for ContractError {
                 "Lease scope does not cover the requested operation"
             }
             ContractError::LeaseExpired => "Lease has expired and can no longer authorise operations",
+            ContractError::DeadlineExpired => "Supplied deadline has already elapsed",
             ContractError::BondNotFound => "No bond exists for the supplied identity",
             ContractError::BondNotActive => "Bond is not in an active state",
             ContractError::InsufficientBalance => "Insufficient balance for withdrawal",
@@ -1214,6 +1229,27 @@ impl ErrorExt for ContractError {
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleNotHeldAtLedger => true, // re-sign with a valid ledger timestamp
 
+            ContractError::ZeroBytes32
+            | ContractError::RoleRequired          // switch to an actor holding the role
+            | ContractError::LeaseScopeMismatch
+            | ContractError::LeaseExpired          // wait for a fresh lease
+            | ContractError::LeaseSignerMismatch
+            | ContractError::InvalidMaxPauseSigners
+            | ContractError::MaxPauseSignersExceeded
+            | ContractError::TimestampInFuture     // re-submit with a valid ledger timestamp
+            | ContractError::DeadlineExpired       // re-sign with a later deadline
+            | ContractError::InvalidStringifiedBytes
+            | ContractError::CooldownRequestAlreadyPending // wait for the pending request
+            | ContractError::CooldownRequestNotFound      // admin configures cooldown first
+            | ContractError::CooldownPeriodNotElapsed    // wait out the cooldown period
+            => true,
+
+            ContractError::CrossContractCallerMismatch
+            | ContractError::SnapshotGenerationMismatch
+            | ContractError::StaleAdminEpoch        // re-propose against the current epoch
+            | ContractError::StaleSignerEpoch
+            => false,
+
             // --- Bond (200-299): most errors are caller-fixable. ---
             ContractError::BondNotFound                 // create_bond first
             | ContractError::BondNotActive
@@ -1306,8 +1342,10 @@ impl ErrorExt for ContractError {
             | ContractError::TreasuryBeneficiaryMismatch    // call with the correct treasury address
             | ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
 
-
-
+            // Treasury FATAL: bad callback magic / failed repayment. The same
+            // callback will fail again; retrying loops funds indefinitely.
+            ContractError::InvalidFlashLoanCallback
+            | ContractError::FlashLoanRepaymentFailed => false,
 
             ContractError::InvalidPercentSplit => true, // caller can provide valid splits
 
@@ -1387,7 +1425,7 @@ macro_rules! require_no_leading_zero_amount {
 macro_rules! require_positive_amount {
     ($env:expr, $amount:expr) => {
         if $amount <= 0 {
-            panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
+            soroban_sdk::panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
         }
     };
 }
