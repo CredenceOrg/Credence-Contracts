@@ -137,6 +137,11 @@ mod test_claim_expiry_sweep;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_max_leverage;
 
+/// Boundary and recovery tests for `leverage.rs`: unit, integration, and
+/// regression coverage for `validate_leverage` (issue #1336).
+#[cfg(test)]
+mod test_leverage;
+
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_migration_guard;
 
