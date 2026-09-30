@@ -645,7 +645,10 @@ impl CredenceBond {
     /// ```
     pub fn set_early_exit_config(e: Env, admin: Address, treasury: Address, penalty_bps: u32) {
         Self::require_not_paused(&e);
-        admin.require_auth();
+        // auth: the guard below performs the single `admin.require_auth()` call.
+        // Repeating it here registers a second auth entry for the same address in
+        // this invocation, which the host rejects with
+        // `Error(Context, InvalidAction)`, leaving the entrypoint uncallable.
         guards::require_admin(&e, &admin);
         early_exit_penalty::set_config(&e, treasury, penalty_bps);
     }
@@ -658,7 +661,10 @@ impl CredenceBond {
     /// Set whether borrows are frozen.
     pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
         Self::require_not_paused(&e);
-        admin.require_auth();
+        // auth: the guard below performs the single `admin.require_auth()` call.
+        // Repeating it here registers a second auth entry for the same address in
+        // this invocation, which the host rejects with
+        // `Error(Context, InvalidAction)`, leaving the entrypoint uncallable.
         let stored_admin: Address = e
             .storage()
             .instance()
@@ -1473,7 +1479,10 @@ impl CredenceBond {
     /// Set attester stake (admin only).
     pub fn set_attester_stake(e: Env, admin: Address, attester: Address, amount: i128) {
         Self::require_not_paused(&e);
-        admin.require_auth();
+        // auth: the guard below performs the single `admin.require_auth()` call.
+        // Repeating it here registers a second auth entry for the same address in
+        // this invocation, which the host rejects with
+        // `Error(Context, InvalidAction)`, leaving the entrypoint uncallable.
         guards::require_admin(&e, &admin);
         weighted_attestation::set_attester_stake(&e, &attester, amount);
     }
@@ -1481,7 +1490,10 @@ impl CredenceBond {
     /// Set weight config: multiplier_bps, max_weight. Admin only.
     pub fn set_weight_config(e: Env, admin: Address, multiplier_bps: u32, max_weight: u32) {
         Self::require_not_paused(&e);
-        admin.require_auth();
+        // auth: the guard below performs the single `admin.require_auth()` call.
+        // Repeating it here registers a second auth entry for the same address in
+        // this invocation, which the host rejects with
+        // `Error(Context, InvalidAction)`, leaving the entrypoint uncallable.
         guards::require_admin(&e, &admin);
         weighted_attestation::set_weight_config(&e, multiplier_bps, max_weight);
     }
@@ -1500,7 +1512,14 @@ impl CredenceBond {
     pub fn transfer_admin(e: Env, current_admin: Address, new_admin: Address) {
         Self::require_not_paused(&e);
         current_admin.require_auth();
-        new_admin.require_auth();
+        // Only record a second auth entry when it is a genuinely distinct
+        // address. Requiring the same address twice in one invocation is
+        // rejected by the host with `Error(Context, InvalidAction)`, which would
+        // make the `AdminUnchanged` guard below unreachable for exactly the
+        // case it exists to catch.
+        if new_admin != current_admin {
+            new_admin.require_auth();
+        }
 
         let stored_admin: Address = e
             .storage()
@@ -2024,7 +2043,10 @@ impl CredenceBond {
     /// [`crate::fees::set_config`](../../src/fees.rs).
     pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
         Self::require_not_paused(&e);
-        admin.require_auth();
+        // auth: the guard below performs the single `admin.require_auth()` call.
+        // Repeating it here registers a second auth entry for the same address in
+        // this invocation, which the host rejects with
+        // `Error(Context, InvalidAction)`, leaving the entrypoint uncallable.
         guards::require_admin(&e, &admin);
         fees::set_config(&e, &admin, treasury, fee_bps);
     }
@@ -2359,7 +2381,10 @@ impl CredenceBond {
     /// Reverts with [`ContractError::ContractPaused`] when the contract is paused.
     pub fn collect_fees(e: Env, admin: Address, idempotency_salt: Bytes) -> i128 {
         Self::require_not_paused(&e);
-        admin.require_auth();
+        // auth: the guard below performs the single `admin.require_auth()` call.
+        // Repeating it here registers a second auth entry for the same address in
+        // this invocation, which the host rejects with
+        // `Error(Context, InvalidAction)`, leaving the entrypoint uncallable.
 
         validation::require_finite_bytes(
             &e,
