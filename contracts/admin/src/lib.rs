@@ -1678,3 +1678,5 @@ mod test_concurrency_race_safety;
 
 #[cfg(test)]
 mod test_atomic_rollback;
+#[cfg(test)]
+mod test_get_admin_count_failure_boundaries;
