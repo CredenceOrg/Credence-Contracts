@@ -113,6 +113,10 @@ mod test_liquidate;
 #[cfg(test)]
 mod test_slashing;
 
+/// Boundary and recovery coverage for the slashing subsystem (issue #1350).
+#[cfg(test)]
+mod test_slashing_boundary_recovery;
+
 /// Tests for the bounded claim expiry sweep (permissionless keeper).
 #[cfg(test)]
 mod test_claim_expiry_sweep;
