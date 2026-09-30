@@ -216,6 +216,63 @@ impl AdminContract {
         String::from_str(&e, credence_errors::VERSION)
     }
 
+    /// Return whether `address` is currently an active admin.
+    ///
+    /// # Determinism and failure boundaries
+    ///
+    /// This is a pure read: it never mutates storage, never advances
+    /// [`DataKey::ConfigEpoch`], and never emits events. Given the same ledger
+    /// snapshot it always returns the same value, so it is safe to call from
+    /// other contracts and from off-chain simulations.
+    ///
+    /// An address is considered an admin if and only if **all** of the
+    /// following hold:
+    ///
+    /// 1. An [`AdminInfo`] record exists for the address.
+    /// 2. The record's `active` flag is `true`.
+    /// 3. The record is not currently suspended, i.e.
+    ///    `suspended_until == 0 || e.ledger().timestamp() >= suspended_until`.
+    ///
+    /// Suspension expires automatically once the ledger timestamp reaches
+    /// `suspended_until`, so no second transaction is required to restore
+    /// admin status.
+    ///
+    /// # Boundary cases
+    ///
+    /// * Uninitialized contract — returns `false` (no panic, no partial read).
+    /// * Unknown address — returns `false`.
+    /// * Deactivated admin — returns `false`.
+    /// * Suspended admin — returns `false` until the suspension expires.
+    /// * Suspension boundary — at exactly `suspended_until` the admin is
+    ///   active again (`>=` comparison).
+    ///
+    /// # Security
+    ///
+    /// This function performs no authorization check and exposes no sensitive
+    /// data: it only reveals whether a public address currently holds admin
+    /// privileges, which is already observable through privileged entrypoints.
+    pub fn is_admin(e: Env, address: Address) -> bool {
+        let info: Option<AdminInfo> = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(address));
+
+        match info {
+            None => false,
+            Some(info) => {
+                if !info.active {
+                    return false;
+                }
+                if info.suspended_until != 0
+                    && e.ledger().timestamp() < info.suspended_until
+                {
+                    return false;
+                }
+                true
+            }
+        }
+    }
+
     /// Initialize the admin contract with a super admin.
     ///
     /// # Arguments
@@ -741,6 +798,9 @@ impl AdminContract {
     /// * `NotAdmin`          — caller or target is not a known admin
     /// * `NotAdmin`          — caller role is strictly lower than target role
     /// * `AdminSuspended`    — `until_ts` is not in the future
+    /// * `AdminSuspended`    — target admin is already suspended at or beyond `until_ts`
+    ///                         (re-suspension must strictly extend the window)
+    /// * `AdminUnchanged`    — target admin is the caller (self-suspension is rejected)
     /// * `InvalidPauseAction` — suspending would drop active admins below `MinAdmins`
     /// * `AlreadyDeactivated` — target admin is permanently deactivated
     ///
@@ -750,6 +810,13 @@ impl AdminContract {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
         caller.require_auth_for_args((caller.clone(), admin.clone(), until_ts).into_val(&e));
+
+        // Self-suspension is rejected: an admin must not be able to lock
+        // themselves out, which would otherwise strand governance when the
+        // caller is the only effective admin of their role.
+        if caller == admin {
+            panic_with_error!(&e, ContractError::AdminUnchanged);
+        }
 
         // until_ts must be in the future
         if until_ts <= e.ledger().timestamp() {
@@ -767,6 +834,14 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::AlreadyDeactivated);
         }
 
+        // Re-suspension must strictly extend the existing window. A repeated
+        // or shorter suspension is a no-op rejection so observers never see a
+        // spurious epoch bump or event for a state that did not change.
+        let now = e.ledger().timestamp();
+        if admin_info.suspended_until > now && until_ts <= admin_info.suspended_until {
+            panic_with_error!(&e, ContractError::AdminSuspended);
+        }
+
         // Caller must have a role >= target's role (same rule as deactivate_admin)
         let caller_info: AdminInfo = e
             .storage()
@@ -779,7 +854,6 @@ impl AdminContract {
 
         // MinAdmins guard: count currently-effective active admins
         let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
-        let now = e.ledger().timestamp();
         let all_admins: Vec<Address> = e
             .storage()
             .instance()
@@ -880,8 +954,11 @@ impl AdminContract {
     ///
     /// # Panics
     /// * `NoPendingAdmin` — no ownership transfer has been proposed
-    /// * `NotAdmin` — caller is not the pending owner
+    /// * `NotAdmin` — caller is not the pending owner, or the pending
+    ///   candidate is no longer a SuperAdmin
     /// * `TimelockNotReady` — the minimum delay since proposal has not elapsed
+    /// * `AlreadyDeactivated` — the pending candidate was deactivated
+    /// * `AdminSuspended` — the pending candidate is currently suspended
     ///
     /// # Events
     /// Emits `ownership_transfer_accepted` with previous owner and new owner
@@ -892,6 +969,12 @@ impl AdminContract {
     /// A minimum delay of `OWNERSHIP_TRANSFER_TIMELOCK` seconds must elapse
     /// between `transfer_ownership` and `accept_ownership` to protect against
     /// compromised-owner takeovers.
+    ///
+    /// The pending candidate is revalidated against *current* state immediately
+    /// before the ownership write. A candidate who was removed, demoted,
+    /// deactivated, or suspended during the timelock cannot accept; the
+    /// reverted call changes no state and emits no events, so the current owner
+    /// can recover by replacing the proposal.
     pub fn accept_ownership(e: Env, caller: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -922,6 +1005,14 @@ impl AdminContract {
         if now < eligible_at {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
+
+        // Revalidate immediately before the first ownership write. A proposal is
+        // only an intent: the candidate may have been removed, demoted,
+        // deactivated, or suspended while the timelock elapsed (possibly by a
+        // concurrent transaction). Failing here leaves the owner, pending owner,
+        // proposal timestamp, config epoch, and event stream untouched, so the
+        // current owner can recover by replacing the proposal.
+        Self::require_effective_super_admin(&e, &pending_owner);
 
         bump_config_epoch(&e);
 
@@ -1010,6 +1101,16 @@ impl AdminContract {
     /// The admin role if the address is an admin, panics otherwise
     pub fn get_admin_role(e: Env, address: Address) -> AdminRole {
         bump_instance_ttl(&e);
+        // Failure-boundary invariant: `get_admin_role` is a read-only query
+        // that MUST NOT mutate state, advance the config epoch, or emit
+        // events. It is deterministic for all inputs:
+        //   * known admin (active, suspended, or deactivated) -> stored role
+        //   * unknown / never-registered address              -> NotAdmin panic
+        //   * zero/invalid sentinel address                   -> NotAdmin panic
+        // A suspended or deactivated admin still resolves to their stored
+        // role here; callers that need effective-authority semantics must
+        // use `is_admin` / `has_role_at_least` instead. This separation is
+        // intentional and covered by focused failure-boundary tests.
         let admin_info: AdminInfo = e
             .storage()
             .instance()
@@ -1269,6 +1370,51 @@ impl AdminContract {
         active_count
     }
 
+    /// Get the number of currently-effective active admins.
+    ///
+    /// Unlike [`get_active_admin_count`], this counts only admins that are
+    /// both `active == true` **and** not currently suspended
+    /// (`e.ledger().timestamp() >= suspended_until`).  It is the count used
+    /// by the `MinAdmins` guard in [`suspend_admin`] and matches the
+    /// effective-admin semantics of [`is_admin`] and [`has_role_at_least`].
+    ///
+    /// # Determinism
+    /// The result is a pure function of the persisted `AdminList` and the
+    /// per-admin `AdminInfo` records at the current ledger timestamp.  It
+    /// performs no mutation, advances no epoch, and emits no events, so it is
+    /// safe to call from read-only paths and from within other entrypoints.
+    ///
+    /// # Boundary behaviour
+    /// * Empty / uninitialised `AdminList` → `0`.
+    /// * An `AdminList` entry with no matching `AdminInfo` (dangling entry)
+    ///   is skipped, never counted, and never panics.
+    /// * Suspension expiry is inclusive: at exactly `suspended_until` the
+    ///   admin is effective again.
+    ///
+    /// # Returns
+    /// The count of currently-effective active admins.
+    pub fn get_effective_active_admin_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
+        #[allow(deprecated)]
+        let all_admins = Self::get_all_admins(e.clone());
+        let now = e.ledger().timestamp();
+        let mut active_count: u32 = 0;
+        for admin in all_admins.iter() {
+            if let Some(admin_info) = e
+                .storage()
+                .instance()
+                .get::<_, AdminInfo>(&DataKey::AdminInfo(admin.clone()))
+            {
+                if admin_info.active && now >= admin_info.suspended_until {
+                    active_count = active_count
+                        .checked_add(1)
+                        .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+                }
+            }
+        }
+        active_count
+    }
+
     /// Get contract configuration.
     ///
     /// # Returns
@@ -1495,6 +1641,9 @@ impl AdminContract {
 mod test_pausable;
 
 #[cfg(test)]
+mod test_pause_failure_boundaries;
+
+#[cfg(test)]
 mod test_admin_epoch_guard;
 
 #[cfg(test)]
@@ -1526,3 +1675,6 @@ mod test_role_events;
 
 #[cfg(test)]
 mod test_concurrency_race_safety;
+
+#[cfg(test)]
+mod test_atomic_rollback;

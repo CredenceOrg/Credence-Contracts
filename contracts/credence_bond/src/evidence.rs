@@ -1,22 +1,24 @@
 //! Evidence Hash Storage Module
-//!
-//! Provides on-chain storage for evidence hashes (IPFS/content hashes) linked to slash requests.
-//! This module ensures evidence integrity through tamper-proof hash storage and supports
-//! multiple evidence items per slash proposal for comprehensive documentation.
-//!
-//! ## Key Features
-//! - **IPFS/Hash Storage**: Store content-addressed evidence references
-//! - **Slash Request Linking**: Evidence tied to specific slash proposals
-//! - **Tamper Prevention**: Immutable evidence once submitted
-//! - **Multiple Evidence**: Support for multiple evidence items per proposal
-//! - **Event Emission**: Track all evidence submissions
-//! - **Query Support**: Retrieve evidence by proposal or hash
-//!
-//! ## Security Considerations
-//! - Evidence cannot be modified after submission
-//! - Only authorized submitters (admin/governors) can add evidence
-//! - Hash uniqueness enforced to prevent duplicate evidence
-//! - All operations emit events for auditability
+///
+/// Provides on-chain storage for evidence hashes (IPFS/content hashes) linked to slash requests.
+/// This module ensures evidence integrity through tamper-proof hash storage and supports
+/// multiple evidence items per slash proposal for comprehensive documentation.
+///
+/// ## Key Features
+/// - `**IPFS/Hash Storage**`: Store content-addressed evidence references
+/// - `**Slash Request Linking**`
+: Evidence tied to specific slash proposals
+/// - `**Tamper Prevention**`: Immutable evidence once submitted
+/// - `**Multiple Evidence**`: Support for multiple evidence items per proposal
+/// - `**Event Emission**`
+: Track all evidence submissions
+/// - `**Query Support**`: Retrieve evidence by proposal or hash
+///
+/// ## Security Considerations
+/// - Evidence cannot be modified after submission
+/// - Only authorized submitters (admin/governors) can add evidence
+/// - Hash uniqueness enforced to prevent duplicate evidence
+/// - All operations emit events for auditability
 
 use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
@@ -40,7 +42,7 @@ pub struct Evidence {
     pub id: u64,
     /// Slash proposal this evidence supports
     pub proposal_id: u64,
-    /// Content hash (IPFS CID or other hash)
+    /// Content hash (IPFS cID or other hash)
     pub hash: String,
     /// Type of hash
     pub hash_type: EvidenceType,
@@ -51,6 +53,13 @@ pub struct Evidence {
     /// Submission timestamp
     pub submitted_at: u64,
 }
+
+/// Maximum allowed length for an evidence hash (bytes).
+/// Kept generous enough for IPFS CIDs2 (v0/v1) and SHA-256 hex digests.
+pub const MAX_HASH_LEN: u32 = 128;
+
+/// Maximum allowed length for an evidence description (bytes).
+pub const MAX_DESCRIPTION_LEN: u32 = 500;
 
 /// Storage keys for evidence module
 fn key_evidence_counter() -> crate::DataKey {
@@ -88,8 +97,9 @@ fn key_hash_exists(hash: &String) -> crate::DataKey {
 ///
 /// # Panics
 /// * If hash is empty
+/// * If hash exceeds `MAX_HASH_LEN`
 /// * If hash already exists (prevents duplicates)
-/// * If description exceeds reasonable length
+/// * If description exceeds `MAX_DESCRIPTION_LEN`
 ///
 /// # Security
 /// * Evidence is immutable once submitted
@@ -103,9 +113,9 @@ fn key_hash_exists(hash: &String) -> crate::DataKey {
 ///     &e,
 ///     &admin,
 ///     proposal_id,
-///     &String::from_str(&e, "QmXoypizjW3WknFiJnKLwHCnL72vedxjQkDDP1mXWo6uco"),
+///     &String::from_str(&e, "QmXoypizjW7WknFiJnKLwHCnL72vedxjkQDP1mXWo6uco"),
 ///     &EvidenceType::IPFS,
-///     &Some(String::from_str(&e, "Screenshot of violation")),
+///     &Some(String::from_str(e, "Screenshot of violation")),
 /// );
 /// ```
 pub fn submit_evidence(
@@ -116,9 +126,14 @@ pub fn submit_evidence(
     hash_type: &EvidenceType,
     description: &Option<String>,
 ) -> u64 {
-    // Validation
+    // Validation - empty hash
     if hash.is_empty() {
         panic!("hash cannot be empty");
+    }
+
+    // Validation - hash length boundary
+    if hash.len() > MAX_HASH_LEN {
+        panic!("hash too long (max 128 bytes)");
     }
 
     // Prevent duplicate hashes
@@ -129,7 +144,7 @@ pub fn submit_evidence(
 
     // Optional description length validation
     if let Some(desc) = description {
-        if desc.len() > 500 {
+        if desc.len() > MAX_DESCRIPTION_LEN {
             panic!("description too long (max 500 chars)");
         }
     }
@@ -194,7 +209,7 @@ pub fn get_evidence(e: &Env, evidence_id: u64) -> Evidence {
     e.storage()
         .instance()
         .get(&key)
-        .unwrap_or_else(|| panic!("evidence not found"))
+        .unwrap_or_else([|| panic!("evidence not found"))
 }
 
 /// NatSpec-style: Get all evidence IDs for a slash proposal.
@@ -276,7 +291,7 @@ pub fn get_proposal_evidence_details(e: &Env, proposal_id: u64) -> Vec<Evidence>
 /// * `proposal_id` - Associated slash proposal ID
 /// * `submitter` - Address that submitted the evidence
 /// * `hash` - Content hash that was submitted
-fn emit_evidence_submitted(
+pub fn emit_evidence_submitted(
     e: &Env,
     evidence_id: u64,
     proposal_id: u64,

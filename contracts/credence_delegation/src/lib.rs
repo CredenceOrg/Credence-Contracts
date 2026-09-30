@@ -1127,6 +1127,9 @@ mod test_delegation_ttl;
 mod test_domain_separation;
 
 #[cfg(test)]
+mod test_domain_boundaries;
+
+#[cfg(test)]
 mod test_pause_proposal_view;
 
 #[cfg(test)]

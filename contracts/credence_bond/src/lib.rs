@@ -83,6 +83,8 @@ mod test_unauthorized_token;
 mod test_validation;
 #[cfg(test)]
 mod test_zero_address;
+#[cfg(test)]
+mod test_fork_divergent;
 
 /// Chaos testing suite for simulating host and token failures.
 // [pre-broken on main] #[cfg(test)]
@@ -137,6 +139,11 @@ mod test_claim_expiry_sweep;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_max_leverage;
 
+/// Boundary and recovery tests for `leverage.rs`: unit, integration, and
+/// regression coverage for `validate_leverage` (issue #1336).
+#[cfg(test)]
+mod test_leverage;
+
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_migration_guard;
 
@@ -148,6 +155,21 @@ mod test_claim_expiry_sweep;
 /// oversized, and injected-null cases (issue #770).
 #[cfg(test)]
 mod test_verify_stringified_bytes;
+
+/// Boundary and edge-case tests for event emissions (#1324).
+/// Validates numeric boundaries, invalid inputs, empty values, and large collections.
+#[cfg(test)]
+mod test_events_boundary;
+
+/// Recovery and idempotence tests for event emissions (#1324).
+/// Validates duplicate emissions, retries, sequence consistency, and no-loss guarantees.
+#[cfg(test)]
+mod test_events_recovery;
+
+/// Invariant and correctness tests for event emissions (#1324).
+/// Validates event data correctness, invariant preservation, and schema immutability.
+#[cfg(test)]
+mod test_events_invariants;
 
 use credence_errors::ContractError;
 use soroban_sdk::{
@@ -3473,6 +3495,9 @@ mod test_pausable;
 /// recovery, and cancel-then-rerequest regression scenarios.
 #[cfg(test)]
 mod test_cooldown;
+/// Boundary/recovery unit coverage for the `emergency` module (issue #1322).
+#[cfg(test)]
+mod test_emergency_boundaries;
 
 use interfaces::governable::Governable;
 

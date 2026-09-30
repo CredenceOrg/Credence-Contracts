@@ -1,3 +1,4 @@
+//! Boundary and recovery test coverage for multisig entry points.
 //! # Credence Multi-Signature Contract
 //!
 //! Generic multi-signature contract for governance and administrative actions.
@@ -790,6 +791,9 @@ impl CredenceMultiSig {
     }
 }
 
+#[cfg(test)]
+mod boundary_recovery_tests;
+
 #[contractimpl]
 impl interfaces::governable::Governable for CredenceMultisigContract {
     fn get_admin(e: Env) -> Address {
@@ -800,3 +804,5 @@ impl interfaces::governable::Governable for CredenceMultisigContract {
         Self::transfer_admin(e, new_admin);
     }
 }
+
+// Boundary and recovery invariants are exercised in `boundary_recovery_tests`.

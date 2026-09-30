@@ -326,6 +326,9 @@ fn accept_ownership_succeeds_when_pending_owner_authorizes() {
     env.as_contract(&contract, || {
         AdminContract::transfer_ownership(env.clone(), super_admin.clone(), new_super.clone());
     });
+    // Ownership transfer is two-step: the timelock must elapse before the
+    // pending owner can accept.
+    advance(&env, crate::OWNERSHIP_TRANSFER_TIMELOCK);
     env.as_contract(&contract, || {
         AdminContract::accept_ownership(env.clone(), new_super.clone());
     });
