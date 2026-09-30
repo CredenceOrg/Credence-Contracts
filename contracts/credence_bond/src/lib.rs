@@ -3463,6 +3463,16 @@ mod test_pausable;
 #[cfg(test)]
 mod test_emergency_boundaries;
 
+/// Two-step upgrade admin transfer tests (timelock, expiry, cancel, wrong acceptor).
+#[cfg(test)]
+mod test_admin_transfer;
+
+/// Boundary and recovery test coverage for the upgrade authorization module (issue #1356).
+/// Covers double-init guard, grant/revoke edge cases, proposal lifecycle boundaries,
+/// expiry enforcement, admin-transfer exact-second boundaries, and getter panics.
+#[cfg(test)]
+mod test_upgrade_auth;
+
 use interfaces::governable::Governable;
 
 #[contractimpl]
