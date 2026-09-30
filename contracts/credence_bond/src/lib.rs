@@ -152,6 +152,13 @@ mod test_claim_expiry_sweep;
 #[cfg(test)]
 mod test_verify_stringified_bytes;
 
+/// Boundary and recovery tests for the `impl CredenceBond` entrypoints owned by
+/// `lib.rs`: initialization, admin handover, attester registry, fee
+/// deposit/collect, borrow freeze, treasury setters and `extend_duration`
+/// (issue #1337).
+#[cfg(test)]
+mod test_lib_boundary_recovery;
+
 /// Boundary and edge-case tests for event emissions (#1324).
 /// Validates numeric boundaries, invalid inputs, empty values, and large collections.
 // [pre-broken on main] #[cfg(test)]
