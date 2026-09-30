@@ -216,62 +216,7 @@ impl AdminContract {
         String::from_str(&e, credence_errors::VERSION)
     }
 
-    /// Return whether `address` is currently an active admin.
-    ///
-    /// # Determinism and failure boundaries
-    ///
-    /// This is a pure read: it never mutates storage, never advances
-    /// [`DataKey::ConfigEpoch`], and never emits events. Given the same ledger
-    /// snapshot it always returns the same value, so it is safe to call from
-    /// other contracts and from off-chain simulations.
-    ///
-    /// An address is considered an admin if and only if **all** of the
-    /// following hold:
-    ///
-    /// 1. An [`AdminInfo`] record exists for the address.
-    /// 2. The record's `active` flag is `true`.
-    /// 3. The record is not currently suspended, i.e.
-    ///    `suspended_until == 0 || e.ledger().timestamp() >= suspended_until`.
-    ///
-    /// Suspension expires automatically once the ledger timestamp reaches
-    /// `suspended_until`, so no second transaction is required to restore
-    /// admin status.
-    ///
-    /// # Boundary cases
-    ///
-    /// * Uninitialized contract — returns `false` (no panic, no partial read).
-    /// * Unknown address — returns `false`.
-    /// * Deactivated admin — returns `false`.
-    /// * Suspended admin — returns `false` until the suspension expires.
-    /// * Suspension boundary — at exactly `suspended_until` the admin is
-    ///   active again (`>=` comparison).
-    ///
-    /// # Security
-    ///
-    /// This function performs no authorization check and exposes no sensitive
-    /// data: it only reveals whether a public address currently holds admin
-    /// privileges, which is already observable through privileged entrypoints.
-    pub fn is_admin(e: Env, address: Address) -> bool {
-        let info: Option<AdminInfo> = e
-            .storage()
-            .instance()
-            .get(&DataKey::AdminInfo(address));
 
-        match info {
-            None => false,
-            Some(info) => {
-                if !info.active {
-                    return false;
-                }
-                if info.suspended_until != 0
-                    && e.ledger().timestamp() < info.suspended_until
-                {
-                    return false;
-                }
-                true
-            }
-        }
-    }
 
     /// Initialize the admin contract with a super admin.
     ///
@@ -1069,7 +1014,71 @@ impl AdminContract {
     ///
     /// # Returns
     /// `Some(address)` if there is a pending owner, `None` otherwise
+    ///
+    /// # Determinism and failure boundaries
+    ///
+    /// This is a **total**, side-effect-free query over a single instance-storage
+    /// slot ([`DataKey::PendingOwner`]). It is:
+    ///
+    /// * **total** — every state class returns a value and never panics:
+    ///   uninitialized, initialized-without-proposal, proposed, timelock
+    ///   elapsed, paused, and post-acceptance (`None`) are all well defined.
+    ///   Unlike [`get_owner`], an uninitialized contract reports `None` instead
+    ///   of panicking with `NotInitialized`, because "no proposal" is a valid
+    ///   answer rather than a missing-configuration error.
+    /// * **pure** — it never mutates contract state, never advances
+    ///   [`DataKey::ConfigEpoch`], and never emits events, so repeated or
+    ///   retried reads are indistinguishable from a single call. This is what
+    ///   makes it safe to poll from a client retry loop.
+    /// * **deterministic** — for a given ledger snapshot the result is
+    ///   independent of the caller, the ledger timestamp, the timelock clock,
+    ///   and the pause state.
+    /// * **unauthenticated** — no `require_auth` is performed and nothing
+    ///   beyond the candidate address is returned. The candidate is already
+    ///   public through the `ownership_transfer_initiated` event, so this
+    ///   exposes no new information.
+    ///
+    /// The only side effect is the standard instance-storage TTL extension
+    /// performed by [`bump_instance_ttl`], which keeps an un-acted-on proposal
+    /// from expiring. It can only extend a TTL (never shorten one) and never
+    /// changes the value returned, so it is invisible to the caller.
+    ///
+    /// # Reported state is not eligibility
+    ///
+    /// The return value mirrors storage verbatim; it is deliberately **not** a
+    /// validity check. A proposal is only an intent, and
+    /// [`accept_ownership`] revalidates the candidate (still a SuperAdmin, still
+    /// active, not currently suspended) immediately before the ownership write.
+    /// Clients must therefore never read `Some(addr)` as "this address will
+    /// become owner": a candidate demoted, deactivated, suspended, or removed
+    /// during the timelock is still reported here while the acceptance fails
+    /// atomically and the current owner keeps control. `get_pending_owner`
+    /// answers *"what was proposed?"*; `accept_ownership` decides *"may it
+    /// proceed?"*.
+    ///
+    /// # Invariants
+    ///
+    /// 1. **Paired slots.** [`DataKey::PendingOwner`] and
+    ///    [`DataKey::TransferProposedAt`] are written and removed in the same
+    ///    atomic invocation ([`transfer_ownership`] / [`accept_ownership`]), so
+    ///    a proposal is never half-written and a consumed proposal is never
+    ///    resurrected — the terminal state is `None`, and replaying an
+    ///    acceptance fails with `NoPendingAdmin`.
+    /// 2. **No unusable candidate.** The stored candidate is never the
+    ///    zero/invalid sentinel (`require_valid_admin_address`) and never the
+    ///    current owner (equality check in [`transfer_ownership`]), so a
+    ///    reported proposal can never strand governance on an unusable address.
+    /// 3. **At most one proposal.** A new [`transfer_ownership`] overwrites the
+    ///    previous candidate and restarts the timelock clock, so the superseded
+    ///    candidate is never simultaneously observable here.
+    /// 4. **Rejection is lossless.** A rejected proposal or acceptance leaves
+    ///    the reported candidate, the current owner, the config epoch, and the
+    ///    event stream untouched, so the owner can retry or replace the
+    ///    proposal without losing governance state.
     pub fn get_pending_owner(e: Env) -> Option<Address> {
+        // Total read of a single slot: no validation, no authorization, no
+        // epoch advance, no events. Every state class is answerable, so this
+        // cannot panic and can be polled by clients on the retry path.
         bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::PendingOwner)
     }
@@ -1221,6 +1230,86 @@ impl AdminContract {
     ///
     /// # Returns
     /// A `Vec` of admin addresses with the specified role
+    ///
+    /// # Determinism and failure boundaries
+    ///
+    /// The role index (`DataKey::RoleAdmins(role)`) is the *denormalised
+    /// membership* view of the admin set. This getter is deliberately a total,
+    /// pure read of that single slot:
+    ///
+    /// * **total** — every state class answers with a value and never panics:
+    ///   uninitialized (empty `Vec`), initialized-but-unpopulated role (empty
+    ///   `Vec`), populated role, and a role emptied by removals (empty `Vec`).
+    ///   A missing slot is indistinguishable from an empty role, which is the
+    ///   correct answer rather than a missing-configuration error — contrast
+    ///   [`get_config`], which *does* panic with `NotInitialized`. The same
+    ///   value must be returned whether the slot was never written (e.g. a
+    ///   ledger upgraded from a build without that role) or was written as an
+    ///   empty list, so an absent slot can never change a caller's control
+    ///   flow.
+    /// * **pure** — it never mutates contract state, never advances
+    ///   [`DataKey::ConfigEpoch`], and never emits events. Polling or retrying
+    ///   it is indistinguishable from a single call, so it is safe on a
+    ///   client retry path and cannot desynchronise an off-chain indexer.
+    /// * **deterministic** — for a given ledger snapshot the result is a pure
+    ///   function of the stored slot: independent of the caller, the ledger
+    ///   timestamp, the pause state, and the order/number of prior calls.
+    /// * **unauthenticated** — no `require_auth` is performed and nothing
+    ///   beyond public addresses is returned, so a monitor can enumerate role
+    ///   membership without holding an admin key. Authorization is enforced on
+    ///   the *mutations* that write this slot, not on reads of it.
+    ///
+    /// The only side effect is the standard instance-storage TTL extension
+    /// performed by [`bump_instance_ttl`], which keeps an idle role index from
+    /// expiring. It can only extend a TTL (never shorten one) and never changes
+    /// the returned value, so it is invisible to the caller.
+    ///
+    /// # Reported membership is not authority
+    ///
+    /// The result mirrors the role index verbatim and is deliberately **not** a
+    /// capability check. An address keeps its entry in the role list while it
+    /// is deactivated ([`deactivate_admin`]) or suspended
+    /// ([`suspend_admin`]); only a role change or a removal moves it. Clients
+    /// must therefore never read membership as "this address may act":
+    /// authorization is decided by [`has_role_at_least`] / [`is_admin`], which
+    /// additionally require `active == true` and a non-suspended window.
+    /// `get_admins_by_role` answers *"whose role is recorded as X?"*; the
+    /// authorization helpers decide *"may X act right now?"*. The same
+    /// separation applies to [`get_admin_role`] (stored role) versus
+    /// [`is_admin`] (effective authority).
+    ///
+    /// # Invariants
+    ///
+    /// 1. **Single, disjoint membership.** Every registered address appears in
+    ///    exactly one role list. [`add_admin`] appends to the target role only;
+    ///    [`update_admin_role`] removes from the old list before appending to
+    ///    the new one; [`remove_admin`] removes from both the global
+    ///    [`DataKey::AdminList`] and the role list. Both mutations are single
+    ///    atomic invocations, so a demoted admin is never simultaneously
+    ///    observable in two role lists, and a promoted admin is never
+    ///    observable in neither.
+    /// 2. **No duplicates.** An address cannot appear twice in one role list:
+    ///    [`add_admin`] rejects an already-registered address with
+    ///    `AlreadyActive`, and a same-role [`update_admin_role`] returns early
+    ///    without touching the index. A read that returned duplicates would
+    ///    therefore indicate a lost update rather than a tolerated state.
+    /// 3. **Insertion order is stable and compacted.** Entries are appended in
+    ///    assignment order; removal compacts the list, preserving the relative
+    ///    order of the survivors. This is what makes cursor pagination
+    ///    meaningful across pages.
+    /// 4. **Rejection is lossless.** Rejected, stale, repeated, and failed
+    ///    mutations never advance the epoch and never leave the index
+    ///    half-written, so the read after a failure equals the read before it
+    ///    and a client retry observes no membership change.
+    /// 5. **Staleness is detectable, not silent.** The read cannot report a
+    ///    consistent view across a concurrent mutation, but every such mutation
+    ///    advances [`DataKey::ConfigEpoch`] exactly once. A client that reads
+    ///    the epoch together with this list and sees it advance knows its list
+    ///    is stale and must re-read — see the module-level retry contract.
+    /// 6. **Page-equivalent.** Concatenating every page of
+    ///    [`get_admins_by_role_page`] for the same role reproduces this list
+    ///    in the same order, so a caller can migrate to the bounded getter
+    ///    without changing the set it observes.
     #[deprecated(note = "Use get_admins_by_role_page for bounded pagination")]
     pub fn get_admins_by_role(e: Env, role: AdminRole) -> Vec<Address> {
         bump_instance_ttl(&e);
@@ -1678,3 +1767,9 @@ mod test_concurrency_race_safety;
 
 #[cfg(test)]
 mod test_atomic_rollback;
+
+#[cfg(test)]
+mod test_pending_owner_failure_boundaries;
+
+#[cfg(test)]
+mod test_admins_by_role_failure_boundaries;
