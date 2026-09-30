@@ -22,6 +22,7 @@
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::contracterror;
+use soroban_sdk::{contracttype, panic_with_error, Address, Env};
 /// Project-wide version constant.
 pub const VERSION: &str = "0.1.0";
 
@@ -433,7 +434,7 @@ pub enum ContractError {
     /// Triggered by: token ingress symbol check
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvalidCurrency = 232,
+    InvalidCurrency = 239,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -673,13 +674,17 @@ pub enum ContractError {
     /// Registering another pause signer would exceed the configured cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
-    RoleNotHeldAtLedger = 116,
+    MaxPauseSignersExceeded = 123,
 
-    /// Signature or operation deadline has passed.
-    /// Replaces: panic!("signature expired")
+    /// Cross-contract call originated from an unexpected caller.
     /// Contracts: bond, delegation
     /// Wire-stable: do not renumber this error code.
-    SignatureExpired = 222,
+    CrossContractCallerMismatch = 124,
+
+    /// User-supplied Bytes input exceeds the maximum accepted length.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BytesTooLarge = 234,
 
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
@@ -1315,6 +1320,7 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero => false,
+            _ => false, // unclassified errors are non-retryable by default
         }
     }
 }
