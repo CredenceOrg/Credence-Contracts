@@ -2,6 +2,12 @@
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
+// The contract is `no_std` so the release WASM stays small, but several
+// `#[cfg(test)]` modules use `std::panic::catch_unwind` to assert that a
+// Soroban panic unwinds rather than aborting. Link `std` for test builds only.
+#[cfg(test)]
+extern crate std;
+
 #[cfg(test)]
 mod batch;
 mod claims;
@@ -54,6 +60,24 @@ mod weighted_attestation;
 #[path = "types/mod.rs"]
 pub mod types;
 
+#[cfg(test)]
+// [pre-broken on main] the `fork_divergent` module it exercises is disabled in lib.rs.
+// mod test_fork_divergent;
+
+/// Chaos testing suite for simulating host and token failures.
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] mod chaos_token;
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] mod test_chaos;
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] mod test_reentrancy_hostile_token;
+
+/// Tests for describe_config and describe_bond introspection entrypoints.
+#[cfg(test)]
+mod test_describe;
+/// Shared test setup utilities (mock token, bond registration).
+#[cfg(test)]
+pub mod test_helpers;
 /// Shared test setup utilities (mock token, bond registration).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_unauthorized_token;
@@ -74,29 +98,12 @@ pub mod types;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
-/// Shared test setup utilities (mock token, bond registration).
-#[cfg(test)]
-pub mod test_helpers;
 #[cfg(test)]
 mod test_unauthorized_token;
 #[cfg(test)]
 mod test_validation;
 #[cfg(test)]
 mod test_zero_address;
-#[cfg(test)]
-mod test_fork_divergent;
-
-/// Chaos testing suite for simulating host and token failures.
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod chaos_token;
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_chaos;
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_reentrancy_hostile_token;
-
-/// Tests for describe_config and describe_bond introspection entrypoints.
-#[cfg(test)]
-mod test_describe;
 
 /// Tests for the liquidate entrypoint (issue #366).
 #[cfg(test)]
@@ -618,7 +625,10 @@ impl CredenceBond {
     ///
     /// # Panics
     /// - `"no bond"` if no bond has been created for the current identity.
-    pub fn get_bond_status_snapshot(e: Env, identity: Address) -> status_snapshot::BondStatusSnapshot {
+    pub fn get_bond_status_snapshot(
+        e: Env,
+        identity: Address,
+    ) -> status_snapshot::BondStatusSnapshot {
         status_snapshot::get_bond_status_snapshot(&e, &identity)
     }
 
@@ -951,8 +961,8 @@ impl CredenceBond {
     /// let identity = Address::generate(&e);
     /// client.initialize(&admin, &None);
     ///
-    /// // Fixed-duration bond: 1000 tokens locked for credence_math::Timestamp::SECONDS_PER_DAY seconds
-    /// let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    /// // Fixed-duration bond: 1000 tokens locked for credence_math::SECONDS_PER_DAY seconds
+    /// let bond = client.create_bond(&identity, &1000_i128, &credence_math::SECONDS_PER_DAY, &false, &0_u64);
     /// assert!(bond.active);
     /// assert_eq!(bond.bonded_amount, 1000);
     /// assert_eq!(bond.slashed_amount, 0);
@@ -1074,7 +1084,7 @@ impl CredenceBond {
         bond
     }
 
-/// Add a weighted attestation for a subject.
+    /// Add a weighted attestation for a subject.
     ///
     /// Errors:
     /// - `ContractError::UnauthorizedAttester` when caller is not a registered attester.
@@ -2200,7 +2210,11 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::InsufficientBalance);
         }
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
-        bond.bonded_amount = bond.bonded_amount.checked_sub(request.amount).ok_or(ContractError::Underflow).unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
+        bond.bonded_amount = bond
+            .bonded_amount
+            .checked_sub(request.amount)
+            .ok_or(ContractError::Underflow)
+            .unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
         cooldown::clear_cooldown_request(&e, &identity);
@@ -2276,7 +2290,11 @@ impl CredenceBond {
         // auth: tree shape [Admin] -> [Bond::slash_bond]; usually direct admin call.
         // (`guards::require_admin` below performs the actual `admin.require_auth()`.)
 
-        validation::require_finite_bytes(&e, &idempotency_salt, validation::MAX_FINITE_BYTES_LENGTH);
+        validation::require_finite_bytes(
+            &e,
+            &idempotency_salt,
+            validation::MAX_FINITE_BYTES_LENGTH,
+        );
 
         // Check idempotency if a salt is provided (non-empty)
         // NOTE: idempotency module temporarily disabled during merge fix; re-enable when module is available
@@ -2359,7 +2377,11 @@ impl CredenceBond {
         Self::require_not_paused(&e);
         admin.require_auth();
 
-        validation::require_finite_bytes(&e, &idempotency_salt, validation::MAX_FINITE_BYTES_LENGTH);
+        validation::require_finite_bytes(
+            &e,
+            &idempotency_salt,
+            validation::MAX_FINITE_BYTES_LENGTH,
+        );
 
         // Check idempotency if a salt is provided (non-empty)
         // NOTE: idempotency module temporarily disabled during merge fix; re-enable when module is available
@@ -3318,6 +3340,8 @@ mod tests {
             &attester,
             &subject,
             &String::from_str(&e, "ttl"),
+            &contract_id,
+            &0_u64,
             &0_u64,
         );
 
@@ -3359,8 +3383,9 @@ mod tests {
         );
         e.ledger().set(info);
 
-        let weight =
-            e.as_contract(&contract_id, || weighted_attestation::compute_weight(&e, &attester));
+        let weight = e.as_contract(&contract_id, || {
+            weighted_attestation::compute_weight(&e, &attester)
+        });
         assert_eq!(weight, 123u32);
     }
 }

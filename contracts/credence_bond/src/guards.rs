@@ -158,7 +158,7 @@ mod tests {
             load_bond(&e, &identity);
         });
     }
-    
+
     #[test]
     fn load_bond_recovers_after_retry() {
         let e = Env::default();
@@ -186,14 +186,14 @@ mod tests {
             assert_eq!(bond.bonded_amount, 500);
         });
     }
-    
+
     #[test]
     fn require_admin_recovers_after_initialization() {
         let e = Env::default();
         e.mock_all_auths();
         let contract_id = e.register(CredenceBond, ());
         let admin = Address::generate(&e);
-        
+
         let client = crate::CredenceBondClient::new(&e, &contract_id);
 
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

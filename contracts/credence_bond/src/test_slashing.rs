@@ -63,8 +63,7 @@ fn setup_with_bond_max_mint(
 #[test]
 fn test_slash_basic_success() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &identity, &300_i128);
 
@@ -76,8 +75,7 @@ fn test_slash_basic_success() {
 #[test]
 fn test_slash_small_amount() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &identity, &1_i128);
 
@@ -88,8 +86,7 @@ fn test_slash_small_amount() {
 #[test]
 fn test_slash_exact_half() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &identity, &500_i128);
 
@@ -100,8 +97,7 @@ fn test_slash_exact_half() {
 #[test]
 fn test_slash_entire_amount() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &identity, &1000_i128);
 
@@ -118,8 +114,7 @@ fn test_slash_entire_amount() {
 #[should_panic(expected = "not admin")]
 fn test_slash_unauthorized_rejection() {
     let e = Env::default();
-    let (client, _admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, _admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let other = Address::generate(&e);
     client.slash(&other, &identity, &100_i128);
@@ -129,8 +124,7 @@ fn test_slash_unauthorized_rejection() {
 #[should_panic(expected = "not admin")]
 fn test_slash_unauthorized_different_address() {
     let e = Env::default();
-    let (client, _admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, _admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let attacker = Address::generate(&e);
     client.slash(&attacker, &identity, &500_i128);
@@ -140,8 +134,7 @@ fn test_slash_unauthorized_different_address() {
 #[should_panic(expected = "not admin")]
 fn test_slash_identity_cannot_slash_own_bond() {
     let e = Env::default();
-    let (client, _admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, _admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&identity, &identity, &100_i128);
 }
@@ -159,8 +152,7 @@ fn test_slash_identity_cannot_slash_own_bond() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_over_amount_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     // 2000 > available (1000): must panic, not silently cap
     client.slash(&admin, &identity, &2000_i128);
@@ -170,8 +162,7 @@ fn test_slash_over_amount_rejected() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_way_over_amount_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &5_000_i128);
 }
@@ -180,8 +171,7 @@ fn test_slash_way_over_amount_rejected() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_max_i128_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &i128::MAX);
 }
@@ -195,8 +185,7 @@ fn test_slash_max_i128_rejected() {
 #[should_panic(expected = "slash amount must be positive")]
 fn test_slash_zero_amount_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &0_i128);
 }
@@ -206,8 +195,7 @@ fn test_slash_zero_amount_rejected() {
 #[should_panic(expected = "slash amount must be positive")]
 fn test_slash_negative_amount_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &-1_i128);
 }
@@ -216,8 +204,7 @@ fn test_slash_negative_amount_rejected() {
 #[test]
 fn test_slash_exactly_available_succeeds() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     // First partial slash
     client.slash(&admin, &identity, &600_i128);
@@ -233,8 +220,7 @@ fn test_slash_exactly_available_succeeds() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_one_above_available_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     // First partial slash leaves 400 available
     client.slash(&admin, &identity, &600_i128);
@@ -245,8 +231,11 @@ fn test_slash_one_above_available_rejected() {
 #[test]
 fn test_slash_on_very_large_bond() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond_max_mint(&e, crate::validation::MAX_BOND_AMOUNT, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond_max_mint(
+        &e,
+        crate::validation::MAX_BOND_AMOUNT,
+        credence_math::SECONDS_PER_DAY,
+    );
 
     let bond = client.slash(&admin, &identity, &(crate::validation::MAX_BOND_AMOUNT / 4));
 
@@ -260,8 +249,7 @@ fn test_slash_on_very_large_bond() {
 #[test]
 fn test_slash_history_single_slash() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &200_i128);
     let bond = client.get_identity_state(&identity);
@@ -273,8 +261,7 @@ fn test_slash_history_single_slash() {
 #[test]
 fn test_slash_history_cumulative() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond1 = client.slash(&admin, &identity, &200_i128);
     assert_eq!(bond1.slashed_amount, 200);
@@ -289,8 +276,7 @@ fn test_slash_history_cumulative() {
 #[test]
 fn test_slash_multiple_accumulate() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, credence_math::SECONDS_PER_DAY);
 
     // 1000 + 2000 + 3000 = 6000 total, all within bonded
     client.slash(&admin, &identity, &1000_i128);
@@ -302,8 +288,7 @@ fn test_slash_multiple_accumulate() {
 #[test]
 fn test_slash_does_not_affect_other_fields() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let original_bond = client.get_identity_state(&identity);
     let original_bonded = original_bond.bonded_amount;
@@ -326,8 +311,7 @@ fn test_slash_does_not_affect_other_fields() {
 #[test]
 fn test_slash_event_emitted_basic() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let _bond = client.slash(&admin, &identity, &250_i128);
 
@@ -338,8 +322,7 @@ fn test_slash_event_emitted_basic() {
 #[test]
 fn test_slash_event_contains_correct_event_data() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond1 = client.slash(&admin, &identity, &100_i128);
     assert_eq!(bond1.slashed_amount, 100);
@@ -352,8 +335,7 @@ fn test_slash_event_contains_correct_event_data() {
 #[test]
 fn test_slash_multiple_events() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     // Each slash emits an event; cumulative must be correct
     let b1 = client.slash(&admin, &identity, &100_i128);
@@ -376,7 +358,7 @@ fn test_withdraw_after_slash_respects_available() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -397,7 +379,7 @@ fn test_withdraw_when_fully_slashed() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -417,7 +399,7 @@ fn test_withdraw_exact_available_balance() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -436,7 +418,7 @@ fn test_slash_then_withdraw_then_slash_again() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -463,7 +445,7 @@ fn test_slash_after_partial_withdrawal() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -491,8 +473,7 @@ fn test_slash_after_partial_withdrawal() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_cumulative_slash_over_available_rejected() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &600_i128);
     // available = 400; 600 > 400 must panic
@@ -502,8 +483,7 @@ fn test_cumulative_slash_over_available_rejected() {
 #[test]
 fn test_cumulative_slash_incremental() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, credence_math::SECONDS_PER_DAY);
 
     for i in 1..=10 {
         let bond = client.slash(&admin, &identity, &1000_i128);
@@ -516,8 +496,7 @@ fn test_cumulative_slash_incremental() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_full_slash_prevents_further_slashing() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &1000_i128);
     // available = 0; any positive slash must panic
@@ -529,7 +508,7 @@ fn test_slash_large_amounts() {
     let e = Env::default();
     let large_amount = 1_000_000_000_000_i128;
     let (client, admin, identity) =
-        setup_with_bond(&e, large_amount, credence_math::Timestamp::SECONDS_PER_DAY);
+        setup_with_bond(&e, large_amount, credence_math::SECONDS_PER_DAY);
 
     let bond1 = client.slash(&admin, &identity, &(large_amount / 4));
     assert_eq!(bond1.slashed_amount, large_amount / 4);
@@ -545,8 +524,7 @@ fn test_slash_large_amounts() {
 #[test]
 fn test_slash_state_persists() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &300_i128);
     let bond1 = client.get_identity_state(&identity);
@@ -559,8 +537,7 @@ fn test_slash_state_persists() {
 #[test]
 fn test_slash_result_matches_get_state() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let slash_result = client.slash(&admin, &identity, &250_i128);
     let state = client.get_identity_state(&identity);
@@ -577,8 +554,7 @@ fn test_slash_result_matches_get_state() {
 #[should_panic(expected = "not admin")]
 fn test_error_message_not_admin() {
     let e = Env::default();
-    let (client, _admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, _admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     let random = Address::generate(&e);
     client.slash(&random, &identity, &100_i128);
@@ -598,8 +574,7 @@ fn test_error_message_no_bond() {
 #[should_panic(expected = "slash amount must be positive")]
 fn test_error_message_zero_amount() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &0_i128);
 }
@@ -608,8 +583,7 @@ fn test_error_message_zero_amount() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_error_message_slash_exceeds_bond() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &1001_i128);
 }
@@ -623,8 +597,7 @@ fn test_error_message_slash_exceeds_bond() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_rejected_above_available_not_bonded() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     // First slash: 600 → available becomes 400
     client.slash(&admin, &identity, &600_i128);
@@ -638,8 +611,7 @@ fn test_slash_rejected_above_available_not_bonded() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_zero_available_panics() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &1000_i128);
     // available = 0 → any positive slash panics
@@ -649,12 +621,11 @@ fn test_slash_zero_available_panics() {
 #[test]
 fn test_slash_available_decreases_after_each_slash() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &200_i128); // available: 800
     client.slash(&admin, &identity, &300_i128); // available: 500
-    // Slash exactly remaining 500
+                                                // Slash exactly remaining 500
     let bond = client.slash(&admin, &identity, &500_i128);
     assert_eq!(bond.slashed_amount, 1000);
 }
@@ -667,7 +638,7 @@ fn test_slash_after_withdraw_respects_new_available() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -690,7 +661,7 @@ fn test_slash_after_withdraw_over_new_available_panics() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -708,8 +679,7 @@ fn test_slash_after_withdraw_over_new_available_panics() {
 #[test]
 fn test_slash_history_count_increments() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &100_i128);
     client.slash(&admin, &identity, &200_i128);
@@ -722,8 +692,7 @@ fn test_slash_history_count_increments() {
 fn test_slash_history_record_fields() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 5000);
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &300_i128);
 
@@ -737,8 +706,7 @@ fn test_slash_history_record_fields() {
 #[test]
 fn test_slash_history_total_slashed_after_accumulates() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     client.slash(&admin, &identity, &100_i128);
     client.slash(&admin, &identity, &200_i128);
@@ -755,8 +723,7 @@ fn test_slash_history_total_slashed_after_accumulates() {
 #[test]
 fn test_slash_history_valid_slash_appends_exactly_one_record() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     assert_eq!(crate::slash_history::get_slash_count(&e, &identity), 0);
 
@@ -772,8 +739,7 @@ fn test_slash_history_valid_slash_appends_exactly_one_record() {
 #[should_panic(expected = "slash exceeds bond")]
 fn test_slash_history_over_available_panics_no_record() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 1000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 1000_i128, credence_math::SECONDS_PER_DAY);
 
     // First slash: 700 → available = 300
     client.slash(&admin, &identity, &700_i128);
@@ -784,8 +750,7 @@ fn test_slash_history_over_available_panics_no_record() {
 #[test]
 fn test_slash_history_get_all_records() {
     let e = Env::default();
-    let (client, admin, identity) =
-        setup_with_bond(&e, 10000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+    let (client, admin, identity) = setup_with_bond(&e, 10000_i128, credence_math::SECONDS_PER_DAY);
 
     for i in 1_i128..=5 {
         client.slash(&admin, &identity, &(i * 100));
@@ -810,7 +775,7 @@ fn test_slash_reverts_when_treasury_not_configured() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -831,7 +796,7 @@ fn test_slash_transfers_to_treasury() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -869,7 +834,7 @@ fn test_slashed_funds_transfer_to_configured_destination() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -908,7 +873,7 @@ fn test_unauthorized_slash_does_not_transfer_tokens() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -927,7 +892,7 @@ fn test_unauthorized_slash_does_not_transfer_tokens() {
 fn test_slash_reward_checked_div_preserves_value() {
     let e = Env::default();
     let (client, admin, identity) =
-        setup_with_bond(&e, 1_000_000_i128, credence_math::Timestamp::SECONDS_PER_DAY);
+        setup_with_bond(&e, 1_000_000_i128, credence_math::SECONDS_PER_DAY);
 
     let bond = client.slash(&admin, &identity, &1_000_i128);
     assert_eq!(bond.slashed_amount, 1_000);

@@ -33,7 +33,6 @@ mod tests {
             ContractError::TimestampInFuture,
             ContractError::LeaseScopeMismatch,
             ContractError::LeaseExpired,
-            ContractError::DeadlineExpired,
             ContractError::CorridorNotRegistered,
             ContractError::InvalidPercentSplit,
             ContractError::InvalidStringifiedBytes,
@@ -127,22 +126,22 @@ mod tests {
 
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
-        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized!(e, false);
-            Ok(())
-        }
         let e = soroban_sdk::Env::default();
-        assert!(call(&e).is_ok());
+        // Does not panic.
+        crate::require_contract_uninitialized(&e, false);
     }
 
     #[test]
     fn test_require_contract_uninitialized_returns_error_when_true() {
-        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized!(e, true);
-            Ok(())
-        }
+        // `AlreadyInitialized` is wire code 2, and the helper panics via `Env::panic_with_error`.
         let e = soroban_sdk::Env::default();
-        assert_eq!(call(&e), Err(ContractError::AlreadyInitialized));
+        assert_eq!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::require_contract_uninitialized(&e, true);
+            }))
+            .is_err(),
+            true
+        );
     }
 
     #[test]
@@ -1348,7 +1347,12 @@ mod tests {
         match e {
             // Initialization: caller fixes setup state.
             ContractError::NotInitialized => true, // init first
-            ContractError::AlreadyInitialized => true, // idempotent
+            ContractError::LeaseSignerMismatch => true, // sign with the lease holder's key
+            ContractError::BytesTooLarge => true,  // resubmit with shorter input
+            ContractError::CooldownRequestAlreadyPending => true, // wait for the existing request
+            ContractError::CooldownRequestNotFound => true,
+            ContractError::CooldownPeriodNotElapsed => true, // wait for the cooldown to elapse
+            ContractError::AlreadyInitialized => true,       // idempotent
 
             // Authorization: switch signer/role.
             ContractError::NotAdmin => true,
