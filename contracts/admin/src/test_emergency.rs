@@ -229,7 +229,7 @@ fn emergency_pause_does_not_block_pause_signer_management() {
     // Must remain callable while paused so signers can be rotated during an
     // incident. If this ever starts panicking with ContractPaused, the
     // emergency recovery path has regressed.
-    client.set_pause_signer(&super_admin, &signer);
+    client.set_pause_signer(&super_admin, &signer, &true);
     client.set_pause_threshold(&super_admin, &1u32);
 
     // Pause state must be untouched by signer management.
@@ -277,8 +277,7 @@ fn emergency_pause_gate_is_sticky_across_failed_writes() {
     assert!(client.is_paused());
 
     // A second blocked write must also be rejected (no partial state).
-    let blocked_again =
-        client.try_remove_admin(&super_admin, &new_admin);
+    let blocked_again = client.try_remove_admin(&super_admin, &new_admin);
     assert!(blocked_again.is_err());
     assert_eq!(client.get_admin_count(), count_before);
     assert!(client.is_paused());

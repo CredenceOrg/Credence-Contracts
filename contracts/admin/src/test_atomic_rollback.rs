@@ -7,7 +7,7 @@
 
 use crate::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger as _},
+    testutils::{Address as _, Events as _, Ledger as _},
     Address, Env,
 };
 
@@ -47,12 +47,17 @@ fn rejected_acceptance_rolls_back_when_candidate_is_deactivated() {
             .set(&DataKey::AdminInfo(candidate.clone()), &info);
     });
 
-    let events_before = env.events().all().len();
     assert!(client.try_accept_ownership(&candidate).is_err());
+    // The event log holds only the rejected invocation, which publishes no
+    // contract event (Soroban records the failure as diagnostic events).
+    let events_after = env.events().all().len();
 
     assert_eq!(client.get_owner(), owner);
     assert_eq!(client.get_pending_owner(), Some(candidate));
-    assert_eq!(env.events().all().len(), events_before);
+    assert_eq!(
+        events_after, 0,
+        "a rejected acceptance emits no contract event"
+    );
 }
 
 #[test]
@@ -61,10 +66,15 @@ fn rejected_acceptance_rolls_back_when_candidate_is_suspended() {
     let suspension_end = env.ledger().timestamp() + 1;
     client.suspend_admin(&owner, &candidate, &suspension_end);
 
-    let events_before = env.events().all().len();
     assert!(client.try_accept_ownership(&candidate).is_err());
+    // The event log holds only the rejected invocation, which publishes no
+    // contract event (Soroban records the failure as diagnostic events).
+    let events_after = env.events().all().len();
 
     assert_eq!(client.get_owner(), owner);
     assert_eq!(client.get_pending_owner(), Some(candidate));
-    assert_eq!(env.events().all().len(), events_before);
+    assert_eq!(
+        events_after, 0,
+        "a rejected acceptance emits no contract event"
+    );
 }

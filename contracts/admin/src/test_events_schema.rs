@@ -22,10 +22,8 @@ mod tests {
         let caller = soroban_sdk::Address::generate(&e);
         let role = AdminRole::Admin;
         // Should not panic
-        e.events().publish(
-            (Symbol::new(&e, "ROLE_ASSIGNED"), actor),
-            (role, caller),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "ROLE_ASSIGNED"), actor), (role, caller));
     }
 
     // ── ROLE_REVOKED ──────────────────────────────────────────────────────────
@@ -36,10 +34,8 @@ mod tests {
         let actor = soroban_sdk::Address::generate(&e);
         let caller = soroban_sdk::Address::generate(&e);
         // Should not panic
-        e.events().publish(
-            (Symbol::new(&e, "ROLE_REVOKED"), actor),
-            (caller,),
-        );
+        e.events()
+            .publish((Symbol::new(&e, "ROLE_REVOKED"), actor), (caller,));
     }
 
     // ── admin_rotated ─────────────────────────────────────────────────────────
@@ -51,10 +47,8 @@ mod tests {
         let next = soroban_sdk::Address::generate(&e);
         let seq: u32 = e.ledger().sequence();
         // Should not panic
-        e.events().publish(
-            (Symbol::new(&e, "admin_rotated"), prev, next),
-            seq,
-        );
+        e.events()
+            .publish((Symbol::new(&e, "admin_rotated"), prev, next), seq);
     }
 
     // ── ownership_transfer_initiated ─────────────────────────────────────────

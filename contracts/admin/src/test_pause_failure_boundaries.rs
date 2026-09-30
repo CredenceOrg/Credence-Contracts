@@ -27,7 +27,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::{Address, Env};
 
 // Wire-stable error discriminants (`credence_errors::ContractError`).
@@ -279,10 +279,7 @@ fn insufficient_approvals_rejected_but_recoverable() {
     let id = client.pause(&s1).unwrap();
     let epoch_after_propose = client.get_config_epoch();
 
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS)
@@ -311,7 +308,8 @@ fn stale_epoch_proposal_cannot_execute() {
     let s1 = signers.get(0).unwrap();
 
     let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
-    e.ledger().with_mut(|l| l.sequence_number = epoch_boundary - 1);
+    e.ledger()
+        .with_mut(|l| l.sequence_number = epoch_boundary - 1);
     let id = client.pause(&s1).unwrap();
 
     let epoch_after_propose = client.get_config_epoch();
@@ -319,10 +317,7 @@ fn stale_epoch_proposal_cannot_execute() {
     let events_before = e.events().all().len();
 
     // The proposal met the threshold in its own epoch; only staleness blocks it.
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_STALE_ADMIN_EPOCH)
@@ -359,16 +354,22 @@ fn duplicate_approval_is_event_free() {
 
     let id = client.pause(&s1).unwrap();
 
-    let events_before = e.events().all().len();
+    // `e.events()` is scoped to the most recent invocation, so each call's own
+    // event count is read immediately after that call.
     client.approve_pause_proposal(&s2, &id);
+    // Read the event count before any other client call resets the frame.
+    let first_events = e.events().all().len();
     let epoch_after_first = client.get_config_epoch();
-    let events_after_first = e.events().all().len();
-    assert!(events_after_first > events_before, "first approval emits");
+    assert!(first_events > 0, "first approval emits an event");
 
-    // Duplicate approval: no new event, no epoch bump.
+    // Duplicate approval: no event, no epoch bump.
     client.approve_pause_proposal(&s2, &id);
+    let duplicate_events = e.events().all().len();
+    assert_eq!(
+        duplicate_events, 0,
+        "duplicate approval must publish no event"
+    );
     assert_eq!(client.get_config_epoch(), epoch_after_first);
-    assert_eq!(e.events().all().len(), events_after_first);
 
     client.execute_pause_proposal(&id);
     assert!(client.is_paused());
@@ -384,20 +385,25 @@ fn set_pause_signer_duplicate_is_event_free() {
     client.set_pause_signer(&super_admin, &s1, &true);
 
     let epoch_before = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
+    // Re-enabling an already-enabled signer is an idempotent no-op.
     client.set_pause_signer(&super_admin, &s1, &true);
+    let noop_enable_events = e.events().all().len();
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
+    assert_eq!(noop_enable_events, 0, "no-op enable emits no event");
 
+    // Disabling a never-registered signer is likewise a no-op.
     let stranger = Address::generate(&e);
     client.set_pause_signer(&super_admin, &stranger, &false);
+    let noop_disable_events = e.events().all().len();
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
+    assert_eq!(noop_disable_events, 0, "no-op disable emits no event");
 
+    // A real transition still emits exactly one event and bumps once.
     client.set_pause_signer(&super_admin, &stranger, &true);
+    let transition_events = e.events().all().len();
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert_eq!(e.events().all().len(), events_before + 1);
+    assert_eq!(transition_events, 1);
 }
 
 // ---------------------------------------------------------------------------
