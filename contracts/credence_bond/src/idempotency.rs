@@ -30,8 +30,8 @@
 //! ```
 
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Bytes, Env, Symbol};
 use soroban_sdk::xdr::ToXdr;
+use soroban_sdk::{panic_with_error, Address, Bytes, Env, Symbol};
 
 use crate::DataKey;
 
@@ -55,7 +55,7 @@ use crate::DataKey;
 pub fn compute_key(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> Bytes {
     // Create a byte vector containing all components by converting to XDR
     let mut hash_input = Bytes::new(e);
-    
+
     // Use XDR serialization for deterministic byte representation
     hash_input.append(&actor.to_xdr(e));
     hash_input.append(&operation.to_xdr(e));
@@ -117,7 +117,16 @@ pub fn is_used(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CredenceBond;
     use soroban_sdk::testutils::Address as _;
+
+    /// Idempotency keys live in instance storage, which the host only allows
+    /// while executing inside a contract. Every case below therefore runs its
+    /// body through a real contract context.
+    fn in_contract<R>(e: &Env, f: impl FnOnce() -> R) -> R {
+        let contract = e.register(CredenceBond, ());
+        e.as_contract(&contract, f)
+    }
 
     #[test]
     fn test_compute_key_deterministic() {
@@ -177,51 +186,59 @@ mod tests {
     #[test]
     fn test_is_used_initially_false() {
         let e = Env::default();
-        let actor = Address::generate(&e);
-        let operation = Symbol::new(&e, "test_op");
-        let salt = Bytes::from_slice(&e, b"test_salt");
+        in_contract(&e, || {
+            let actor = Address::generate(&e);
+            let operation = Symbol::new(&e, "test_op");
+            let salt = Bytes::from_slice(&e, b"test_salt");
 
-        assert!(!is_used(&e, &actor, &operation, &salt));
+            assert!(!is_used(&e, &actor, &operation, &salt));
+        });
     }
 
     #[test]
     fn test_check_and_record_prevents_duplicate() {
         let e = Env::default();
-        let actor = Address::generate(&e);
-        let operation = Symbol::new(&e, "test_op");
-        let salt = Bytes::from_slice(&e, b"test_salt");
+        in_contract(&e, || {
+            let actor = Address::generate(&e);
+            let operation = Symbol::new(&e, "test_op");
+            let salt = Bytes::from_slice(&e, b"test_salt");
 
-        // First call should succeed
-        check_and_record(&e, &actor, &operation, &salt);
+            // First call should succeed
+            check_and_record(&e, &actor, &operation, &salt);
 
-        // Second call with a different salt should also succeed
-        let salt2 = Bytes::from_slice(&e, b"other_salt");
-        check_and_record(&e, &actor, &operation, &salt2);
-        assert!(is_used(&e, &actor, &operation, &salt));
-        assert!(is_used(&e, &actor, &operation, &salt2));
+            // Second call with a different salt should also succeed
+            let salt2 = Bytes::from_slice(&e, b"other_salt");
+            check_and_record(&e, &actor, &operation, &salt2);
+            assert!(is_used(&e, &actor, &operation, &salt));
+            assert!(is_used(&e, &actor, &operation, &salt2));
+        });
     }
 
     #[test]
     #[should_panic(expected = "Error(Contract, #")]
     fn test_check_and_record_panics_on_duplicate() {
         let e = Env::default();
-        let actor = Address::generate(&e);
-        let operation = Symbol::new(&e, "test_op");
-        let salt = Bytes::from_slice(&e, b"test_salt");
-        check_and_record(&e, &actor, &operation, &salt);
-        check_and_record(&e, &actor, &operation, &salt);
+        in_contract(&e, || {
+            let actor = Address::generate(&e);
+            let operation = Symbol::new(&e, "test_op");
+            let salt = Bytes::from_slice(&e, b"test_salt");
+            check_and_record(&e, &actor, &operation, &salt);
+            check_and_record(&e, &actor, &operation, &salt);
+        });
     }
 
     #[test]
     fn test_different_keys_dont_conflict() {
         let e = Env::default();
-        let actor = Address::generate(&e);
-        let operation = Symbol::new(&e, "test_op");
-        let salt1 = Bytes::from_slice(&e, b"salt1");
-        let salt2 = Bytes::from_slice(&e, b"salt2");
+        in_contract(&e, || {
+            let actor = Address::generate(&e);
+            let operation = Symbol::new(&e, "test_op");
+            let salt1 = Bytes::from_slice(&e, b"salt1");
+            let salt2 = Bytes::from_slice(&e, b"salt2");
 
-        // Both should succeed
-        check_and_record(&e, &actor, &operation, &salt1);
-        check_and_record(&e, &actor, &operation, &salt2);
+            // Both should succeed
+            check_and_record(&e, &actor, &operation, &salt1);
+            check_and_record(&e, &actor, &operation, &salt2);
+        });
     }
 }
