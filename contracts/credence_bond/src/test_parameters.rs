@@ -755,7 +755,7 @@ fn test_all_parameters_independent() {
     // Update all parameters
     client.set_protocol_fee_bps(&admin, &75);
     client.set_attestation_fee_bps(&admin, &15);
-    client.set_withdrawal_cooldown_secs(&admin, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.set_withdrawal_cooldown_secs(&admin, &credence_math::SECONDS_PER_DAY);
     client.set_slash_cooldown_secs(&admin, &43200);
     client.set_bronze_threshold(&admin, &200_000_000);
     client.set_silver_threshold(&admin, &2_000_000_000);
@@ -767,7 +767,7 @@ fn test_all_parameters_independent() {
     assert_eq!(client.get_attestation_fee_bps(), 15);
     assert_eq!(
         client.get_withdrawal_cooldown_secs(),
-        credence_math::Timestamp::SECONDS_PER_DAY
+        credence_math::SECONDS_PER_DAY
     );
     assert_eq!(client.get_slash_cooldown_secs(), 43200);
     assert_eq!(client.get_bronze_threshold(), 200_000_000);

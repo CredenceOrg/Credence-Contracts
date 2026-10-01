@@ -2,9 +2,9 @@
 ///
 /// Includes Attestation (with weight), validation, and deduplication key types.
 
-pub mod attestation;
+pubmod attestation;
 
-pub use attestation::{
+pubseattestation::{
     Attestation, AttestationDedupKey, DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT,
 };
 

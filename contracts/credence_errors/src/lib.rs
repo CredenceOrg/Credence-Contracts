@@ -1313,6 +1313,9 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::CooldownRequestAlreadyPending // wait for the existing request
+            | ContractError::CooldownRequestNotFound
+            | ContractError::CooldownPeriodNotElapsed     // wait for the cooldown to elapse
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1457,7 +1460,7 @@ macro_rules! require_no_leading_zero_amount {
 macro_rules! require_positive_amount {
     ($env:expr, $amount:expr) => {
         if $amount <= 0 {
-            panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
+            soroban_sdk::panic_with_error!($env, $crate::ContractError::AmountMustBePositive);
         }
     };
 }

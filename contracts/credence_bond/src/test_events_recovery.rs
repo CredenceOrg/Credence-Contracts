@@ -11,17 +11,18 @@
 
 use crate::events;
 use soroban_sdk::{
-    testutils::{Address as TestAddress, Events},
+    testutils::{Address as _, Events},
     Address, Env, String, Symbol,
 };
 
 mod duplicate_emission {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn multiple_identical_bond_created_emissions() {
         let e = Env::default();
-        let addr = TestAddress::generate(&e);
+        let addr = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Same event emitted 3 times (simulates retry scenario)
@@ -40,7 +41,7 @@ mod duplicate_emission {
     #[test]
     fn multiple_identical_bond_increased_emissions() {
         let e = Env::default();
-        let addr = TestAddress::generate(&e);
+        let addr = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Same increase emitted twice (concurrent retry)
@@ -63,20 +64,12 @@ mod duplicate_emission {
     #[test]
     fn multiple_identical_bond_withdrawn_emissions() {
         let e = Env::default();
-        let addr = TestAddress::generate(&e);
+        let addr = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Withdraw retry (idempotent contract behavior)
         for _ in 0..2 {
-            events::emit_bond_withdrawn_v2(
-                &e,
-                &addr,
-                200i128,
-                800i128,
-                timestamp,
-                false,
-                0i128,
-            );
+            events::emit_bond_withdrawn_v2(&e, &addr, 200i128, 800i128, timestamp, false, 0i128);
         }
 
         let events = e.events().all();
@@ -86,8 +79,8 @@ mod duplicate_emission {
     #[test]
     fn multiple_identical_slashes() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
-        let admin = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
+        let admin = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Slash retry (transaction replay)
@@ -111,7 +104,7 @@ mod duplicate_emission {
     #[test]
     fn multiple_identical_tier_changes() {
         let e = Env::default();
-        let addr = TestAddress::generate(&e);
+        let addr = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Same tier change emitted twice
@@ -132,27 +125,32 @@ mod duplicate_emission {
 
 mod duplicate_different_identities {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn same_event_different_identities() {
         let e = Env::default();
-        let addr1 = TestAddress::generate(&e);
-        let addr2 = TestAddress::generate(&e);
+        let addr1 = Address::generate(&e);
+        let addr2 = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         events::emit_bond_created_v2(&e, &addr1, 1000i128, 3600u64, false, timestamp);
         events::emit_bond_created_v2(&e, &addr2, 1000i128, 3600u64, false, timestamp);
 
         let events = e.events().all();
-        assert_eq!(events.len(), 2, "Different identities should produce separate events");
+        assert_eq!(
+            events.len(),
+            2,
+            "Different identities should produce separate events"
+        );
     }
 
     #[test]
     fn slashes_by_different_admins() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
-        let admin1 = TestAddress::generate(&e);
-        let admin2 = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
+        let admin1 = Address::generate(&e);
+        let admin2 = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         events::emit_bond_slashed_v2(
@@ -188,11 +186,12 @@ mod duplicate_different_identities {
 
 mod sequence_consistency {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn create_then_increase_then_withdraw_sequence() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Typical bond lifecycle
@@ -217,13 +216,17 @@ mod sequence_consistency {
         );
 
         let events = e.events().all();
-        assert_eq!(events.len(), 3, "All events in sequence should be preserved");
+        assert_eq!(
+            events.len(),
+            3,
+            "All events in sequence should be preserved"
+        );
     }
 
     #[test]
     fn create_increase_increase_withdraw_sequence() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Multiple increases before withdrawal
@@ -263,8 +266,8 @@ mod sequence_consistency {
     #[test]
     fn create_slash_withdraw_liquidate_sequence() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
-        let admin = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
+        let admin = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         events::emit_bond_created_v2(&e, &identity, 10000i128, 3600u64, false, timestamp);
@@ -297,13 +300,17 @@ mod sequence_consistency {
         );
 
         let events = e.events().all();
-        assert_eq!(events.len(), 4, "Full lifecycle sequence should emit all events");
+        assert_eq!(
+            events.len(),
+            4,
+            "Full lifecycle sequence should emit all events"
+        );
     }
 
     #[test]
     fn tier_upgrade_and_downgrade_sequence() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Tier transitions over time
@@ -336,13 +343,14 @@ mod sequence_consistency {
 
 mod concurrent_multi_identity {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn interleaved_events_multiple_identities() {
         let e = Env::default();
-        let identity1 = TestAddress::generate(&e);
-        let identity2 = TestAddress::generate(&e);
-        let identity3 = TestAddress::generate(&e);
+        let identity1 = Address::generate(&e);
+        let identity2 = Address::generate(&e);
+        let identity3 = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Interleaved events for different bonds (simulates concurrent operations)
@@ -369,25 +377,39 @@ mod concurrent_multi_identity {
         );
 
         let events = e.events().all();
-        assert_eq!(events.len(), 5, "All interleaved events should be preserved");
+        assert_eq!(
+            events.len(),
+            5,
+            "All interleaved events should be preserved"
+        );
     }
 
     #[test]
     fn claim_events_across_multiple_users() {
         let e = Env::default();
-        let user1 = TestAddress::generate(&e);
-        let user2 = TestAddress::generate(&e);
+        let user1 = Address::generate(&e);
+        let user2 = Address::generate(&e);
 
         // Claims from different users
         let claim1 = crate::claims::PendingClaim {
-            claim_type: crate::claims::ClaimType::TierReward,
+            claim_id: 1,
+            claim_type: crate::claims::ClaimType::SlashingReward,
             amount: 100i128,
+            created_at: e.ledger().timestamp(),
+            expires_at: 0,
             source_id: 1u64,
+            metadata: Symbol::new(&e, "c1"),
+            processed: false,
         };
         let claim2 = crate::claims::PendingClaim {
-            claim_type: crate::claims::ClaimType::FeatureBonus,
+            claim_id: 2,
+            claim_type: crate::claims::ClaimType::VerifierReward,
             amount: 50i128,
+            created_at: e.ledger().timestamp(),
+            expires_at: 0,
             source_id: 2u64,
+            metadata: Symbol::new(&e, "c2"),
+            processed: false,
         };
 
         events::emit_claim_added(&e, &user1, &claim1);
@@ -401,13 +423,14 @@ mod concurrent_multi_identity {
 
 mod parameter_and_admin_consistency {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn admin_rotation_events_sequence() {
         let e = Env::default();
-        let admin1 = TestAddress::generate(&e);
-        let admin2 = TestAddress::generate(&e);
-        let admin3 = TestAddress::generate(&e);
+        let admin1 = Address::generate(&e);
+        let admin2 = Address::generate(&e);
+        let admin3 = Address::generate(&e);
 
         // Admin rotation: admin1 → admin2 → admin3
         events::emit_admin_transfer_started(&e, &admin1, &admin2);
@@ -422,7 +445,7 @@ mod parameter_and_admin_consistency {
     #[test]
     fn parameter_updates_sequence() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
 
         // Multiple parameter updates (simulates governance)
         events::emit_parameter_updated(
@@ -457,12 +480,19 @@ mod parameter_and_admin_consistency {
     #[test]
     fn fee_config_update_then_parameter_update() {
         let e = Env::default();
-        let admin = TestAddress::generate(&e);
-        let old_treasury = TestAddress::generate(&e);
-        let new_treasury = TestAddress::generate(&e);
+        let admin = Address::generate(&e);
+        let old_treasury = Address::generate(&e);
+        let new_treasury = Address::generate(&e);
 
         // Fee config change followed by parameter update
-        events::emit_fee_config_updated(&e, &admin, Some(old_treasury), &new_treasury, 0u32, 500u32);
+        events::emit_fee_config_updated(
+            &e,
+            &admin,
+            Some(old_treasury),
+            &new_treasury,
+            0u32,
+            500u32,
+        );
         events::emit_parameter_updated(
             &e,
             Symbol::new(&e, "treasury_mgmt"),
@@ -479,11 +509,12 @@ mod parameter_and_admin_consistency {
 
 mod event_no_loss_guarantee {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn high_volume_event_emission_no_loss() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Emit 100 events in rapid succession
@@ -502,7 +533,7 @@ mod event_no_loss_guarantee {
         let events = e.events().all();
         assert_eq!(
             events.len(),
-            event_count as usize,
+            event_count,
             "No events should be lost in high-volume emission"
         );
     }
@@ -510,9 +541,9 @@ mod event_no_loss_guarantee {
     #[test]
     fn mixed_event_types_no_loss() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
-        let admin = TestAddress::generate(&e);
-        let user = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
+        let admin = Address::generate(&e);
+        let user = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Mix of different event types
@@ -528,9 +559,14 @@ mod event_no_loss_guarantee {
         );
 
         let claim = crate::claims::PendingClaim {
-            claim_type: crate::claims::ClaimType::TierReward,
+            claim_id: 1,
+            claim_type: crate::claims::ClaimType::FeeRebate,
             amount: 100i128,
+            created_at: e.ledger().timestamp(),
+            expires_at: 0,
             source_id: 1u64,
+            metadata: Symbol::new(&e, "c"),
+            processed: false,
         };
         events::emit_claim_added(&e, &user, &claim);
 
@@ -550,12 +586,13 @@ mod event_no_loss_guarantee {
 
 mod timestamp_edge_cases {
     use super::*;
+    use soroban_sdk::testutils::Address as _;
 
     #[test]
     fn events_with_identical_timestamps() {
         let e = Env::default();
-        let identity1 = TestAddress::generate(&e);
-        let identity2 = TestAddress::generate(&e);
+        let identity1 = Address::generate(&e);
+        let identity2 = Address::generate(&e);
         let timestamp = e.ledger().timestamp();
 
         // Multiple events at same timestamp
@@ -574,7 +611,7 @@ mod timestamp_edge_cases {
     #[test]
     fn events_with_monotonically_increasing_timestamps() {
         let e = Env::default();
-        let identity = TestAddress::generate(&e);
+        let identity = Address::generate(&e);
         let base_timestamp = e.ledger().timestamp();
 
         // Strictly increasing timestamps

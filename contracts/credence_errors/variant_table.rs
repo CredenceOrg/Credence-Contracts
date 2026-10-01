@@ -1,8 +1,8 @@
 // Single source of truth for exhaustive `ContractError` variant coverage in tests. // a
 //
-// Included from `tests/discriminant_uniqueness.rs` and `src/test_errors.rs`.
-// When adding a variant to `src/lib.rs`, add exactly one row here — do not
-// maintain parallel lists or manually bumped counts elsewhere.
+// Included from `tests/discriminant_uniqueness.rs`, `tests/variant_coverage_sync.rs`
+// and `src/test_errors.rs`. When adding a variant to `src/lib.rs`, add exactly one
+// row here - do not maintain parallel lists or manually bumped counts elsewhere.
 //
 // Row order: numeric wire code within each category block.
 
@@ -83,54 +83,102 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("CooldownPeriodNotElapsed", ContractError::CooldownPeriodNotElapsed),   // 238
     ("BytesTooLarge", ContractError::BytesTooLarge),                         // 239
     // --- Attestation (300-399) ---
-    ("DuplicateAttestation", ContractError::DuplicateAttestation),           // 300
-    ("AttestationNotFound", ContractError::AttestationNotFound),             // 301
-    ("AttestationAlreadyRevoked", ContractError::AttestationAlreadyRevoked), // 302
-    ("InvalidAttestationWeight", ContractError::InvalidAttestationWeight),   // 303
-    ("AttestationWeightExceedsMax", ContractError::AttestationWeightExceedsMax), // 304
+    ("DuplicateAttestation", ContractError::DuplicateAttestation),   // 300
+    ("AttestationNotFound", ContractError::AttestationNotFound),     // 301
+    (
+        "AttestationAlreadyRevoked",
+        ContractError::AttestationAlreadyRevoked,
+    ), // 302
+    (
+        "InvalidAttestationWeight",
+        ContractError::InvalidAttestationWeight,
+    ), // 303
+    (
+        "AttestationWeightExceedsMax",
+        ContractError::AttestationWeightExceedsMax,
+    ), // 304
     // --- Registry (400-499) ---
-    ("IdentityAlreadyRegistered", ContractError::IdentityAlreadyRegistered), // 400
-    ("BondContractAlreadyRegistered", ContractError::BondContractAlreadyRegistered), // 401
-    ("IdentityNotRegistered", ContractError::IdentityNotRegistered),         // 402
-    ("BondContractNotRegistered", ContractError::BondContractNotRegistered), // 403
-    ("AlreadyDeactivated", ContractError::AlreadyDeactivated),               // 404
-    ("AlreadyActive", ContractError::AlreadyActive),                         // 405
-    ("InvalidContractAddress", ContractError::InvalidContractAddress),       // 406
-    ("ContractCodeVerificationFailed", ContractError::ContractCodeVerificationFailed), // 407
-    ("UnsupportedInterface", ContractError::UnsupportedInterface),           // 408
+    (
+        "IdentityAlreadyRegistered",
+        ContractError::IdentityAlreadyRegistered,
+    ), // 400
+    (
+        "BondContractAlreadyRegistered",
+        ContractError::BondContractAlreadyRegistered,
+    ), // 401
+    ("IdentityNotRegistered", ContractError::IdentityNotRegistered),   // 402
+    (
+        "BondContractNotRegistered",
+        ContractError::BondContractNotRegistered,
+    ), // 403
+    ("AlreadyDeactivated", ContractError::AlreadyDeactivated),     // 404
+    ("AlreadyActive", ContractError::AlreadyActive),               // 405
+    ("InvalidContractAddress", ContractError::InvalidContractAddress), // 406
+    (
+        "ContractCodeVerificationFailed",
+        ContractError::ContractCodeVerificationFailed,
+    ), // 407
+    ("UnsupportedInterface", ContractError::UnsupportedInterface), // 408
     // --- Delegation (500-599) ---
-    ("ExpiryInPast", ContractError::ExpiryInPast),                           // 500
-    ("DelegationNotFound", ContractError::DelegationNotFound),               // 501
-    ("AlreadyRevoked", ContractError::AlreadyRevoked),                       // 502
-    ("DelegationExpiryTooLong", ContractError::DelegationExpiryTooLong),     // 503
-    ("UnknownScheme", ContractError::UnknownScheme),                         // 504
-    ("VerifierAlreadyRegistered", ContractError::VerifierAlreadyRegistered), // 505
-    ("VerifierNotRegistered", ContractError::VerifierNotRegistered),         // 506
-    ("VerificationFailed", ContractError::VerificationFailed),               // 507
-    ("RevocationGraceExpired", ContractError::RevocationGraceExpired),       // 508
-    ("DelegationNotExpired", ContractError::DelegationNotExpired),           // 509
-    ("PayloadTooOld", ContractError::PayloadTooOld),                         // 510
-    ("DelegationInactive", ContractError::DelegationInactive),               // 511
-    ("PromiseNotKept", ContractError::PromiseNotKept),                       // 512
-    ("StaleEpoch", ContractError::StaleEpoch),                               // 513
-    ("StaleAdminEpoch", ContractError::StaleAdminEpoch),                     // 514
-    ("StaleSignerEpoch", ContractError::StaleSignerEpoch),                   // 515
+    ("ExpiryInPast", ContractError::ExpiryInPast),                 // 500
+    ("DelegationNotFound", ContractError::DelegationNotFound),     // 501
+    ("AlreadyRevoked", ContractError::AlreadyRevoked),             // 502
+    (
+        "DelegationExpiryTooLong",
+        ContractError::DelegationExpiryTooLong,
+    ), // 503
+    ("UnknownScheme", ContractError::UnknownScheme),               // 504
+    (
+        "VerifierAlreadyRegistered",
+        ContractError::VerifierAlreadyRegistered,
+    ), // 505
+    ("VerifierNotRegistered", ContractError::VerifierNotRegistered),   // 506
+    ("VerificationFailed", ContractError::VerificationFailed),     // 507
+    (
+        "RevocationGraceExpired",
+        ContractError::RevocationGraceExpired,
+    ), // 508
+    ("DelegationNotExpired", ContractError::DelegationNotExpired),   // 509
+    ("PayloadTooOld", ContractError::PayloadTooOld),               // 510
+    ("DelegationInactive", ContractError::DelegationInactive),     // 511
+    ("PromiseNotKept", ContractError::PromiseNotKept),             // 512
+    ("StaleEpoch", ContractError::StaleEpoch),                     // 513
+    ("StaleAdminEpoch", ContractError::StaleAdminEpoch),           // 514
+    ("StaleSignerEpoch", ContractError::StaleSignerEpoch),         // 515
     // --- Treasury (600-699) ---
-    ("AmountMustBePositive", ContractError::AmountMustBePositive),           // 600
-    ("ThresholdExceedsSigners", ContractError::ThresholdExceedsSigners),     // 601
-    ("InsufficientTreasuryBalance", ContractError::InsufficientTreasuryBalance), // 602
-    ("ProposalNotFound", ContractError::ProposalNotFound),                   // 603
-    ("ProposalAlreadyExecuted", ContractError::ProposalAlreadyExecuted),     // 604
-    ("InsufficientApprovals", ContractError::InsufficientApprovals),         // 605
-    ("InvalidFlashLoanCallback", ContractError::InvalidFlashLoanCallback),   // 606
-    ("FlashLoanRepaymentFailed", ContractError::FlashLoanRepaymentFailed),   // 607
-    ("ProposalExpired", ContractError::ProposalExpired),                     // 608
-    ("SlippageExceeded", ContractError::SlippageExceeded),                   // 609
-    ("TreasuryBeneficiaryMismatch", ContractError::TreasuryBeneficiaryMismatch), // 610
-    ("CorridorNotRegistered", ContractError::CorridorNotRegistered),         // 611
+    ("AmountMustBePositive", ContractError::AmountMustBePositive),   // 600
+    (
+        "ThresholdExceedsSigners",
+        ContractError::ThresholdExceedsSigners,
+    ), // 601
+    (
+        "InsufficientTreasuryBalance",
+        ContractError::InsufficientTreasuryBalance,
+    ), // 602
+    ("ProposalNotFound", ContractError::ProposalNotFound),         // 603
+    (
+        "ProposalAlreadyExecuted",
+        ContractError::ProposalAlreadyExecuted,
+    ), // 604
+    ("InsufficientApprovals", ContractError::InsufficientApprovals),   // 605
+    (
+        "InvalidFlashLoanCallback",
+        ContractError::InvalidFlashLoanCallback,
+    ), // 606
+    (
+        "FlashLoanRepaymentFailed",
+        ContractError::FlashLoanRepaymentFailed,
+    ), // 607
+    ("ProposalExpired", ContractError::ProposalExpired),           // 608
+    ("SlippageExceeded", ContractError::SlippageExceeded),         // 609
+    (
+        "TreasuryBeneficiaryMismatch",
+        ContractError::TreasuryBeneficiaryMismatch,
+    ), // 610
+    ("CorridorNotRegistered", ContractError::CorridorNotRegistered),   // 611
     // --- Arithmetic (700-799) ---
-    ("Overflow", ContractError::Overflow),                                   // 700
-    ("Underflow", ContractError::Underflow),                                 // 701
-    ("DivisionByZero", ContractError::DivisionByZero),                       // 702
-    ("InvalidPercentSplit", ContractError::InvalidPercentSplit),             // 703
+    ("Overflow", ContractError::Overflow),                         // 700
+    ("Underflow", ContractError::Underflow),                       // 701
+    ("DivisionByZero", ContractError::DivisionByZero),             // 702
+    ("InvalidPercentSplit", ContractError::InvalidPercentSplit),   // 703
 ];

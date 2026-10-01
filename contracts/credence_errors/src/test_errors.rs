@@ -22,21 +22,21 @@ mod tests {
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
         fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized!(e, false);
+            crate::require_contract_uninitialized(e, false);
             Ok(())
         }
         let e = soroban_sdk::Env::default();
-        assert!(call(&e).is_ok());
+        // Does not panic.
+        crate::require_contract_uninitialized(&e, false);
     }
 
     #[test]
-    fn test_require_contract_uninitialized_returns_error_when_true() {
-        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized!(e, true);
-            Ok(())
-        }
+    #[should_panic(expected = "Error(Contract, #2)")]
+    fn test_require_contract_uninitialized_panics_when_true() {
+        // The helper panics with `AlreadyInitialized` (code 2) rather than
+        // returning `Err`, so assert on the host error instead of a Result.
         let e = soroban_sdk::Env::default();
-        assert_eq!(call(&e), Err(ContractError::AlreadyInitialized));
+        crate::require_contract_uninitialized(&e, true);
     }
 
     // ---------------------------------------------------------------------------

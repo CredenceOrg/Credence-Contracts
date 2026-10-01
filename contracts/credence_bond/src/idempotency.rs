@@ -135,7 +135,16 @@ pub fn is_used(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::CredenceBond;
     use soroban_sdk::testutils::Address as _;
+
+    /// Idempotency keys live in instance storage, which the host only allows
+    /// while executing inside a contract. Every case below therefore runs its
+    /// body through a real contract context.
+    fn in_contract<R>(e: &Env, f: impl FnOnce() -> R) -> R {
+        let contract = e.register(CredenceBond, ());
+        e.as_contract(&contract, f)
+    }
 
     #[test]
     fn test_compute_key_deterministic() {

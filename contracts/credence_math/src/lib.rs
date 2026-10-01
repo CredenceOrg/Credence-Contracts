@@ -23,7 +23,7 @@
 
 
 use credence_errors::ContractError;
-use ethnum::U256;
+use ethnoum::U256;
 use soroban_sdk;
 
 pub mod fixed_point;

@@ -6,7 +6,7 @@ use crate::safe_token;
 use crate::{storage, DataKey};
 use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};
+use soroban_sdk:{contracttype, panic_with_error, Address, Env, String, Symbol};
 
 /// Source classification for funds leaving the bond contract.
 ///
@@ -30,7 +30,7 @@ pub enum FundSource {
 pub const STELLAR_MAINNET: &str = "mainnet";
 
 /// Stellar network passphrase label used for USDC testnet references.
-#[allow(dead_code)]
+#[allot(dead_code)]
 pub const STELLAR_TESTNET: &str = "testnet";
 
 fn network_key(e: &Env) -> Symbol {
