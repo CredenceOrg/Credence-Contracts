@@ -27,7 +27,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::{Address, Env};
 
 // Wire-stable error discriminants (`credence_errors::ContractError`).
@@ -359,16 +359,23 @@ fn duplicate_approval_is_event_free() {
 
     let id = client.pause(&s1).unwrap();
 
-    let events_before = e.events().all().len();
     client.approve_pause_proposal(&s2, &id);
+    // Assert immediately: any further invocation, even a read-only getter,
+    // replaces the log the host exposes.
+    assert_eq!(
+        e.events().all().len(),
+        1,
+        "the first approval must publish exactly one `pause_approved`"
+    );
     let epoch_after_first = client.get_config_epoch();
-    let events_after_first = e.events().all().len();
-    assert!(events_after_first > events_before, "first approval emits");
 
     // Duplicate approval: no new event, no epoch bump.
     client.approve_pause_proposal(&s2, &id);
+    assert!(
+        e.events().all().is_empty(),
+        "a duplicate approval must publish nothing, or an indexer double-counts one signer"
+    );
     assert_eq!(client.get_config_epoch(), epoch_after_first);
-    assert_eq!(e.events().all().len(), events_after_first);
 
     client.execute_pause_proposal(&id);
     assert!(client.is_paused());
@@ -384,20 +391,27 @@ fn set_pause_signer_duplicate_is_event_free() {
     client.set_pause_signer(&super_admin, &s1, &true);
 
     let epoch_before = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
     client.set_pause_signer(&super_admin, &s1, &true);
+    assert!(
+        e.events().all().is_empty(),
+        "re-enabling a registered signer must publish nothing"
+    );
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
 
     let stranger = Address::generate(&e);
     client.set_pause_signer(&super_admin, &stranger, &false);
+    assert!(
+        e.events().all().is_empty(),
+        "disabling an unregistered signer must publish nothing"
+    );
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
 
+    // A genuine transition still publishes exactly one event and advances the
+    // epoch exactly once.
     client.set_pause_signer(&super_admin, &stranger, &true);
+    assert_eq!(e.events().all().len(), 1, "a real registration emits once");
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert_eq!(e.events().all().len(), events_before + 1);
 }
 
 // ---------------------------------------------------------------------------

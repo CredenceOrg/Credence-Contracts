@@ -15,7 +15,7 @@ use soroban_sdk::token::TokenClient;
 use soroban_sdk::Address;
 use soroban_sdk::Env;
 
-const DAY: u64 = credence_math::Timestamp::SECONDS_PER_DAY;
+const DAY: u64 = credence_math::SECONDS_PER_DAY;
 
 /// Token moves from `identity` to the bond contract on `create_bond`.
 #[test]

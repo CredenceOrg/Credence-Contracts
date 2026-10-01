@@ -10,7 +10,7 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -59,7 +59,7 @@ fn test_upgrade_admin_transfer_timelock_enforced() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -82,7 +82,7 @@ fn test_upgrade_admin_transfer_expiry_enforced() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -104,7 +104,7 @@ fn test_upgrade_admin_transfer_cancel() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -126,7 +126,7 @@ fn test_upgrade_admin_transfer_wrong_acceptor() {
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
     let wrong_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -147,7 +147,7 @@ fn test_cannot_propose_same_admin() {
     e.mock_all_auths();
 
     let admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);

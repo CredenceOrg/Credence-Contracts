@@ -15,7 +15,7 @@
 //! `cargo run -p credence_bond --bin update-cost-baseline`. See
 //! `docs/gas-regression.md`.
 
-mod harness;
+pub mod harness;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

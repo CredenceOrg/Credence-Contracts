@@ -3,8 +3,9 @@
 //! Regression target: adding one enum variant used to require bumping unrelated
 //! manual counts (`ALL_VARIANTS_COUNT` vs `all_variants().len()` vs
 //! `test_is_recoverable_exhaustive` cases) that drifted to wildly different
-//! values (e.g. 94 vs 96). The shared `variant_table.rs` is authoritative;
-//! these tests fail if parallel counters reappear.
+//! values (e.g. 94 vs 96, later 102 vs 104 vs 110). The shared
+//! `variant_table.rs` is authoritative; these tests fail if parallel counters
+//! reappear.
 
 // Off-chain test binary, not deployed WASM (issue #713 exemption).
 #![allow(clippy::disallowed_macros)]
