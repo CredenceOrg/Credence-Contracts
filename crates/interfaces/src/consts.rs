@@ -1,1 +1,335 @@
-Ly8vIFNoYXJlZCBjb25zdGFudHMgZm9yIENyZWRlbmNlIENvbnRyYWN0cwoKLy8vIFRoZSBzdG9yYWdlIGtleSB1c2VkIHRvIGhvbGQgdGhlIGFkbWluaXN0cmF0aXZlIGFkZHJlc3MuCnB1YiBjb25zdCBBRE1JTl9LRVk6ICZzdHIgPSAiYWRtaW4iOwoKLy8vIE1heGltdW0gbGVuZ3RoIGFsbG93ZWQgZm9yIGEgc3RvcmFnZSBrZXkgc3RyaW5nLgpwdWIgY29uc3QgTUFYX0tFWV9MRU46IHVzaXplID0gNjQ7CgovLy8gTWF4aW11bSBsZW5ndGggYWxsb3dlZCBmb3IgYSBzdG9yYWdlIHZhbHVlIHN0cmluZy4KcHViIGNvbnN0IE1BWF9WQUxVRV9MRU46IHVzaXplID0gMTAyNDsKCi8vLyBNaW5pbXVtIGxlbmd0aCBhbGxvd2VkIGZvciBhIHN0b3JhZ2Uga2V5IHN0cmluZy4KcHViIGNvbnN0IE1JTl9LRVlfTEVOOiB1c2l6ZSA9IDE7CgovLy8gTWF4aW11bSBudW1iZXIgb2YgcmV0cnkgYXR0ZW1wdHMgZm9yIGEgZmFpbGVkIG9wZXJhdGlvbi4KcHViIGNvbnN0IE1BWF9SRVRSSUVTOiB1MzIgPSAzOwoKLy8vIE1heGltdW0gbnVtYmVyIG9mIGVudHJpZXMgYWxsb3dlZCBpbiBhIHNpbmdsZSBiYXRjaCBvcGVyYXRpb24uCnB1YiBjb25zdCBNQVhfQkFUQ0hfU0laRTogdXNpemUgPSAxMjg7CgovLy8gTWF4aW11bSBhZ2UgKGluIHNlY29uZHMpIGJlZm9yZSBhIGNhY2hlZCBlbnRyeSBpcyBjb25zaWRlcmVkIHN0YWxlLgpwdWIgY29uc3QgTUFYX0NBQ0hFX0FHUF9TRUNTOiB1NjQgPSA4NjQwMDsKCi8vLyBEZWZhdWx0IG51bWJlciBvZiBhdHRlbXB0cyBmb3IgYSB0cmFuc2llbnQgb3BlcmF0aW9uLgpwdWIgY29uc3QgREVGQVVMVF9SRVRSWV9BVFRFTVBUUzogdTMyID0gMTsKCi8vLyBFcnJvciBjb2RlIHJldHVybmVkIHdoZW4gYSBzdG9yYWdlIGtleSBpcyBlbXB0eSBvciB0b28gc2hvcnQuCnB1YiBjb25zdCBFUlJfS0VZX1RPT19TSE9SVDogJnN0ciA9ICJrZXlfdG9vX3Nob3J0IjsKCi8vLyBFcnJvciBjb2RlIHJldHVybmVkIHdoZW4gYSBzdG9yYWdlIGtleSBleGNlZWRzIHRoZSBtYXhpbXVtIGxlbmd0aC4KcHViIGNvbnN0IEVSUl9LRVlfVE9PX0xPTkc6ICZzdHIgPSAia2V5X3Rvb19sb25nIjsKCi8vLyBFcnJvciBjb2RlIHJldHVybmVkIHdoZW4gYSBzdG9yYWdlIHZhbHVlIGV4Y2VlZHMgdGhlIG1heGltdW0gbGVuZ3RoLgpwdWIgY29uc3QgRVJSX1ZBTFVFX1RPT19MT05HOiAmc3RyID0gInZhbHVlX3Rvb19sb25nIjsKCi8vLyBFcnJvciBjb2RlIHJldHVybmVkIHdoZW4gYSByZXRyeSBidWRnZXQgaGFzIGJlZW4gZXhoYXVzdGVkLgpwdWIgY29uc3QgRVJSX1JFVFJZX0VYSEFVU1RFRDogJnN0ciA9ICJyZXRyeV9leGhhdXN0ZWQiOwoKLy8vIEVycm9yIGNvZGUgcmV0dXJuZWQgd2hlbiBhIGJhdGNoIGV4Y2VlZHMgdGhlIG1heGltdW0gYWxsb3dlZCBzaXplLgpwdWIgY29uc3QgRVJSX0JBVENIX1RPT19MQVJHRTogJnN0ciA9ICJiYXRjaF90b29fbGFyZ2UiOwoKLy8vIEVycm9yIGNvZGUgcmV0dXJuZWQgd2hlbiBhIGNhY2hlZCBlbnRyeSBpcyBzdGFsZS4KcHViIGNvbnN0IEVSUl9TVEFMRV9FTlRSWTogJnN0ciA9ICJzdGFsZV9lbnRyeSI7CgovLy8gRXJyb3IgY29kZSByZXR1cm5lZCB3aGVuIHRoZSBjYWxsZXIgaXMgbm90IGF1dGhvcml6ZWQuCnB1YiBjb25zdCBFUlJfVU5BVVRIT1JJWkVEOiAmc3RyID0gInVuYXV0aG9yaXplZCI7CgovLy8gRXJyb3IgY29kZSByZXR1cm5lZCB3aGVuIGFuIGlucHV0IGZhaWxzIGdlbmVyYWwgdmFsaWRhdGlvbi4KcHViIGNvbnN0IEVSUl9JTlZBTElEX0lOUFVUOiAmc3RyID0gImludmFsaWRfaW5wdXQiOwoKLy8vIFJldHVybnMgdHJ1ZSBpZiB0aGUgcHJvdmlkZWQga2V5IGxlbmd0aCBpcyB3aXRoaW4gdGhlIGFjY2VwdGVkIGJvdW5kcy4KLy8vCi8vLyBUaGlzIGlzIGEgYm91bmRhcnkgY2hlY2sgdXNlZCBieSBjYWxsZXJzIHRvIHJlamVjdCBlbXB0eSBvciBvdmVybHkK Ly8vIGxvbmcga2V5cyBiZWZvcmUgdGhleSB0b3VjaCBwZXJzaXN0ZW50IHN0YXRlLiBJdCBpcyBkZXRlcm1pbmlzdGljCi8vLyBhbmQgaGFzIG5vIHNpZGUgZWZmZWN0cy4KcHViIGZuIGlzX3ZhbGlkX2tleV9sZW4obGVuOiB1c2l6ZSkgLT4gYm9vbCB7CiAgICBsZW4gPj0gTUlOX0tFWV9MRU4gJiYgbGVuIDw9IE1BWF9LRVlfTEVOCn0KCi8vLyBSZXR1cm5zIHRydWUgaWYgdGhlIHByb3ZpZGVkIHZhbHVlIGxlbmd0aCBpcyB3aXRoaW4gdGhlIGFjY2VwdGVkIGJvdW5kcy4KLy8vCi8vLyBBIGxlbmd0aCBvZiB6ZXJvIGlzIGFsbG93ZWQgYmVjYXVzZSBkZWxldGlvbiBpcyByZXByZXNlbnRlZCBieSBhbgovLy8gZW1wdHkgdmFsdWU7IG9ubHkgdGhlIHVwcGVyIGJvdW5kIGlzIGVuZm9yY2VkIGhlcmUuCnB1YiBmbiBpc192YWxpZF92YWx1ZV9sZW4obGVuOiB1c2l6ZSkgLT4gYm9vbCB7CiAgICBsZW4gPD0gTUFYX1ZBTFVFX0xFTgp9CgovLy8gUmV0dXJucyB0cnVlIGlmIHRoZSBwcm92aWRlZCBiYXRjaCBzaXplIGlzIHdpdGhpbiB0aGUgYWNjZXB0ZWQgYm91bmRzLgovLy8KLy8vIEEgYmF0Y2ggb2YgemVybyBlbnRyaWVzIGlzIHZhbGlkIGFuZCByZXByZXNlbnRzIGEgbm8tb3AuCnB1YiBmbiBpc192YWxpZF9iYXRjaF9zaXplKHNpemU6IHVzaXplKSAtPiBib29sIHsKICAgIHNpemUgPD0gTUFYX0JBVENIX1NJWkUKfQoKLy8vIFJldHVybnMgdHJ1ZSBpZiB0aGUgY2FjaGUgZW50cnkgYWdlIGlzIHdpdGhpbiB0aGUgZnJlc2huZXNzIHdpbmRvdy4KLy8vCi8vLyBBbiBlbnRyeSBleGFjdGx5IGF0IHRoZSBhZ2UgbGltaXQgaXMgY29uc2lkZXJlZCBmcmVzaDsgb25seSBhZ2VzCi8vLyBzdHJpY3RseSBncmVhdGVyIHRoYW4gYE1BWF9DQUNIRV9BR1BfU0VDU2AgYXJlIHN0YWxlLgpwdWIgZm4gaXNfY2FjaGVfZnJlc2goYWdlX3NlY3M6IHU2NCkgLT4gYm9vbCB7CiAgICBhZ2Vfc2VjcyA8PSBNQVhfQ0FDSEVfQUdQX1NFQ1MKfQoKLy8vIFJldHVybnMgdGhlIG51bWJlciBvZiByZXRyaWVzIHJlbWFpbmluZyBhZnRlciBgYXR0ZW1wdHNgIGhhdmUgYmVlbiBtYWRlLgovLy8KLy8vIFNhdHVyYXRlcyBhdCB6ZXJvIHNvIGEgY2FsbGVyIGNhbiBuZXZlciBvYnNlcnZhbiBhIHdyYXAtYXJvdW5kIG9yCi8vLyB1bmRlcmZsb3cgd2hlbiB0aGUgYXR0ZW1wdCBjb3VudCBleGNlZWRzIHRoZSBidWRnZXQuCnB1YiBmbiByZW1haW5pbmdfcmV0cmllcyhhdHRlbXB0czogdTMyKSAtPiB1MzIgewogICAgTUFYX1JFVFJJRVMuc2F0dXJhdGluZ19zdWIoYXR0ZW1wdHMpCn0KCi8vLyBSZXR1cm5zIHRydWUgaWYgYW5vdGhlciByZXRyeSBhdHRlbXB0IGlzIGFsbG93ZWQuCi8vLwovLy8gVGhpcyBpcyB0aGUgZ2F0ZSB1c2VkIGJlZm9yZSBzY2hlZHVsaW5nIGEgcmV0cnk7IGl0IGlzIGRldGVybWluaXN0aWMKLy8vIGFuZCBkb2VzIG5vdCBtdXRhdGUgYW55IHNoYXJlZCBzdGF0ZS4KcHViIGZuIGNhbl9yZXRyeShhdHRlbXB0czogdTMyKSAtPiBib29sIHsKICAgIHJlbWFpbmluZ19yZXRyaWVzKGF0dGVtcHRzKSA+IDAKfQoKLy8vIFZhbGlkYXRlcyBhIHN0b3JhZ2Uga2V5IGFuZCByZXR1cm5zIGEgZGV0ZXJtaW5pc3RpYyBlcnJvciBjb2RlIG9uCi8vLyBmYWlsdXJlLgovLy8KLy8vIFRoZSByZXR1cm5lZCBlcnJvciBjb2RlIGlzIHNhZmUgdG8gZXhwb3NlIHRvIGNhbGxlcnMgYmVjYXVzZSBpdCBjb250YWlucwovLy8gbm8gc2Vuc2l0aXZlIGRhdGEgYW5kIG5vIGtleSBjb250ZW50LgpwdWIgZm4gdmFsaWRhdGVfa2V5KGtleTogJnN0cikgLT4gUmVzdWx0PHVzaXplLCAmJ3N0YXRpYyBzdHI+IHsKICAgIGxldCBsZW4gPSBrZXkubGVuKCk7CiAgICBpZiBsZW4gPCBNSU5fS0VZX0xFTiB7CiAgICAgICAgcmV0dXJuIEVycihFUlJfS0VZX1RPT19TSE9SVCk7CiAgICB9CiAgICBpZiBsZW4gPiBNQVhfS0VZX0xFTiB7CiAgICAgICAgcmV0dXJuIEVycihFUlJfS0VZX1RPT19MT05HKTsKICAgIH0KICAgIE9rKGxlbikKfQoKLy8vIFZhbGlkYXRlcyBhIHN0b3JhZ2UgdmFsdWUgYW5kIHJldHVybnMgYSBkZXRlcm1pbmlzdGljIGVycm9yIGNvZGUgb24KLy8vIGZhaWx1cmUuCi8vLwovLy8gRW1wdHkgdmFsdWVzIGFyZSBhbGxvd2VkIChkZWxldGlvbik7IG9ubHkgdGhlIHVwcGVyIGJvdW5kIGlzIGVuZm9yY2VkLgpwdWIgZm4gdmFsaWRhdGVfdmFsdWUodmFsdWU6ICZzdHIpIC0+IFJlc3VsdDx1c2l6ZSwgJidzdGF0aWMgc3RyPiB7CiAgICBsZXQgbGVuID0gdmFsdWUubGVuKCk7CiAgICBpZiBsZW4gPiBNQVhfVkFMVUVfTEVOIHsKICAgICAgICByZXR1cm4gRXJyKEVSUl9WQUxVRV9UT09fTE9ORyk7CiAgICB9CiAgICBPayhsZW4pCn0KCi8vLyBWYWxpZGF0ZXMgYSBiYXRjaCBzaXplIGFuZCByZXR1cm5zIGEgZGV0ZXJtaW5pc3RpYyBlcnJvciBjb2RlIG9uCi8vLyBmYWlsdXJlLgpwdWIgZm4gdmFsaWRhdGVfYmF0Y2hfc2l6ZShzaXplOiB1c2l6ZSkgLT4gUmVzdWx0PHVzaXplLCAmJ3N0YXRpYyBzdHI+IHsKICAgIGlmIHNpemUgPiBNQVhfQkFUQ0hfU0laRSB7CiAgICAgICAgcmV0dXJuIEVycihFUlJfQkFUQ0hfVE9PX0xBUkdFKTsKICAgIH0KICAgIE9rKHNpemUpCn0KCi8vLyBWYWxpZGF0ZXMgdGhhdCBhIGNhY2hlIGVudHJ5IGlzIGZyZXNoIGFuZCByZXR1cm5zIGEgZGV0ZXJtaW5pc3RpYwovLy8gZXJyb3IgY29kZSB3aGVuIGl0IGlzIHN0YWxlLgpwdWIgZm4gdmFsaWRhdGVfY2FjaGVfYWdlKGFnZV9zZWNzOiB1NjQpIC0+IFJlc3VsdDx1NjQsICZzdGF0aWMgc3RyPiB7CiAgICBpZiBhZ2Vfc2VjcyA+IE1BWF9DQUNIRV9BR1BfU0VDUyB7CiAgICAgICAgcmV0dXJuIEVycihFUlJfU1RBTEVfRU5UUlkpOwogICAgfQogICAgT2soYWdlX3NlY3MpCn0KCi8vLyBWYWxpZGF0ZXMgdGhhdCB0aGUgY2FsbGVyIGlzIGF1dGhvcml6ZWQgYW5kIHJldHVybnMgYSBkZXRlcm1pbmlzdGljCi8vLyBlcnJvciBjb2RlIG90aGVyd2lzZS4KLy8vCi8vLyBUaGUgY2hlY2sgaXMgcHVyZWx5IGJvb2xlYW4gYW5kIG5ldmVyIGxlYWtzIHRoZSBjYWxsZXIgaWRlbnRpdHkgb3IKLy8vIHRoZSBleHBlY3RlZCBhZG1pbmlzdHJhdG9yIGFkZHJlc3MuCnB1YiBmbiB2YWxpZGF0ZV9hdXRob3JpemF0aW9uKGlzX2FkbWluOiBib29sKSAtPiBSZXN1bHQ8KCksICZzdGF0aWMgc3RyPiB7CiAgICBpZiAhaXNfYWRtaW4gewogICAgICAgIHJldHVybiBFcnIoRVJSX1VOQVVUSE9SSVpFRCk7CiAgICB9CiAgICBPaygoKQp9CgovLy8gQ29tYmluZXMgdGhlIGluZGl2aWR1YWwgdmFsaWRhdGlvbiBjaGVja3MgaW50byBhIHNpbmdsZSBkZWNpc2lvbiBmb3IgYQovLy8gc3RvcmFnZSB3cml0ZS4KLy8vCi8vLyBUaGUgb3JkZXIgb2YgY2hlY2tzIGlzIGRldGVybWluaXN0aWM6IGF1dGhvcml6YXRpb24gZmlyc3QsIHRoZW4ga2V5LAovLy8gdGhlbiB2YWx1ZS4gVGhpcyBlbnN1cmVzIGFuIHVuYXV0aG9yaXplZCBjYWxsZXIgY2Fubm90IHByb2JlIGtleSBvciB2YWx1ZQovLy8gYm91bmRzIHRocm91Z2ggZXJyb3IgY29kZXMuCnB1YiBmbiB2YWxpZGF0ZV93cml0ZSgKICAgIGlzX2FkbWluOiBib29sLAogICAga2V5OiAmc3RyLAogICAgdmFsdWU6ICZzdHIsCikgLT4gUmVzdWx0PCgpLCAmJ3N0YXRpYyBzdHI+IHsKICAgIHZhbGlkYXRlX2F1dGhvcml6YXRpb24oaXNfYWRtaW4pPzsKICAgIHZhbGlkYXRlX2tleShrZXkpPzsKICAgIHZhbGlkYXRlX3ZhbHVlKHZhbHVlKT87CiAgICBPaygoKQp9CgojW2NvbmZpZyh0ZXN0KV0KbW9kIHRlc3RzIHsKICAgIHVzZSBzdXBlazo6KjsKCiAgICAvLyAtLS0gQm91bmRhcnk6IGtleSBsZW5ndGggLS0tCgogICAgI1t0ZXN0XQogICAgZm4ga2V5X2xlbmd0aF9ib3VuZGFyaWVzX2FyZV9pbmNsdXNpdmUoKSB7CiAgICAgICAgYXNzZXJ0ISghaXNfdmFsaWRfa2V5X2xlbigwKSk7CiAgICAgICAgYXNzZXJ0IShpc192YWxpZF9rZXlfbGVuKE1JTl9LRVlfTEVOKSk7CiAgICAgICAgYXNzZXJ0IShpc192YWxpZF9rZXlfbGVuKE1JTl9LRVlfTEVOICsgMSkpOwogICAgICAgIGFzc2VydCEoaXNfdmFsaWRfa2V5X2xlbigkQVhfS0VZX0xFTiAtIDEpKTsKICAgICAgICBhc3NlcnQhKGlzX3ZhbGlkX2tleV9sZW4oTUFYX0tFWV9MRU4pKTsKICAgICAgICBhc3NlcnQhKCFpc192YWxpZF9rZXlfbGVuKE1BWF9LRVlfTEVOICsgMSkpOwogICAgfQoKICAgICNbdGVzdF0KICAgIGZuIHZhbGlkYXRlX2tleV9yZWplY3RzX3Rvb19zaG9ydF9hbmRfdG9vX2xvbmcoKSB7CiAgICAgICAgYXNzZXJ0X2VxISh2YWxpZGF0ZV9rZXkoIiIpLCBFcnIoRVJSX0tFWV9UT09fU0hPUlQpKTsKICAgICAgICBsZXQgbG9uZyA9ICJhIi5yZXBlYXQoTUFYX0tFWV9MRU4gKyAxKTsKICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2tleSgmbG9uZyksIEVycihFUlJfS0VZX1RPT19MT05HKSk7CiAgICB9CgogICAgI1t0ZXN0XQogICAgZm4gdmFsaWRhdGVfa2V5X2FjY2VwdHNfYm91bmRhcnlfbGVuZ3RocygpIHsKICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2tleSgiYSIpLCBPaygxKSk7CiAgICAgICAgbGV0IG1heCA9ICJhIi5yZXBlYXQoTUFYX0tFWV9MRU4pOwogICAgICAgIGFzc2VydF9lcSEodmFsaWRhdGVfa2V5KCZtYXgpLCBPayhNQVhfS0VZX0xFTikpOwogICAgfQoKICAgIC8vIC0tLSBCb3VuZGFyeTogdmFsdWUgbGVuZ3RoIC0tLQoKICAgICNbdGVzdF0KICAgIGZuIHZhbHVlX2xlbmd0aF9ib3VuZGFyaWVzX2FyZV9pbmNsdXNpdmUoKSB7CiAgICAgICAgYXNzZXJ0IShpc192YWxpZF92YWx1ZV9sZW4oMCkpOwogICAgICAgIGFzc2VydCEoaXNfdmFsaWRfdmFsdWVfbGVuKE1BWF9WQUxVRV9MRU4pKTsKICAgICAgICBhc3NlcnQhKCFpc192YWxpZF92YWx1ZV9sZW4oTUFYX1ZBTFVFX0xFTiArIDEpKTsKICAgIH0KCiAgICAjW3Rlc3RdCiAgICBmbiB2YWxpZGF0ZV92YWx1ZV9hbGxvd3NfZW1wdHlfYW5kX3JlamVjdHNfb3Zlcmxvbmd9KCkgewogICAgICAgIGFzc2VydF9lcSEodmFsaWRhdGVfdmFsdWUoIiIpLCBPaygwKSk7CiAgICAgICAgbGV0IG1heCA9ICJhIi5yZXBlYXQoTUFYX1ZBTFVFX0xFTik7CiAgICAgICAgYXNzZXJ0X2VxISh2YWxpZGF0ZV92YWx1ZSgmbWF4KSwgT2soTUFYX1ZBTFVFX0xFTikpOwogICAgICAgIGxldCBvdmVyID0gImEiLnJlcGVhdChNQVhfVkFMVUVfTEVOICsgMSk7CiAgICAgICAgYXNzZXJ0X2VxISh2YWxpZGF0ZV92YWx1ZSgmb3ZlciksIEVycihFUlJfVkFMVUVfVE9PX0xPTkcpKTsKICAgIH0KCiAgICAvLyAtLS0gQm91bmRhcnk6IGJhdGNoIHNpemUgLS0tCgogICAgI1t0ZXN0XQogICAgZm4gYmF0Y2hfc2l6ZV9ib3VuZGFyaWVzX2FyZV9pbmNsdXNpdmUoKSB7CiAgICAgICAgYXNzZXJ0IShpc192YWxpZF9iYXRjaF9zaXplKDApKTsKICAgICAgICBhc3NlcnQhKGlzX3ZhbGlkX2JhdGNoX3NpemUoTUFYX0JBVENIX1NJWkUpKTsKICAgICAgICBhc3NlcnQhKCFpc192YWxpZF9iYXRjaF9zaXplKE1BWF9CQVRDSF9TSVpFICsgMSkpOwogICAgfQoKICAgICNbdGVzdF0KICAgIGZuIHZhbGlkYXRlX2JhdGNoX3NpemVfcmVqZWN0c19vdmVybG9uZygpIHsKICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2JhdGNoX3NpemUoMCksIE9rKDApKTsKICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2JhdGNoX3NpemUoTUFYX0JBVENIX1NJWkUpLCBPayhNQVhfQkFUQ0hfU0laRSkpOwogICAgICAgIGFzc2VydF9lcSEoCiAgICAgICAgICAgIHZhbGlkYXRlX2JhdGNoX3NpemUoTUFYX0JBVENIX1NJWkUgKyAxKSwKICAgICAgICAgICAgRXJyKEVSUl9CQVRDSF9UT09fTEFSR0UpCiAgICAgICAgKTsKICAgIH0KCiAgICAvLyAtLS0gQm91bmRhcnk6IGNhY2hlIGFnZSAtLS0KCiAgICAjW3Rlc3RdCiAgICBmbiBjYWNoZV9mcmVzaG5lc3NfYm91bmRhcmllc19hcmVfaW5jbHVzaXZlKCkgewogICAgICAgIGFzc2VydCEoaXNfY2FjaGVfZnJlc2goMCkpOwogICAgICAgIGFzc2VydCEoaXNfY2FjaGVfZnJlc2goTUFYX0NBQ0hFX0FHUF9TRUNTKSk7CiAgICAgICAgYXNzZXJ0ISghaXNfY2FjaGVfZnJlc2goTUFYX0NBQ0hFX0FHUF9TRUNTICsgMSkpOwogICAgfQoKICAgICNbdGVzdF0KICAgIGZuIHZhbGlkYXRlX2NhY2hlX2FnZV9yZWplY3RzX3N0YWxlKCkgewogICAgICAgIGFzc2VydF9lcSEodmFsaWRhdGVfY2FjaGVfYWdlKDApLCBPaygwKSk7CiAgICAgICAgYXNzZXJ0X2VxISgKICAgICAgICAgICAgdmFsaWRhdGVfY2FjaGVfYWdlKE1BWF9DQUNIRV9BR1BfU0VDUyksCiAgICAgICAgICAgIE9rKE1BWF9DQUNIRV9BR1BfU0VDUykKICAgICAgICApOwogICAgICAgIGFzc2VydF9lcSEoCiAgICAgICAgICAgIHZhbGlkYXRlX2NhY2hlX2FnZShNQVhfQ0FDSEVfQUdQX1NFQ1MgKyAxKSwKICAgICAgICAgICAgRXJyKEVSUl9TVEFMRV9FTlRSWSkKICAgICAgICApOwogICAgfQoKICAgIC8vIC0tLSBSZXRyeSBidWRnZXQgLS0tCgogICAgI1t0ZXN0XQogICAgZm4gcmV0cnlfYnVkZ2V0X3NhdHVyYXRlc19hdF96ZXJvKCkgewogICAgICAgIGFzc2VydF9lcSEocmVtYWluaW5nX3JldHJpZXMoMCksIE1BWF9SRVRSSUVTKTsKICAgICAgICBhc3NlcnRfZXEhKHJlbWFpbmluZ19yZXRyaWVzKDEpLCBNQVhfUkVUUklFUyAtIDEpOwogICAgICAgIGFzc2VydF9lcSEocmVtYWluaW5nX3JldHJpZXMoTUFYX1JFVFJJRVMpLCAwKTsKICAgICAgICBhc3NlcnRfZXEhKHJlbWFpbmluZ19yZXRyaWVzKE1BWF9SRVRSSUVTICsgMSksIDApOwogICAgICAgIGFzc2VydF9lcSEocmVtYWluaW5nX3JldHJpZXModTMyOjpNQVgpLCAwKTsKICAgIH0KCiAgICAjW3Rlc3RdCiAgICBmbiBjYW5fcmV0cnlfZ2F0ZV9ib3VuZGFyaWVzKCkgewogICAgICAgIGFzc2VydCEoY2FuX3JldHJ5KDApKTsKICAgICAgICBhc3NlcnQhKGNhbl9yZXRyeShNQVhfUkVUUklFUyAtIDEpKTsKICAgICAgICBhc3NlcnQhKCFjYW5fcmV0cnkoTUFYX1JFVFJJRVMpKTsKICAgICAgICBhc3NlcnQhKCFjYW5fcmV0cnkoTUFYX1JFVFJJRVMgKyAxKSk7CiAgICB9CgogICAgLy8gLS0tIEF1dGhvcml6YXRpb24gLS0tCgogICAgI1t0ZXN0XQogICAgZm4gYXV0aG9yaXphdGlvbl9yZWplY3RzX25vbl9hZG1pbigpIHsKICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2F1dGhvcml6YXRpb24oZmFsc2UpLCBFcnIoRVJSX1VOQVVUSE9SSVpFRCkpOwogICAgICAgIGFzc2VydF9lcSEodmFsaWRhdGVfYXV0aG9yaXphdGlvbih0cnVlKSwgT2soKCkpKTsKICAgIH0KCiAgICAvLyAtLS0gQ29tYmluZWQgd3JpdGUgdmFsaWRhdGlvbiAtLS0KCiAgICAjW3Rlc3RdCiAgICBmbiB2YWxpZGF0ZV93cml0ZV9jaGVja3NfYXV0aG9yaXphdGlvbl9maXJzdCgpIHsKICAgICAgICAvLyBVbmF1dGhvcml6ZWQgY2FsbGVycyBtdXN0IG5vdCBsZWFybiBrZXkvdmFsdWUgYm91bmRzLgogICAgICAgIGFzc2VydF9lcSEoCiAgICAgICAgICAgIHZhbGlkYXRlX3dyaXRlKGZhbHNlLCAiIiwgIiIpLAogICAgICAgICAgICBFcnIoRVJSX1VOQVVUSE9SSVpFRCkKICAgICAgICApOwogICAgICAgIGFzc2VydF9lcSEoCiAgICAgICAgICAgIHZhbGlkYXRlX3dyaXRlKGZhbHNlLCAiYSIsICJhIiksCiAgICAgICAgICAgIEVycihFUlJfVU5BVVRIT1JJWkVEKQogICAgICAgICk7CiAgICB9CgogICAgI1t0ZXN0XQogICAgZm4gdmFsaWRhdGVfd3JpdGVfcmVqZWN0c19pbnZhbGlkX2tleV9hbmRfdmFsdWUoKSB7CiAgICAgICAgYXNzZXJ0X2VxISgKICAgICAgICAgICAgdmFsaWRhdGVfd3JpdGUodHJ1ZSwgIiIsICJ2YWx1ZSIpLAogICAgICAgICAgICBFcnIoRVJSX0tFWV9UT09fU0hPUlQpCiAgICAgICAgKTsKICAgICAgICBsZXQgbG9uZ19rZXkgPSAiYSIucmVwZWF0KE1BWF9LRVlfTEVOICsgMSk7CiAgICAgICAgYXNzZXJ0X2VxISgKICAgICAgICAgICAgdmFsaWRhdGVfd3JpdGUodHJ1ZSwgJmxvbmdfa2V5LCAidmFsdWUiKSwKICAgICAgICAgICAgRXJyKEVSUl9LRVlfVE9PX0xPTkcpCiAgICAgICAgKTsKICAgICAgICBsZXQgbG9uZ192YWx1ZSA9ICJhIi5yZXBlYXQoTUFYX1ZBTFVFX0xFTiArIDEpOwogICAgICAgIGFzc2VydF9lcSEoCiAgICAgICAgICAgIHZhbGlkYXRlX3dyaXRlKHRydWUsICJrZXkiLCAmbG9uZ192YWx1ZSksCiAgICAgICAgICAgIEVycihFUlJfVkFMVUVfVE9PX0xPTkcpCiAgICAgICAgKTsKICAgIH0KCiAgICAjW3Rlc3RdCiAgICBmbiB2YWxpZGF0ZV93cml0ZV9hY2NlcHRzX3ZhbGlkX2lucHV0KCkgewogICAgICAgIGFzc2VydF9lcSEodmFsaWRhdGVfd3JpdGUodHJ1ZSwgImtleSIsICJ2YWx1ZSIpLCBPaygoKSkpOwogICAgICAgIC8vIEVtcHR5IHZhbHVlIGlzIGEgdmFsaWQgZGVsZXRpb24gbWFya2VyLgogICAgICAgIGFzc2VydF9lcSEodmFsaWRhdGVfd3JpdGUodHJ1ZSwgImtleSIsICIiKSwgT2soKCkpKTsKICAgIH0KCiAgICAvLyAtLS0gUmVncmVzc2lvbjogZGV0ZXJtaW5pc20gLS0tCgogICAgI1t0ZXN0XQogICAgZm4gdmFsaWRhdGlvbl9pc19kZXRlcm1pbmlzdGljX2Zvcl9yZXBlYXRlZF9jYWxscygpIHsKICAgICAgICBmb3IgXyBpbiAwLi4xMDAgewogICAgICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2tleSgiIiksIEVycihFUlJfS0VZX1RPT19TSE9SVCkpOwogICAgICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX3dyaXRlKHRydWUsICJrZXkiLCAidmFsdWUiKSwgT2soKCkpKTsKICAgICAgICAgICAgYXNzZXJ0X2VxIShyZW1haW5pbmdfcmV0cmllcyhNQVhfUkVUUklFUyksIDApOwogICAgICAgIH0KICAgIH0KCiAgICAvLyAtLS0gUmVncmVzc2lvbjogYWRtaW4ga2V5IGlzIGEgd2VsbC1mb3JtZWQga2V5IC0tLQoKICAgICNbdGVzdF0KICAgIGZuIGFkbWluX2tleV9wYXNzZXNfdmFsaWRhdGlvbigpIHsKICAgICAgICBhc3NlcnRfZXEhKHZhbGlkYXRlX2tleShBRE1JTl9LRVkpLCBPayhBRE1JTl9LRVkubGVuKCkpKTsKICAgICAgICBhc3NlcnQhKGlzX3ZhbGlkX2tleV9sZW4oQURNSU5fS0VZLmxlbigpKSk7CiAgICB9Cn0K
+/// Shared constants for Credence Contracts
+
+/// The storage key used to hold the administrative address.
+pub const ADMIN_KEY: &str = "admin";
+
+/// Maximum length allowed for a storage key string.
+pub const MAX_KEY_LEN: usize = 64;
+
+/// Maximum length allowed for a storage value string.
+pub const MAX_VALUE_LEN: usize = 1024;
+
+/// Minimum length allowed for a storage key string.
+pub const MIN_KEY_LEN: usize = 1;
+
+/// Maximum number of retry attempts for a failed operation.
+pub const MAX_RETRIES: u32 = 3;
+
+/// Maximum number of entries allowed in a single batch operation.
+pub const MAX_BATCH_SIZE: usize = 128;
+
+/// Maximum age (in seconds) before a cached entry is considered stale.
+pub const MAX_CACHE_AGP_SECS: u64 = 86400;
+
+/// Default number of attempts for a transient operation.
+pub const DEFAULT_RETRY_ATTEMPTS: u32 = 1;
+
+/// Error code returned when a storage key is empty or too short.
+pub const ERR_KEY_TOO_SHORT: &str = "key_too_short";
+
+/// Error code returned when a storage key exceeds the maximum length.
+pub const ERR_KEY_TOO_LONG: &str = "key_too_long";
+
+/// Error code returned when a storage value exceeds the maximum length.
+pub const ERR_VALUE_TOO_LONG: &str = "value_too_long";
+
+/// Error code returned when a retry budget has been exhausted.
+pub const ERR_RETRY_EXHAUSTED: &str = "retry_exhausted";
+
+/// Error code returned when a batch exceeds the maximum allowed size.
+pub const ERR_BATCH_TOO_LARGE: &str = "batch_too_large";
+
+/// Error code returned when a cached entry is stale.
+pub const ERR_STALE_ENTRY: &str = "stale_entry";
+
+/// Error code returned when the caller is not authorized.
+pub const ERR_UNAUTHORIZED: &str = "unauthorized";
+
+/// Error code returned when an input fails general validation.
+pub const ERR_INVALID_INPUT: &str = "invalid_input";
+
+/// Returns true if the provided key length is within the accepted bounds.
+///
+/// This is a boundary check used by callers to reject empty or overly
+/// long keys before they touch persistent state. It is deterministic
+/// and has no side effects.
+pub fn is_valid_key_len(len: usize) -> bool {
+    len >= MIN_KEY_LEN && len <= MAX_KEY_LEN
+}
+
+/// Returns true if the provided value length is within the accepted bounds.
+///
+/// A length of zero is allowed because deletion is represented by an
+/// empty value; only the upper bound is enforced here.
+pub fn is_valid_value_len(len: usize) -> bool {
+    len <= MAX_VALUE_LEN
+}
+
+/// Returns true if the provided batch size is within the accepted bounds.
+///
+/// A batch of zero entries is valid and represents a no-op.
+pub fn is_valid_batch_size(size: usize) -> bool {
+    size <= MAX_BATCH_SIZE
+}
+
+/// Returns true if the cache entry age is within the freshness window.
+///
+/// An entry exactly at the age limit is considered fresh; only ages
+/// strictly greater than `MAX_CACHE_AGP_SECS` are stale.
+pub fn is_cache_fresh(age_secs: u64) -> bool {
+    age_secs <= MAX_CACHE_AGP_SECS
+}
+
+/// Returns the number of retries remaining after `attempts` have been made.
+///
+/// Saturates at zero so a caller can never observan a wrap-around or
+/// underflow when the attempt count exceeds the budget.
+pub fn remaining_retries(attempts: u32) -> u32 {
+    MAX_RETRIES.saturating_sub(attempts)
+}
+
+/// Returns true if another retry attempt is allowed.
+///
+/// This is the gate used before scheduling a retry; it is deterministic
+/// and does not mutate any shared state.
+pub fn can_retry(attempts: u32) -> bool {
+    remaining_retries(attempts) > 0
+}
+
+/// Validates a storage key and returns a deterministic error code on
+/// failure.
+///
+/// The returned error code is safe to expose to callers because it contains
+/// no sensitive data and no key content.
+pub fn validate_key(key: &str) -> Result<usize, &'static str> {
+    let len = key.len();
+    if len < MIN_KEY_LEN {
+        return Err(ERR_KEY_TOO_SHORT);
+    }
+    if len > MAX_KEY_LEN {
+        return Err(ERR_KEY_TOO_LONG);
+    }
+    Ok(len)
+}
+
+/// Validates a storage value and returns a deterministic error code on
+/// failure.
+///
+/// Empty values are allowed (deletion); only the upper bound is enforced.
+pub fn validate_value(value: &str) -> Result<usize, &'static str> {
+    let len = value.len();
+    if len > MAX_VALUE_LEN {
+        return Err(ERR_VALUE_TOO_LONG);
+    }
+    Ok(len)
+}
+
+/// Validates a batch size and returns a deterministic error code on
+/// failure.
+pub fn validate_batch_size(size: usize) -> Result<usize, &'static str> {
+    if size > MAX_BATCH_SIZE {
+        return Err(ERR_BATCH_TOO_LARGE);
+    }
+    Ok(size)
+}
+
+/// Validates that a cache entry is fresh and returns a deterministic
+/// error code when it is stale.
+pub fn validate_cache_age(age_secs: u64) -> Result<u64, &'static str> {
+    if age_secs > MAX_CACHE_AGP_SECS {
+        return Err(ERR_STALE_ENTRY);
+    }
+    Ok(age_secs)
+}
+
+/// Validates that the caller is authorized and returns a deterministic
+/// error code otherwise.
+///
+/// The check is purely boolean and never leaks the caller identity or
+/// the expected administrator address.
+pub fn validate_authorization(is_admin: bool) -> Result<(), &'static str> {
+    if !is_admin {
+        return Err(ERR_UNAUTHORIZED);
+    }
+    Ok(())
+}
+
+/// Combines the individual validation checks into a single decision for a
+/// storage write.
+///
+/// The order of checks is deterministic: authorization first, then key,
+/// then value. This ensures an unauthorized caller cannot probe key or value
+/// bounds through error codes.
+pub fn validate_write(is_admin: bool, key: &str, value: &str) -> Result<(), &'static str> {
+    validate_authorization(is_admin)?;
+    validate_key(key)?;
+    validate_value(value)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // --- Boundary: key length ---
+
+    #[test]
+    fn key_length_boundaries_are_inclusive() {
+        assert!(!is_valid_key_len(0));
+        assert!(is_valid_key_len(MIN_KEY_LEN));
+        assert!(is_valid_key_len(MIN_KEY_LEN + 1));
+        assert!(is_valid_key_len(MAX_KEY_LEN - 1));
+        assert!(is_valid_key_len(MAX_KEY_LEN));
+        assert!(!is_valid_key_len(MAX_KEY_LEN + 1));
+    }
+
+    #[test]
+    fn validate_key_rejects_too_short_and_too_long() {
+        assert_eq!(validate_key(""), Err(ERR_KEY_TOO_SHORT));
+        let long = "a".repeat(MAX_KEY_LEN + 1);
+        assert_eq!(validate_key(&long), Err(ERR_KEY_TOO_LONG));
+    }
+
+    #[test]
+    fn validate_key_accepts_boundary_lengths() {
+        assert_eq!(validate_key("a"), Ok(1));
+        let max = "a".repeat(MAX_KEY_LEN);
+        assert_eq!(validate_key(&max), Ok(MAX_KEY_LEN));
+    }
+
+    // --- Boundary: value length ---
+
+    #[test]
+    fn value_length_boundaries_are_inclusive() {
+        assert!(is_valid_value_len(0));
+        assert!(is_valid_value_len(MAX_VALUE_LEN));
+        assert!(!is_valid_value_len(MAX_VALUE_LEN + 1));
+    }
+
+    #[test]
+    fn validate_value_allows_empty_and_rejects_overlong() {
+        assert_eq!(validate_value(""), Ok(0));
+        let max = "a".repeat(MAX_VALUE_LEN);
+        assert_eq!(validate_value(&max), Ok(MAX_VALUE_LEN));
+        let over = "a".repeat(MAX_VALUE_LEN + 1);
+        assert_eq!(validate_value(&over), Err(ERR_VALUE_TOO_LONG));
+    }
+
+    // --- Boundary: batch size ---
+
+    #[test]
+    fn batch_size_boundaries_are_inclusive() {
+        assert!(is_valid_batch_size(0));
+        assert!(is_valid_batch_size(MAX_BATCH_SIZE));
+        assert!(!is_valid_batch_size(MAX_BATCH_SIZE + 1));
+    }
+
+    #[test]
+    fn validate_batch_size_rejects_overlong() {
+        assert_eq!(validate_batch_size(0), Ok(0));
+        assert_eq!(validate_batch_size(MAX_BATCH_SIZE), Ok(MAX_BATCH_SIZE));
+        assert_eq!(
+            validate_batch_size(MAX_BATCH_SIZE + 1),
+            Err(ERR_BATCH_TOO_LARGE)
+        );
+    }
+
+    // --- Boundary: cache age ---
+
+    #[test]
+    fn cache_freshness_boundaries_are_inclusive() {
+        assert!(is_cache_fresh(0));
+        assert!(is_cache_fresh(MAX_CACHE_AGP_SECS));
+        assert!(!is_cache_fresh(MAX_CACHE_AGP_SECS + 1));
+    }
+
+    #[test]
+    fn validate_cache_age_rejects_stale() {
+        assert_eq!(validate_cache_age(0), Ok(0));
+        assert_eq!(
+            validate_cache_age(MAX_CACHE_AGP_SECS),
+            Ok(MAX_CACHE_AGP_SECS)
+        );
+        assert_eq!(
+            validate_cache_age(MAX_CACHE_AGP_SECS + 1),
+            Err(ERR_STALE_ENTRY)
+        );
+    }
+
+    // --- Retry budget ---
+
+    #[test]
+    fn retry_budget_saturates_at_zero() {
+        assert_eq!(remaining_retries(0), MAX_RETRIES);
+        assert_eq!(remaining_retries(1), MAX_RETRIES - 1);
+        assert_eq!(remaining_retries(MAX_RETRIES), 0);
+        assert_eq!(remaining_retries(MAX_RETRIES + 1), 0);
+        assert_eq!(remaining_retries(u32::MAX), 0);
+    }
+
+    #[test]
+    fn can_retry_gate_boundaries() {
+        assert!(can_retry(0));
+        assert!(can_retry(MAX_RETRIES - 1));
+        assert!(!can_retry(MAX_RETRIES));
+        assert!(!can_retry(MAX_RETRIES + 1));
+    }
+
+    // --- Authorization ---
+
+    #[test]
+    fn authorization_rejects_non_admin() {
+        assert_eq!(validate_authorization(false), Err(ERR_UNAUTHORIZED));
+        assert_eq!(validate_authorization(true), Ok(()));
+    }
+
+    // --- Combined write validation ---
+
+    #[test]
+    fn validate_write_checks_authorization_first() {
+        // Unauthorized callers must not learn key/value bounds.
+        assert_eq!(validate_write(false, "", ""), Err(ERR_UNAUTHORIZED));
+        assert_eq!(validate_write(false, "a", "a"), Err(ERR_UNAUTHORIZED));
+    }
+
+    #[test]
+    fn validate_write_rejects_invalid_key_and_value() {
+        assert_eq!(validate_write(true, "", "value"), Err(ERR_KEY_TOO_SHORT));
+        let long_key = "a".repeat(MAX_KEY_LEN + 1);
+        assert_eq!(
+            validate_write(true, &long_key, "value"),
+            Err(ERR_KEY_TOO_LONG)
+        );
+        let long_value = "a".repeat(MAX_VALUE_LEN + 1);
+        assert_eq!(
+            validate_write(true, "key", &long_value),
+            Err(ERR_VALUE_TOO_LONG)
+        );
+    }
+
+    #[test]
+    fn validate_write_accepts_valid_input() {
+        assert_eq!(validate_write(true, "key", "value"), Ok(()));
+        // Empty value is a valid deletion marker.
+        assert_eq!(validate_write(true, "key", ""), Ok(()));
+    }
+
+    // --- Regression: determinism ---
+
+    #[test]
+    fn validation_is_deterministic_for_repeated_calls() {
+        for _ in 0..100 {
+            assert_eq!(validate_key(""), Err(ERR_KEY_TOO_SHORT));
+            assert_eq!(validate_write(true, "key", "value"), Ok(()));
+            assert_eq!(remaining_retries(MAX_RETRIES), 0);
+        }
+    }
+
+    // --- Regression: admin key is a well-formed key ---
+
+    #[test]
+    fn admin_key_passes_validation() {
+        assert_eq!(validate_key(ADMIN_KEY), Ok(ADMIN_KEY.len()));
+        assert!(is_valid_key_len(ADMIN_KEY.len()));
+    }
+}

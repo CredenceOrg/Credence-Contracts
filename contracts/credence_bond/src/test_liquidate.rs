@@ -277,7 +277,7 @@ fn liquidate_rolling_bond_past_lockup_rejected() {
 #[should_panic]
 fn liquidate_no_bond_rejected() {
     let e = Env::default();
-    let (client, admin, _identity, _treasury) = setup_with_treasury(&e);
+    let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     client.liquidate(&admin, &identity);
 }
