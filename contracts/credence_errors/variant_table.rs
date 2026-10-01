@@ -1,8 +1,8 @@
-// Single source of truth for exhaustive `ContractError` variant coverage in tests.
+// Single source of truth for exhaustive `ContractError` variant coverage in tests. // a
 //
-// Included from `tests/discriminant_uniqueness.rs` and `src/test_errors.rs`.
-// When adding a variant to `src/lib.rs`, add exactly one row here — do not
-// maintain parallel lists or manually bumped counts elsewhere.
+// Included from `tests/discriminant_uniqueness.rs`, `tests/variant_coverage_sync.rs`
+// and `src/test_errors.rs`. When adding a variant to `src/lib.rs`, add exactly one
+// row here - do not maintain parallel lists or manually bumped counts elsewhere.
 //
 // Row order: numeric wire code, ascending, across every category band.
 // `tests/variant_coverage_sync.rs` pins the row count to this length.

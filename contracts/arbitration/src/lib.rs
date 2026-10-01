@@ -54,6 +54,8 @@ pub mod status;
 use status::ArbitrationError as Error;
 use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
 
+use interfaces::governable::Governable;
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
@@ -105,10 +107,29 @@ fn bump_instance_ttl(e: &Env) {
 fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), ArbitrationError> {
     // Prevent a creator from re-entering the dispute lifecycle while an
     // unresolved dispute remains active for the same address.
+    //
+    // A stale `ActiveDispute` record can outlive the underlying dispute (e.g.
+    // after a prior resolved/cancelled state or storage drift). Treat that as a
+    // recoverable stale state instead of permanently locking the creator out.
     let key = DataKey::ActiveDispute(creator.clone());
-    if e.storage().instance().has(&key) {
+    let Some(active_id) = e.storage().instance().get::<DataKey, u64>(&key) else {
+        return Ok(());
+    };
+
+    let Some(dispute) = e.storage().instance().get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
+    else {
+        e.storage().instance().remove(&key);
+        return Ok(());
+    };
+
+    if matches!(
+        dispute.status,
+        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving
+    ) {
         return Err(ArbitrationError::OngoingDispute);
     }
+
+    e.storage().instance().remove(&key);
     Ok(())
 }
 
@@ -838,6 +859,15 @@ impl CredenceArbitration {
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
 
+        // Re-establish the creator's active-dispute guard. Resolving a dispute
+        // clears this marker, so a reopened dispute would otherwise leave the
+        // creator free to open a second concurrent dispute, defeating the
+        // one-active-dispute-per-creator invariant enforced by create_dispute.
+        e.storage().instance().set(
+            &DataKey::ActiveDispute(dispute.creator.clone()),
+            &dispute_id,
+        );
+
         // Clear vote tracking data for the reopened dispute
         let voter_counter_key = DataKey::VoterCounter(dispute_id);
         e.storage().instance().remove(&voter_counter_key);
@@ -846,6 +876,38 @@ impl CredenceArbitration {
 
         // Clear VoterCasted entries for all registered arbitrators
         let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+        for addr in registry.iter() {
+            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
+            e.storage().instance().remove(&voter_casted_key);
+        }
+        e.events().publish(
+            (Symbol::new(&e, "dispute_reopened"), dispute_id),
+            from as u32,
+        );
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (from as u32, DisputeStatus::Voting as u32),
+        );
+        Ok(())
+    }
+
+    /// Transfer administrative control to a new address.
+    ///
+    /// # Invariants
+    ///
+    /// - Requires authorization from the current admin. Non-admin callers are
+    ///   rejected before any state is mutated, so a failed transfer leaves the
+    ///   previous admin fully in control.
+    /// - The replacement is atomic: the old admin loses all privileges the
+    ///   moment the new admin is written, and there is never an intermediate
+    ///   state in which neither address holds control.
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let admin: Address = e
             .storage()
             .instance()
             .get(&DataKey::Admin)
@@ -862,7 +924,7 @@ impl CredenceArbitration {
 }
 
 #[contractimpl]
-impl interfaces::governable::Governable for ArbitrationContract {
+impl Governable for CredenceArbitration {
     fn get_admin(e: Env) -> Address {
         e.storage()
             .instance()
@@ -877,6 +939,9 @@ impl interfaces::governable::Governable for ArbitrationContract {
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod test_dispute_guard;
 
 #[cfg(test)]
 mod test_pausable;
