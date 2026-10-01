@@ -1,3 +1,9 @@
+# `rustls-pemfile` is pulled in transitively through the off-chain RPC client
+# stack (soroban-client -> reqwest -> rustls). The advisory (RUSTSEC-2025-0134)
+# marks the crate as unmaintained; it carries no exploitable vulnerability.
+# Contract WASM and on-chain state are not affected. Reassess when soroban-client
+# updates its TLS stack to a maintained alternative.
+#
 # `h2` is only present through the off-chain `credence_admin_cli` RPC client:
 # soroban-client 0.5.8 -> reqwest 0.11 -> hyper 0.14 -> h2 0.3. The advisory
 # is an unbounded-empty-DATA-frame client availability issue; it cannot affect
@@ -6,4 +12,4 @@
 # fix requires h2 >= 0.4.16. Reassess this exception when soroban-client moves
 # to reqwest/h2 0.4 or later.
 [advisories]
-ignore = ["RUSTSEC-2026-0258"]
+ignore = ["RUSTSEC-2025-0134", "RUSTSEC-2026-0258"]
