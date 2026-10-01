@@ -66,6 +66,11 @@ required-features = ["gas-bench"]
 name = "slash_bond_validation"
 path = "tests/slash_bond_validation.rs"
 
+# access_control boundary/recovery coverage (issue #1316).
+[[test]]
+name = "access_control_boundaries"
+path = "tests/access_control_boundaries.rs"
+
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }

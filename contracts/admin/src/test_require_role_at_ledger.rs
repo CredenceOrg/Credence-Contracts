@@ -169,3 +169,15 @@ fn duplicate_add_admin_preserves_earliest_assignment() {
     // If assigned_at was overwritten to 200, this would reject with 114.
     AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 10);
 }
+
+#[test]
+fn test_adversarial_regression_and_retry_scenarios() {
+    let (env, _cid, super_admin) = setup();
+    set_ts(&env, 10);
+    let actor = Address::generate(&env);
+    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    
+    // Retry state
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10);
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10);
+}
