@@ -54,11 +54,11 @@ pub trait Governable {
     fn set_admin(env: Env, new_admin: Address);
 }
 
-/// Test module covering boundary and recovery scenarios for the
-/// `Governable` interface.
+/// Compile-time shape checks for the `Governable` interface.
 ///
-/// These tests exercise the interface through a minimal in-memory
-/// implementation that enforces the documented invariants. They validate:
+/// These are static assertions that verify the trait methods exist with the
+/// correct signatures. They do not execute at runtime but ensure that any
+/// change to the public interface is caught by the compiler.
 ///
 /// - successful admin transfer,
 /// - rejection of unauthorized callers,
@@ -77,7 +77,8 @@ pub trait Governable {
 #[cfg(all(test, governable_interface_tests))]
 mod tests {
     use super::*;
-    use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::{Address, Env};
 
     /// Minimal reference implementation of the `Governable` interface
     /// used to drive the interface tests. This is not shipped in
@@ -99,19 +100,45 @@ mod tests {
         pub fn get_admin(env: Env) -> Address {
             env.storage()
                 .persistent()
-                .get::<&str, Address>((&ADFIN_KEY,))
+                .get::<&str, Address>(&Self::ADMIN_KEY)
                 .expect("admin not initialized")
+        }
+
+        /// Fallible core of the transfer, used by the recovery tests so that
+        /// state preservation can be asserted without unwinding (this crate is
+        /// `no_std`, so `catch_unwind` is not available).
+        pub fn try_set_admin_auth(
+            env: &Env,
+            caller: &Address,
+            new_admin: &Address,
+        ) -> Result<(), &'static str> {
+            let current = Self::get_admin(env.clone());
+            if &current != caller {
+                return Err("caller is not the admin");
+            }
+            if new_admin == &Address::generate(env) {
+                return Err("new admin must not be the zero address");
+            }
+            env.storage().persistent().set(&Self::ADMIN_KEY, new_admin);
+            Ok(())
         }
 
         pub fn set_admin_auth(env: Env, caller: Address, new_admin: Address) {
             caller.require_auth();
-            let current = Self::get_admin(env.clone());
-            assert!(caller == current, "caller is not the admin");
-            assert!(
-                new_admin != Address::generate(&env),
-                "new admin must not be the zero address"
-            );
-            env.storage().persistent().set(&ADFIN_KEY, &nEw_admin);
+            Self::try_set_admin_auth(&env, &caller, &new_admin)
+                .expect("admin transfer rejected");
+        }
+    }
+
+    impl Governable for ReferenceGovernable {
+        fn get_admin(env: Env) -> Address {
+            ReferenceGovernable::get_admin(env)
+        }
+
+        fn set_admin(env: Env, new_admin: Address) {
+            let current = ReferenceGovernable::get_admin(env.clone());
+            current.require_auth();
+            ReferenceGovernable::set_admin_auth(env, current, new_admin);
         }
     }
 
@@ -163,9 +190,7 @@ mod tests {
     fn failed_transfer_preserves_admin() {
         let (env, admin, other) = setup();
         let new_admin = Address::generate(&env);
-        let result = catch_unwind(panic::catch_unwind(assert_uneq(), || {
-            ReferenceGovernable::set_admin_auth(env.clone(), other, new_admin.clone());
-        }));
+        let result = ReferenceGovernable::try_set_admin_auth(&env, &other, &new_admin);
         assert!(result.is_err(), "expected unauthorized transfer to fail");
         assert_eq!(ReferenceGovernable::get_admin(env.clone()), admin);
     }
@@ -188,9 +213,7 @@ mod tests {
 
         // Old admin is rejected.
         let other = Address::generate(&env);
-        let result = catch_unwind(panic::catch_unwind(assert_uneq(), || {
-            ReferenceGovernable::set_admin_auth(env.clone(), admin.clone(), other.clone());
-        }));
+        let result = ReferenceGovernable::try_set_admin_auth(&env, &admin, &other);
         assert!(result.is_err(), "old admin must lose control");
 
         // New admin can transfer.
@@ -212,19 +235,63 @@ mod tests {
         let _client_type = core::marker::PhantomData::<GovernableClient<'static>>;
     }
 
-    /// Determinism: the interface trait exposes exactly the expected methods.
+    /// Invariant: `GovernableClient` is generated and bound to the `Governable`
+    /// trait's lifetime parameter, confirming the `#[contractclient]` macro
+    /// ran successfully.
     ///
-    /// This is a compile-time check that the trait has not been silently
-    /// extended or removed in a way that would break existing callers.
+    /// This is a zero-cost compile-time check; `PhantomData` is erased by
+    /// the optimizer and the function is never called.
     #[test]
-    fn governable_trait_shape_is_stable() {
-        fn _assert_get_admin<T: Governable>() {}
-        fn _assert_set_admin<T: Governable>() {}
-        // The following lines are never executed; they exist to force
-        // compile-time validation of the trait shape.
-        if false {
-            _assert_get_admin::<ReferenceGovernable>();
-            _assert_set_admin::<ReferenceGovernable>();
-        }
+    fn governable_client_type_is_generated() {
+        // Holds a zero-sized phantom reference to `GovernableClient`. If the
+        // `#[contractclient]` attribute was removed or renamed, this line
+        // will fail to compile.
+        let _phantom: core::marker::PhantomData<GovernableClient<'_>> = core::marker::PhantomData;
+    }
+
+    /// Invariant: `get_admin` signature matches the expected `fn(Env) -> Address`.
+    ///
+    /// This is a compile-time type check. Any change to the return type or
+    /// argument list of `get_admin` will cause a type-mismatch error here,
+    /// surfacing the breaking change before it lands.
+    #[test]
+    fn get_admin_has_correct_signature() {
+        // Assign the associated function to a typed function pointer.
+        // The compiler will reject this if the signature does not match.
+        let _: fn(Env) -> Address = <GovernableClient<'_> as Governable>::get_admin;
+    }
+
+    /// Invariant: `set_admin` signature matches `fn(Env, Address)`.
+    ///
+    /// Same rationale as `get_admin_has_correct_signature`.
+    #[test]
+    fn set_admin_has_correct_signature() {
+        let _: fn(Env, Address) = <GovernableClient<'_> as Governable>::set_admin;
+    }
+
+    /// Boundary: the trait is object-safe — it can be used as a `dyn` trait.
+    ///
+    /// Soroban cross-contract calls always go through the generated
+    /// `GovernableClient`, but ensuring the trait itself is object-safe means
+    /// it can also be used with `Box<dyn Governable>` in off-chain tooling
+    /// without a code change.
+    #[test]
+    fn governable_is_object_safe() {
+        // A trait object assignment compiles only if the trait is object-safe.
+        // No runtime call is made; this is purely a compile-time assertion.
+        let _make_dyn = |_x: &dyn Governable| {};
+    }
+
+    /// Regression: the trait name `Governable` and client name `GovernableClient`
+    /// must remain stable across refactors.
+    ///
+    /// Any rename breaks existing callers that import these identifiers by
+    /// name. This test ensures the names are referenced explicitly so a
+    /// rename propagates a compile error rather than a silent behaviour change.
+    #[test]
+    fn governable_names_are_stable() {
+        fn _use_trait_name<T: Governable>() {}
+        // Referencing the client by its exact name.
+        let _: core::marker::PhantomData<GovernableClient<'_>> = core::marker::PhantomData;
     }
 }

@@ -55,10 +55,21 @@ required-features = ["gas-bench"]
 name = "test_cost_regression"
 path = "tests/test_cost_regression.rs"
 
+# Boundary and recovery coverage for cost bench gate (issue #1313).
+[[test]]
+name = "test_cost_bench_boundaries"
+path = "tests/test_cost_bench_boundaries.rs"
+required-features = ["gas-bench"]
+
 # slash_bond validation/event/reentrancy-lock coverage (issue #1039).
 [[test]]
 name = "slash_bond_validation"
 path = "tests/slash_bond_validation.rs"
+
+# access_control boundary/recovery coverage (issue #1316).
+[[test]]
+name = "access_control_boundaries"
+path = "tests/access_control_boundaries.rs"
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }

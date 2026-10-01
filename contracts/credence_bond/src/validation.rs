@@ -443,6 +443,18 @@ mod tests {
         validate_bond_amount(MAX_BOND_AMOUNT + 1);
     }
 
+    #[test]
+    fn test_validate_bond_amount_min_boundary_accepts() {
+        // Exact minimum boundary must be accepted.
+        validate_bond_amount(MIN_BOND_AMOUNT);
+    }
+
+    #[test]
+    fn test_validate_bond_amount_max_boundary_accepts() {
+        // Exact maximum boundary must be accepted.
+        validate_bond_amount(MAX_BOND_AMOUNT);
+    }
+
     // ─── Address Validation Tests ─────────────────────────────────────────
 
     #[test]
