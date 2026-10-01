@@ -75,6 +75,15 @@ path = "tests/slash_bond_validation.rs"
 name = "access_control_boundaries"
 path = "tests/access_control_boundaries.rs"
 
+# parameters boundary/recovery coverage (issue #1343).
+[[test]]
+name = "parameters_boundaries"
+path = "tests/parameters_boundaries.rs"
+
+[[test]]
+name = "parameters_recovery"
+path = "tests/parameters_recovery.rs"
+
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }

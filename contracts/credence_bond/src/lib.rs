@@ -16,9 +16,7 @@ extern crate std;
 // the production build.
 pub mod access_control;
 
-#[cfg(test)]
 mod batch;
-#[cfg(test)]
 pub use batch::{BatchBondParams, BatchBondResult};
 mod claims;
 mod cooldown;
@@ -37,7 +35,7 @@ mod math;
 mod migration;
 mod nonce;
 mod normalization;
-mod parameters;
+pub mod parameters;
 mod pausable;
 mod rolling_bond;
 mod safe_token;
@@ -696,15 +694,11 @@ impl CredenceBond {
     /// Set whether borrows are frozen.
     pub fn set_borrow_frozen(e: Env, admin: Address, frozen: bool) {
         Self::require_not_paused(&e);
-        admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        // Authorization and the admin-identity check are performed by
+        // `parameters::set_borrow_frozen` -> `validate_admin`. Calling
+        // `require_auth` here as well would be a second authorization for the
+        // same address in one frame, which Soroban rejects with
+        // `Error(Auth, ExistingValue)`, making this entrypoint unusable.
         parameters::set_borrow_frozen(&e, &admin, frozen);
     }
 
@@ -1095,7 +1089,6 @@ impl CredenceBond {
     ///
     /// # Events
     /// Emits `batch_bonds_created` on success.
-    #[cfg(test)]
     pub fn create_batch_bonds(
         e: Env,
         params_list: soroban_sdk::Vec<batch::BatchBondParams>,
@@ -1112,7 +1105,6 @@ impl CredenceBond {
     ///
     /// # Panics
     /// Same panic conditions as [`create_batch_bonds`], minus the duplicate-bond check.
-    #[cfg(test)]
     pub fn validate_batch_bonds(
         e: Env,
         params_list: soroban_sdk::Vec<batch::BatchBondParams>,
@@ -1127,7 +1119,6 @@ impl CredenceBond {
     ///
     /// # Returns
     /// `0` for an empty batch; the arithmetic sum of all `amount` fields otherwise.
-    #[cfg(test)]
     pub fn get_batch_total_amount(
         e: Env,
         params_list: soroban_sdk::Vec<batch::BatchBondParams>,

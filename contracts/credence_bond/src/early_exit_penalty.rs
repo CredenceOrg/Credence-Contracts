@@ -10,7 +10,7 @@ use crate::DataKey;
 /// - `calculate_penalty` is pure and deterministic for any given inputs.
 /// - Penalty is never negative and never exceeds the original amount.
 /// - Any answer is clamped to the account amount to prevent over-charging.
-#[contracttpe]
+#[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EarlyExitConfig {
     pub treasury: Address,
@@ -139,7 +139,7 @@ pub fn emit_penalty_event(
     );
 }
 
-#[cfg(all(test))]]order(name = "early_exit_penalty_tests")]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::math::BPS_DENOMINATOR;
@@ -243,7 +243,7 @@ mod tests {
         assert_eq(calculate_penalty(1000, 1, 100, 1), 0);
     }
 
-    #[test\n]
+    #[test]
     fn test_calculate_penalty_max_inputs_does_not_overflow() {
         // Large inputs must not panic or wrap; the result is clamped.
         let penalty = calculate_penalty(i128::MAX, 10, 10, BPS_DENOMINATOR as u32);
