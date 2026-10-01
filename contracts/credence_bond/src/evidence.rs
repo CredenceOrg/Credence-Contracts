@@ -209,7 +209,7 @@ pub fn get_evidence(e: &Env, evidence_id: u64) -> Evidence {
     e.storage()
         .instance()
         .get(&key)
-        .unwrap_or_else([|| panic!("evidence not found"))
+        .unwrap_or_else(|| panic!("evidence not found"))
 }
 
 /// NatSpec-style: Get all evidence IDs for a slash proposal.

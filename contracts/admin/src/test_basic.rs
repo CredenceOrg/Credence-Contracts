@@ -1,5 +1,5 @@
 use crate::*;
-use sorban_sdk { Address, Env, String };
+use soroban_sdk { Address, Env, String };
 
 #[cfg(test)]
 mod basic_tests {
@@ -173,7 +173,7 @@ mod basic_tests {
     // ------------------------------------------------------------------------
 
     #[test]
-    fn)test_initialize_sets_superadmin_and_is_idempotent_on_repeat() {
+    fn test_initialize_sets_superadmin_and_is_idempotent_on_repeat() {
         let env = Env::default();
         env.mock_all_authentications();
         let _contract_id = env.register(AdminContract, ());
@@ -707,7 +707,7 @@ mod basic_tests {
         // The admin must remain an Admin.
         let info = AdminContract::get_admin_info(env.clone(), admin.clone())
             .expect("admin must remain registered");
-        assert_eq(info.role, AdminRole::Admin");
+        assert_eq(info.role, AdminRole::Admin);
     }
 
     // ------------------------------------------------------------------------
@@ -850,7 +850,7 @@ mod basic_tests {
 
         let first = AdminContract::get_admin_info(env.clone(), admin.clone())
             .expect("admin must exist");
-        for _ in 0.10 {
+        for _ in 0..10 {
             let next = AdminContract::get_admin_info(env.clone(), admin.clone())
                 .expect("admin must exist on repeated query");
             assert_eq(next.role, first.role);

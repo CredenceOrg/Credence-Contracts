@@ -67,7 +67,7 @@ impl Arbitrary for BondAction {
             // Durations must be valid: [MIN_BOND_DURATION (86_400), MAX_BOND_DURATION (31_536_000)]
             (
                 amount_strategy.clone(),
-                credence_math::Timestamp::SECONDS_PER_DAYu64..31536000u64,
+                credence_math::SECONDS_PER_DAY..31536000u64,
                 any::<bool>()
             )
                 .prop_flat_map(|(amount, duration, is_rolling)| {
@@ -154,7 +154,7 @@ fn run_sequence(actions: &[BondAction]) {
     let identity = Address::generate(&e);
 
     // Initialize the contract
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     for (step_idx, action) in actions.iter().enumerate() {
         // 1. Advance sequence and timestamp slightly before every action
@@ -216,19 +216,19 @@ fn run_sequence(actions: &[BondAction]) {
                 );
             }
             BondAction::TopUp { amount } => {
-                client.top_up(amount);
+                client.top_up(&identity, &amount);
             }
             BondAction::Slash { amount } => {
                 client.slash(&admin, &identity, &amount);
             }
             BondAction::RollRenew => {
-                client.renew_if_rolling();
+                client.renew_if_rolling(&identity);
             }
             BondAction::WithdrawEarly { amount } => {
-                client.withdraw_early(amount);
+                client.withdraw_early(&identity, &amount);
             }
             BondAction::RequestWithdraw => {
-                client.request_withdrawal();
+                client.request_withdrawal(&identity);
             }
             BondAction::Settle => {
                 client.withdraw_bond(&identity);
