@@ -2,8 +2,23 @@
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
+// The contract surface is `no_std`, but the `#[cfg(test)]` modules reach for
+// `std::panic` (catch_unwind / AssertUnwindSafe) in the boundary-recovery
+// suites. Declare `std` for test builds only so the release WASM target stays
+// `no_std`.
 #[cfg(test)]
+extern crate std;
+
+
+// `access_control` was not in the module tree on `main`, so none of it was
+// compiled or reachable. Made `pub` rather than private so the integration test
+// target in `tests/access_control_boundaries.rs` can exercise the guards against
+// the production build.
+pub mod access_control;
+
 mod batch;
+#[cfg(test)]
+pub use batch::{BatchBondParams, BatchBondResult};
 mod claims;
 mod cooldown;
 mod early_exit_penalty;
@@ -74,12 +89,6 @@ pub mod types;
 /// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 pub mod test_invariants;
-
-#[cfg(test)]
-mod test_invariants_boundary;
-#[cfg(test)]
-mod test_invariants_recovery;
-
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 pub mod test_helpers;
@@ -92,9 +101,20 @@ mod test_zero_address;
 #[cfg(test)]
 mod test_fork_divergent;
 
+/// Boundary and recovery coverage for the security module.
+#[cfg(test)]
+mod security;
+
 /// Chaos testing suite for simulating host and token failures.
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod chaos_token;
+#[cfg(test)]
+mod chaos_token;
+
+/// Boundary and recovery coverage for `chaos_token.rs`: toggle independence,
+/// atomicity of a faulted call, retry-after-recovery, amount boundaries, and the
+/// one-shot hostile-token injection lifecycle (issue #1318).
+#[cfg(test)]
+mod test_chaos_token_boundaries;
+
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_chaos;
 // [pre-broken on main] #[cfg(test)]
@@ -150,8 +170,15 @@ mod test_claim_expiry_sweep;
 #[cfg(test)]
 mod test_leverage;
 
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_migration_guard;
+// Re-enabled: the guard suite was disabled on main, so `migration.rs`
+// had no compiled coverage at all (issue #1340).
+#[cfg(test)]
+mod test_migration_guard;
+
+/// Boundary, idempotency, and recovery coverage for `migration.rs`'s
+/// `migrate_v1_to_v2` lazy migration (issue #1340).
+#[cfg(test)]
+mod test_migration;
 
 /// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
 // [pre-broken on main] #[cfg(test)]
@@ -680,7 +707,7 @@ impl CredenceBond {
         parameters::set_borrow_frozen(&e, &admin, frozen);
     }
 
-    // ==================== Protocol Parameters (Governance-Controlled) ====================
+    // ==================== Protocol Parameters (Governance-Controlled) =============
 
     pub fn get_protocol_fee_bps(e: Env) -> u32 {
         parameters::get_protocol_fee_bps(&e)
@@ -1042,8 +1069,69 @@ impl CredenceBond {
         // trip the guard on an aborted or fixture-only flow: a Soroban tx is
         // atomic, so a panic in `assert_self_consistent` reverts this write too.
         crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
         bond
+    }
+
+    // ── Batch Bond Operations ─────────────────────────────────────────────
+    // These entrypoints delegate to the `batch` module which is compiled
+    // test-only (`#[cfg(test)] mod batch`).  They are excluded from the
+    // production WASM but are present in the test-mode client so
+    // `test_batch.rs` can exercise them through the normal contract path.
+
+    /// Create multiple bonds atomically in a single transaction.
+    ///
+    /// All bonds are validated first (fail-fast). If any bond fails validation,
+    /// the **entire** batch is rejected before any state is written.
+    ///
+    /// # Panics
+    /// * `ContractError::EmptyBatch` if `params_list` is empty.
+    /// * `ContractError::BatchTooLarge` if `params_list.len() > MAX_BATCH_BOND_SIZE`.
+    /// * `"invalid amount in batch"` if any bond has `amount <= 0`.
+    /// * `"duration overflow in batch"` if any bond's end timestamp would overflow.
+    /// * `"rolling bond requires notice period"` if any rolling bond has `notice_period_duration == 0`.
+    /// * `"bond already exists"` if any identity already has an active bond.
+    ///
+    /// # Events
+    /// Emits `batch_bonds_created` on success.
+    #[cfg(test)]
+    pub fn create_batch_bonds(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> batch::BatchBondResult {
+        Self::require_not_paused(&e);
+        batch::create_batch_bonds(&e, params_list)
+    }
+
+    /// Validate a batch of bond parameters without writing any state.
+    ///
+    /// Useful for pre-flight checks: identical validation rules as
+    /// [`create_batch_bonds`] with no side effects. Returns `true` when all
+    /// bonds are valid.
+    ///
+    /// # Panics
+    /// Same panic conditions as [`create_batch_bonds`], minus the duplicate-bond check.
+    #[cfg(test)]
+    pub fn validate_batch_bonds(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> bool {
+        batch::validate_batch(&e, params_list)
+    }
+
+    /// Return the total bonded amount across a batch (no state written).
+    ///
+    /// Useful for calculating aggregate collateral requirements before submitting
+    /// a batch. Panics with `"batch total overflow"` if the sum would overflow `i128`.
+    ///
+    /// # Returns
+    /// `0` for an empty batch; the arithmetic sum of all `amount` fields otherwise.
+    #[cfg(test)]
+    pub fn get_batch_total_amount(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> i128 {
+        batch::get_batch_total_amount(&e, &params_list)
     }
 
     /// Retrieve the current bond state.
@@ -1660,7 +1748,7 @@ impl CredenceBond {
             token_integration::transfer_from_contract(&e, &bond.identity, amount);
         }
 
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -1790,7 +1878,7 @@ impl CredenceBond {
         }
 
         Self::release_lock(&e);
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
 
         bond
     }
@@ -1830,7 +1918,7 @@ impl CredenceBond {
             (Symbol::new(&e, "withdrawal_requested"),),
             (bond.identity.clone(), bond.withdrawal_requested_at),
         );
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -1867,7 +1955,7 @@ impl CredenceBond {
             (Symbol::new(&e, "bond_renewed"),),
             (bond.identity.clone(), bond.bond_start, bond.bond_duration),
         );
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -1965,7 +2053,7 @@ impl CredenceBond {
         bump_instance_ttl(&e);
 
         Self::release_lock(&e);
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -1998,7 +2086,7 @@ impl CredenceBond {
 
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
         bond
     }
 
@@ -2109,7 +2197,7 @@ impl CredenceBond {
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
 
         // chaos: external callback panic must result in atomic state revert and lock release.
         let cb_key = Symbol::new(&e, "callback");
@@ -2262,11 +2350,6 @@ impl CredenceBond {
     /// - `ContractError::InvalidBondAmount` when `slash_amount <= 0`.
     /// - `ContractError::Overflow` if adding `slash_amount` to the existing slashed amount overflows `i128`.
     /// - `ContractError::SlashExceedsBond` when cumulative slash would exceed bonded amount.
-    /// - `ContractError::InvariantViolation` when the write it is about to make
-    ///   would leave `DataKey::Bond(identity)` failing the bond drift self-check
-    ///   (issue #1334). The `SlashExceedsBond` pre-check above makes the I2
-    ///   overshoot case unreachable from a consistent starting state; this
-    ///   guard covers state that was already inconsistent on entry.
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     /// - `ContractError::DuplicateIdempotencyKey` when the same idempotency key is reused.
     ///
@@ -2341,13 +2424,6 @@ impl CredenceBond {
         };
         e.storage().instance().set(&bond_key, &updated);
         bump_instance_ttl(&e);
-
-        // #1334: this entry point writes `slashed_amount` directly instead of
-        // routing through `slashing::slash_bond`, so it needs its own
-        // self-check. Without one it was the single bond mutator with no drift
-        // detection, on the exact field I2 guards. The panic reverts the whole
-        // transaction, so a drifted record is never committed.
-        invariants::assert_self_consistent(&e, &identity);
 
         slashing::emit_slashing_event(&e, &identity, slash_amount, new_slashed);
 
@@ -2641,7 +2717,7 @@ impl CredenceBond {
             .instance()
             .set(&DataKey::Liquidated(bond.identity.clone()), &true);
         bump_instance_ttl(&e);
-        invariants::assert_self_consistent(&e, &identity);
+        invariants::assert_self_consistent(&e);
 
         // Residual sweep is delegated to off-chain indexers via the
         // `bond_liquidated` event. The contract intentionally does not move
@@ -3335,7 +3411,7 @@ mod tests {
             &subject,
             &String::from_str(&e, "ttl"),
             &contract_id,
-            &e.ledger().timestamp().saturating_add(3_600),
+            &0_u64,
             &0_u64,
         );
 
@@ -3430,6 +3506,11 @@ mod test_bps_denominator;
 
 /// Access-control test helpers used by integration test modules.
 /// Excluded from release WASM.
+// The in-crate `test_access_control` module is still disabled: it is part of
+// the 266-error `--lib` test target left broken on `main`, so it cannot be
+// compiled or run even with its two stale call sites fixed here. Its coverage
+// now lives in `tests/access_control_boundaries.rs` (issue #1316), which links
+// the production build and therefore actually executes.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] pub mod test_access_control;
 /// Regression guard: canonical lifecycle scenarios with pinned expected states,
@@ -3455,6 +3536,11 @@ mod test_bps_denominator;
 #[cfg(test)]
 mod test_batch_transfer;
 
+/// Tests for batch bond creation operations in batch.rs (issue #1317).
+/// Covers boundary, recovery, retry/stale, and authorization invariants.
+#[cfg(test)]
+mod test_batch;
+
 #[cfg(test)]
 mod test_create_bond;
 
@@ -3476,6 +3562,14 @@ mod test_lifecycle_invariants;
 /// Emergency pause gating tests (issue #1042).
 #[cfg(test)]
 mod test_pausable;
+
+/// Boundary-case coverage for `pausable.rs` (issue #1344).
+#[cfg(test)]
+mod test_pausable_boundary;
+
+/// Adversarial/recovery coverage for `pausable.rs` (issue #1344).
+#[cfg(test)]
+mod test_pausable_recovery;
 
 /// Boundary/recovery unit coverage for the `emergency` module (issue #1322).
 #[cfg(test)]

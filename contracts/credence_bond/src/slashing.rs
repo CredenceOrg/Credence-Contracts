@@ -193,7 +193,7 @@ pub fn slash_bond(
 
     // Step 8: Persist updated bond state
     e.storage().instance().set(&key, &bond);
-    crate::invariants::assert_self_consistent(e, &identity);
+    crate::invariants::assert_self_consistent(e);
 
     // Step 9: Transfer slashed funds to the configured treasury.
     //
@@ -276,7 +276,7 @@ pub fn unslash_bond(
         .expect("unslashing would reduce below 0");
 
     e.storage().instance().set(&key, &bond);
-    crate::invariants::assert_self_consistent(e, &identity);
+    crate::invariants::assert_self_consistent(e);
     emit_unslashing_event(e, &bond.identity, amount, bond.slashed_amount);
 
     bond

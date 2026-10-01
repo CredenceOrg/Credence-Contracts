@@ -71,7 +71,10 @@ fn ttl_for_expiry(e: &Env, expires_at: u64) -> u32 {
     const SECONDS_PER_LEDGER: u64 = 5;
 
     let remaining_secs = expires_at.saturating_sub(now);
-    let ledgers_until_expiry = (remaining_secs / SECONDS_PER_LEDGER) as u32;
+    // Cap before narrowing: an extreme timestamp must not wrap a u64 ledger
+    // offset into a short u32 TTL and archive still-valid replay protection.
+    let ledgers_until_expiry =
+        (remaining_secs / SECONDS_PER_LEDGER).min(u64::from(MAX_TTL)) as u32;
     let desired = ledgers_until_expiry.saturating_add(LEDGER_BUMP_BUFFER);
     desired.min(MAX_TTL)
 }
@@ -222,3 +225,7 @@ pub fn invalidate_nonce_range(
     bump_nonce_ttl(e, &key, 0);
     (current, new_nonce)
 }
+
+#[cfg(test)]
+#[path = "test_nonce_boundaries.rs"]
+mod tests;
