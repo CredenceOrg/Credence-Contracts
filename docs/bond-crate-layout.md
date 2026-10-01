@@ -34,6 +34,7 @@ on-chain.  Every other file in `src/` is either a helper module pulled in by
 | File | Purpose |
 |------|---------|
 | `src/chaos_token.rs` | Mock token that simulates host failures |
+| `src/test_chaos_token_boundaries.rs` | Boundary / recovery coverage for `chaos_token.rs` (#1318) |
 | `src/test_bond_drift.rs` | Time-drift invariant tests |
 | `src/test_chaos.rs` | Chaos / fault-injection scenarios |
 | `src/test_describe.rs` | `describe_config` / `describe_bond` introspection tests |
