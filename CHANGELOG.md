@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Arbitration `Archived` status had no verdict**: `require_dispute_resolved` matched only `Open | Voting | Resolving` and `Resolved | Cancelled | Tied`, so after `Archived` was added the crate did not compile (`error[E0004]: non-exhaustive patterns: &DisputeStatus::Archived not covered`). `Archived` now returns `Err(DisputeActive)`, matching the semantics `contracts/arbitration/src/status.rs` already asserted in `archived_state_is_not_terminal_for_resolution`: an archived dispute is *inactive* for lease work but is not a ruling, because `reopen_dispute` can put it back into voting. `test_dispute_guard.rs` was never declared in `lib.rs`, so its assertions never ran; it is now registered and extended with 17 relational and ledger-level regression cases (guard/predicate complementarity, the deliberate `Archived` divergence, pinned discriminants and error code, storage round-trips, out-of-range status codes, and a transition path that may clear the guard exactly once). (Closes #1454.)
+
 - **Arbitration dispute guard**: Added a typed `ArbitrationError::OngoingDispute` guard to reject new disputes while a creator already has an unresolved dispute in progress, closing a defense-in-depth re-entry gap in the arbitration lifecycle. (Closes #850.)
 
 - **No-dynamic-strings in production contract code** (closes #713). New workspace `clippy.toml` declares `disallowed-macros` for `format`, `format_args`, `write`, `writeln` (and their `std::` / `alloc::` / `core::` qualified forms); every contract crate now denies `clippy::disallowed_macros` under `cfg_attr(not(any(test, feature = "testutils")), ...)` so the lint fires for `cargo build --release` and the WASM build but stays silent during `cargo test` and `cargo build --features testutils`. Production contract code now requires `soroban_sdk::Symbol::new(&e, "fixed")` for on-chain event topics and revert surfaces; see `docs/no-dynamic-strings.md` for the threat model and migration table. (Closes #713.)
@@ -47,3 +49,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SafeERC20 Migration**: Replaced direct `TokenClient` calls with safe wrapper functions to support non-compliant ERC20 tokens across the protocol.
 - **Protocol Fixes**: Resolved compilation errors, completed `top_up` and `extend_duration` with overflow protection.
 - **Event Indexing**: Migrated lifecycle events to V2 for optimized off-chain indexing.
+
+<!-- a -->

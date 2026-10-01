@@ -5,3 +5,6 @@ edition.workspace = true
 
 [dependencies]
 soroban-sdk = { version = "22.0" }
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }

@@ -290,3 +290,364 @@ fn test_get_expired_record_panics() {
     advance_time(&e, 10);
     client.get_record(&owner); // panics and purges
 }
+
+// ===========================================================================
+// Boundary + recovery coverage (issue #1389)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Value boundaries (i128)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_set_record_accepts_zero_value() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &0, &0);
+    assert_eq!(client.get_record(&owner).value, 0);
+    assert!(client.has_record(&owner));
+}
+
+#[test]
+fn test_set_record_accepts_i128_max() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &i128::MAX, &0);
+    assert_eq!(client.get_record(&owner).value, i128::MAX);
+}
+
+#[test]
+fn test_set_record_accepts_i128_min() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &i128::MIN, &0);
+    assert_eq!(client.get_record(&owner).value, i128::MIN);
+}
+
+// ---------------------------------------------------------------------------
+// expires_at boundaries
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_expires_at_zero_never_expires() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &1, &0); // 0 = never expires
+
+    advance_time(&e, 1_000_000);
+    assert!(!client.is_expired(&owner));
+    assert!(client.has_record(&owner));
+    assert_eq!(client.get_record(&owner).value, 1);
+}
+
+#[test]
+fn test_record_not_expired_one_second_before_deadline() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    let now = e.ledger().timestamp();
+    client.set_record(&owner, &7, &(now + 10));
+
+    advance_time(&e, 9);
+    assert!(!client.is_expired(&owner));
+    assert!(client.has_record(&owner));
+    assert_eq!(client.get_record(&owner).value, 7);
+}
+
+#[test]
+fn test_set_record_already_expired_at_write_time() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    let now = e.ledger().timestamp();
+    // expires_at in the past relative to current ledger time
+    if now > 0 {
+        client.set_record(&owner, &3, &(now - 1));
+    } else {
+        // timestamp starts at 0 in default env; advance then set past expiry
+        advance_time(&e, 50);
+        let t = e.ledger().timestamp();
+        client.set_record(&owner, &3, &(t - 1));
+    }
+
+    assert!(client.is_expired(&owner));
+    assert!(!client.has_record(&owner)); // purge on has_record
+        }
+
+// ---------------------------------------------------------------------------
+// Uninitialized / permission failure paths
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected = "not initialized")]
+fn test_set_record_panics_before_init() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(TemplateContract, ());
+    let client = TemplateContractClient::new(&e, &contract_id);
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &1, &0);
+}
+
+#[test]
+#[should_panic(expected = "not initialized")]
+fn test_remove_record_panics_before_init() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let contract_id = e.register(TemplateContract, ());
+    let client = TemplateContractClient::new(&e, &contract_id);
+    let owner = Address::generate(&e);
+    client.remove_record(&owner);
+}
+
+#[test]
+fn test_remove_record_requires_admin_auth() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(TemplateContract, ());
+    let client = TemplateContractClient::new(&e, &contract_id);
+
+    e.mock_all_auths();
+    client.initialize(&admin);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &1, &0);
+    client.remove_record(&owner);
+
+    let auths = e.auths();
+    assert!(auths.iter().any(|(addr, _)| addr == &admin));
+}
+
+// ---------------------------------------------------------------------------
+// Admin transfer (success + auth invariant)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_transfer_admin_updates_admin() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (admin, _, client) = setup(&e);
+
+    let new_admin = Address::generate(&e);
+    client.transfer_admin(&new_admin);
+
+    assert_eq!(client.get_admin(), new_admin);
+    assert_ne!(client.get_admin(), admin);
+}
+
+#[test]
+fn test_transfer_admin_requires_current_admin_auth() {
+    let e = Env::default();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(TemplateContract, ());
+    let client = TemplateContractClient::new(&e, &contract_id);
+
+    e.mock_all_auths();
+    client.initialize(&admin);
+
+    let new_admin = Address::generate(&e);
+    client.transfer_admin(&new_admin);
+
+    let auths = e.auths();
+    assert!(auths.iter().any(|(addr, _)| addr == &admin));
+}
+
+#[test]
+fn test_new_admin_can_mutate_after_transfer() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let new_admin = Address::generate(&e);
+    client.transfer_admin(&new_admin);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &55, &0);
+    assert_eq!(client.get_record(&owner).value, 55);
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate / idempotent ops
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_duplicate_set_record_same_value_is_idempotent() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &42, &0);
+    client.set_record(&owner, &42, &0);
+
+    assert_eq!(client.get_record(&owner).value, 42);
+    assert!(client.has_record(&owner));
+}
+
+#[test]
+fn test_double_remove_is_safe() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &1, &0);
+    client.remove_record(&owner);
+    client.remove_record(&owner); // second remove must not panic
+
+    assert!(!client.has_record(&owner));
+}
+
+// ---------------------------------------------------------------------------
+// Recovery after expiry purge (no silent data loss for other owners)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_recovery_set_record_after_expiry_purge() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    let now = e.ledger().timestamp();
+    client.set_record(&owner, &10, &(now + 5));
+
+    advance_time(&e, 5);
+    // Purge via has_record
+    assert!(!client.has_record(&owner));
+
+    // Recover: write a fresh non-expiring record
+    client.set_record(&owner, &99, &0);
+    assert!(client.has_record(&owner));
+    assert_eq!(client.get_record(&owner).value, 99);
+    assert!(!client.is_expired(&owner));
+}
+
+#[test]
+fn test_get_expired_purges_then_recovery_succeeds() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    let now = e.ledger().timestamp();
+    client.set_record(&owner, &10, &(now + 3));
+
+    advance_time(&e, 3);
+
+    // get_record panics and purges — exercise via try then recover
+    // We cannot catch panic in the client easily; purge via has_record instead,
+    // then prove storage is clean and writable again.
+    assert!(!client.has_record(&owner));
+    client.set_record(&owner, &20, &0);
+    assert_eq!(client.get_record(&owner).value, 20);
+}
+
+#[test]
+fn test_expiry_of_one_owner_does_not_affect_another() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let a = Address::generate(&e);
+    let b = Address::generate(&e);
+    let now = e.ledger().timestamp();
+
+    client.set_record(&a, &1, &(now + 10)); // will expire
+    client.set_record(&b, &2, &0); // never expires
+
+    advance_time(&e, 10);
+
+    assert!(!client.has_record(&a));
+    assert!(client.has_record(&b));
+    assert_eq!(client.get_record(&b).value, 2);
+}
+
+// ---------------------------------------------------------------------------
+// Stale / sequential "concurrent" style ops (same owner)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_sequential_overwrites_keep_last_write_wins() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+
+    client.set_record(&owner, &1, &0);
+    client.set_record(&owner, &2, &0);
+    client.set_record(&owner, &3, &0);
+
+    assert_eq!(client.get_record(&owner).value, 3);
+}
+
+#[test]
+fn test_remove_then_set_recovers_clean_state() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &11, &0);
+    client.remove_record(&owner);
+    assert!(!client.has_record(&owner));
+
+    client.set_record(&owner, &22, &0);
+    assert_eq!(client.get_record(&owner).value, 22);
+}
+
+// ---------------------------------------------------------------------------
+// Read helpers on missing / stale keys
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_is_expired_false_when_no_record() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    assert!(!client.is_expired(&owner));
+}
+
+#[test]
+fn test_is_expired_false_for_never_expiring_record() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &1, &0);
+    assert!(!client.is_expired(&owner));
+}
+
+#[test]
+fn test_has_record_after_explicit_remove() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, _, client) = setup(&e);
+
+    let owner = Address::generate(&e);
+    client.set_record(&owner, &1, &0);
+    client.remove_record(&owner);
+    assert!(!client.has_record(&owner));
+    assert!(!client.is_expired(&owner));
+}
+                               
