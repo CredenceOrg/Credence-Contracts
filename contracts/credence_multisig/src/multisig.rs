@@ -795,7 +795,7 @@ impl CredenceMultiSig {
 mod boundary_recovery_tests;
 
 #[contractimpl]
-impl interfaces::governable::Governable for CredenceMultisigContract {
+impl interfaces::governable::Governable for CredenceMultiSig {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)
     }

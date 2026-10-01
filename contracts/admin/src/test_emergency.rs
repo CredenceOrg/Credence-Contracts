@@ -229,7 +229,7 @@ fn emergency_pause_does_not_block_pause_signer_management() {
     // Must remain callable while paused so signers can be rotated during an
     // incident. If this ever starts panicking with ContractPaused, the
     // emergency recovery path has regressed.
-    client.set_pause_signer(&super_admin, &signer);
+    client.set_pause_signer(&super_admin, &signer, &true);
     client.set_pause_threshold(&super_admin, &1u32);
 
     // Pause state must be untouched by signer management.

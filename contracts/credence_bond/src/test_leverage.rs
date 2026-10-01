@@ -227,15 +227,15 @@ fn unit_i128_max_amount_with_huge_cap_passes() {
     // Overflow panic by wrapping in std::panic::catch_unwind.
     //
     // Since Soroban test panics are string-tagged, we inspect the panic message.
-    let result = std::panic::catch_unwind(|| {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         validate_leverage(&e, i128::MAX, u32::MAX);
-    });
+    }));
     match result {
         Ok(()) => { /* leverage <= u32::MAX — test passes */ }
         Err(payload) => {
             // Any panic here must be LeverageExceeded, never Overflow.
             let msg = payload
-                .downcast_ref::<String>()
+                .downcast_ref::<std::string::String>()
                 .map(|s| s.as_str())
                 .or_else(|| payload.downcast_ref::<&str>().copied())
                 .unwrap_or("");
@@ -718,7 +718,7 @@ fn regression_checked_div_boundary_produces_leverage_exceeded_not_overflow() {
     assert!(result.is_err(), "expected a panic for amount above cap");
     let payload = result.unwrap_err();
     let msg = payload
-        .downcast_ref::<String>()
+        .downcast_ref::<std::string::String>()
         .map(|s| s.as_str())
         .or_else(|| payload.downcast_ref::<&str>().copied())
         .unwrap_or("");

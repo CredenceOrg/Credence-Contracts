@@ -27,7 +27,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
-use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::{Address, Env};
 
 // Wire-stable error discriminants (`credence_errors::ContractError`).
@@ -359,16 +359,23 @@ fn duplicate_approval_is_event_free() {
 
     let id = client.pause(&s1).unwrap();
 
-    let events_before = e.events().all().len();
     client.approve_pause_proposal(&s2, &id);
+    // Assert immediately: any further invocation, even a read-only getter,
+    // replaces the log the host exposes.
+    assert_eq!(
+        e.events().all().len(),
+        1,
+        "the first approval must publish exactly one `pause_approved`"
+    );
     let epoch_after_first = client.get_config_epoch();
-    let events_after_first = e.events().all().len();
-    assert!(events_after_first > events_before, "first approval emits");
 
     // Duplicate approval: no new event, no epoch bump.
     client.approve_pause_proposal(&s2, &id);
+    assert!(
+        e.events().all().is_empty(),
+        "a duplicate approval must publish nothing, or an indexer double-counts one signer"
+    );
     assert_eq!(client.get_config_epoch(), epoch_after_first);
-    assert_eq!(e.events().all().len(), events_after_first);
 
     client.execute_pause_proposal(&id);
     assert!(client.is_paused());
@@ -384,20 +391,27 @@ fn set_pause_signer_duplicate_is_event_free() {
     client.set_pause_signer(&super_admin, &s1, &true);
 
     let epoch_before = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
     client.set_pause_signer(&super_admin, &s1, &true);
+    assert!(
+        e.events().all().is_empty(),
+        "re-enabling a registered signer must publish nothing"
+    );
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
 
     let stranger = Address::generate(&e);
     client.set_pause_signer(&super_admin, &stranger, &false);
+    assert!(
+        e.events().all().is_empty(),
+        "disabling an unregistered signer must publish nothing"
+    );
     assert_eq!(client.get_config_epoch(), epoch_before);
-    assert_eq!(e.events().all().len(), events_before);
 
+    // A genuine transition still publishes exactly one event and advances the
+    // epoch exactly once.
     client.set_pause_signer(&super_admin, &stranger, &true);
+    assert_eq!(e.events().all().len(), 1, "a real registration emits once");
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert_eq!(e.events().all().len(), events_before + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -510,4 +524,89 @@ fn pause_signer_count_invariant_holds_across_edits() {
     client.set_pause_signer(&super_admin, &s1, &false);
     client.set_pause_signer(&super_admin, &s3, &true);
     assert_pause_signer_invariant(&e, &client, &all, 1);
+}
+
+// ---------------------------------------------------------------------------
+// set_pause_threshold — dedicated failure-boundary coverage
+// ---------------------------------------------------------------------------
+
+/// Only a SuperAdmin may call `set_pause_threshold`. Lesser roles and
+/// non-admins are rejected with `NotAdmin`; the threshold and epoch are
+/// unchanged after each rejected attempt.
+#[test]
+fn set_pause_threshold_requires_super_admin() {
+    let (e, client, super_admin) = setup();
+    let s1 = Address::generate(&e);
+    client.set_pause_signer(&super_admin, &s1, &true);
+
+    let operator = Address::generate(&e);
+    client.add_admin(&super_admin, &operator, &AdminRole::Operator);
+    let mid = Address::generate(&e);
+    client.add_admin(&super_admin, &mid, &AdminRole::Admin);
+    let stranger = Address::generate(&e);
+
+    let epoch_before = client.get_config_epoch();
+
+    for caller in [&operator, &mid, &stranger] {
+        let err = client
+            .try_set_pause_threshold(caller, &1u32)
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, soroban_sdk::Error::from_contract_error(ERR_NOT_ADMIN));
+    }
+
+    // Threshold remains at its initial value (0); epoch is untouched.
+    assert_eq!(client.get_config_epoch(), epoch_before);
+}
+
+/// When there are no registered signers any threshold > 0 is rejected as
+/// `ThresholdExceedsSigners`. Threshold 0 is always valid regardless of signer
+/// count and does not advance the epoch when it is already 0.
+#[test]
+fn set_pause_threshold_zero_signers() {
+    let (e, client, super_admin) = setup();
+
+    let epoch_before = client.get_config_epoch();
+    let events_before = e.events().all().len();
+
+    // Any positive threshold is invalid with 0 signers.
+    let err = client
+        .try_set_pause_threshold(&super_admin, &1u32)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ERR_THRESHOLD_EXCEEDS_SIGNERS)
+    );
+    assert_eq!(client.get_config_epoch(), epoch_before);
+    assert_eq!(e.events().all().len(), events_before);
+
+    // Threshold 0 when it is already 0 is an idempotent no-op.
+    client.set_pause_threshold(&super_admin, &0u32);
+    assert_eq!(client.get_config_epoch(), epoch_before);
+    assert_eq!(e.events().all().len(), events_before);
+}
+
+/// `set_pause_threshold` emits `pause_threshold_set` exactly once per real
+/// change and never on a no-op re-set, matching the epoch-bump contract.
+#[test]
+fn set_pause_threshold_emits_event_on_change_only() {
+    let (e, client, super_admin) = setup();
+    let s1 = Address::generate(&e);
+    client.set_pause_signer(&super_admin, &s1, &true);
+
+    let events_before = e.events().all().len();
+    let epoch_before = client.get_config_epoch();
+
+    // Real change: 0 → 1. One event, one epoch bump.
+    client.set_pause_threshold(&super_admin, &1u32);
+    assert_eq!(client.get_config_epoch(), epoch_before + 1);
+    assert_eq!(e.events().all().len(), events_before + 1);
+
+    // No-op re-set: 1 → 1. No event, no epoch bump.
+    let epoch_after = client.get_config_epoch();
+    let events_after = e.events().all().len();
+    client.set_pause_threshold(&super_admin, &1u32);
+    assert_eq!(client.get_config_epoch(), epoch_after);
+    assert_eq!(e.events().all().len(), events_after);
 }
