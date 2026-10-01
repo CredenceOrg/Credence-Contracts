@@ -1980,3 +1980,5 @@ mod test_get_admin_info_boundaries;
 mod test_atomic_rollback;
 #[cfg(test)]
 mod test_completes_failure_boundaries;
+#[cfg(test)]
+mod test_get_all_admins_failure_boundary;

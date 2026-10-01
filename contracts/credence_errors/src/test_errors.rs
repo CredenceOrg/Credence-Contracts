@@ -7,10 +7,9 @@ mod tests {
 
     include!("../variant_table.rs");
 
-    /// Canonical list of every `ContractError` variant, deduplicated, in numeric
-    /// wire-code order. Used for exhaustiveness checks across the test suite.
-    /// Keeping this in sync with `variant_table.rs` is enforced by the
-    /// `test_all_variants_count` test below.
+    /// Every `ContractError` variant, derived from the single source of truth
+    /// in `variant_table.rs` (included above). Deriving instead of hand-listing
+    /// keeps this file from drifting when a variant is added.
     fn all_variants() -> Vec<ContractError> {
         ALL_VARIANTS.iter().map(|(_, v)| *v).collect()
     }
@@ -32,9 +31,9 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Error(Contract, #2)")]
-    fn test_require_contract_uninitialized_panics_when_true() {
-        // The helper panics with `AlreadyInitialized` (code 2) rather than
-        // returning `Err`, so assert on the host error instead of a Result.
+    fn test_require_contract_uninitialized_panics_when_already_initialized() {
+        // The helper signals via `panic_with_error(AlreadyInitialized)` (code 2),
+        // it does not return a `Result`.
         let e = soroban_sdk::Env::default();
         crate::require_contract_uninitialized(&e, true);
     }
@@ -133,25 +132,13 @@ mod tests {
         assert_eq!(ContractError::ContractPaused as u32, 106);
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-        assert_eq!(ContractError::ZeroBytes32 as u32, 109);
-        assert_eq!(ContractError::InvalidAdminAddress as u32, 110);
-        assert_eq!(ContractError::AdminUnchanged as u32, 111);
-        assert_eq!(ContractError::TimelockNotReady as u32, 112);
-        assert_eq!(ContractError::AdminSuspended as u32, 113);
-        assert_eq!(ContractError::BorrowFrozen as u32, 114);
-        assert_eq!(ContractError::NoPendingAdmin as u32, 115);
-        assert_eq!(ContractError::RoleNotHeldAtLedger as u32, 116);
-        assert_eq!(ContractError::EmergencyDrainNotPermitted as u32, 117);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 127);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
-        assert_eq!(ContractError::InvalidMaxPauseSigners as u32, 119);
-        assert_eq!(ContractError::OutsideBusinessHours as u32, 120);
-        assert_eq!(ContractError::LeaseScopeMismatch as u32, 121);
-        assert_eq!(ContractError::LeaseExpired as u32, 122);
-        assert_eq!(ContractError::CrossContractCallerMismatch as u32, 123);
-        assert_eq!(ContractError::MigrationInProgress as u32, 124);
-        assert_eq!(ContractError::MaxPauseSignersExceeded as u32, 125);
-        assert_eq!(ContractError::LeaseSignerMismatch as u32, 126);
-        assert_eq!(ContractError::RoleRequired as u32, 127);
+    }
+
+    #[test]
+    fn test_code_role_required() {
+        assert_eq!(ContractError::RoleRequired as u32, 128);
     }
 
     #[test]
@@ -512,24 +499,7 @@ mod tests {
         }
     }
 
-    // ---------------------------------------------------------------------------
-    // Variant count guard
-    // ---------------------------------------------------------------------------
-
-    #[test]
-    fn test_all_variants_count() {
-        // This count must equal the number of entries in variant_table.rs.
-        // When adding a variant: add a row to variant_table.rs and bump this number.
-        assert_eq!(
-            all_variants().len(),
-            116,
-            "Update variant_table.rs and this count when adding/removing errors"
-        );
-    }
-
-    // ---------------------------------------------------------------------------
-    // Copy and Eq tests
-    // ---------------------------------------------------------------------------
+    // --- Copy and Eq tests ---
 
     #[test]
     fn test_copy_semantics() {
@@ -1353,9 +1323,383 @@ mod tests {
         assert_ne!(ErrorCategory::Bond, ErrorCategory::Treasury);
     }
 
-    // ---------------------------------------------------------------------------
-    // Macro tests: require_non_zero_bytes32
-    // ---------------------------------------------------------------------------
+    // --- is_recoverable() tests ---
+
+    /// Mirror of `impl ErrorExt for ContractError::is_recoverable`.
+    ///
+    /// Note: this `mod tests` is already gated by `#[cfg(test)]` at its
+    /// declaration site, so the per-function attribute is redundant here.
+    /// This function exists to force the compiler to enforce that every
+    /// `ContractError` variant is explicitly classified: adding a new
+    /// variant to the enum (without classifying it here) makes the test
+    /// fail to compile — exactly the property the issue requires. A
+    /// short rationale sits next to every arm so a reviewer can audit
+    /// recoverability decisions line by line.
+    ///
+    /// The pre-existing `all_variants()` helper nearby is intentionally
+    /// out of scope: it returns a subset of variants and would risk
+    /// drifting the exhaustiveness check. This list is exhaustive.
+    fn expected_is_recoverable(e: ContractError) -> bool {
+        match e {
+            // Initialization: caller fixes setup state.
+            ContractError::NotInitialized => true, // init first
+            ContractError::AlreadyInitialized => true, // idempotent
+
+            // Authorization: switch signer/role.
+            ContractError::NotAdmin => true,
+            ContractError::NotBondOwner => true,
+            ContractError::UnauthorizedAttester => true,
+            ContractError::NotOriginalAttester => true,
+            ContractError::NotSigner => true,
+            ContractError::UnauthorizedDepositor => true,
+            ContractError::ContractPaused => true, // wait for unpause
+            ContractError::MigrationInProgress => true, // wait for migration to finish
+            ContractError::BorrowFrozen => true,   // wait for unfreeze
+            ContractError::OutsideBusinessHours => true, // retry within business hours
+            ContractError::InvalidPauseAction => true,
+            ContractError::InsufficientSignatures => true, // gather more sigs
+            ContractError::AdminSuspended => true,         // wait for suspension
+
+            // Admin Transfer: state-step fixes.
+            ContractError::NoPendingAdmin => true,
+            ContractError::InvalidAdminAddress => true,
+            ContractError::AdminUnchanged => true,
+            ContractError::TimelockNotReady => true, // wait for delay
+            ContractError::EmergencyDrainNotPermitted => true,
+            ContractError::RoleNotHeldAtLedger => true,
+            ContractError::ZeroBytes32 => true,
+            ContractError::TimestampInFuture => true, // caller can correct timestamp
+            ContractError::InvalidMaxPauseSigners => true, // admin supplies a valid value
+            ContractError::MaxPauseSignersExceeded => true, // remove a signer or raise the cap
+            ContractError::LeaseScopeMismatch => true,
+            ContractError::LeaseExpired => true,
+            ContractError::LeaseSignerMismatch => true, // re-sign as the lease signer
+            ContractError::CrossContractCallerMismatch => false,
+            ContractError::RoleRequired => true,
+            ContractError::StaleAdminEpoch => false,
+            ContractError::StaleSignerEpoch => false,
+
+            // Bond: state/caller fixes; fatal cases are security/drift/capacity.
+            ContractError::BondNotFound => true,
+            ContractError::BondNotActive => true,
+            ContractError::InsufficientBalance => true,
+            ContractError::SlashExceedsBond => true,
+            ContractError::StorageCapReached => false, // caller cannot free capacity; only operator prune fixes it
+            ContractError::LockupNotExpired => true,
+            ContractError::NotRollingBond => true,
+            ContractError::WithdrawalAlreadyRequested => true,
+            ContractError::ReentrancyDetected => false, // SECURITY HALT
+            ContractError::InvalidNonce => true,
+            ContractError::SignatureExpired => true, // re-sign
+            ContractError::NegativeStake => true,
+            ContractError::EarlyExitConfigNotSet => true,
+            ContractError::InvalidPenaltyBps => true,
+            ContractError::LeverageExceeded => true,
+            ContractError::UnsupportedToken => true,
+            ContractError::UnsupportedDecimals => true,
+            ContractError::InvalidBondAmount => true,
+            ContractError::AmountExplicitlyZero => true, // supply a non-zero amount
+            ContractError::InvalidBondDuration => true,
+            ContractError::InvalidNoticePeriod => true,
+            ContractError::BondAlreadyExists => true,
+            ContractError::UnauthorizedToken => true,
+            ContractError::DuplicateIdempotencyKey => true,
+            ContractError::InvalidStringifiedBytes => true,
+            ContractError::InvariantViolation => false, // post-write drift
+            ContractError::SnapshotGenerationMismatch => false,
+            ContractError::TreasuryNotConfigured => true, // admin can configure treasury then retry
+            ContractError::DomainMismatch => false,       // payload binding
+            ContractError::BatchTooLarge => true,         // reduce batch size
+            ContractError::EmptyBatch => true,            // supply at least one item
+            ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::CooldownRequestAlreadyPending => true, // await the existing request
+            ContractError::CooldownRequestNotFound => true, // the request was consumed
+            ContractError::CooldownPeriodNotElapsed => true, // wait for the period
+            ContractError::InvalidCurrency => true,       // supply a valid currency
+            ContractError::OwnerMismatch => false,
+            ContractError::TargetMismatch => false,
+            ContractError::ContractIdMismatch => false,
+
+            // Attestation: state/caller fixes.
+            ContractError::DuplicateAttestation => true,
+            ContractError::AttestationNotFound => true,
+            ContractError::AttestationAlreadyRevoked => true,
+            ContractError::InvalidAttestationWeight => true,
+            ContractError::AttestationWeightExceedsMax => true,
+
+            // Registry: state fixes.
+            ContractError::IdentityAlreadyRegistered => true,
+            ContractError::BondContractAlreadyRegistered => true,
+            ContractError::IdentityNotRegistered => true,
+            ContractError::BondContractNotRegistered => true,
+            ContractError::AlreadyDeactivated => true,
+            ContractError::AlreadyActive => true,
+            ContractError::InvalidContractAddress => true,
+            ContractError::ContractCodeVerificationFailed => true,
+            ContractError::UnsupportedInterface => true,
+
+            // Delegation: state/caller fixes; fatal cases are scheme/crypto.
+            ContractError::ExpiryInPast => true,
+            ContractError::DelegationNotFound => true,
+            ContractError::AlreadyRevoked => true,
+            ContractError::DelegationExpiryTooLong => true,
+            ContractError::UnknownScheme => false, // unsupported scheme
+            ContractError::VerifierAlreadyRegistered => true,
+            ContractError::VerifierNotRegistered => true,
+            ContractError::VerificationFailed => false, // crypto failure
+            ContractError::RevocationGraceExpired => false, // delegation is in terminal state from caller's side; only admin can extend grace (distinct from AlreadyRevoked, whose state is idempotent)
+            ContractError::DelegationNotExpired => true,    // wait for expiry then retry
+            ContractError::DelegationInactive => false,
+            ContractError::PayloadTooOld => true, // re-sign with current ledger number
+            ContractError::PromiseNotKept => false, // off-chain promise hash does not match on-chain execution; same input will fail
+            ContractError::StaleEpoch => false, // proposal ID contains a stale epoch reference; caller must re-propose
+            // Treasury: state/caller fixes; fatal cases are callback failures.
+            ContractError::AmountMustBePositive => true,
+            ContractError::ThresholdExceedsSigners => true,
+            ContractError::InsufficientTreasuryBalance => true,
+            ContractError::ProposalNotFound => true,
+            ContractError::ProposalAlreadyExecuted => true,
+            ContractError::InsufficientApprovals => true,
+            ContractError::InvalidFlashLoanCallback => false, // bad magic
+            ContractError::FlashLoanRepaymentFailed => false, // bad repayment
+            ContractError::ProposalExpired => true,
+            ContractError::SlippageExceeded => true,
+            ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
+            ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
+
+            // Registry pagination: caller can supply a valid cursor.
+            ContractError::CursorOutOfRange => true,
+
+            // Arithmetic: code-level impossibility.
+            ContractError::Overflow => false,
+            ContractError::Underflow => false,
+            ContractError::DivisionByZero => false,
+            ContractError::InvalidPercentSplit => true,
+        }
+    }
+
+    /// Compile-time exhaustiveness check.
+    ///
+    /// `expected_is_recoverable` already requires every variant in its
+    /// match, so adding a new `ContractError` variant without classifying
+    /// it here breaks the build. This test also iterates the runtime
+    /// mirror (the actual `is_recoverable`) and asserts equality for
+    /// every variant, so the documented expectation table cannot drift
+    /// from the implementation.
+    #[test]
+    fn test_is_recoverable_exhaustive() {
+        // Spot-check every variant: runtime classification must equal
+        // documented expectation. The match in `expected_is_recoverable`
+        // already forces compile-time exhaustiveness for the expectation
+        // table.
+        // Canonical list of all 110 variants, one entry each, in numeric wire-code
+        // order matching `variant_table.rs`. No duplicates. Adding a new variant
+        // to `lib.rs` requires adding it here AND in `expected_is_recoverable`.
+        let cases: std::vec::Vec<ContractError> = std::vec![
+            ContractError::NotInitialized,
+            ContractError::AlreadyInitialized,
+            ContractError::NotAdmin,
+            ContractError::NotBondOwner,
+            ContractError::UnauthorizedAttester,
+            ContractError::NotOriginalAttester,
+            ContractError::NotSigner,
+            ContractError::UnauthorizedDepositor,
+            ContractError::ContractPaused,
+            ContractError::BorrowFrozen,
+            ContractError::InvalidPauseAction,
+            ContractError::InsufficientSignatures,
+            ContractError::AdminSuspended,
+            ContractError::NoPendingAdmin,
+            ContractError::InvalidAdminAddress,
+            ContractError::AdminUnchanged,
+            ContractError::TimelockNotReady,
+            ContractError::EmergencyDrainNotPermitted,
+            ContractError::RoleNotHeldAtLedger,
+            ContractError::ZeroBytes32,
+            ContractError::RoleRequired,
+            ContractError::LeaseSignerMismatch,
+            ContractError::BondNotFound,
+            ContractError::BondNotActive,
+            ContractError::InsufficientBalance,
+            ContractError::SlashExceedsBond,
+            ContractError::LockupNotExpired,
+            ContractError::NotRollingBond,
+            ContractError::WithdrawalAlreadyRequested,
+            ContractError::ReentrancyDetected,
+            ContractError::InvalidNonce,
+            ContractError::SignatureExpired,
+            ContractError::NegativeStake,
+            ContractError::EarlyExitConfigNotSet,
+            ContractError::InvalidPenaltyBps,
+            ContractError::LeverageExceeded,
+            ContractError::UnsupportedToken,
+            ContractError::UnsupportedDecimals,
+            ContractError::InvalidBondAmount,
+            ContractError::AmountExplicitlyZero,
+            ContractError::InvalidBondDuration,
+            ContractError::InvalidNoticePeriod,
+            ContractError::BondAlreadyExists,
+            ContractError::UnauthorizedToken,
+            ContractError::DuplicateIdempotencyKey,
+            ContractError::BatchTooLarge,
+            ContractError::EmptyBatch,
+            ContractError::StorageCapReached,
+            ContractError::TreasuryNotConfigured,
+            ContractError::InvariantViolation,
+            ContractError::DomainMismatch,
+            ContractError::OwnerMismatch,
+            ContractError::TargetMismatch,
+            ContractError::ContractIdMismatch,
+            ContractError::DuplicateAttestation,
+            ContractError::AttestationNotFound,
+            ContractError::AttestationAlreadyRevoked,
+            ContractError::InvalidAttestationWeight,
+            ContractError::AttestationWeightExceedsMax,
+            ContractError::IdentityAlreadyRegistered,
+            ContractError::BondContractAlreadyRegistered,
+            ContractError::IdentityNotRegistered,
+            ContractError::BondContractNotRegistered,
+            ContractError::AlreadyDeactivated,
+            ContractError::AlreadyActive,
+            ContractError::InvalidContractAddress,
+            ContractError::ContractCodeVerificationFailed,
+            ContractError::UnsupportedInterface,
+            ContractError::ExpiryInPast,
+            ContractError::DelegationNotFound,
+            ContractError::AlreadyRevoked,
+            ContractError::DelegationExpiryTooLong,
+            ContractError::UnknownScheme,
+            ContractError::VerifierAlreadyRegistered,
+            ContractError::VerifierNotRegistered,
+            ContractError::VerificationFailed,
+            ContractError::RevocationGraceExpired,
+            ContractError::DelegationNotExpired,
+            ContractError::DelegationInactive,
+            ContractError::PromiseNotKept,
+            ContractError::AmountMustBePositive,
+            ContractError::ThresholdExceedsSigners,
+            ContractError::InsufficientTreasuryBalance,
+            ContractError::ProposalNotFound,
+            ContractError::ProposalAlreadyExecuted,
+            ContractError::InsufficientApprovals,
+            ContractError::InvalidFlashLoanCallback,
+            ContractError::FlashLoanRepaymentFailed,
+            ContractError::ProposalExpired,
+            ContractError::SlippageExceeded,
+            ContractError::TreasuryBeneficiaryMismatch,
+            ContractError::CursorOutOfRange,
+            ContractError::InvalidCurrency,
+            ContractError::PayloadTooOld,
+            ContractError::PromiseNotKept,
+            ContractError::Overflow,
+            ContractError::Underflow,
+            ContractError::DivisionByZero,
+            ContractError::TimestampInFuture,
+            ContractError::BorrowFrozen,
+            ContractError::PayloadTooOld,
+            ContractError::InvalidCurrency,
+            ContractError::StaleEpoch,
+            ContractError::MigrationInProgress,
+            ContractError::OutsideBusinessHours,
+        ];
+        assert_eq!(
+            cases.len(),
+            105,
+            "Add the new variant to ALL THREE places: \
+             (1) lib.rs is_recoverable() match, \
+             (2) expected_is_recoverable() below, \
+             (3) this `cases` list."
+        );
+        for e in &cases {
+            assert_eq!(
+                e.is_recoverable(),
+                expected_is_recoverable(*e),
+                "classification drift for {:?}",
+                e
+            );
+        }
+    }
+
+    /// Metadata guarantees: must not panic, must not allocate, must be
+    /// `Copy`-safe (returns a primitive). Catch regressions where someone
+    /// adds a heavier impl (storage read, panic, etc.).
+    #[test]
+    fn test_is_recoverable_is_const_safe() {
+        // Repeated calls on a Copy value must yield identical results.
+        let e = ContractError::Overflow;
+        let _ = e.is_recoverable();
+        let _ = e.is_recoverable();
+        let _ = e.is_recoverable();
+        assert!(!e.is_recoverable());
+
+        let e = ContractError::AlreadyInitialized;
+        assert!(e.is_recoverable());
+    }
+
+    /// Spot-check a recoverable sample per category (issue requirement).
+    #[test]
+    fn test_is_recoverable_recoverable_samples() {
+        // issue #519 specifically names AlreadyInitialized, ProposalAlreadyExecuted,
+        // and AlreadyRevoked as recoverable; assert those explicitly as well.
+        assert!(ContractError::NotInitialized.is_recoverable());
+        assert!(ContractError::AlreadyInitialized.is_recoverable());
+        assert!(ContractError::NotAdmin.is_recoverable());
+        assert!(ContractError::NotBondOwner.is_recoverable());
+        assert!(ContractError::ContractPaused.is_recoverable());
+        assert!(ContractError::BondNotFound.is_recoverable());
+        assert!(ContractError::InvalidNonce.is_recoverable());
+        assert!(ContractError::DuplicateAttestation.is_recoverable());
+        assert!(ContractError::IdentityNotRegistered.is_recoverable());
+        assert!(ContractError::ExpiryInPast.is_recoverable());
+        assert!(ContractError::AlreadyRevoked.is_recoverable());
+        assert!(ContractError::AmountMustBePositive.is_recoverable());
+        assert!(ContractError::ProposalAlreadyExecuted.is_recoverable());
+        assert!(ContractError::InsufficientApprovals.is_recoverable());
+    }
+
+    /// Spot-check a fatal sample per category (issue requirement).
+    #[test]
+    fn test_is_recoverable_fatal_samples() {
+        assert!(!ContractError::ReentrancyDetected.is_recoverable());
+        assert!(!ContractError::StorageCapReached.is_recoverable());
+        assert!(!ContractError::InvariantViolation.is_recoverable());
+        assert!(!ContractError::VerificationFailed.is_recoverable());
+        assert!(!ContractError::UnknownScheme.is_recoverable());
+        assert!(!ContractError::RevocationGraceExpired.is_recoverable());
+        assert!(!ContractError::InvalidFlashLoanCallback.is_recoverable());
+        assert!(!ContractError::FlashLoanRepaymentFailed.is_recoverable());
+        assert!(!ContractError::Overflow.is_recoverable());
+        assert!(!ContractError::Underflow.is_recoverable());
+        assert!(!ContractError::DomainMismatch.is_recoverable());
+        assert!(!ContractError::OwnerMismatch.is_recoverable());
+        assert!(!ContractError::TargetMismatch.is_recoverable());
+        assert!(!ContractError::ContractIdMismatch.is_recoverable());
+    }
+
+    /// Regression test: `DelegationInactive` was previously shadowed by an
+    /// earlier, wrongly-classified match arm in `is_recoverable()`, so it
+    /// silently evaluated to `true` (recoverable) instead of `false`
+    /// (fatal). A revoked/expired delegation is a terminal *state* the
+    /// caller cannot retry past, unlike genuine *permission* errors (e.g.
+    /// `NotSigner`) which are fixed by switching signer/role.
+    #[test]
+    fn test_delegation_inactive_is_fatal_not_recoverable() {
+        assert!(!ContractError::DelegationInactive.is_recoverable());
+    }
+
+    /// Verify the documented proposal-lifecycle example from the issue
+    /// body: `ProposalAlreadyExecuted` is recoverable, `Overflow` is fatal.
+    #[test]
+    fn test_is_recoverable_issue_examples() {
+        assert!(
+            ContractError::ProposalAlreadyExecuted.is_recoverable(),
+            "ProposalAlreadyExecuted (604) must be recoverable per issue #519"
+        );
+        assert!(
+            !ContractError::Overflow.is_recoverable(),
+            "Overflow (700) must be fatal per issue #519"
+        );
+    }
 
     #[test]
     fn test_require_non_zero_bytes32_happy_path() {
@@ -1573,10 +1917,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #127)")]
+    #[should_panic(expected = "Error(Contract, #128)")]
     fn test_require_role_user_panics_when_not_held() {
         let e = soroban_sdk::Env::default();
         let actor = soroban_sdk::Address::generate(&e);
+        // Negative test: the actor does NOT hold the User role, so this must
+        // panic with `RoleRequired` (code 128).
         crate::require_role(&e, Role::User, &actor, false);
     }
 

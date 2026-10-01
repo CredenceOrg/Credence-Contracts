@@ -76,7 +76,7 @@ mod tests {
             active: true,
             is_rolling: true,
             withdrawal_requested_at,
-            notice_period_duration: 0,
+            ..Default::default()
         }
     }
 

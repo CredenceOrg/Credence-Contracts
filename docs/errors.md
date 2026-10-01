@@ -53,7 +53,6 @@ error code instead of an opaque transaction failure.
 | 106 | `ContractPaused` | ✓ | Contract is paused; state-mutating operations disallowed |
 | 107 | `InvalidPauseAction` | ✓ | Pause action value is invalid |
 | 108 | `InsufficientSignatures` | ✓ | Not enough approvals to execute proposal |
-| 109 | `ZeroBytes32` | ✓ | Input `BytesN<32>` argument is all-zero |
 | 110 | `InvalidAdminAddress` | ✓ | Proposed admin is the zero/identity address |
 | 111 | `AdminUnchanged` | ✓ | Proposed admin is the same as the current admin |
 | 112 | `TimelockNotReady` | ✓ | Timelock delay has not yet elapsed |
@@ -68,11 +67,11 @@ error code instead of an opaque transaction failure.
 | 121 | `LeaseScopeMismatch` | ✓ | Lease scope bitmask does not cover the requested operation |
 | 122 | `LeaseExpired` | ✓ | Lease `expires_at` has been reached or passed |
 | 123 | `CrossContractCallerMismatch` | ✗ | Cross-contract caller does not match the configured partner |
-| 124 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
-| 125 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
-| 126 | `LeaseSignerMismatch` | ✓ | Caller is not the required lease signer |
-| 127 | `RoleRequired` | ✓ | Caller does not hold the required role |
-| 129 | `DeadlineExpired` | ✓ | Caller-supplied deadline has already elapsed at the current ledger |
+| 124 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
+| 125 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
+| 126 | `LeaseSignerMismatch` | ✓ | Caller is not the signer bound to the lease |
+| 127 | `ZeroBytes32` | ✓ | Input `BytesN<32>` argument is all-zero |
+| 128 | `RoleRequired` | ✓ | Caller does not hold the role required for the action |
 
 ### Bond (200–299)
 
@@ -114,10 +113,10 @@ error code instead of an opaque transaction failure.
 | 233 | `InvariantViolation` | ✗ | Post-write self-check detected bond/attestation accounting drift |
 | 234 | `InvalidCurrency` | ✓ | Empty or whitespace-only currency symbol |
 | 235 | `SnapshotGenerationMismatch` | ✗ | Snapshot generation does not match the current epoch |
-| 236 | `CooldownRequestAlreadyPending` | ✓ | A cooldown request for this identity is already pending |
-| 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this identity |
-| 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not yet elapsed |
-| 239 | `BytesTooLarge` | ✓ | User-supplied raw `Bytes` input exceeds the maximum accepted length |
+| 236 | `CooldownRequestAlreadyPending` | ✓ | A cooldown request is already pending |
+| 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
+| 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
+| 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
 
 ### Attestation (300–399)
 
