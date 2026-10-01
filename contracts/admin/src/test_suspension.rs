@@ -177,24 +177,44 @@ mod suspension_tests {
         });
     }
 
-    // ── 6. Suspending self → AdminUnchanged (111) ────────────────────────────
-    //
-    // Self-suspension is rejected before the MinAdmins guard is reached: an
-    // admin must not be able to lock themselves out, which would otherwise
-    // strand governance when the caller is the only effective admin.
+    // ── 6. Suspending below MinAdmins → InvalidPauseAction (107) ────────────
 
+    /// The MinAdmins guard rejects a suspension that would leave fewer
+    /// effective admins than the configured minimum.
+    ///
+    /// The guard is only reachable when `min_admins >= 2`: with `min_admins = 1`
+    /// the caller always remains an effective admin and is excluded from the
+    /// count, so the check can never trip — and suspending the caller itself is
+    /// rejected earlier as `AdminUnchanged` (111). With `min_admins = 2` and two
+    /// admins, suspending one leaves a single effective admin, below the
+    /// minimum, so the suspension is refused with `InvalidPauseAction` (107).
     #[test]
-    #[should_panic(expected = "Error(Contract, #111)")]
+    #[should_panic(expected = "Error(Contract, #107)")]
     fn test_suspend_below_min_admins_rejected() {
         let env = Env::default();
-        let (contract, super_admin) = setup(&env);
+        let contract = env.register_contract(None, AdminContract);
+        let super_admin = Address::generate(&env);
+        let target = Address::generate(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract, || {
+            AdminContract::initialize(env.clone(), super_admin.clone(), 2, 100);
+        });
+        env.as_contract(&contract, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                AdminRole::Admin,
+            );
+        });
 
         let now = env.ledger().timestamp();
         env.as_contract(&contract, || {
             AdminContract::suspend_admin(
                 env.clone(),
                 super_admin.clone(),
-                super_admin.clone(),
+                target.clone(),
                 now + 100,
             );
         });

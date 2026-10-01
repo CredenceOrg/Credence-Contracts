@@ -1,0 +1,48 @@
+# Workspace-level clippy configuration — see `docs/no-dynamic-strings.md`.
+#
+# Background — issue #713
+# -----------------------
+# Soroban WASM contracts run a hot path with a tight resource budget.
+# `format!`, `format_args!`, `write!` and `writeln!` all drag in the
+# `alloc`/format machinery and silently turn a static-on-Symbol contract
+# surface into dynamic string allocation. That class of allocation is
+# exactly what a careful auditor would flag: it inflates WASM size,
+# it surfaces host-format logic into the contract, and it makes a
+# previously fixed event-topic surface mutable from plain Rust code.
+#
+# Closure policy
+# --------------
+# `clippy::disallowed_macros` (currently in the `clippy::restriction`
+# group, which every contract crate has `#![allow(clippy::restriction)]`-
+# gated) lets us re-enable this single lint via a per-crate
+# `#![deny(clippy::disallowed_macros)]` while keeping every other
+# restriction-group lint silenced.  Each contract crate does that with a
+# `not(any(test, feature = "testutils"))` cfg gate so test modules,
+# benches/CI harnesses and the off-chain `credence_admin_cli` crate remain
+# able to use the macros for diagnostics.
+#
+# We list the spanned qualified paths so a single contract that imports
+# the macro via `std::format!`, `alloc::format!` or unqualified `format!`
+# is caught regardless of how the prelude is set up inside the crate.
+
+disallowed-macros = [
+    { path = "format",         reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "std::format",    reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "alloc::format",  reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "core::format",   reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+
+    { path = "format_args",         reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "std::format_args",    reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "alloc::format_args",  reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "core::format_args",   reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+
+    { path = "write",         reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "std::write",    reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "alloc::write",  reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "core::write",   reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+
+    { path = "writeln",         reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "std::writeln",    reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "alloc::writeln",  reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+    { path = "core::writeln",   reason = "no dynamic string in production contract code (issue #713); use soroban_sdk::Symbol::new(&e, \"fixed\") for event topics." },
+]

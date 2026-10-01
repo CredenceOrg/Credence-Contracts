@@ -1,0 +1,12 @@
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "--cfg=getrandom_windows_legacy",
+    "--cfg=getrandom_backend=\"windows_legacy\"",
+]
+
+# NOTE: Do NOT set `linker = "rust-lld"` here. `rust-lld` is the *wasm* linker
+# and cannot link native Windows MSVC binaries (build scripts, proc-macros,
+# dev-dependencies). It caused `error: linking with rust-lld failed` for every
+# build script (quote, proc-macro2, serde_core, …). Native builds must use the
+# default MSVC linker (`link.exe`). The wasm target is handled automatically via
+# the `wasm32-unknown-unknown` target in rust-toolchain.toml.

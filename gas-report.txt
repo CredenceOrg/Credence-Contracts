@@ -1,0 +1,7 @@
+--- wasm-size-before.txt	2026-04-26 04:32:54.712565959 +0100
++++ wasm-size-after.txt	2026-04-26 04:49:46.415436066 +0100
+@@ -0,0 +1,4 @@
++2696573 target/wasm32-unknown-unknown/debug/credence_errors.wasm
++2696573 target/wasm32-unknown-unknown/debug/deps/credence_errors.wasm
++3142872 target/wasm32-unknown-unknown/debug/admin.wasm
++3142872 target/wasm32-unknown-unknown/debug/deps/admin.wasm
