@@ -299,11 +299,13 @@ pub const MAX_BOND_DURATION: u64 = 31_536_000;
 /// * `duration` - The bond duration in seconds to validate.
 ///
 /// # Panics
-/// * `"bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
+/// * `"bond duration too short: minimum is credence_math::SECONDS_PER_DAY seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
 /// * `"bond duration too long: maximum is 31536000 seconds (365 days)"` if `duration` > `MAX_BOND_DURATION`
 pub fn validate_bond_duration(duration: u64) {
     if duration < MIN_BOND_DURATION {
-        panic!("bond duration too short: minimum is credence_math::Timestamp::SECONDS_PER_DAY seconds (1 day)");
+        panic!(
+            "bond duration too short: minimum is credence_math::SECONDS_PER_DAY seconds (1 day)"
+        );
     }
     if duration > MAX_BOND_DURATION {
         panic!("bond duration too long: maximum is 31536000 seconds (365 days)");
@@ -441,6 +443,18 @@ mod tests {
         validate_bond_amount(MAX_BOND_AMOUNT + 1);
     }
 
+    #[test]
+    fn test_validate_bond_amount_min_boundary_accepts() {
+        // Exact minimum boundary must be accepted.
+        validate_bond_amount(MIN_BOND_AMOUNT);
+    }
+
+    #[test]
+    fn test_validate_bond_amount_max_boundary_accepts() {
+        // Exact maximum boundary must be accepted.
+        validate_bond_amount(MAX_BOND_AMOUNT);
+    }
+
     // ─── Address Validation Tests ─────────────────────────────────────────
 
     #[test]
@@ -459,6 +473,96 @@ mod tests {
         let address = Address::generate(&env);
         // Should panic when recipient equals contract
         validate_recipient(&address, &address);
+    }
+
+    // ─── Duration Boundary Tests ──────────────────────────────────────────
+
+    #[test]
+    fn test_validate_bond_duration_min_boundary_accepts() {
+        // Exact minimum duration must be accepted.
+        validate_bond_duration(MIN_BOND_DURATION);
+    }
+
+    #[test]
+    fn test_validate_bond_duration_max_boundary_accepts() {
+        // Exact maximum duration must be accepted.
+        validate_bond_duration(MAX_BOND_DURATION);
+    }
+
+    #[test]
+    #[should_panic(expected = "bond duration too short")]
+    fn test_validate_bond_duration_below_minimum() {
+        validate_bond_duration(MIN_BOND_DURATION - 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "bond duration too long")]
+    fn test_validate_bond_duration_above_maximum() {
+        validate_bond_duration(MAX_BOND_DURATION + 1);
+    }
+
+    // ─── Batch Size Boundary Tests ────────────────────────────────────────
+
+    #[test]
+    fn test_verify_batch_size_accepts_at_minimum() {
+        let env = Env::default();
+        // len == 1 is the smallest valid batch.
+        verify_batch_size(&env, 1, 10);
+    }
+
+    #[test]
+    fn test_verify_batch_size_accepts_at_maximum() {
+        let env = Env::default();
+        // len == max_size is allowed (inclusive upper bound).
+        verify_batch_size(&env, 10, 10);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_verify_batch_size_rejects_empty() {
+        let env = Env::default();
+        verify_batch_size(&env, 0, 10);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_verify_batch_size_rejects_above_maximum() {
+        let env = Env::default();
+        verify_batch_size(&env, 11, 10);
+    }
+
+    // ─── Stringified Bytes (Bytes) Boundary Tests ─────────────────────────
+
+    #[test]
+    fn test_verify_stringified_bytes_bytes_accepts_at_bound() {
+        let env = Env::default();
+        let data = Bytes::from_slice(&env, &[b'a'; MAX_STRINGIFIED_BYTES_LEN as usize]);
+        // len == max is allowed.
+        verify_stringified_bytes_bytes(&env, &data);
+    }
+
+    #[test]
+    #[should_panic(expected = "stringified bytes too long")]
+    fn test_verify_stringified_bytes_bytes_rejects_oversized() {
+        let env = Env::default();
+        let data = Bytes::from_slice(&env, &[b'a'; MAX_STRINGIFIED_BYTES_LEN as usize + 1]);
+        verify_stringified_bytes_bytes(&env, &data);
+    }
+
+    #[test]
+    #[should_panic(expected = "stringified bytes contain a null byte")]
+    fn test_verify_stringified_bytes_bytes_rejects_null() {
+        let env = Env::default();
+        let data = Bytes::from_slice(&env, &[0x00_u8]);
+        verify_stringified_bytes_bytes(&env, &data);
+    }
+
+    #[test]
+    #[should_panic(expected = "stringified bytes contain a non-printable byte")]
+    fn test_verify_stringified_bytes_bytes_rejects_non_printable() {
+        let env = Env::default();
+        let data = Bytes::from_slice(&env, &[0x1f_u8]);
+        verify_stringified_bytes_bytes(&env, &data);
     }
 
 }

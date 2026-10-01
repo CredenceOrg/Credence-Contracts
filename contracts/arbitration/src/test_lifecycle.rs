@@ -134,6 +134,36 @@ fn test_create_dispute_rejects_when_creator_has_ongoing_dispute() {
 }
 
 #[test]
+fn test_create_dispute_recovers_from_stale_active_dispute_marker() {
+    let s = setup();
+    // A stale marker pointing at a dispute that no longer exists (it was
+    // resolved, which clears the marker) must not lock the creator out
+    // forever: the guard is keyed on the marker, so a marker whose target is
+    // gone is treated as no active dispute.
+    let cid = s.client.address.clone();
+    s.env.as_contract(&cid, || {
+        s.env
+            .storage()
+            .instance()
+            .set(&DataKey::ActiveDispute(s.creator.clone()), &999u64);
+    });
+
+    let description = String::from_str(&s.env, "recovery dispute");
+    let dispute_id = s.client.create_dispute(&s.creator, &description, &3600);
+
+    let dispute = s.client.get_dispute(&dispute_id);
+    assert_eq!(dispute.creator, s.creator);
+    assert_eq!(dispute.status, DisputeStatus::Voting);
+    s.env.as_contract(&cid, || {
+        assert!(s
+            .env
+            .storage()
+            .instance()
+            .has(&DataKey::ActiveDispute(s.creator.clone())));
+    });
+}
+
+#[test]
 fn test_invalid_resolve_already_resolved() {
     let s = setup();
     let id = open_dispute(&s);
@@ -513,13 +543,13 @@ fn test_tie_three_outcomes_equal_weight() {
     let s = setup();
     let arb2 = Address::generate(&s.env);
     let arb3 = Address::generate(&s.env);
-    s.client.register_arbitrator(&arb2, &5);
-    s.client.register_arbitrator(&arb3, &5);
+    s.client.register_arbitrator(&arb2, &10);
+    s.client.register_arbitrator(&arb3, &10);
 
     let id = open_dispute(&s);
     s.client.vote(&s.arb, &id, &1); // outcome 1, weight 10
-    s.client.vote(&arb2, &id, &2); // outcome 2, weight 5 → tie
-    s.client.vote(&arb3, &id, &3); // outcome 3, weight 5 → tie
+    s.client.vote(&arb2, &id, &2); // outcome 2, weight 10 → tie
+    s.client.vote(&arb3, &id, &3); // outcome 3, weight 10 → tie
 
     advance(&s.env, 3601);
     let outcome = s.client.resolve_dispute(&id);
@@ -725,4 +755,82 @@ fn dispute_lease_guard_allows_operations_when_dispute_tied() {
     let dispute = s.client.get_dispute(&id);
     assert_eq!(dispute.status, DisputeStatus::Tied);
     assert!(status::require_dispute_resolved(&dispute.status).is_ok());
+}
+
+// ── adversarial state preservation regression tests ──────────────────────────
+
+#[test]
+fn test_invalid_vote_duplicate_preserves_state() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &1); // initial vote
+    let initial_tally = s.client.get_tally(&id, &1);
+
+    // retry same vote
+    let err = s.client.try_vote(&s.arb, &id, &1).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::AlreadyVoted);
+
+    // tally unchanged
+    assert_eq!(s.client.get_tally(&id, &1), initial_tally);
+}
+
+#[test]
+fn test_invalid_resolve_preserves_state() {
+    let s = setup();
+    let id = open_dispute(&s);
+
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::VotingNotEnded);
+
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, DisputeStatus::Voting);
+    assert_eq!(d.outcome, 0);
+}
+
+#[test]
+fn test_invalid_cancel_preserves_state() {
+    let s = setup();
+    let id = open_dispute(&s);
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+
+    let initial_dispute = s.client.get_dispute(&id);
+
+    // now Resolved
+    let err = s.client.try_cancel_dispute(&s.creator, &id, &None).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::InvalidTransition);
+
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, initial_dispute.status);
+    assert_eq!(d.cancellation_reason, initial_dispute.cancellation_reason);
+}
+
+#[test]
+fn test_invalid_vote_after_expiry_preserves_state() {
+    let s = setup();
+    let id = open_dispute(&s);
+    advance(&s.env, 3601);
+
+    let initial_tally = s.client.get_tally(&id, &1);
+    let err = s.client.try_vote(&s.arb, &id, &1).unwrap_err().unwrap();
+    assert_eq!(err, ArbitrationError::VotingInactive);
+
+    assert_eq!(s.client.get_tally(&id, &1), initial_tally);
+}
+
+#[test]
+fn test_unauthorized_cancel_preserves_state() {
+    let s = setup();
+    let id = open_dispute(&s);
+    let stranger = Address::generate(&s.env);
+
+    let err = s
+        .client
+        .try_cancel_dispute(&stranger, &id, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ArbitrationError::NotAuthorized);
+
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, DisputeStatus::Voting);
 }

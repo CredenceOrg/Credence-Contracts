@@ -22,7 +22,7 @@ fn create_fixed_bond(client: &CredenceBondClient<'_>, identity: &Address) {
     client.create_bond(
         identity,
         &1_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -43,7 +43,10 @@ fn lifecycle_legal_transition_matrix_succeeds() {
     let _ = client.cancel_cooldown(&identity);
 
     let bond = client.get_identity_state(&identity);
-    assert!(bond.active, "bond must still be active after legal transitions");
+    assert!(
+        bond.active,
+        "bond must still be active after legal transitions"
+    );
 }
 
 #[test]
@@ -58,7 +61,7 @@ fn top_up_rejected_after_withdraw_bond() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 
@@ -77,7 +80,7 @@ fn extend_duration_rejected_after_withdraw_bond() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 
@@ -95,7 +98,7 @@ fn withdraw_rejected_after_withdraw_bond() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 
@@ -114,7 +117,7 @@ fn request_cooldown_rejected_after_withdraw_bond() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 
@@ -133,7 +136,7 @@ fn execute_cooldown_rejected_after_withdraw_bond() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 
@@ -153,7 +156,7 @@ fn cancel_cooldown_rejected_after_withdraw_bond() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 
@@ -172,7 +175,7 @@ fn top_up_rejected_after_liquidate() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.liquidate(&admin, &identity);
 
@@ -190,7 +193,7 @@ fn extend_duration_rejected_after_liquidate() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.liquidate(&admin, &identity);
 
@@ -208,7 +211,7 @@ fn withdraw_bond_then_recreate_is_legal() {
     e.ledger().with_mut(|li| {
         li.timestamp = li
             .timestamp
-            .saturating_add(2 * credence_math::Timestamp::SECONDS_PER_DAY);
+            .saturating_add(2 * credence_math::SECONDS_PER_DAY);
     });
     let _ = client.withdraw_bond(&identity);
 

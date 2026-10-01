@@ -63,6 +63,7 @@ pub fn require_not_paused(e: &Env) {
 }
 
 pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: bool) {
+    require_not_paused(e);
     require_admin_auth(e, admin);
 
     let key = DataKey::PauseSigner(signer.clone());
@@ -79,6 +80,15 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
             e.storage()
                 .instance()
                 .set(&DataKey::PauseSignerCount, &count.saturating_add(1));
+
+            let threshold: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::PauseThreshold)
+                .unwrap_or(0);
+            if threshold == 0 {
+                e.storage().instance().set(&DataKey::PauseThreshold, &1_u32);
+            }
         }
     } else if existing {
         e.storage().instance().remove(&key);
@@ -115,6 +125,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
 }
 
 pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
+    require_not_paused(e);
     require_admin_auth(e, admin);
     let count: u32 = e
         .storage()
@@ -123,6 +134,9 @@ pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
         .unwrap_or(0);
     if threshold > count {
         panic_with_error!(e, ContractError::ThresholdExceedsSigners);
+    }
+    if threshold == 0 && count > 0 {
+        panic_with_error!(e, ContractError::InvalidPauseAction);
     }
     e.storage()
         .instance()
@@ -203,6 +217,18 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u32> {
         do_unpause(e, None);
         None
     } else {
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        if *caller == stored_admin {
+            caller.require_auth();
+            do_unpause(e, None);
+            return None;
+        }
+
         propose_action(e, caller, PauseAction::Unpause)
     }
 }

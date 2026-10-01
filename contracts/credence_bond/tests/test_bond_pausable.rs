@@ -57,7 +57,7 @@ fn mutating_entrypoints_revert_when_paused() {
     assert!(client.try_renew_if_rolling(&identity).is_err());
     assert!(client.try_withdraw_bond(&identity).is_err());
     assert!(client
-        .try_slash_bond(&admin, &100_i128, &Bytes::new(&e))
+        .try_slash_bond(&admin, &identity, &100_i128, &Bytes::new(&e))
         .is_err());
     assert!(client.try_collect_fees(&admin, &Bytes::new(&e)).is_err());
 }
@@ -90,7 +90,7 @@ fn pause_during_active_lockup_then_unpause() {
     assert!(client
         .try_withdraw_early(&identity, &1_000_000_000_000_000_000_i128)
         .is_err());
-    let _ = client.get_identity_state();
+    let _ = client.get_identity_state(&identity);
 
     client.unpause(&admin);
     assert!(!client.is_paused());
@@ -140,6 +140,7 @@ fn pause_management_remains_available_while_paused() {
 fn attestation_mutations_blocked_when_paused() {
     let e = Env::default();
     let (client, admin) = setup(&e);
+    let contract_id = Address::generate(&e);
     let attester = Address::generate(&e);
     client.register_attester(&attester);
 
@@ -149,6 +150,8 @@ fn attestation_mutations_blocked_when_paused() {
             &attester,
             &Address::generate(&e),
             &String::from_str(&e, "kyc"),
+            &contract_id,
+            &0_u64,
             &0_u64,
         )
         .is_err());

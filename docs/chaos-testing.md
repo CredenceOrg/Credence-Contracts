@@ -46,6 +46,29 @@ at runtime.
 
 All toggles are disabled by default (`initialize()` sets them to `false`).
 
+#### `ChaosToken` invariants (`src/test_chaos_token_boundaries.rs`)
+
+The mock itself is test infrastructure, so its own contract is pinned by
+`src/test_chaos_token_boundaries.rs` (issue #1318). If `ChaosToken` misbehaves
+— silently wrapping a balance, minting supply on a self-transfer, or firing an
+armed payload twice — the *surrounding* suite reports a protocol bug that does
+not exist. The enforced invariants are:
+
+| Invariant | Enforcement |
+|---|---|
+| Conservation | `transfer` moves `amount` from `from` to `to`; total across holders is invariant |
+| No silent wrap | `checked_add` on the credit; an explicit `amount > from_bal` rejection on the debit |
+| Non-negative amounts | Negative `amount` rejected by `transfer` / `mint` |
+| No self-transfer | `from == to` rejected — the two writes share one key, so it would end at `balance + amount` |
+| Atomicity | A faulted or invalid call reverts whole; both legs stay at their pre-call values |
+| One-shot injection | `maybe_reenter` clears `armed` *before* invoking, so an armed payload fires at most once |
+| Per-instance isolation | Toggles and injection state are instance-scoped; arming one token never marks another |
+| Safe defaults | Un-`initialize`d instance reads every flag as `false` and every balance as `DEFAULT_BALANCE` |
+
+Guard ordering inside `transfer` is asserted rather than assumed:
+`fail_transfer` toggle → amount / self-transfer validation → injection →
+checked mutation.
+
 ### `PanickingCallback` contract (`src/test_chaos.rs`)
 
 A callback contract whose every hook (`on_slash`, `on_withdraw`, `on_collect`)
