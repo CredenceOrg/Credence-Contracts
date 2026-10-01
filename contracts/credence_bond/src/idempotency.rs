@@ -8,13 +8,21 @@
 //! ## Design
 //! - **Hash Computation**: SHA-256 hash of (actor_address, operation_name, salt_bytes)
 //! - **Storage**: Persistent storage keyed by the computed hash
-//! - **TTL**: Idempotency keys are stored indefinitely to prevent replay attacks
+//! - **TTL**: Keys are pinned to [`crate::PERSISTENT_TTL_MAX`] on write. A bare
+//!   `persistent().set` would only receive the network minimum entry TTL, after
+//!   which the key would silently expire and the identical request would replay,
+//!   so the entry is extended explicitly. See [`check_and_record`].
 //! - **Scope**: Applied to admin-only operations that can be triggered externally
 //!
 //! ## Usage
-//! Call `check_and_record_idempotency` at the start of any externally-triggered
-//! admin operation. If the idempotency key has been seen before, the function
-//! panics with `ContractError::DuplicateIdempotencyKey`.
+//! Call [`check_and_record`] at the start of any externally-triggered admin
+//! operation. If the idempotency key has been seen before, the function panics
+//! with `ContractError::DuplicateIdempotencyKey`.
+//!
+//! The check must run *after* the caller has been authorized. Recording before
+//! authorization would let an unauthorized caller consume a key that the real
+//! admin still needs, and would leak which keys exist. See `slash_bond` and
+//! `collect_fees` in `lib.rs` for the ordering used in this crate.
 //!
 //! ## Example
 //! ```no_run
@@ -92,6 +100,16 @@ pub fn check_and_record(e: &Env, actor: &Address, operation: &Symbol, salt: &Byt
 
     // Record the idempotency key to prevent future duplicates
     e.storage().persistent().set(&storage_key, &true);
+
+    // A bare `persistent().set` only receives the network minimum entry TTL, so
+    // the key would expire and the identical request would replay. Pin it to the
+    // crate's persistent ceiling, matching every other persistent writer here
+    // (see `claims.rs`).
+    e.storage().persistent().extend_ttl(
+        &storage_key,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
 }
 
 /// Checks if an idempotency key has been used before (read-only).

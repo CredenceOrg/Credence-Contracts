@@ -62,6 +62,7 @@ pub fn apply_renewal(bond: &mut IdentityBond, now: u64) -> Result<(), RollingBon
 mod tests {
     use super::*;
     use crate::IdentityBond;
+    use soroban_sdk::testutils::Address as _;
 
     fn bond(bond_start: u64, bond_duration: u64, withdrawal_requested_at: u64) -> IdentityBond {
         IdentityBond {
