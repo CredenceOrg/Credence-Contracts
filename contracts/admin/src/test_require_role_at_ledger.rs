@@ -1,3 +1,4 @@
+
 //! Tests for `require_role_at_ledger` / `check_role_at_ledger` (issue #762).
 //!
 //! # Threat being mitigated
@@ -20,6 +21,9 @@
 //! - `role_not_yet_granted_at_action_ledger_rejects`  — **negative**: assigned_at > at_ledger → 114
 //! - `unknown_actor_rejects_with_not_admin`           — **negative**: unregistered actor → 100
 //! - `insufficient_role_level_rejects_with_not_admin` — **negative**: role too low → 100
+//! - `role_revoked_before_action_ledger_rejects`      — **adversarial**: revoked before action → 100
+//! - `role_held_at_boundary_ledger_passes`            — **boundary**: assigned_at == at_ledger == 0
+//! - `duplicate_add_admin_preserves_earliest_assignment` — **regression**: re-add keeps original ts
 
 use crate::*;
 use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env};
@@ -118,4 +122,62 @@ fn insufficient_role_level_rejects_with_not_admin() {
 
     // Actor is Operator, but Admin is required.
     AdminContract::check_role_at_ledger(env.clone(), AdminRole::Admin, actor, 10);
+}
+
+// ---------------------------------------------------------------------------
+// Adversarial / boundary / regression tests
+// ---------------------------------------------------------------------------
+
+/// Actor was granted at T=10, then revoked at T=50.
+/// Action claims T=100 (after revocation) → NotAdmin (code 100).
+#[test]
+#[should_panic(expected = "Error(Contract, #100)")]
+fn role_revoked_before_action_ledger_rejects() {
+    let (env, _cid, super_admin) = setup();
+    set_ts(&env, 10);
+    let actor = Address::generate(&env);
+    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    set_ts(&env, 50);
+    AdminContract::remove_admin(env.clone(), super_admin.clone(), actor.clone());
+
+    // Action claims T=100, but role was revoked at T=50.
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100);
+}
+
+/// Boundary: assigned_at == at_ledger == 0 must pass (≤ comparison).
+#[test]
+fn role_held_at_boundary_ledger_passes() {
+    let (env, _cid, super_admin) = setup();
+    set_ts(&env, 0);
+    let actor = Address::generate(&env);
+    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 0);
+}
+
+/// Regression: re-adding an existing admin must not move `assigned_at`
+/// forward. A later action at the original assignment ledger must still pass.
+#[test]
+fn duplicate_add_admin_preserves_earliest_assignment() {
+    let (env, _cid, super_admin) = setup();
+    set_ts(&env, 10);
+    let actor = Address::generate(&env);
+    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    set_ts(&env, 200);
+    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+
+    // If assigned_at was overwritten to 200, this would reject with 114.
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 10);
+}
+
+#[test]
+fn test_adversarial_regression_and_retry_scenarios() {
+    let (env, _cid, super_admin) = setup();
+    set_ts(&env, 10);
+    let actor = Address::generate(&env);
+    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    
+    // Retry state
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10);
+    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10);
 }

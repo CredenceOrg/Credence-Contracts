@@ -4,7 +4,8 @@ use soroban_sdk::{Address, Env};
 #[cfg(test)]
 mod ownership_transfer_tests {
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use crate::AdminContractClient;
+    use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 
     fn create_contract() -> AdminContract {
         AdminContract {}
@@ -74,7 +75,6 @@ mod ownership_transfer_tests {
         let env = Env::default();
         let (contract_address, super_admin_1, super_admin_2) = setup_multiple_super_admins(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -95,7 +95,6 @@ mod ownership_transfer_tests {
         let env = Env::default();
         let (contract_address, super_admin_1, super_admin_2) = setup_multiple_super_admins(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -115,7 +114,6 @@ mod ownership_transfer_tests {
         let env = Env::default();
         let (contract_address, super_admin_1, super_admin_2) = setup_multiple_super_admins(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -129,7 +127,6 @@ mod ownership_transfer_tests {
             li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
         });
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
         });
@@ -144,7 +141,6 @@ mod ownership_transfer_tests {
         let env = Env::default();
         let (contract_address, super_admin_1, super_admin_2) = setup_multiple_super_admins(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -158,7 +154,6 @@ mod ownership_transfer_tests {
             li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK;
         });
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
         });
@@ -178,7 +173,6 @@ mod ownership_transfer_tests {
 
         let unauthorized_address = Address::generate(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::add_admin(
                 env.clone(),
@@ -188,7 +182,6 @@ mod ownership_transfer_tests {
             );
         });
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -250,12 +243,11 @@ mod ownership_transfer_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #107)")]
+    #[should_panic(expected = "Error(Contract, #111)")] // AdminUnchanged
     fn test_transfer_ownership_rejects_same_owner() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -272,7 +264,6 @@ mod ownership_transfer_tests {
         let (contract_address, super_admin) = setup_contract(&env);
         let non_admin = Address::generate(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(env.clone(), super_admin.clone(), non_admin.clone());
         });
@@ -334,7 +325,6 @@ mod ownership_transfer_tests {
                 .set(&DataKey::AdminInfo(super_admin_2.clone()), &admin_info);
         });
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             // Try to transfer ownership to inactive admin
             AdminContract::transfer_ownership(
@@ -346,7 +336,7 @@ mod ownership_transfer_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #109)")]
+    #[should_panic(expected = "Error(Contract, #115)")] // NoPendingAdmin
     fn test_accept_ownership_rejects_when_no_pending_owner() {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
@@ -535,7 +525,6 @@ mod ownership_transfer_tests {
         let env = Env::default();
         let (contract_address, super_admin_1, super_admin_2) = setup_multiple_super_admins(&env);
 
-        env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::transfer_ownership(
                 env.clone(),
@@ -549,10 +538,127 @@ mod ownership_transfer_tests {
             li.timestamp += crate::OWNERSHIP_TRANSFER_TIMELOCK - 1;
         });
 
-        env.mock_all_auths();
+        // (auths already mocked by the setup helper)
         // This must panic with TimelockNotReady (#112)
         env.as_contract(&contract_address, || {
             AdminContract::accept_ownership(env.clone(), super_admin_2.clone());
         });
+    }
+
+    #[test]
+    fn test_transfer_ownership_suspension_boundary_rolls_back_and_allows_retry() {
+        let env = Env::default();
+        let (contract_address, owner, existing_candidate) = setup_multiple_super_admins(&env);
+        let candidate = Address::generate(&env);
+
+        env.mock_all_auths();
+        env.as_contract(&contract_address, || {
+            AdminContract::add_admin(
+                env.clone(),
+                owner.clone(),
+                candidate.clone(),
+                AdminRole::SuperAdmin,
+            );
+        });
+
+        let client = AdminContractClient::new(&env, &contract_address);
+        client.transfer_ownership(&owner, &existing_candidate);
+        let epoch_before = client.get_config_epoch();
+        let proposed_at_before: u64 = env.as_contract(&contract_address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::TransferProposedAt)
+                .unwrap()
+        });
+
+        let suspended_until = env.ledger().timestamp() + 10;
+        env.as_contract(&contract_address, || {
+            let mut info: AdminInfo = env
+                .storage()
+                .instance()
+                .get(&DataKey::AdminInfo(candidate.clone()))
+                .unwrap();
+            info.suspended_until = suspended_until;
+            env.storage()
+                .instance()
+                .set(&DataKey::AdminInfo(candidate.clone()), &info);
+        });
+
+        env.ledger()
+            .with_mut(|ledger| ledger.timestamp = suspended_until - 1);
+        let events_before = env.events().all().len();
+        let rejected = client.try_transfer_ownership(&owner, &candidate);
+        assert_eq!(
+            rejected.unwrap_err().unwrap(),
+            soroban_sdk::Error::from_contract_error(113)
+        );
+
+        assert_eq!(client.get_owner(), owner);
+        assert_eq!(client.get_pending_owner(), Some(existing_candidate));
+        assert_eq!(client.get_config_epoch(), epoch_before);
+        assert_eq!(env.events().all().len(), events_before);
+        let proposed_at_after_rejection: u64 = env.as_contract(&contract_address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::TransferProposedAt)
+                .unwrap()
+        });
+        assert_eq!(proposed_at_after_rejection, proposed_at_before);
+
+        env.ledger()
+            .with_mut(|ledger| ledger.timestamp = suspended_until);
+        client.transfer_ownership(&owner, &candidate);
+
+        assert_eq!(client.get_owner(), owner);
+        assert_eq!(client.get_pending_owner(), Some(candidate));
+        assert_eq!(client.get_config_epoch(), epoch_before + 1);
+        assert_eq!(env.events().all().len(), events_before + 1);
+        let proposed_at_after_retry: u64 = env.as_contract(&contract_address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::TransferProposedAt)
+                .unwrap()
+        });
+        assert_eq!(proposed_at_after_retry, suspended_until);
+    }
+
+    #[test]
+    fn test_transfer_ownership_epoch_overflow_preserves_existing_proposal() {
+        let env = Env::default();
+        let (contract_address, owner, candidate) = setup_multiple_super_admins(&env);
+        let client = AdminContractClient::new(&env, &contract_address);
+
+        env.mock_all_auths();
+        client.transfer_ownership(&owner, &candidate);
+        let proposed_at_before: u64 = env.as_contract(&contract_address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::TransferProposedAt)
+                .unwrap()
+        });
+        env.as_contract(&contract_address, || {
+            env.storage()
+                .instance()
+                .set(&DataKey::ConfigEpoch, &u64::MAX);
+        });
+
+        let events_before = env.events().all().len();
+        let rejected = client.try_transfer_ownership(&owner, &candidate);
+        assert_eq!(
+            rejected.unwrap_err().unwrap(),
+            soroban_sdk::Error::from_contract_error(700)
+        );
+
+        assert_eq!(client.get_owner(), owner);
+        assert_eq!(client.get_pending_owner(), Some(candidate));
+        assert_eq!(client.get_config_epoch(), u64::MAX);
+        assert_eq!(env.events().all().len(), events_before);
+        let proposed_at_after: u64 = env.as_contract(&contract_address, || {
+            env.storage()
+                .instance()
+                .get(&DataKey::TransferProposedAt)
+                .unwrap()
+        });
+        assert_eq!(proposed_at_after, proposed_at_before);
     }
 }
