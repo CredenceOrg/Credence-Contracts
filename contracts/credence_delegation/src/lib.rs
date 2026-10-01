@@ -1111,6 +1111,9 @@ impl CredenceDelegation {
 mod test_pausable;
 
 #[cfg(test)]
+mod test_pausable_failure_boundaries;
+
+#[cfg(test)]
 mod test_pause_snapshots;
 
 // #[cfg(test)]
@@ -1125,6 +1128,9 @@ mod test_delegation_ttl;
 
 #[cfg(test)]
 mod test_domain_separation;
+
+#[cfg(test)]
+mod test_domain_boundaries;
 
 #[cfg(test)]
 mod test_pause_proposal_view;
@@ -1143,3 +1149,7 @@ mod test_require_matching_contract_id;
 
 #[cfg(test)]
 mod test_operator_epoch_guard;
+
+#[cfg(test)]
+mod test_boundary_recovery;
+

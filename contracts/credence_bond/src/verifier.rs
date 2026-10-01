@@ -12,6 +12,7 @@
 //! Note: `DataKey::AttesterStake(verifier)` is kept in sync with the staked amount so that
 //! weighted attestations can use real stake.
 
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 use crate::safe_token;
@@ -21,6 +22,7 @@ use crate::DataKey;
 const KEY_MIN_STAKE: &str = "ver_min_stake";
 const KEY_INFO_PREFIX: &str = "ver_info";
 const KEY_VERIFIER_ROLE_PREFIX: &str = "verifier";
+const KEY_TOKEN: &str = "bond_token";
 
 const EVENT_CONFIG_UPDATED: &str = "verifier_config_updated";
 const EVENT_REGISTERED: &str = "verifier_registered";
@@ -29,6 +31,7 @@ const EVENT_STAKE_DEPOSITED: &str = "verifier_stake_deposited";
 const EVENT_DEACTIVATED: &str = "verifier_deactivated";
 const EVENT_STAKE_WITHDRAWN: &str = "verifier_stake_withdrawn";
 const EVENT_REPUTATION_UPDATED: &str = "verifier_reputation_updated";
+const EVENT_STAKE_SYNCED: &str = "verifier_stake_synced";
 
 /// Verifier metadata stored on-chain.
 #[contracttype]
@@ -194,6 +197,28 @@ pub fn register_legacy(e: &Env, verifier: &Address) -> VerifierInfo {
         RegistrationKind::Legacy,
     );
     info
+}
+
+/// @notice Reconciles the cached `AttesterStake` with the verifier's stored stake.
+/// @dev Recovery entry point for cases where a prior partial failure left the cached
+///      weighted-attestation stake out of sync with `VerifierInfo.stake`. This is
+///      idempotent and safe to call repeatedly. It does not move tokens; it only
+///      repairs the derived cache used by `weighted_attestation`.
+///
+/// # Invariants
+/// - After this call, `weighted_attestation::get_attester_stake(verifier) == info.stake`.
+/// - If the verifier is unknown, the cached stake is reset to 0 (no phantom stake).
+///
+/// # Panics
+/// Never panics on valid storage; safe to call from recovery flows.
+pub fn sync_attester_stake(e: &Env, verifier: &Address) -> i128 {
+    let stake = get_verifier_info(e, verifier).map(|i| i.stake).unwrap_or(0);
+    weighted_attestation::set_attester_stake(e, verifier, stake);
+    e.events().publish(
+        (Symbol::new(e, EVENT_STAKE_SYNCED), verifier.clone()),
+        (stake,),
+    );
+    stake
 }
 
 /// @notice Deactivates a verifier (either self or admin; caller must enforce auth).
@@ -418,3 +443,6 @@ fn emit_reputation_event(
         ),
     );
 }
+
+#[cfg(test)]
+mod tests;

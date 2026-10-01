@@ -38,7 +38,7 @@ fn test_v2_event_indexing_improvements() {
 
     // --- Test bond_created_v2 event with improved indexing ---
     let initial_amount = 10_000_i128;
-    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
+    let duration = credence_math::SECONDS_PER_DAY;
     let is_rolling = false;
     let notice_period = 0_u64;
     let bond_start = e.ledger().timestamp();
@@ -109,7 +109,7 @@ fn test_v2_event_indexing_improvements() {
     let withdraw_amount = 3_000_i128;
     let expected_remaining = 7_000_i128;
 
-    // Fast-forward the ledger time so the credence_math::Timestamp::SECONDS_PER_DAYs lock-up period expires
+    // Fast-forward the ledger time so the credence_math::SECONDS_PER_DAYs lock-up period expires
     let mut ledger_info = e.ledger().get();
     ledger_info.timestamp += duration + 1;
     e.ledger().set(ledger_info);
@@ -253,7 +253,7 @@ fn test_event_indexing_query_efficiency() {
         client.create_bond_with_rolling(
             identity,
             &amount,
-            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &credence_math::SECONDS_PER_DAY,
             &false,
             &0_u64,
         );
@@ -342,7 +342,7 @@ fn test_event_schema_compatibility() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -406,7 +406,7 @@ fn test_tier_changed_v2_event_on_create_bond() {
     client.create_bond_with_rolling(
         &identity,
         &bond_amount,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -496,7 +496,7 @@ fn test_bond_slashed_v2_pays_out_legacy_v1_and_indexed_v2() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -577,18 +577,18 @@ fn test_bond_withdrawn_v2_flags_early_withdrawal_and_penalty() {
     client.create_bond_with_rolling(
         &identity,
         &1_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
 
     let gross_withdraw = 200_i128;
     let penalty_bps = 500_u32;
-    let remaining_duration = credence_math::Timestamp::SECONDS_PER_DAY;
+    let remaining_duration = credence_math::SECONDS_PER_DAY;
     let expected_penalty = crate::early_exit_penalty::calculate_penalty(
         gross_withdraw,
         remaining_duration,
-        credence_math::Timestamp::SECONDS_PER_DAY,
+        credence_math::SECONDS_PER_DAY,
         penalty_bps,
     );
 

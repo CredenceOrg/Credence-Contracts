@@ -319,6 +319,49 @@ fn test_multisig_pause_recovery_full_withdrawal_lifecycle() {
 }
 
 #[test]
+fn test_repeated_pause_toggle_retry_is_idempotent_for_balance_and_permissions() {
+    let e = Env::default();
+    let (client, s1, _s2, recipient, admin) = setup_funded_with_signers(&e);
+
+    client.pause(&admin);
+    client.pause(&admin);
+    assert!(client.is_paused());
+    assert_eq!(client.get_balance(), 10_000);
+
+    let result = client.try_propose_withdrawal(&s1, &recipient, &1_000);
+    assert!(result.is_err(), "proposals must remain blocked while paused");
+
+    client.unpause(&admin);
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+
+    let id = client.propose_withdrawal(&s1, &recipient, &1_000);
+    client.approve_withdrawal(&s1, &id);
+    client.execute_withdrawal(&id, &0);
+    assert_eq!(client.get_balance(), 9_000);
+}
+
+#[test]
+fn test_duplicate_approval_during_recovery_does_not_mutate_proposal_state() {
+    let e = Env::default();
+    let (client, s1, _s2, recipient, admin) = setup_funded_with_signers(&e);
+
+    let id = client.propose_withdrawal(&s1, &recipient, &2_000);
+    client.approve_withdrawal(&s1, &id);
+    assert_eq!(client.get_approval_count(&id), 1);
+
+    client.pause(&admin);
+    client.unpause(&admin);
+
+    // Duplicate approvals and recovery toggles must not mutate proposal state.
+    client.approve_withdrawal(&s1, &id);
+    assert_eq!(client.get_approval_count(&id), 1);
+
+    client.execute_withdrawal(&id, &0);
+    assert_eq!(client.get_balance(), 8_000);
+}
+
+#[test]
 fn test_deposits_allowed_during_paused_state() {
     let e = Env::default();
     let (client, _s1, _s2, _recipient, admin) = setup_funded_with_signers(&e);
