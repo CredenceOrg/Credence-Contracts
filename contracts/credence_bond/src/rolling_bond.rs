@@ -48,10 +48,7 @@ pub fn is_period_ended(now: u64, bond_start: u64, bond_duration: u64) -> bool {
 /// Returns an error and leaves the bond unchanged when the renewal would
 /// produce an invalid state (e.g. zero duration or overflowing end).
 /// This guarantees partial failure cannot corrupt the bond.
-pub fn apply_renewal(
-    bond: &mut IdentityBond,
-    now: u64,
-) -> Result<(), RollingBondError> {
+pub fn apply_renewal(bond: &mut IdentityBond, now: u64) -> Result<(), RollingBondError> {
     // Validate the resulting period before mutating any state.
     period_end(now, bond.bond_duration)?;
     bond.bond_start = now;
@@ -63,16 +60,21 @@ pub fn apply_renewal(
 mod tests {
     use super::*;
     use crate::IdentityBond;
+    use soroban_sdk::testutils::Address as _;
 
     fn bond(bond_start: u64, bond_duration: u64, withdrawal_requested_at: u64) -> IdentityBond {
+        // `IdentityBond` has no `Default` impl, so every field is listed
+        // explicitly. Only `bond_start`, `bond_duration` and
+        // `withdrawal_requested_at` are exercised by these tests; the rest
+        // are inert placeholders.
         IdentityBond {
-            identity: soroban_sdk::Address::generate(soroban_sdk::Env::default()),
+            identity: soroban_sdk::Address::generate(&soroban_sdk::Env::default()),
             bonded_amount: 0,
             bond_start,
             bond_duration,
             slashed_amount: 0,
             active: true,
-            is_rolling: true,
+            is_rolling: false,
             withdrawal_requested_at,
             notice_period_duration: 0,
         }

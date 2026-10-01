@@ -4,6 +4,9 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, E
 mod error;
 pub use error::DisputeError;
 
+#[cfg(test)]
+mod test_dispute_error;
+
 /// Lifecycle state of a dispute.
 ///
 /// Invariants:

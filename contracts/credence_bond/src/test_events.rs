@@ -80,7 +80,7 @@ fn bond_created_v1_carries_identity_in_topic_and_amount_in_data() {
     let contract_addr = e.current_contract_address();
 
     let amount = 10_000_i128;
-    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
+    let duration = credence_math::SECONDS_PER_DAY;
     let is_rolling = false;
 
     client.create_bond_with_rolling(&identity, &amount, &duration, &is_rolling, &0_u64);
@@ -110,7 +110,7 @@ fn bond_increased_v1_carries_top_up_amounts_in_data() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -141,14 +141,14 @@ fn bond_withdrawn_v1_carries_amount_and_remaining_in_data() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
 
     // Advance past the lock-up so a regular `withdraw` succeeds.
     let mut ledger_info = e.ledger().get();
-    ledger_info.timestamp += credence_math::Timestamp::SECONDS_PER_DAY + 1;
+    ledger_info.timestamp += credence_math::SECONDS_PER_DAY + 1;
     e.ledger().set(ledger_info);
 
     client.withdraw(&identity, &3_000_i128);
@@ -182,7 +182,7 @@ fn bond_slashed_v1_is_emitted_with_identity_in_data() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -234,7 +234,7 @@ fn tier_changed_v1_emits_identity_in_data_when_threshold_crossed() {
     client.create_bond_with_rolling(
         &identity,
         &amount_above_bronze,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -271,7 +271,7 @@ fn tier_changed_v1_is_NOT_emitted_when_tier_unchanged() {
     client.create_bond_with_rolling(
         &identity,
         &amount,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -498,7 +498,7 @@ fn early_exit_penalty_v1_carries_full_payload() {
     client.create_bond_with_rolling(
         &identity,
         &1_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -568,7 +568,7 @@ fn claim_added_v1_carries_type_amount_and_source() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
