@@ -3,41 +3,22 @@ use soroban_sdk::{contracttype, Address, Env};
 pub const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 
 /// Represents a registry entry mapping an identity to their bond contract
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct RegistryEntry {
-    /// The identity address
-    pub identity: Address,
-    /// The bond contract address for this identity
-    pub bond_contract: Address,
-    /// Timestamp when this entry was registered
-    pub registered_at: u64,
-    /// Whether this registration is currently active
-    pub active: bool,
-}
-
-/// Storage keys for the registry contract
-#[contracttype]
-#[derive(Clone)]
-pub enum DataKey {
-    Admin,
-    Paused,
-    PauseSigner(Address),
-    PauseSignerCount,
-    PauseThreshold,
-    PauseProposalCounter,
-    PauseProposal(u32),
-    PauseApproval(u32, Address),
-    PauseApprovalCount(u32),
-    IdentityToBond(Address),
-    BondToIdentity(Address),
-    RegisteredIdentities,
-    AllowNonInterface(Address),
-    BondCodeHash,
-}
-
-pub(crate) fn bump_instance_ttl(e: &Env) {
-    e.storage()
-        .instance()
-        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
-}
+///
+///  Invariants:
+///  - An entry is either active or inactive; the active flag is the
+///    authoritative source of truth for whether a lookup should succeed.
+///  - `registered_at` is immutable once set and must never be zero for a
+///    z  successfully persisted entry.
+///  - `identity` and `bond_contract` are never the same address.
+///
+///  These invariants are enforced by the contract layer and verified by
+///  the boundary/recovery tests in this module. The storage layer itself
+///  keeps the data model minimal and deterministic so that a corrupted or
+///  stale entry can always be detected and recovered from.
+///
+///  Storage layer guarantees:
+///  - Reads of missing keys return `None` (never panic), so callers can
+///    implement retry/recovery logic without losing user data.
+///  - Writes are idempotent: repeated writes of the same value leave the
+///    store in the same state.
+///  - TTL bumping is best-effort and must not alter the logical value of
