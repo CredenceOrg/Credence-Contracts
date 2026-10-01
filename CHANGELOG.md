@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Delegation nonce boundary and recovery tests**: Cover replay and future-window rejection, integer exhaustion, bounded invalidation, persisted-state reload, TTL renewal, authorization, competing submissions, and rollback after downstream failure (closes #1362). Cap extreme expiry ledger offsets before narrowing to prevent a wrapped short TTL.
 - **Admin configuration epoch**: Added a monotonic `ConfigEpoch` to the Admin contract that advances exactly once per committed privileged mutation (admin role changes, suspension, ownership transfer, pause configuration, pause state transitions, and pause-proposal approvals). Exposes `get_config_epoch()` so clients can detect concurrent conflicts and retry; rejected, stale, repeated, and failed operations never advance the epoch and leave no partial state. Documented in `docs/CONFIG_EPOCH.md` and covered by `test_concurrency_race_safety.rs` (closes #1297).
 - **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
 - **Expired-lease guard tests**: lock Fresh / Expiring soon / Expired behaviour for `require_no_expired_lease` (Closes #845).
@@ -24,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gas benchmark notes**: Documented hot-path contract call gas profiles, benchmark methodology, and optimization patterns in `docs/gas-benchmark-notes.md` (closes #1057).
 
 ### Fixed
+
+- **Arbitration `Archived` status had no verdict**: `require_dispute_resolved` matched only `Open | Voting | Resolving` and `Resolved | Cancelled | Tied`, so after `Archived` was added the crate did not compile (`error[E0004]: non-exhaustive patterns: &DisputeStatus::Archived not covered`). `Archived` now returns `Err(DisputeActive)`, matching the semantics `contracts/arbitration/src/status.rs` already asserted in `archived_state_is_not_terminal_for_resolution`: an archived dispute is *inactive* for lease work but is not a ruling, because `reopen_dispute` can put it back into voting. `test_dispute_guard.rs` was never declared in `lib.rs`, so its assertions never ran; it is now registered and extended with 17 relational and ledger-level regression cases (guard/predicate complementarity, the deliberate `Archived` divergence, pinned discriminants and error code, storage round-trips, out-of-range status codes, and a transition path that may clear the guard exactly once). (Closes #1454.)
 
 - **Arbitration dispute guard**: Added a typed `ArbitrationError::OngoingDispute` guard to reject new disputes while a creator already has an unresolved dispute in progress, closing a defense-in-depth re-entry gap in the arbitration lifecycle. (Closes #850.)
 
@@ -46,3 +49,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SafeERC20 Migration**: Replaced direct `TokenClient` calls with safe wrapper functions to support non-compliant ERC20 tokens across the protocol.
 - **Protocol Fixes**: Resolved compilation errors, completed `top_up` and `extend_duration` with overflow protection.
 - **Event Indexing**: Migrated lifecycle events to V2 for optimized off-chain indexing.
+
+<!-- a -->
