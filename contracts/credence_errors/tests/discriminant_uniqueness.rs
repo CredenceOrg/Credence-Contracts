@@ -12,6 +12,7 @@
 //!   1. Add one row to `variant_table.rs` (single source of truth).
 //!   2. Update exhaustive match arms in `src/test_errors.rs`
 //!      (`expected_is_recoverable()`, category tests, etc.).
+//!   3. Bump `ALL_VARIANTS_COUNT` below.
 //!
 //! [`docs/error-codes-wire.md`]: ../../../docs/error-codes-wire.md
 //! [`docs/errors.md`]: ../../../docs/errors.md
@@ -19,6 +20,7 @@
 // Off-chain test binary, not deployed WASM (issue #713 exemption).
 #![allow(clippy::disallowed_macros)]
 
+extern crate std;
 use credence_errors::ContractError;
 
 include!("../variant_table.rs");
@@ -71,7 +73,7 @@ fn discriminant_codes_fit_their_documented_category_range() {
     //
     // NOTE: payload-mismatch variants (DomainMismatch/OwnerMismatch/
     // TargetMismatch/ContractIdMismatch) intentionally live in the
-    // 200-299 Bond/Numeric range despite being Delegation-categorised;
+    // 200-299 Bond/Numeric range despite being Bond/Delegation-categorised;
     // the Catalog of variants in `docs/errors.md` lists them in the
     // 200-299 row. Update the catalog and this range table together.
     const RANGES: &[(std::ops::RangeInclusive<u32>, &str)] = &[

@@ -4,14 +4,21 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["cdylib"]
+# rlib is required alongside cdylib so integration tests (and any off-chain
+# tooling) can link the crate as a normal Rust dependency.  The cdylib artifact
+# used for the on-chain WASM is unaffected.
+crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
 soroban-sdk = { version = "22.0", default-features = false }
 
-[dev_dependencies]
+[dev-dependencies]
 soroban-sdk = { version = "22.0", features = ["testutils"] }
 
 [features]
+default = []
+# Enable testutils APIs (Address::generate, mock_all_auths, generated client,
+# etc.) for off-chain tooling and integration tests.  Must NOT be enabled when
+# building the release WASM.
 testutils = ["soroban-sdk/testutils"]

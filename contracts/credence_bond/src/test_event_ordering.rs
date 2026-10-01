@@ -1,13 +1,13 @@
 #![cfg(test)]
 
+use crate::batch::BatchBondParams;
 use crate::{test_helpers, CredenceBond, CredenceBondClient};
+use proptest::prelude::*;
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
     Address, Env, FromVal, Symbol,
 };
-use proptest::prelude::*;
-use crate::batch::BatchBondParams;
 
 fn setup() -> (Env, CredenceBondClient<'static>, Address, Address, Address) {
     let e = Env::default();
@@ -39,14 +39,17 @@ fn event_name(e: &Env, event: &soroban_sdk::ContractEvent) -> Symbol {
 fn create_bond_emits_events_in_order() {
     let (e, client, _admin, identity, contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let events = e.events().all();
 
-    let our_events: Vec<_> = events
-        .iter()
-        .filter(|ev| ev.0 == contract_id)
-        .collect();
+    let our_events: Vec<_> = events.iter().filter(|ev| ev.0 == contract_id).collect();
 
     assert_eq!(our_events.len(), 2, "expected 2 events from create_bond");
 
@@ -61,7 +64,13 @@ fn create_bond_emits_events_in_order() {
 fn withdraw_emits_events_in_order() {
     let (e, client, _admin, identity, _contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let mut ledger_info = e.ledger().get();
     ledger_info.timestamp += 86401;
@@ -71,13 +80,18 @@ fn withdraw_emits_events_in_order() {
 
     let events = e.events().all();
 
-    let contract_id = events.iter().find(|ev| ev.0 == e.current_contract()).unwrap().0;
+    let contract_id = events
+        .iter()
+        .find(|ev| ev.0 == e.current_contract())
+        .unwrap()
+        .0;
     // Re-collect by contract_id
     let bond_events: Vec<_> = events
         .iter()
         .filter(|ev| {
             let name = Symbol::from_val(&e, &ev.1.get(0).unwrap());
-            name == Symbol::new(&e, "bond_withdrawn") || name == Symbol::new(&e, "bond_withdrawn_v2")
+            name == Symbol::new(&e, "bond_withdrawn")
+                || name == Symbol::new(&e, "bond_withdrawn_v2")
         })
         .collect();
 
@@ -97,7 +111,13 @@ fn withdraw_emits_events_in_order() {
 fn top_up_emits_events_in_order() {
     let (e, client, _admin, identity, _contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     client.top_up(&identity, &5_000_i128);
 
@@ -107,7 +127,8 @@ fn top_up_emits_events_in_order() {
         .iter()
         .filter(|ev| {
             let name = Symbol::from_val(&e, &ev.1.get(0).unwrap());
-            name == Symbol::new(&e, "bond_increased") || name == Symbol::new(&e, "bond_increased_v2")
+            name == Symbol::new(&e, "bond_increased")
+                || name == Symbol::new(&e, "bond_increased_v2")
         })
         .collect();
 
@@ -127,14 +148,17 @@ fn top_up_emits_events_in_order() {
 fn multi_event_tx_ordering_create_bond() {
     let (e, client, _admin, identity, contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let events = e.events().all();
 
-    let contract_events: Vec<_> = events
-        .iter()
-        .filter(|ev| ev.0 == contract_id)
-        .collect();
+    let contract_events: Vec<_> = events.iter().filter(|ev| ev.0 == contract_id).collect();
 
     let expected_order = [
         Symbol::new(&e, "bond_created"),
@@ -155,7 +179,13 @@ fn multi_event_tx_ordering_create_bond() {
 fn create_bond_no_tier_events_when_tier_unchanged() {
     let (e, client, _admin, identity, contract_id) = setup();
 
-    client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &10_000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     let events = e.events().all();
 
@@ -188,7 +218,13 @@ fn sad_path_no_events_on_panic() {
     let identity = Address::generate(&e);
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        client.create_bond_with_rolling(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+        client.create_bond_with_rolling(
+            &identity,
+            &10_000_i128,
+            &credence_math::SECONDS_PER_DAY,
+            &false,
+            &0_u64,
+        );
     }));
     assert!(result.is_err(), "create_bond without token should fail");
 
@@ -213,37 +249,37 @@ proptest! {
 
         for _ in 0..batch_size {
             let identity = Address::generate(&e);
-            
+
             // Large amount to guarantee a tier change from Bronze -> something higher
-            let amount = 10_000_000_000_000_000_000_000_i128; 
+            let amount = 10_000_000_000_000_000_000_000_i128;
             params_list.push_back(BatchBondParams {
                 identity,
                 amount,
-                duration: credence_math::Timestamp::SECONDS_PER_DAY,
+                duration: credence_math::SECONDS_PER_DAY,
                 is_rolling: false,
                 notice_period_duration: 0,
             });
-            
+
             // Expected events per bond:
             expected_order.push(Symbol::new(&e, "tier_changed"));
             expected_order.push(Symbol::new(&e, "tier_changed_v2"));
         }
         expected_order.push(Symbol::new(&e, "batch_bonds_created"));
-        
+
         client.create_batch_bonds(&params_list);
-        
+
         let events = e.events().all();
         let contract_events: std::vec::Vec<_> = events
             .iter()
             .filter(|ev| ev.0 == contract_id)
             .collect();
-            
+
         assert_eq!(
             contract_events.len(),
             expected_order.len(),
             "event count mismatch"
         );
-        
+
         for (i, expected_name) in expected_order.iter().enumerate() {
             let actual_name = event_name(&e, &contract_events[i]);
             assert_eq!(
@@ -268,14 +304,14 @@ fn sad_path_no_events_on_batch_panic() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&e),
         amount: 1000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&e),
         amount: -100, // Invalid
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });

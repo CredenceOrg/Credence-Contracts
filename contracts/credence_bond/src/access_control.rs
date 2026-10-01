@@ -1,12 +1,52 @@
 //! # Access Control Module
 //!
-//! Provides reusable access control modifiers for admin, verifier, and identity roles.
+//! Provides reusable access control guards for admin, verifier, and identity roles.
 //! Supports role composition and emits access denial events for security auditing.
 //!
 //! ## Roles
 //! - **Admin**: Full administrative privileges (contract initialization, slashing, config)
 //! - **Verifier**: Can verify and validate identity claims
 //! - **Identity Owner**: Can manage their own identity and bonds
+//!
+//! ## Storage layout
+//! The admin is read from [`DataKey::Admin`], the same key [`CredenceBond::initialize`]
+//! writes. Earlier revisions of this module read a bare `Symbol("admin")` key,
+//! which nothing in `credence_bond` ever wrote, so every guard here failed with
+//! `ContractError::NotInitialized` against a correctly initialized contract. The
+//! module was unreachable dead code until it was wired into the module tree.
+//!
+//! Verifier grants are module-local and live under a
+//! `(Symbol("verifier"), Address)` tuple key in instance storage. They are not
+//! part of [`DataKey`], so verifier grants do not survive a protocol migration
+//! that re-keys the contract, and the grant set is unbounded within the
+//! instance-storage entry.
+//!
+//! ## Authentication vs. authorization
+//! Every `require_*` guard in this module performs **both** checks: it
+//! authenticates the address via `Address::require_auth` and then authorizes it
+//! against storage. `require_admin` has always done this; `require_verifier`,
+//! `require_identity_owner`, and `require_admin_or_verifier` previously only
+//! authorized, which meant a contract that forwarded a caller-supplied address
+//! into them (exactly what the doc examples did) would accept an unverified
+//! claim. Signatures do not change, but these three now require a signature.
+//!
+//! ## `access_denied` events are not observable on chain
+//!
+//! Every failure path here publishes `access_denied` and then panics. A failing
+//! Soroban transaction reverts the entire frame, so the event it just published
+//! is discarded along with the state change that triggered it. Off-chain
+//! alerting on `access_denied` will therefore **not** fire for any of these
+//! guards: the only durable signal is the transaction failure and its error
+//! code. The events are still published, because the payload (caller, role,
+//! numeric reason) is the right shape for a future non-reverting audit path,
+//! and `access_control_boundaries` asserts the payload so it stays correct if
+//! that path is ever added.
+//!
+//! Note that the in-memory test host behaves differently from the ledger here:
+//! under `catch_unwind` the frame is not reverted and the event stays visible.
+//! Tests can therefore assert the payload, but they cannot assert the on-chain
+//! rollback, and this module does not claim the event is useful for monitoring
+//! today.
 //!
 //! ## Usage
 //! ```ignore
@@ -18,17 +58,23 @@
 //! }
 //! ```
 
-use credence_errors::{require_role, ContractError, Role};
+use crate::DataKey;
+use credence_errors::{ContractError, Role};
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 
 /// Storage keys for access control roles
-const ADMIN_KEY: &str = "admin";
 const VERIFIER_PREFIX: &str = "verifier";
 
 /// Event topics for access control
 const ACCESS_DENIED_EVENT: &str = "access_denied";
 
 /// Access control error types
+///
+/// Encoded into the `access_denied` event as a stable `u32` reason code.
+/// `NotInitialized` is currently unconstructed: the uninitialized path is
+/// handled by the canonical `require_admin!` guard, which does not publish
+/// `access_denied`. The variant is retained so the code-to-reason mapping stays
+/// wire-stable and so a future non-reverting audit path can use it.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccessError {
     NotAdmin,
@@ -39,13 +85,16 @@ pub enum AccessError {
 
 /// @notice Require that the caller is the contract admin.
 /// @param caller Address attempting to execute an admin-restricted path.
-/// @dev Reads the `admin` value from instance storage.
+/// @dev Reads the admin from [`DataKey::Admin`], the key `initialize` writes, and
+///      requires a signature from `caller`.
 ///
 /// # Panics
-/// Panics with "not admin" if the caller is not the admin.
+/// Panics with `ContractError::NotInitialized` when no admin is configured and
+/// `ContractError::NotAdmin` when `caller` is not the configured admin.
 ///
 /// # Events
-/// Emits `access_denied` event on failure with (caller, role, reason).
+/// None. The canonical `require_admin!` guard panics directly and does not
+/// publish `access_denied`; the other three guards in this module do.
 ///
 /// # Example
 /// ```ignore
@@ -55,19 +104,20 @@ pub enum AccessError {
 /// }
 /// ```
 pub fn require_admin(e: &Env, caller: &Address) {
-    let admin_key = Symbol::new(e, ADMIN_KEY);
-    credence_errors::require_admin!(e, caller, admin_key);
+    credence_errors::require_admin!(e, caller, DataKey::Admin);
 }
 
 /// @notice Require that the caller is a registered verifier.
 /// @param caller Address attempting to execute a verifier-restricted path.
-/// @dev Verifier roles are stored under `(verifier, address)` tuple keys.
+/// @dev Verifier roles are stored under `(verifier, address)` tuple keys. Requires
+///      a signature from `caller` in addition to the storage check.
 ///
 /// # Panics
-/// Panics with "not verifier" if the caller is not a registered verifier.
+/// Panics with `ContractError::RoleRequired` if the caller is not a registered verifier.
 ///
 /// # Events
-/// Emits `access_denied` event on failure with (caller, role, reason).
+/// Publishes `access_denied` before panicking; a failing transaction reverts it
+/// away. See the module-level "access_denied events are not observable on chain".
 ///
 /// # Example
 /// ```ignore
@@ -77,15 +127,12 @@ pub fn require_admin(e: &Env, caller: &Address) {
 /// }
 /// ```
 pub fn require_verifier(e: &Env, caller: &Address) {
-    let verifier_key = build_verifier_key(e, caller);
+    if !is_verifier(e, caller) {
+        emit_access_denied(e, caller, "verifier", AccessError::NotVerifier);
+        panic_with_error!(e, ContractError::RoleRequired);
+    }
 
-    let is_verifier = e
-        .storage()
-        .instance()
-        .get::<(Symbol, Address), bool>(&verifier_key)
-        .unwrap_or(false);
-
-    require_role(e, Role::User, caller, is_verifier);
+    caller.require_auth();
 }
 
 /// @notice Require that the caller is the identity owner.
@@ -97,7 +144,8 @@ pub fn require_verifier(e: &Env, caller: &Address) {
 /// Panics with "not identity owner" if the caller does not match the expected identity.
 ///
 /// # Events
-/// Emits `access_denied` event on failure with (caller, role, reason).
+/// Publishes `access_denied` before panicking; a failing transaction reverts it
+/// away. See the module-level "access_denied events are not observable on chain".
 ///
 /// # Example
 /// ```ignore
@@ -111,6 +159,8 @@ pub fn require_identity_owner(e: &Env, caller: &Address, expected_identity: &Add
         emit_access_denied(e, caller, "identity_owner", AccessError::NotIdentityOwner);
         panic!("not identity owner");
     }
+
+    caller.require_auth();
 }
 
 /// @notice Require that the caller is either admin OR verifier (role composition).
@@ -118,10 +168,11 @@ pub fn require_identity_owner(e: &Env, caller: &Address, expected_identity: &Add
 /// @dev This allows shared workflows for admin and verifier roles.
 ///
 /// # Panics
-/// Panics with "not authorized" if the caller is neither admin nor verifier.
+/// Panics with `ContractError::NotAdmin` if the caller is neither admin nor verifier.
 ///
 /// # Events
-/// Emits `access_denied` event on failure.
+/// Publishes `access_denied` before panicking; a failing transaction reverts it
+/// away. See the module-level "access_denied events are not observable on chain".
 ///
 /// # Example
 /// ```ignore
@@ -131,36 +182,33 @@ pub fn require_identity_owner(e: &Env, caller: &Address, expected_identity: &Add
 /// }
 /// ```
 pub fn require_admin_or_verifier(e: &Env, caller: &Address) {
-    let admin_key = Symbol::new(e, ADMIN_KEY);
-    let is_admin = e
-        .storage()
-        .instance()
-        .get::<Symbol, Address>(&admin_key)
-        .map(|admin| caller == &admin)
-        .unwrap_or(false);
-
-    if is_admin {
+    if is_admin(e, caller) == Role::Admin {
+        caller.require_auth();
         return;
     }
 
-    let verifier_key = build_verifier_key(e, caller);
-    let is_verifier = e
-        .storage()
-        .instance()
-        .get::<(Symbol, Address), bool>(&verifier_key)
-        .unwrap_or(false);
-
-    if !is_verifier {
-        panic_with_error!(e, ContractError::NotAdmin);
+    if is_verifier(e, caller) {
+        caller.require_auth();
+        return;
     }
+
+    emit_access_denied(e, caller, "admin_or_verifier", AccessError::NotAdmin);
+    panic_with_error!(e, ContractError::NotAdmin);
 }
 
 /// @notice Add a verifier (admin only).
 /// @param admin Address expected to match the configured admin.
 /// @param verifier Address to grant verifier role.
 ///
+/// # Idempotency
+/// Granting a role that is already held succeeds and republishes
+/// `verifier_added`. Storage is idempotent; the event stream is not, so an
+/// indexer must treat repeated `verifier_added` for the same address as a
+/// no-op rather than a second grant.
+///
 /// # Panics
-/// Panics if the caller is not admin.
+/// Panics with `ContractError::NotInitialized` / `ContractError::NotAdmin` when
+/// `admin` is not the configured admin.
 ///
 /// # Example
 /// ```ignore
@@ -182,8 +230,15 @@ pub fn add_verifier_role(e: &Env, admin: &Address, verifier: &Address) {
 /// @param admin Address expected to match the configured admin.
 /// @param verifier Address to revoke verifier role.
 ///
+/// # Idempotency
+/// Revoking a role that is not held succeeds and publishes `verifier_removed`
+/// anyway; there is no existence check. Storage already holds `false`, so the
+/// call is a no-op, but an indexer cannot distinguish "revoked a live grant"
+/// from "revoked a role that was never granted".
+///
 /// # Panics
-/// Panics if the caller is not admin.
+/// Panics with `ContractError::NotInitialized` / `ContractError::NotAdmin` when
+/// `admin` is not the configured admin.
 ///
 /// # Example
 /// ```ignore
@@ -220,10 +275,9 @@ pub fn is_verifier(e: &Env, address: &Address) -> bool {
 /// # Returns
 /// `Role::Admin` if the address is the admin, `Role::User` otherwise.
 pub fn is_admin(e: &Env, address: &Address) -> Role {
-    let admin_key = Symbol::new(e, ADMIN_KEY);
     e.storage()
         .instance()
-        .get::<Symbol, Address>(&admin_key)
+        .get::<DataKey, Address>(&DataKey::Admin)
         .map(|admin| {
             if address == &admin {
                 Role::Admin
@@ -235,15 +289,17 @@ pub fn is_admin(e: &Env, address: &Address) -> Role {
 }
 
 /// @notice Get the current admin address.
-/// @dev Panics if admin has not been initialized.
+/// @dev Reads [`DataKey::Admin`], the key `initialize` writes.
+///
+/// # Panics
+/// Panics with "not initialized" if no admin has been configured.
 ///
 /// # Returns
-/// The admin address if set, or panics if not initialized.
+/// The admin address.
 pub fn get_admin(e: &Env) -> Address {
-    let admin_key = Symbol::new(e, ADMIN_KEY);
     e.storage()
         .instance()
-        .get(&admin_key)
+        .get(&DataKey::Admin)
         .unwrap_or_else(|| panic!("not initialized"))
 }
 
