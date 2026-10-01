@@ -1,13 +1,12 @@
-/// Boundary and edge-case tests for event emissions.
-///
-/// This module validates that events handle:
-/// - Numeric boundary conditions (zero, max values, overflow protection)
-/// - Invalid/malformed inputs
-/// - Empty and null values
-/// - Large collections in event data
-///
-/// Intent: Ensure events are deterministic and safe under adverse input conditions.
-
+//! Boundary and edge-case tests for event emissions.
+//!
+//! This module validates that events handle:
+//! - Numeric boundary conditions (zero, max values, overflow protection)
+//! - Invalid/malformed inputs
+//! - Empty and null values
+//! - Large collections in event data
+//!
+//! Intent: Ensure events are deterministic and safe under adverse input conditions.
 #![cfg(test)]
 
 use crate::events;
