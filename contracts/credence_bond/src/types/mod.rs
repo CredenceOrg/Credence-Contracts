@@ -6,7 +6,7 @@ pubmod attestation;
 
 pubseattestation::{
     Attestation, AttestationDedupKey, DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT,
-m};
+};
 
 ///## Boundary and recovery test coverage
 
@@ -32,7 +32,7 @@ m};
 /// change to the boundary contract is caught at the same layer that defines
 /// the public surface.
 
-#`[cfg(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -132,11 +132,7 @@ mod tests {
     #[test]
     fn module_reexports_canonical_symbols() {
         // This function only compiles if the re-exports above remain in place.
-        fn _assert_reexports<T: Clone + Debug>(att: T) {
-            let _ = att.clone();
-            let _ = format!("{:?}", att);
-        }
-        _assert_reexports<u64>(MAX_ATTESTATION_WEIGHT);
-        _assert_reexports<u64>(DEFAULT_ATTESTATION_WEIGHT);
+        let _: u64 = MAX_ATTESTATION_WEIGHT;
+        let _: u64 = DEFAULT_ATTESTATION_WEIGHT;
     }
 }

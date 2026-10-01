@@ -204,11 +204,12 @@ mod tests {
     #[test]
     fn test_is_used_initially_false() {
         let e = Env::default();
-        in_contract(&e, || {
-            let actor = Address::generate(&e);
-            let operation = Symbol::new(&e, "test_op");
-            let salt = Bytes::from_slice(&e, b"test_salt");
+        let contract_id = e.register(crate::CredenceBond, ());
+        let actor = Address::generate(&e);
+        let operation = Symbol::new(&e, "test_op");
+        let salt = Bytes::from_slice(&e, b"test_salt");
 
+        e.as_contract(&contract_id, || {
             assert!(!is_used(&e, &actor, &operation, &salt));
         });
     }
@@ -216,16 +217,17 @@ mod tests {
     #[test]
     fn test_check_and_record_prevents_duplicate() {
         let e = Env::default();
-        in_contract(&e, || {
-            let actor = Address::generate(&e);
-            let operation = Symbol::new(&e, "test_op");
-            let salt = Bytes::from_slice(&e, b"test_salt");
+        let contract_id = e.register(crate::CredenceBond, ());
+        let actor = Address::generate(&e);
+        let operation = Symbol::new(&e, "test_op");
+        let salt = Bytes::from_slice(&e, b"test_salt");
+        let salt2 = Bytes::from_slice(&e, b"other_salt");
 
+        e.as_contract(&contract_id, || {
             // First call should succeed
             check_and_record(&e, &actor, &operation, &salt);
 
             // Second call with a different salt should also succeed
-            let salt2 = Bytes::from_slice(&e, b"other_salt");
             check_and_record(&e, &actor, &operation, &salt2);
             assert!(is_used(&e, &actor, &operation, &salt));
             assert!(is_used(&e, &actor, &operation, &salt2));
@@ -236,10 +238,12 @@ mod tests {
     #[should_panic(expected = "Error(Contract, #")]
     fn test_check_and_record_panics_on_duplicate() {
         let e = Env::default();
-        in_contract(&e, || {
-            let actor = Address::generate(&e);
-            let operation = Symbol::new(&e, "test_op");
-            let salt = Bytes::from_slice(&e, b"test_salt");
+        let contract_id = e.register(crate::CredenceBond, ());
+        let actor = Address::generate(&e);
+        let operation = Symbol::new(&e, "test_op");
+        let salt = Bytes::from_slice(&e, b"test_salt");
+
+        e.as_contract(&contract_id, || {
             check_and_record(&e, &actor, &operation, &salt);
             check_and_record(&e, &actor, &operation, &salt);
         });
@@ -248,12 +252,13 @@ mod tests {
     #[test]
     fn test_different_keys_dont_conflict() {
         let e = Env::default();
-        in_contract(&e, || {
-            let actor = Address::generate(&e);
-            let operation = Symbol::new(&e, "test_op");
-            let salt1 = Bytes::from_slice(&e, b"salt1");
-            let salt2 = Bytes::from_slice(&e, b"salt2");
+        let contract_id = e.register(crate::CredenceBond, ());
+        let actor = Address::generate(&e);
+        let operation = Symbol::new(&e, "test_op");
+        let salt1 = Bytes::from_slice(&e, b"salt1");
+        let salt2 = Bytes::from_slice(&e, b"salt2");
 
+        e.as_contract(&contract_id, || {
             // Both should succeed
             check_and_record(&e, &actor, &operation, &salt1);
             check_and_record(&e, &actor, &operation, &salt2);

@@ -1,5 +1,6 @@
-#no_std
-cdenny(clippy::float_arithmetic)
+#![no_std]
+#![deny(clippy::float_arithmetic)]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 #[allow(
     deprecated,
     unused_imports,
@@ -13,14 +14,13 @@ cdenny(clippy::float_arithmetic)
     clippy::nursery,
     clippy::cargo,
     clippy::restriction
-)
-]
+)]
 // Must come AFTER `#[allow(clippy::restriction, ...)]` above: the
 // `clippy::disallowed_macros` lint belongs to the `restriction` group, so
 // a later allow would re-silence it. cargo build --release / WASM build
 // is the only mode where this deny fires (tests
 // stay free to use format!/write! for diagnostics).
-#[!cfg_attr(not(test), deny(clippy::disallowed_macros))]
+
 
 use credence_errors::ContractError;
 use ethnoum::U256;
@@ -32,8 +32,9 @@ pub mod time;
 pub mod timestamp;
 
 pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
-pub use time:{
-SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
+pub use time::{
+    
+    SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };
 pub use timestamp::Timestamp;
 
@@ -43,29 +44,61 @@ pub const BPS_DENOMINATOR: i128 = 10_000;
 /// Fixed-point denominator for percentage calculations.
 pub const PERCENT_DENOMINATOR: i128 = 100;
 
+/// Multiply a value by basis points and divide by BPS_DENOMINATOR.
+/// Returns `(value * bps) / BPS_DENOMINATOR`.
+/// The operation names are for panic messages only (kept for backward compatibility).
+#[inline]
+pub fn bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str) -> i128 {
+    (value as i128).saturating_mul(bps as i128) / BPS_DENOMINATOR
+}
+
+/// Convert basis points to a u64 numerator.
+#[inline]
+pub fn bps_u64(bps: u32) -> u64 {
+    bps as u64
+}
+
+/// Saturating multiply by basis points: `(value * bps) / BPS_DENOMINATOR`.
+/// Saturates on overflow instead of panicking.
+#[inline]
+pub fn sat_mul_bps(value: i128, bps: u32) -> i128 {
+    let num = value.saturating_mul(bps as i128);
+    num.saturating_div(BPS_DENOMINATOR)
+}
+
+/// Split a value into fee and net portions based on basis points.
+/// Returns (fee, net) where fee = (value * bps) / BPS_DENOMINATOR and net = value - fee.
+/// The operation names (mul_op, div_op, sub_op) are for panic messages only.
+#[inline]
+pub fn split_bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str, _sub_op: &str) -> (i128, i128) {
+    let fee = (value as i128).saturating_mul(bps as i128) / BPS_DENOMINATOR;
+    let net = value.saturating_sub(fee);
+    (fee, net)
+}
+
 /// Rounding behavior for [`mul_div_i128`] and [`sat_mul_div_i128`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero.
     Down,
-    /// Round away from zero when the division leaves any remainder.
+    /// Round away from zero when the division leaves a remainder.
     Up,
     /// Round to the nearest integer, with exact half-way cases rounded away from zero.
     Nearest,
 }
 
-/// Checked `u64` multiplication with a stable panic message.
+/// Fixed-point multiplication with widening intermediate.
 #[inline]
 #[must_use]
-pub fn mul_u64(a: u64, b: u64, msg: &static str) -> u64 {
-    a.checked_mul(b).unwrap_or_else(|| panic("{msg}"))
+pub fn mul_u64(a: u64, b: u64, message: &str) -> u64 {
+    a.checked_mul(b).expect(message)
 }
 
 /// Floor a Unix timestamp (seconds since epoch) to the start of its UTC day.
 ///
 /// Equivalent to `ts / SECS_PER_DAY * SECS_PER_DAY`, where
-/// `SECS_PER_DAY = 86_400`.  The result is the Unix timestamp of the most
-/// recent midnight (00:00:00 UTC) that is â‰¤ ts`.
+/// `SECS_PER_DAY = 86_400`. The result is the Unix timestamp of the most
+/// recent midnight (00:00:00 UTC) that is `<= ts`.
 ///
 /// # Properties
 ///
@@ -77,267 +110,147 @@ pub fn mul_u64(a: u64, b: u64, msg: &static str) -> u64 {
 /// # Examples
 ///
 /// ```
-ËËÈ\ÙHÜ™Y[˜ÙWÛX]Ž™›ÛÜ—Ý×Ù^NÂ‹ËËÂ‹ËËÈËÈ\ØÚ™\›È\È[™XYHHZYšYÚ›Ý[™\žK‚‹ËËÈ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^J
-K
-NÂ‹ËËÂ‹ËËÈËÈZYY^NˆŒLKLHLŽŒŒUÈ8¡¤ˆŒLKLHŒŒUÂ‹ËËÈ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^JWÍÌÌ×ÌŒ
-È×ÌŒ
-KWÍÌÌ×ÌŒ
-NÂ‹ËËÂ‹ËËÈËÈ\ÝÙXÛÛ™ÙˆH^H›ÛÜœÈ˜XÚÈÈHØ[YHZYšYÚ‚‹ËËÈ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^J—ÌÎNJK
-NÂ‹ËËÈˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆ›ÛÜ—Ý×Ù^JÎˆM
-HOˆMÂˆ
-ÈÈÑPÓÓ‘×ÔT—ÑVJH
-ˆÑPÓÓ‘×ÔT—ÑVBŸB‚‹ËËÈÚXÚÙYLLŽY][ÛˆÚ]HÝX›H[šXÈY\ÜØYÙK‚ˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆYÚLLŽ
-NˆLLŽŽˆLLŽ\ÙÎˆ	œÝ]XÈÝŠHOˆLLŽÂˆK˜ÚXÚÙYØY
-ŠK[Ü˜\ÛÜ—Ù[ÙJ[šXÊžÛ\ÙßHŠJBŸB‚‹ËËÈÚXÚÙYLLŽÝX˜XÝ[ÛˆÚ]HÝX›H[šXÈY\ÜØYÙK‚ˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆÝX—ÚLLŽ
-NˆLLŽŽˆLLŽ\ÙÎˆ	œÝ]XÈÝŠHOˆLLŽÂˆK˜ÚXÚÙYÜÝXŠŠK[Ü˜\ÛÜ—Ù[ÙJ[šXÈJžÛ\ÙßHŠJBŸB‚‹ËËÈÚXÚÙYLLŽ][\XØ][ÛˆÚ]HÝX›H[šXÈY\ÜØYÙK‚ˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆ][ÚLLŽ
-NˆLLŽŽˆLLŽ\ÙÎˆ	œÝ]XÈÝŠHOˆLLŽÂˆK˜ÚXÚÙYÛ][
-ŠK[Ü˜\ÛÜ—Ù[ÙJ[šXÊžÛ\ÙßHŠJBŸB‚‹ËËÈÚXÚÙYLLŽ]š\Ú[ÛˆÚ]HÝX›H[šXÈY\ÜØYÙK‚ˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆ]—ÚLLŽ
-NˆLLŽŽˆLLŽ\ÙÎˆ	œÝ]XÈÝŠHOˆLLŽÂˆK˜ÚXÚÙYÙ]ŠŠK[Ü˜\ÛÜ—Ù[ÙJ[šXÈJžÛ\ÙßHŠJBŸB‚‹ËËÈÚXÚÙYLLŽÙZ[[™È]š\Ú[ÛˆÚ]HÝX›H[šXÈY\ÜØYÙK‚‹ËËÈÛÛ\]\ÈÙZ[
-HÈŠH›ÜˆˆˆHH‚‹ËËÂ‹ËËÈÈ[šXÜÂ‹ËËÈ[šXÜÈÚ]\ÙØÛˆˆOH
-šXHH[›™\ˆÚXÚÙYØY
-ˆHJXÂ‹ËËÈÚXÚÙYÙ]˜
-Kˆ™Y™\ˆØÙZ[Ù]—ØÚXÚÙYÚLLŽHÛˆÝ]ÈÚ\™B‹ËËÈˆOH\È™XXÚX›HÛÈØ[\œÈ™XÙZ]™HH\Y‹ËËÈØÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ØH[œÝXYÙˆHÝš[™È[šXË‚ˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆÙZ[Ù]—ÚLLŽ
-NˆLLŽŽˆLLŽ\ÙÎˆ	œÝ]XÈÝŠHOˆLLŽÂˆK˜ÚXÚÙYØY
-ˆHJK™^XÝ
-\ÙÊK˜ÚXÚÙYÙ]ŠŠK™^XÝ
-\ÙÊBŸB‚‹ËËÈÚXÚÙYLLŽ]š\Ú[Ûˆ™]\›š[™ÈH\Y\œ›Üˆ[œÝXYÙˆ[šXÚÚ[™Ë‚‹ËËÂ‹ËËÈ™]\›œÈØÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ØHÚ[ˆˆOH[™‹ËËÈØÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝØH›ÜˆHÚ[™ÛHÝ™\™›ÝÚ[™ÈØ\ÙB‹ËËÈLLŽŽ“RSˆÈLXˆÝ\Ú\ÙH™]\›œÈHÈ˜
-[˜Ø]YÝØ\™™\›Ë‹ËËÈX]Ú[™È\Ý[YÙ\ˆ]š\Ú[ÛŠK‚‹ËËÂ‹ËËÈ™Y™\ˆ\ÈÝ™\ˆØ]—ÚLLŽHÛˆ]ÈÚ\™HH™\›È[›ÛZ[˜]Üˆ\ÈB‹ËËÈ™XXÚX›H[[YHÝ]H
-K™ËˆH[K\Û\ÚY›Û™
-HÛÈH˜][X\ÈÂ‹ËËÈHÚ\™K\ÝX›H\š]Y]XÈ\œ›ÜˆÛÙH˜]\ˆ[ˆHœ™YKY›Ü›H[šXÈÝš[™Ë‚‹ËËÂ‹ËËÈÈ^[\\Â‹ËËÂ‹ËËÈ‹ËËÈ\ÙHÜ™Y[˜ÙWÛX]Ž™]—ØÚXÚÙYÚLLŽÂ‹ËËÈ\ÙHÜ™Y[˜ÙWÙ\œ›ÜœÎŽÛÛ˜XÝ\œ›ÜŽÂ‹ËËÂ‹ËËÈ\ÜÙ\Ù\HJ]—ØÚXÚÙYÚLLŽ
-LÊKÚÊÊJNÂ‹ËËÈ\ÜÙ\Ù\HJ]—ØÚXÚÙYÚLLŽ
-Ë
-K\œŠÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ÊJNÂ‹ËËÈˆÖÚ[›[™WBœXˆ›ˆ]—ØÚXÚÙYÚLLŽ
-NˆLLŽŽˆLLŽ
-HOˆ™\Ý[LLŽÛÛ˜XÝ\œ›ÜˆÂˆYˆˆOHÂˆ™]\›ˆ\œŠÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ÊNÂˆBˆK˜ÚXÚÙYÙ]ŠŠK›Ú×ÛÜŠÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝÊBŸB‚‹ËËÈÚXÚÙYLLŽÙZ[[™È]š\Ú[Ûˆ™]\›š[™ÈH\Y\œ›Üˆ[œÝXYÙˆ[šXÚÚ[™Ë‚‹ËËÂ‹ËËÈÛÛ\]\ÈÙZ[
-HÈŠX›ÜˆˆˆHHˆHˆOHØ\ÙH\È™Z™XÝY‹ËËÈ
-Š™Y›Ü™JŠˆHˆHXÝX˜XÝ[ÛˆÛÈH™\›È[›ÛZ[˜]ÜˆÝ\™˜XÙ\È\Â‹ËËÈØÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ØH˜]\ˆ[ˆ™Z[™ÈX\ÚÙY\È[‚‹ËËÈØÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝØHœ›ÛHHÝX˜XÝ[Û‹ˆ™]\›œÂ‹ËËÈØÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝØHYˆH[\›YYX]HH
-È
-ˆHJXÝ™\™›ÝÜË‚‹ËËÂ‹ËËÈ\È\ÈH\YÛÝ[\œ\ÈØÙZ[Ù]—ÚLLŽH\ÙYÛˆHÛ\Ú\\˜Ù[YÙB‹ËËÈÝ]ÙZ[
-Û\ÚY
-ˆLÌÈ›Û™Y
-XÚ\™H›Û™YOH\È™XXÚX›B‹ËËÈ›ÜˆH[K\Û\ÚY›Û™‚‹ËËÂ‹ËËÈÈ^[\\Â‹ËËÂ‹ËËÈ‹ËËÈ\ÙHÜ™Y[˜ÙWÛX]Ž˜ÙZ[Ù]—ØÚXÚÙYÚLLŽÂ‹ËËÈ\ÙHÜ™Y[˜ÙWÙ\œ›ÜœÎŽÛÛ˜XÝ\œ›ÜŽÂ‹ËËÂ‹ËËÈËÈ›Û™YHËÛ\ÚYHŽˆÙZ[
-ˆ
-ˆLÌÈÊHHÂ‹ËËÈ\ÜÙ\Ù\HJÙZ[Ù]—ØÚXÚÙYÚLLŽ
-ˆ
-ˆLÌÊKÚÊÊJNÂ‹ËËÈ\ÜÙ\Ù\HJÙZ[Ù]—ØÚXÚÙYÚLLŽ
-LJKÚÊŠJNÂ‹ËËÈ\ÜÙ\Ù\HJÙZ[Ù]—ØÚXÚÙYÚLLŽ
-JKÚÊ
-JNÂ‹ËËÈËÈˆOH\È™Z™XÝY™Y›Ü™HˆHXÛÈ]\È]š\Ú[ÛžV™\›Ë›ÝÝ™\™›ÝË‚‹ËËÈ\ÜÙ\Ù\HJÙZ[Ù]—ØÚXÚÙYÚLLŽ
-K
-K\œŠÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ÊJNÂ‹ËËÈˆÖÚ[›[™WBœXˆ›ˆÙZ[Ù]—ØÚXÚÙYÚLLŽ
-NˆLLŽŽˆLLŽ
-HOˆ™\Ý[LLŽÛÛ˜XÝ\œ›ÜˆÂˆYˆˆOHÂˆ™]\›ˆ\œŠÛÛ˜XÝ\œ›ÜŽŽ‘]š\Ú[ÛžV™\›ÊNÂˆBˆK˜ÚXÚÙYØY
-ˆHJBˆ›Ú×ÛÜŠÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝÊOÂˆ˜ÚXÚÙYÙ]ŠŠBˆ›Ú×ÛÜŠÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝÊBŸB‚‹ËËÈÚXÚÙYLLŽY][Ûˆ™]\›š[™ÈH\Y\œ›Üˆ[œÝXYÙˆ[šXÚÚ[™Ë‚‹ËËÂ‹ËËÈ™]\›œÈÚÊÝ[JXÛˆÝXØÙ\ÜËÜˆØÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝØHÚ[ˆB‹ËËÈY][ÛˆÛÝ[^ÙYYLLŽŽ“RSˆÈLLŽŽ“PV‚‹ËËÂ‹ËËÈ\È\ÈH\YÛÝ[\œ\ÈØYÚLLŽNÈ™Y™\ˆ]Ûˆ]ÈÚ\™B‹ËËÈÝ™\™›ÝÈ\ÈH™XXÚX›H[[YHÝ]HÛÈØ[\œÈ™XÙZ]™HHÚ\™K\ÝX›B‹ËËÈ\œ›ÜˆÛÙH˜]\ˆ[ˆHœ™YKY›Ü›H[šXÈÝš[™Ë‚‹ËËÂ‹ËËÈÈ^[\\Â‹ËËÂ‹ËËÈ‹ËËÈ\ÙHÜ™Y[˜ÙWÛX]Ž˜ÚXÚÙYØYÛÜ—Ù\œ›ÜŽÂ‹ËËÈ\ÙHÜ™Y[˜ÙWÙ\œ›ÜœÎŽÛÛ˜XÝ\œ›ÜŽÂ‹ËËÂ‹ËËÈ\ÜÙ\Ù\HJÚXÚÙYØYÛÜ—Ù\œ›ÜŠKŠKÚÊÊJNÂ‹ËËÈ\ÜÙ\Ù\HJÚXÚÙYØYÛÜ—Ù\œ›ÜŠLLŽŽ“PVJK\œŠÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝÊJNÂ‹ËËÈ\ÜÙ\Ù\HJÚXÚÙYØYÛÜ—Ù\œ›ÜŠLLŽŽ“RS‹LJK\œŠÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝÊJNÂ‹ËËÈˆÖÚ[›[™WBœXˆ›ˆÚXÚÙYØYÛÜ—Ù\œ›ÜŠNˆLLŽŽˆLLŽ
-HOˆ™\Ý[LLŽÛÛ˜XÝ\œ›ÜˆÂˆK˜ÚXÚÙYØY
-ŠK›Ú×ÛÜŠÛÛ˜XÝ\œ›ÜŽŽ“Ý™\™›ÝÊBŸB‚‹ËËÈÛÛ\]HH
-ˆˆÈ[›ÛXÝ™\ˆHM‹Xš][\›YYX]K
-Šœ[šXÚÚ[™ÊŠˆÛˆÝ™\™›ÝÂ‹ËËÈÜˆ[›ÛHOH‚‹ËËÂ‹ËËÈH[\›YYX]H›ÙXÝ\ÈÚY[™Y™Y›Ü™H]š\Ú[Û‹ÛÈ\™ÙH›ÙXÝÈ]‹ËËÈ^ÙYYLLŽØ[ˆÝ[ÝXØÙYYÚ[ˆHš[˜[›Ý[™Y™\Ý[š]È[‚‹ËËÈLLŽˆ›Ý[™[™ÎŽ‘ÝÛ˜X]Ú\È\Ý[YÙ\ˆ]š\Ú[ÛˆžH[˜Ø][™ÈÝØ\™‹ËËÈ™\›Ëˆ›Ý[™[™ÎŽ•\›Ý[™È]Ø^Hœ›ÛH™\›ÈÛˆ[žH™[XZ[™\‹‚‹ËËÈ›Ý[™[™ÎŽ“™X\™\Ý›Ý[™ÈÈH™X\™\Ý[YÙ\‹Ú][‹]Ø^HØ\Ù\Â‹ËËÈ›Ý[™Y]Ø^Hœ›ÛH™\›Ë‚‹ËËÂ‹ËËÈÈ[šXÜÂ‹ËËÂ‹ËËÈ[šXÜÈÚ]\ÙØYˆ[›ÛX\È™\›ÈÜˆYˆHš[˜[›Ý[™Y™\Ý[Ù\È›Ý‹ËËÈš][ˆLLŽ‚‹ËËÂ‹ËËÈÈ^[\\Â‹ËËÂ‹ËËÈ‹ËËÈ\ÙHÜ™Y[˜ÙWÛX]ŽžÛ][Ù]—ÚLLŽ›Ý[™[™ßNÂ‹ËËÂ‹ËËÈ\ÜÙ\Ù\HJ][Ù]—ÚLLŽ
-LLŽŽ“PVLÌLÌ›Ý[™[™ÎŽ‘ÝÛ‹›Ý™\™›ÝÈŠKLLŽŽ“PV
-NÂ‹ËËÈ\ÜÙ\Ù\HJ][Ù]—ÚLLŽ
-LË›Ý[™[™ÎŽ‘ÝÛ‹›Ý™\™›ÝÈŠKÊNÂ‹ËËÈ\ÜÙ\Ù\HJ][Ù]—ÚLLŽ
-LË›Ý[™[™ÎŽ•\›Ý™\™›ÝÈŠK
-NÂ‹ËËÈ\ÜÙ\Ù\HJ][Ù]—ÚLLŽ
-LË›Ý[™[™ÎŽ“™X\™\Ý›Ý™\™›ÝÈŠK
-NÂ‹ËËÈ\ÜÙ\Ù\HJ][Ù]—ÚLLŽ
-LLË›Ý[™[™ÎŽ•\›Ý™\™›ÝÈŠKN
-NÂ‹ËËÈˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆ][Ù]—ÚLLŽ
-NˆLLŽŽˆLLŽ[›ÛNˆLLŽ[ÙNˆ›Ý[™[™Ë\ÙÎˆ	œÝ]XÈÝŠHOˆLLŽÂˆYˆ[›ÛHOHÂˆÜ[ÛŽŽ[š]ŽŽ“›Û™K™^XÝ
-\ÙÊNÂˆB‚ˆ]™YØ]]™HH
-H
-Hˆ
-ˆ
-Hˆ
-[›ÛH
-NÂˆ][Y\˜]ÜˆHLMŽŽ›™]ÊK[œÚYÛ™YØXœÊ
-JH
-ˆLMŽŽ›™]Ê‹[œÚYÛ™YØXœÊ
-JNÂˆ]]š\ÛÜˆHLMŽŽ›™]Ê[›ÛK[œÚYÛ™YØXœÊ
-JNÂˆ]][ÝY[H[Y\˜]ÜˆÈ]š\ÛÜŽÂˆ]™[XZ[™\ˆH[Y\˜]Üˆ	H]š\ÛÜŽÂ‚ˆ]›Ý[™YHX]Ú[ÙHÂˆ›Ý[™[™ÎŽ‘ÝÛˆOˆ][ÝY[ˆ›Ý[™[™ÎŽ•\OˆÂˆYˆ™[XZ[™\ˆOHLMŽŽ–‘T“ÈÂˆ][ÝY[ˆH[ÙHÂˆ][ÝY[
-ÈLMŽŽ“Ó‘BˆBˆBˆ›Ý[™[™ÎŽ“™X\™\ÝOˆÂˆYˆ™[XZ[™\ˆ
-ˆLMŽŽ›™]ÊŠHH]š\ÛÜˆÂˆ][ÝY[
-ÈLMŽŽ“Ó‘BˆH[ÙHÂˆ][ÝY[ˆBˆBˆNÂ‚ˆ]ÜÚ]]™WÛ[Z]HLMŽŽ›™]ÊLLŽŽ“PV\ÈLLŽ
-NÂˆ]™YØ]]™WÛ[Z]HLMŽŽ›™]Ê
-LLŽŽ“PV\ÈLLŽ
-H
-ÈJNÂˆYˆ™YØ]]™HÂˆYˆ›Ý[™Yˆ™YØ]]™WÛ[Z]ÂˆÜ[ÛŽŽ[š]ŽŽ“›Û™K™^XÝ
-\ÙÊNÂˆBˆYˆ›Ý[™YOH™YØ]]™WÛ[Z]ÂˆLLŽŽ“RS‚ˆH[ÙHÂˆZLLŽŽžWÙœ›ÛJ›Ý[™Y˜\×ÝLLŽ
+/// use credence_math::floor_to_day;
+///
+/// assert_eq!(floor_to_day(0), 0);
+/// assert_eq!(floor_to_day(1_704_067_200 + 43_200), 1_704_067_200);
+/// assert_eq!(floor_to_day(86_399), 0);
+/// assert_eq!(floor_to_day(86_400), 86_400);
+/// ```
+#[inline]
+#[must_use]
+pub fn floor_to_day(ts: u64) -> u64 {
+    (ts / SECONDS_PER_DAY) * SECONDS_PER_DAY
+}
 
-JK™^XÝ
-\ÙÊBˆBˆH[ÙHÂˆYˆ›Ý[™YˆÜÚ]]™WÛ[Z]ÂˆÜ[ÛŽŽ[š]ŽŽ“›Û™K™^XÝ
-\ÙÊNÂˆBˆLLŽŽžWÙœ›ÛJ›Ý[™Y˜\×ÝLLŽ
+/// Checked `i128` addition with a stable panic message.
+#[inline]
+#[must_use]
+pub fn add_i128(a: i128, b: i128, message: &str) -> i128 {
+    a.checked_add(b).expect(message)
+}
 
-JK™^XÝ
-\ÙÊBˆBŸB‚‹ËËÈÛÛ\]HH
-ˆˆÈ[›ÛXÝ™\ˆHM‹Xš][\›YYX]HÚ]
-ŠœØ]\˜][™ÊŠ‚‹ËËÈÙ[X[XÜË‚‹ËËÂ‹ËËÈ[›ZÙHØ][Ù]—ÚLLŽH8 %ÚXÚ[šXÜÈÛˆÝ™\™›ÝÈÜˆ[›ÛHOH8 %\Â‹ËËÈ[\ˆÚ[[H
-Š˜Û[\ÊŠˆH™\Ý[ÈLLŽŽ“RSˆÈLLŽŽ“PV[™‹ËËÈ
-Šœ™]\›œÈ
-ŠˆÚ[ˆ[›ÛHOHˆ\ÙH]ÛˆVØYÙÜ™YØ][Ûˆ]È]]\Ý‹ËËÈ™]™\ˆ™]™\H˜[œØXÝ[Û‹‚‹ËËÂ‹ËËÈÈ^[\\Â‹ËËÂ‹ËËÈ‹ËËÈ\ÙHÜ™Y[˜ÙWÛX]ŽžÜØ]Û][Ù]—ÚLLŽ›Ý[™[™ßNÂ‹ËËÂ‹ËËÈËÈØ]\˜][Ûˆ]\\ˆ›Ý[™ˆ™]™\ˆ[šXÜËÛ[\ÈÈLLŽŽ“PV‚‹ËËÈ\ÜÙ\Ù\HJØ]Û][Ù]—ÚLLŽ
-LLŽŽ“PV‹K›Ý[™[™ÎŽ‘ÝÛŠKLLŽŽ“PV
-NÂ‹ËËÈËÈØ]\˜][Ûˆ]ÝÙ\ˆ›Ý[™ˆÛ[\ÈÈLLŽŽ“RS‹‚‹ËËÈ\ÜÙ\Ù\HJØ]Û][Ù]—ÚLLŽ
-LLŽŽ“RS‹‹K›Ý[™[™ÎŽ‘ÝÛŠKLLŽŽ“RSŠNÂ‹ËËÈËÈ™\›È[›ÛZ[˜]Üˆ\È™X]Y\È™\›È
-›È[šXÊK‚‹ËËÈ\ÜÙ\Ù\HJØ]Û][Ù]—ÚLLŽ
-LË›Ý[™[™ÎŽ‘ÝÛŠK
-NÂ‹ËËÈËÈ˜\ÚXÈ›Ý[™[™ÈÙ[X[XÜÎ‚‹ËËÈ\ÜÙ\Ù\HJØ]Û][Ù]—ÚLLŽ
-LË›Ý[™[™ÎŽ‘ÝÛŠKÊNÂ‹ËËÈ\ÜÙ\Ù\HJØ]Û][Ù]—ÚLLŽ
-LË›Ý[™[™ÎŽ•\
-K
-NÂ‹ËËÈˆÖÚ[›[™WBˆÖÛ]\ÝÝ\ÙWBœXˆ›ˆØ]Û][Ù]—ÚLLŽ
-NˆLLŽŽˆLLŽ[›ÛNˆLLŽ[ÙNˆ›Ý[™[™ÊHOˆLLŽÂˆYˆ[›ÛHOHÂˆ™]\›ˆÂˆB‚ˆ]™YØ]]™HH
-H
-Hˆ
-ˆ
-Hˆ
-[›ÛH
-NÂˆ][Y\˜]ÜˆHLMŽŽ›™]ÊK[œÚYÛ™YØXœÊ
-JH
-ˆLMŽŽ›™]Ê‹[œÚYÛ™YØXœÊ
-JNÂˆ]]š\ÛÜˆHLMŽŽ›™]Ê[›ÛK[œÚYÛ™YØXœÊ
-JNÂˆ]][ÝY[H[Y\˜]ÜˆÈ]š\ÛÜŽÂˆ]™[XZ[™\ˆH[Y\˜]Üˆ	H]š\ÛÜŽÂ‚ˆ]›Ý[™YHX]Ú[ÙHÂˆ›Ý[™[™ÎŽ‘ÝÛˆOˆ][ÝY[ˆ›Ý[™[™ÎŽ•\OˆÂˆYˆ™[XZ[™\ˆOHLMŽŽ–‘T“ÈÂˆ][ÝY[ˆH[ÙHÂˆ][ÝY[
-ÈLMŽŽ“Ó‘BˆBˆBˆ›Ý[™[™ÎŽ“™X\™\ÝOˆÂˆYˆ™[XZ[™\ˆ
-ˆLMŽŽ›™]ÊŠHH]š\ÛÜˆÂˆ][ÝY[
-ÈLMŽŽ“Ó‘BˆH[ÙHÂˆ][ÝY[ˆBˆBˆNÂ‚ˆ]ÜÚ]]™WÛ[Z]HLMŽŽ›™]ÊLLŽŽ“PV\ÈLLŽ
-NÂˆ]™YØ]]™WÛ[Z]HLMŽŽ›™]Ê
-LLŽŽ“PV\ÈLLŽ
-H
-ÈJNÂˆYˆ™YØ]]™HÂˆYˆ›Ý[™Yˆ™YØ]]™WÛ[Z]Âˆ™]\›ˆLLŽŽ“RSŽÂˆBˆYˆ›Ý[™YOH™YØ]]™WÛ[Z]ÂˆLLŽŽ“RS‚ˆH[ÙHÂˆJ›Ý[™Y˜\×ÝLLŽ
+/// Checked `i128` subtraction with a stable panic message.
+#[inline]
+#[must_use]
+pub fn sub_i128(a: i128, b: i128, message: &str) -> i128 {
+    a.checked_sub(b).expect(message)
+}
 
-H\ÈLLŽ
-BˆBˆH[ÙHYˆ›Ý[™YˆÜÚ]]™WÛ[Z]ÂˆLLŽŽ“PVˆH[ÙHÂˆ›Ý[™Y˜\×ÝLLŽ
+/// Checked `i128` multiplication with a stable panic message.
+#[inline]
+#[must_use]
+pub fn mul_i128(a: i128, b: i128, message: &str) -> i128 {
+    a.checked_mul(b).expect(message)
+}
 
-H\ÈLLŽˆBŸB‚ˆÖØÙ™Ê\Ý
-WB›[Ù\ÝÈÂˆ\ÙHÝ\\ŽŽŠŽÂˆ\ÙHÜ™Y[˜ÙWÙ\œ›ÜœÎŽÛÛ˜XÝ\œ›ÜŽÂ‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBˆËÈ][ÝMˆÝXØÙ\ÜË›Ý[™\žK[™Ý™\™›ÝÈ™XÛÝ™\žH
-Y\ÜØYÙHÝXš[]JK‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKB‚ˆÖÝ\ÝBˆ›ˆ][ÝMÜÝXØÙ\Ü×Ø[™ÚY[]J
-HÂˆ\ÜÙ\Ù\HJ][ÝM
-LŒË›][ŠK
-NÂˆ\ÜÙ\Ù\HJ][ÝM
-KLŒË›][ŠKLŒÊNÂˆ\ÜÙ\Ù\HJ][ÝM
-LŒËK›][ŠKLŒÊNÂˆ\ÜÙ\Ù\HJ][ÝM
-‹Ë›][ŠKŠNÂˆB‚ˆÖÝ\ÝBˆ›ˆ][ÝMÛX^Ø›Ý[™\žWÛÚÊ
-HÂˆËÈMŽ“PV
-ˆH[™H
-ˆMŽ“PV\™H^XÝH™\™\Ù[X›K‚ˆ\ÜÙ\Ù\HJ][ÝM
-MŽ“PVK›][ŠKMŽ“PV
-NÂˆ\ÜÙ\Ù\HJ][ÝM
-KMŽ“PV›][ŠKMŽ“PV
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆ][ÝMÛX^Ø›Ý[™\žWÙ^XÝÜÜ]X\™WÜ›ÛÝ
+/// Checked `i128` division with a stable panic message.
+#[inline]
+#[must_use]
+pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
+    a.checked_div(b).expect(message)
+}
 
-HÂˆËÈŽMMÌŽMWŒˆOHMŽ“PVH—ŒÌˆ
-ÈHOHMŽ“PVHŽMMÌŽMBˆËÈ
-—ŒÌˆHJWŒˆH—H—ŒÌÈ
-ÈHHMŽ“PVH—ŒÌˆ
-ÈBˆ]›ÛÝˆMHŽMMÌŽMNÂˆ]^XÝYHMŽ“PVH
-—ŒÌˆHJNÂˆ\ÜÙ\Ù\HJ][ÝM
-›ÛÝ›ÛÝ›][ŠK^XÝY
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆ][ÝMÛÝ™\™›Ý×Ü[šXÜ×ÜÝX›WÛY\ÜØYÙJ
-HÂˆËÈ›Ý[™\žH
-ÈH]\Ý[šXÈÚ]H^XÝØ[\‹\Ý\YYY\ÜØYÙK‚ˆ]™\Ý[HÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-][ÝM
-MŽ“PV‹›][ÝMÝ™\™›ÝÈŠJNÂˆ]\œˆH™\Ý[™^XÝÙ\œŠ˜›Ý[™\žJÌH]\ÝÝ™\™›ÝÈŠNÂˆ]\ÙÈH\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰ÜÝ]XÈÝŠ
-K™^XÝ
-œ[šXÈ^[ØY]\Ý™HH	‰ÜÝ]XÈÝˆŠNÂˆ\ÜÙ\Ù\HJ
-›\ÙË›][ÝMÝ™\™›ÝÈŠNÂˆB‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBˆËÈ›ÛÜ—Ý×Ù^NˆY[\Ý[˜ÙK[Û›ÝÛšXÚ]K›Ý[™\šY\Ë[™˜[™ÙK‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKB‚ˆÖÝ\ÝBˆ›ˆ›ÛÜ—Ý×Ù^WÙ\ØÚØ[™Ø›Ý[™\šY\Ê
-HÂˆ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^J
-K
-NÂˆËÈ\ÝÙXÛÛ™™Y›Ü™HH™^ZYšYÚ›ÛÜœÈÈHÝ\œ™[^K‚ˆ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^JÑPÓÓ‘×ÔT—ÑVHHJK
-NÂˆËÈ^XÝZYšYÚ›Ý[™\žHÝ^\È]‚ˆ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^JÑPÓÓ‘×ÔT—ÑVJKÑPÓÓ‘×ÔT—ÑVJNÂˆ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^JÑPÓÓ‘×ÔT—ÑVH
-ÈJKÑPÓÓ‘×ÔT—ÑVJNÂˆB‚ˆÖÝ\ÝBˆ›ˆ›ÛÜ—Ý×Ù^WÚ\×ÚY[\Ý[
+/// Checked `i128` ceiling division with a stable panic message.
+#[inline]
+#[must_use]
+pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
+    assert!(b > 0, "denominator must be positive");
+    (a + b - 1) / b
+}
 
-HÂˆ›ÜˆÈ[ˆÌMK—ÌÎNK—Í—ÍKMÌÌÌWÍÌÌ×ÌŒ
-È×ÌŒHÂˆ]Û˜ÙHH›ÛÜ—Ý×Ù^JÊNÂˆ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^JÛ˜ÙJKÛ˜ÙKšY[\Ý[˜ÙHœ›ÚÙ[ˆ›ÜˆÏ^ÝßHŠNÂˆBˆB‚ˆÖÝ\ÝBˆ›ˆ›ÛÜ—Ý×Ù^WÚ\×Û[Û›ÝÛ™WØ[™Ø[YÛ™Y
+/// Wrapping multiply-divide: `(a * b) / denom` with full i128 intermediate.
+/// Rounds according to `rounding`. Panics with `msg` on overflow.
+#[inline]
+#[must_use]
+pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
+    assert!(denom > 0, "denominator must be positive");
+    // Use u128 for intermediate to avoid i128 overflow
+    let a_abs = a.unsigned_abs();
+    let b_abs = b.unsigned_abs();
+    let denom_abs = denom.unsigned_abs();
+    
+    let num = match a_abs.checked_mul(b_abs) {
+        Some(v) => v,
+        None => panic!("{}", msg),
+    };
+    
+    let mut result = (num / denom_abs) as i128;
+    let rem = num % denom_abs;
+    
+    match rounding {
+        Rounding::Down => {}
+        Rounding::Up => {
+            if rem != 0 {
+                result = result.saturating_add(1);
+            }
+        }
+        Rounding::Nearest => {
+            let half = denom_abs / 2;
+            if rem >= half {
+                result = result.saturating_add(1);
+            }
+        }
+    }
+    
+    // Apply sign
+    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) { -1 } else { 1 };
+    result.saturating_mul(sign)
+}
 
-HÂˆ]Ø[\\ÈHÂˆMˆKˆÑPÓÓ‘×ÔT—ÑVHHKˆÑPÓÓ‘×ÔT—ÑVKˆÑPÓÓ‘×ÔT—ÑVH
-ÈKˆˆ
-ˆÑPÓÓ‘×ÔT—ÑVKˆWÍÌÌ×ÌŒˆNÂˆ›ÜˆÚ[™ÝÈ[ˆØ[\\ËÚ[™ÝÜÊŠHÂˆ]
-KŠHH
-Ú[™ÝÖÌKÚ[™ÝÖÌWJNÂˆ\ÜÙ\JHHŠNÂˆ\ÜÙ\J›ÛÜ—Ý×Ù^JJHH›ÛÜ—Ý×Ù^JŠJNÂˆBˆËÈ˜[™ÙH[˜\šX[ˆ]™\žH™\Ý[\ÈH][\HÙˆÑPÓÓ‘×ÔT—ÑVK‚ˆ›ÜˆÈ[ˆÌMK—ÌÎNK—ÍMÌÌÌWÍÌÌ×ÌŒ
-È×ÌŒHÂˆ\ÜÙ\Ù\HJ›ÛÜ—Ý×Ù^JÊH	HÑPÓÓ‘×ÔT—ÑVK
-NÂˆBˆB‚ˆÖÝ\ÝBˆ›ˆ›ÛÜ—Ý×Ù^WÛX^Ý[Y\Ý[\ÙÙ\×Û›ÝÜ[šXÊ
-HÂˆËÈMŽ“PV\ÈH\™Ù\Ý[œ]ÈHÜ\˜][Ûˆ]\Ý›ÝÝ™\™›ÝË‚ˆ]™\Ý[H›ÛÜ—Ý×Ù^JMŽ“PV
-NÂˆ\ÜÙ\J™\Ý[HMŽ“PV
-NÂˆ\ÜÙ\Ù\HJ™\Ý[	HÑPÓÓ‘×ÔT—ÑVK
-NÂˆB‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBˆËÈYÚLLŽÈÝX—ÚLLŽÈ][ÚLLŽÈ]—ÚLLŽˆ›Ý[™\žH
-ÈÝ™\™›ÝÈ™XÛÝ™\žK‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKB‚ˆÖÝ\ÝBˆ›ˆYÚLLŽØ›Ý[™\žWÛÚÊ
-HÂˆ\ÜÙ\Ù\HJYÚLLŽ
-˜YŠK
-NÂˆ\ÜÙ\Ù\HJYÚLLŽ
-LLŽŽ“PV˜YŠKLLŽŽ“PV
-NÂˆ\ÜÙ\Ù\HJYÚLLŽ
-LLŽŽ“RS‹˜YŠKLLŽŽ“RSŠNÂˆ\ÜÙ\Ù\HJYÚLLŽ
-LLŽŽ“PVHKK˜YŠKLLŽŽ“PV
-NÂˆ\ÜÙ\Ù\HJYÚLLŽ
-LLŽŽ“RSˆ
-ÈKLK˜YŠKLLŽŽ“RSŠNÂˆB‚ˆÖÝ\ÝBˆ›ˆYÚLLŽÛÝ™\™›Ý×Ü[šXÜ×ÜÝX›WÛY\ÜØYÙJ
-HÂˆ]YÚHÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-YÚLLŽ
-LLŽŽ“PVK˜YÛÝ™\™›ÝÈŠJNÂˆ]YÚÙ\œˆHYÚ™^XÝÙ\œŠ“PV
-ÌH]\ÝÝ™\™›ÝÈŠNÂˆ\ÜÙ\Ù\HJˆ
-šYÚÙ\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰œÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆ˜YÛÝ™\™›ÝÈ‚ˆ
-NÂ‚ˆ]ÝÈHÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-YÚLLŽ
-LLŽŽ“RS‹LK˜YÛÝ™\™›ÝÈŠJNÂˆ]Ý×Ù\œˆHÝË™^XÝÙ\œŠ“RS‹LH]\ÝÝ™\™›ÝÈŠNÂˆ\ÜÙ\Ù\HJˆ
-›Ý×Ù\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰ÜÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆ˜YÛÝ™\™›ÝÈ‚ˆ
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆÝX—ÚLLŽØ›Ý[™\žWÛÚÊ
-HÂˆ\ÜÙ\Ù\HJÝX—ÚLLŽ
-œÝXˆŠK
-NÂˆ\ÜÙ\Ù\HJÝX—ÚLLŽ
-LLŽŽ“PVœÝXˆŠKLLŽŽ“PV
-NÂˆ\ÜÙ\Ù\HJÝX—ÚLLŽ
-LLŽŽ“RS‹œÝXˆŠKLLŽŽ“RSŠNÂˆ\ÜÙ\Ù\HJÝX—ÚLLŽ
-LLŽŽ“PVLLŽŽ“PVœÝXˆŠK
-NÂˆ\ÜÙ\Ù\HJÝX—ÚLLŽ
-LLŽŽ“RS‹LLŽŽ“RS‹œÝXˆŠK
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆÝX—ÚLLŽÛÝ™\™›Ý×Ü[šXÜ×ÜÝX›WÛY\ÜØYÙJ
-HÂˆ]YÚHÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-ÝX—ÚLLŽ
-LLŽŽ“PVLKœÝX—ÛÝ™\™›ÝÈŠJNÂˆ]YÚÙ\œˆHYÚ™^XÝÙ\œŠ“PVJLJH]\ÝÝ™\™›ÝÈŠNÂˆ\ÜÙ\Ù\HJˆ
-šYÚÙ\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰œÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆœÝX—ÛÝ™\™›ÝÈ‚ˆ
-NÂ‚ˆ]ÝÈHÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-ÝX—ÚLLŽ
-LLŽŽ“RS‹KœÝX—ÛÝ™\™›ÝÈŠJNÂˆ]Ý×Ù\œˆHÝË™^XÝÙ\œŠ“RS‹LH]\ÝÝ™\™›ÝÈŠNÂˆ\ÜÙ\Ù\HJˆ
-›Ý×Ù\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰œÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆœÝX—ÛÝ™\™›ÝÈ‚ˆ
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆ][ÚLLŽØ›Ý[™\žWÛÚÊ
-HÂˆ\ÜÙ\Ù\HJ][ÚLLŽ
-LLŽŽ“PV›][ŠK
-NÂˆ\ÜÙ\Ù\HJ][ÚLLŽ
-KLLŽŽ“PV›][ŠKLLŽŽ“PV
-NÂˆ\ÜÙ\Ù\HJ][ÚLLŽ
-LKLLŽŽ“PV›][ŠKJLŽŽ“PV
-JNÂˆ\ÜÙ\Ù\HJ][ÚLLŽ
-LLŽŽ“RS‹K›][ŠKLLŽŽ“RSŠNÂˆB‚ˆÖÝ\ÝBˆ›ˆ][ÚLLŽÛÝ™\™›Ý×Ü[šXÜ×ÜÝX›WÛY\ÜØYÙJ
-HÂˆ]™\Ý[HÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-][ÚLLŽ
-LLŽŽ“PV‹›][ÛÝ™\™›ÝÈŠJNÂˆ]\œˆH™\Ý[™^XÝÙ\œŠ“PV
-Œˆ]\ÝÝ™\™›ÝÈŠNÂˆ\ÜÙ\Ù\HJˆ
-™\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰ÜÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆ›][ÛÝ™\™›ÝÈ‚ˆ
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆ]—ÚLLŽØ›Ý[™\žWÛÚÊ
-HÂˆ\ÜÙ\Ù\HJ]—ÚLLŽ
-LË™]ˆŠKÊNÂˆ\ÜÙ\Ù\HJ]—ÚLLŽ
-LLË™]ˆŠKLÊNÂˆ\ÜÙ\Ù\HJ]—ÚLLŽ
-LLŽŽ“PVK™]ˆŠKLLŽŽ“PV
-NÂˆ\ÜÙ\Ù\HJ]—ÚLLŽ
-LLŽŽ“RS‹K™]ˆŠKLLŽŽ“RSŠNÂˆB‚ˆÖÝ\ÝBˆ›ˆ]—ÚLLŽÞ™\›×Ù[›ÛWÜ[šXÜ×ÜÝX›WÛY\ÜØYÙJ
-HÂˆ]™\Ý[HÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-]—ÚLLŽ
-K™]—ØžWÞ™\›ÈŠJNÂˆ]\œˆH™\Ý[™^XÝÙ\œŠ™]š\Ú[ÛˆžH™\›È]\Ý[šXÈŠNÂˆ\ÜÙ\Ù\HJˆ
-™\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰ÜÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆ™]—ØžWÞ™\›È‚ˆ
-NÂˆB‚ˆÖÝ\ÝBˆ›ˆ]—ÚLLŽÛZ[—ØžWÛ™YÌWÜ[šXÜ×ÜÝX›WÛY\ÜØYÙJ
-HÂˆËÈLLŽŽ“RSˆÈLH\ÈHÚ[™ÛHÝ™\™›ÝÚ[™È]š\Ú[ÛˆØ\ÙK‚ˆ]™\Ý[HÝŽœ[šXÎŽ˜Ø]ÚÝ[Ú[™
-]—ÚLLŽ
-LLŽŽ“RS‹LK™]—ÛÝ™\™›ÝÈŠJNÂˆ]\œˆH™\Ý[™^XÝÙ\œŠ“RS‹ËLH]\ÝÝ™\™›ÝÈŠNÂˆ\ÜÙ\Ù\HJˆ
-™\œ‹™ÝÛ˜Ø\ÝÜ™YŽŽ	‰ÜÝ]XÈÝŠ
-K™^XÝ
-œÝˆ^[ØYŠKˆ™]—ÛÝ™\™›ÝÈ‚ˆ
-NÂˆB‚ˆËÈKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKK
+/// Saturating multiply-divide: `(a * b) / denom` with saturation on overflow.
+/// Rounds according to `rounding`. Returns clamped value on overflow.
+#[inline]
+#[must_use]
+pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i128 {
+    assert!(denom > 0, "denominator must be positive");
+    // Use i128 checked operations with manual overflow handling
+    let a_abs = a.unsigned_abs();
+    let b_abs = b.unsigned_abs();
+    let denom_abs = denom.unsigned_abs();
+    
+    // Compute (a * b) / denom using u256 intermediate via u128::checked_mul
+    let num = match a_abs.checked_mul(b_abs) {
+        Some(v) => v,
+        None => return if (a < 0) ^ (b < 0) { i128::MIN } else { i128::MAX },
+    };
+    
+    let mut result = (num / denom_abs) as i128;
+    let rem = num % denom_abs;
+    let mut result = result as i128;
+    
+    match rounding {
+        Rounding::Down => {}
+        Rounding::Up => {
+            if rem != 0 {
+                result = result.saturating_add(1);
+            }
+        }
+        Rounding::Nearest => {
+            let half = denom_abs / 2;
+            if rem >= half {
+                result = result.saturating_add(1);
+            }
+        }
+    }
+    
+    // Apply sign
+    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) { -1 } else { 1 };
+    result.saturating_mul(sign)
+}
+
+/// Fixed-point multiplication with checked overflow.
+#[inline]
+#[must_use]
+pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
+    let num = a.checked_mul(b).ok_or(ContractError::Overflow)?;
+    num.checked_div(WAD).ok_or(ContractError::Overflow)
+}
+
+/// Fixed-point division with checked overflow.
+#[inline]
+#[must_use]
+pub fn checked_div_wad(a: i128, b: i128) -> Result<i128, ContractError> {
+    let num = a.checked_mul(WAD).ok_or(ContractError::Overflow)?;
+    num.checked_div(b).ok_or(ContractError::Overflow)
+}

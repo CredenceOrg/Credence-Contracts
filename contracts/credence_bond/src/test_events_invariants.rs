@@ -1,13 +1,14 @@
+//! Invariant and correctness tests for event emissions.
+//!
+//! This module validates that events maintain critical invariants:
+//! - Emitted values match expected calculations (e.g., end_timestamp = start + duration)
+//! - Event data consistency (e.g., new_total >= added_amount)
+//! - Schema invariants (topic/data counts stay constant)
+//! - Type safety (values fit in declared types)
+//!
+//! Intent: Ensure events are semantically correct and indexer-safe.
 #![cfg(test)]
-/// Invariant and correctness tests for event emissions.
-///
-/// This module validates that events maintain critical invariants:
-/// - Emitted values match expected calculations (e.g., end_timestamp = start + duration)
-/// - Event data consistency (e.g., new_total >= added_amount)
-/// - Schema invariants (topic/data counts stay constant)
-/// - Type safety (values fit in declared types)
-///
-/// Intent: Ensure events are semantically correct and indexer-safe.
+
 use crate::events;
 use soroban_sdk::{
     testutils::{Address as _, Events},

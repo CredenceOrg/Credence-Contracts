@@ -560,6 +560,50 @@ impl AdminContract {
             return admin_info;
         }
 
+        // ── MinAdmins floor (#1418) ───────────────────────────────────
+        // Demoting a SuperAdmin to a lower role is functionally equivalent
+        // to removing a SuperAdmin from the effective set. The same floor
+        // enforced by `remove_admin` (`role_admins.len() <= min_admins`)
+        // and `suspend_admin` must therefore apply here: otherwise the
+        // contract can be driven below `MinAdmins` effective SuperAdmins
+        // by demotion alone, stranding `transfer_ownership` /
+        // `accept_ownership`, which require an effective SuperAdmin.
+        //
+        // Rejection uses `InvalidPauseAction` to match `suspend_admin`'s
+        // existing MinAdmins-floor failure, so callers observe one error
+        // variant for "would drop below the admin floor" regardless of
+        // which entrypoint triggered it.
+        if old_role == AdminRole::SuperAdmin && new_role != AdminRole::SuperAdmin {
+            let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
+            let now = e.ledger().timestamp();
+            let all_admins: Vec<Address> = e
+                .storage()
+                .instance()
+                .get(&DataKey::AdminList)
+                .unwrap_or(Vec::new(&e));
+            let mut effective_super_admins: u32 = 0;
+            for addr in all_admins.iter() {
+                if addr == admin_address {
+                    continue; // the target is being demoted; exclude them
+                }
+                if let Some(info) = e
+                    .storage()
+                    .instance()
+                    .get::<_, AdminInfo>(&DataKey::AdminInfo(addr))
+                {
+                    if info.active
+                        && now >= info.suspended_until
+                        && info.role == AdminRole::SuperAdmin
+                    {
+                        effective_super_admins += 1;
+                    }
+                }
+            }
+            if effective_super_admins < min_admins {
+                panic_with_error!(&e, ContractError::InvalidPauseAction);
+            }
+        }
+
         bump_config_epoch(&e);
 
         // Remove from old role list
@@ -1895,6 +1939,9 @@ mod test_zero_address_simple;
 
 #[cfg(test)]
 mod test_immutable_config_simple;
+
+#[cfg(test)]
+mod test_immutable_config;
 
 #[cfg(test)]
 mod test_authorization;

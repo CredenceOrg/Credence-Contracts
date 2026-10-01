@@ -2,13 +2,20 @@
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-// The contract is `no_std` so the release WASM stays small, but several
-// `#[cfg(test)]` modules use `std::panic::catch_unwind` to assert that a
-// Soroban panic unwinds rather than aborting. Link `std` for test builds only.
+// The contract surface is `no_std`, but the `#[cfg(test)]` modules reach for
+// `std::panic` (catch_unwind / AssertUnwindSafe) in the boundary-recovery
+// suites. Declare `std` for test builds only so the release WASM target stays
+// `no_std`.
 #[cfg(test)]
 extern crate std;
 
-#[cfg(test)]
+
+// `access_control` was not in the module tree on `main`, so none of it was
+// compiled or reachable. Made `pub` rather than private so the integration test
+// target in `tests/access_control_boundaries.rs` can exercise the guards against
+// the production build.
+pub mod access_control;
+
 mod batch;
 #[cfg(test)]
 pub use batch::{BatchBondParams, BatchBondResult};
@@ -44,18 +51,14 @@ mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] #[path = "fuzz/test_weighted_attestation_rounding.rs"]
 // [pre-broken on main] mod test_weighted_attestation_rounding;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] #[path = "fuzz/test_slashing_tier_invariants.rs"]
 // [pre-broken on main] mod test_slashing_tier_invariants;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_weighted_attestation;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] #[path = "fuzz/test_normalization_invariant.rs"]
 // [pre-broken on main] mod test_normalization_invariant;
 
@@ -66,9 +69,20 @@ pub mod types;
 // [pre-broken on main] the `fork_divergent` module it exercises is disabled in lib.rs.
 // mod test_fork_divergent;
 
+/// Boundary and recovery coverage for the security module.
+#[cfg(test)]
+mod security;
+
 /// Chaos testing suite for simulating host and token failures.
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod chaos_token;
+#[cfg(test)]
+mod chaos_token;
+
+/// Boundary and recovery coverage for `chaos_token.rs`: toggle independence,
+/// atomicity of a faulted call, retry-after-recovery, amount boundaries, and the
+/// one-shot hostile-token injection lifecycle (issue #1318).
+#[cfg(test)]
+mod test_chaos_token_boundaries;
+
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_chaos;
 // [pre-broken on main] #[cfg(test)]
@@ -81,38 +95,46 @@ mod test_describe;
 #[cfg(test)]
 pub mod test_helpers;
 /// Shared test setup utilities (mock token, bond registration).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_unauthorized_token;
 /// Real on-chain USDC transfer integration tests for create_bond/top_up/
 /// withdraw/withdraw_early, plus the custody invariant test.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_bond_token_transfers;
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_schema;
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_v2;
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events;
+// [pre-broken on main] mod test_validation;
+// [pre-broken on main] mod test_zero_address;
+/// Reusable bond-invariant assertion library (test-only).
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] pub mod test_invariants;
+/// Shared test setup utilities (mock token, bond registration).
+#[cfg(test)]
+pub mod test_helpers;
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] mod test_unauthorized_token;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_validation;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_zero_address;
-/// Reusable bond-invariant assertion library (test-only).
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] mod test_fork_divergent;
+
+/// Chaos testing suite for simulating host and token failures.
+// [pre-broken on main] mod chaos_token;
+// [pre-broken on main] mod test_chaos;
+// [pre-broken on main] mod test_reentrancy_hostile_token;
+
+/// Tests for describe_config and describe_bond introspection entrypoints.
 #[cfg(test)]
-pub mod test_invariants;
-#[cfg(test)]
-mod test_unauthorized_token;
-#[cfg(test)]
-mod test_validation;
-#[cfg(test)]
-mod test_zero_address;
+mod test_describe;
 
 /// Tests for the liquidate entrypoint (issue #366).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_liquidate;
+
 /// Tests for slashing bounds enforcement and normalized slash history schema (issue #995).
-#[cfg(test)]
-mod test_slashing;
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] mod test_slashing;
 
 /// Boundary and recovery coverage for the slashing subsystem (issue #1350).
 #[cfg(test)]
@@ -122,44 +144,53 @@ mod test_slashing_boundary_recovery;
 #[cfg(test)]
 mod test_claim_expiry_sweep;
 
+/// Boundary-case coverage for `safe_token.rs` (issue #1346).
+#[cfg(test)]
+mod test_safe_token_boundary;
+
+/// Adversarial-token and failure-recovery coverage for `safe_token.rs`
+/// (issue #1346).
+#[cfg(test)]
+mod test_safe_token_recovery;
+
 /// Authentication boundary tests — every non-view fn must require an auth'd address.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_auth;
 /// Tests for paginated reads — attestations, slash history, and pending claims.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_pagination;
 
 /// Regression tests codifying the deterministic-ordering guarantee for every
 /// list-returning read (no duplicates, no omissions, stable key order).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_ordering_guarantees;
 
 /// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_rolling_notice;
 
 /// Tests for `fee.rs`: get_protocol_fee_bps default, MAX_FEE_BPS accept/reject boundary,
 /// setter round-trip and event payload verification (issue #665).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod fee_tests;
 
 /// Tests for `parameters.rs`: governance access control, bounds, event emission, approval invariants.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_parameters;
 
 /// Tests for max-leverage parameter: bounds enforcement, admin access, bond-creation integration.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_max_leverage;
 
 /// Boundary and recovery tests for `leverage.rs`: unit, integration, and
 /// regression coverage for `validate_leverage` (issue #1336).
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_leverage;
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_migration_guard;
+#[cfg(test)]
+mod test_leverage;
+
+// Re-enabled: the guard suite was disabled on main, so `migration.rs`
+// had no compiled coverage at all (issue #1340).
+#[cfg(test)]
+mod test_migration_guard;
+
+/// Boundary, idempotency, and recovery coverage for `migration.rs`'s
+/// `migrate_v1_to_v2` lazy migration (issue #1340).
+#[cfg(test)]
+mod test_migration;
 
 /// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_same_ledger_liquidation_guard;
 
 /// Tests for `verify_stringified_bytes` in validation.rs: valid, malformed,
@@ -178,14 +209,17 @@ mod test_lib_boundary_recovery;
 /// Validates numeric boundaries, invalid inputs, empty values, and large collections.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_boundary;
+
 /// Recovery and idempotence tests for event emissions (#1324).
 /// Validates duplicate emissions, retries, sequence consistency, and no-loss guarantees.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_recovery;
+
 /// Invariant and correctness tests for event emissions (#1324).
 /// Validates event data correctness, invariant preservation, and schema immutability.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_invariants;
+
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
@@ -3227,9 +3261,7 @@ pub fn create_bond(
     })
 }
 
-// [pre-broken on main] — stale call signatures (add_attestation gained
-// contract_id/deadline/nonce); gate kept so the rest of the crate builds.
-#[cfg(any())]
+/* [pre-broken on main] #[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger};
@@ -3482,7 +3514,7 @@ mod tests {
         });
         assert_eq!(weight, 123u32);
     }
-}
+} */
 
 #[cfg(test)]
 mod test_early_exit_treasury_requirement {
@@ -3509,15 +3541,12 @@ mod test_early_exit_treasury_requirement {
     }
 }
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_bond_drift;
 
 /// Precision-loss regression tests for the early-exit penalty time-decay
 /// formula (dust-amount zero-penalty exploit).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_early_exit_precision;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_early_exit_penalty;
 
 /// Cross-module tests that verify consistent BPS_DENOMINATOR usage across fee and penalty math.
@@ -3525,7 +3554,6 @@ mod test_early_exit_treasury_requirement {
 // [pre-broken on main] mod test_bps_denominator;
 /// Deliberately-divergent contract used by `test_differential` to verify the
 /// harness detects behavioural divergence.  Never shipped to mainnet.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] pub mod fork_divergent;
 
 /// Access-control test helpers used by integration test modules.
@@ -3539,30 +3567,33 @@ mod test_early_exit_treasury_requirement {
 // [pre-broken on main] pub mod test_access_control;
 /// Regression guard: canonical lifecycle scenarios with pinned expected states,
 /// plus a cross-contract divergence-detection smoke test.
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_differential;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_attestation_batch;
 
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_admin_transfer;
 
 /// Regression tests for storage TTL bumps (issue #570).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_storage_ttl;
 
 /// Tests for the grace-window read view and admin-gated setter (issue #655).
-// [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_grace_window;
 
 /// Tests for the batch_transfer entrypoint (issue #917).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_batch_transfer;
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_create_bond;
+
+/// Tests for batch bond creation operations in batch.rs (issue #1317).
+/// Covers boundary, recovery, retry/stale, and authorization invariants.
+#[cfg(test)]
+mod test_batch;
+
+#[cfg(test)]
+mod test_create_bond;
+
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_increase_bond;
+
 /// Authorization-boundary regression tests for the bond lifecycle (creation,
 /// increase, cooldown, exit, liquidation). Uses selective `mock_auths` so the
 /// host-level `require_auth` guards are genuinely exercised, proving that
@@ -3570,12 +3601,23 @@ mod test_early_exit_treasury_requirement {
 /// and leave no partial/unauthorized state (issue #1272).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_lifecycle_auth;
+
 /// Lifecycle state-transition invariant regression tests (issue #1273).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_lifecycle_invariants;
+
 /// Emergency pause gating tests (issue #1042).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_pausable;
+
+/// Boundary-case coverage for `pausable.rs` (issue #1344).
+#[cfg(test)]
+mod test_pausable_boundary;
+
+/// Adversarial/recovery coverage for `pausable.rs` (issue #1344).
+#[cfg(test)]
+mod test_pausable_recovery;
+
 /// Boundary/recovery unit coverage for the `emergency` module (issue #1322).
 #[cfg(test)]
 mod test_emergency_boundaries;

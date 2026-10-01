@@ -1,13 +1,14 @@
+//! Boundary and edge-case tests for event emissions.
+//!
+//! This module validates that events handle:
+//! - Numeric boundary conditions (zero, max values, overflow protection)
+//! - Invalid/malformed inputs
+//! - Empty and null values
+//! - Large collections in event data
+//!
+//! Intent: Ensure events are deterministic and safe under adverse input conditions.
 #![cfg(test)]
-/// Boundary and edge-case tests for event emissions.
-///
-/// This module validates that events handle:
-/// - Numeric boundary conditions (zero, max values, overflow protection)
-/// - Invalid/malformed inputs
-/// - Empty and null values
-/// - Large collections in event data
-///
-/// Intent: Ensure events are deterministic and safe under adverse input conditions.
+
 use crate::events;
 use soroban_sdk::{
     testutils::{Address as _, Events},

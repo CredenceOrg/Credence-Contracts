@@ -1,13 +1,14 @@
+//! Recovery and idempotence tests for event emissions.
+//!
+//! This module validates that events handle:
+//! - Duplicate emissions (same event emitted multiple times)
+//! - Retry scenarios (repeated calls with same parameters)
+//! - Event stream consistency (no silent losses)
+//! - State coherence after partial failures
+//!
+//! Intent: Ensure that event patterns are safe for indexer replay and recovery.
 #![cfg(test)]
-/// Recovery and idempotence tests for event emissions.
-///
-/// This module validates that events handle:
-/// - Duplicate emissions (same event emitted multiple times)
-/// - Retry scenarios (repeated calls with same parameters)
-/// - Event stream consistency (no silent losses)
-/// - State coherence after partial failures
-///
-/// Intent: Ensure that event patterns are safe for indexer replay and recovery.
+
 use crate::events;
 use soroban_sdk::{
     testutils::{Address as _, Events},

@@ -1,4 +1,4 @@
-//! Regression tests enforcing that every `credence_errors::ContractError`
+﻿//! Regression tests enforcing that every `credence_errors::ContractError`
 //! variant maps to a unique `#[repr(u32)]` discriminant.
 //!
 //! Wire-stability is documented in [`docs/error-codes-wire.md`] and the
@@ -58,7 +58,7 @@ fn every_contract_error_variant_has_a_unique_u32_discriminant() {
 fn variant_names_are_unique_in_the_coverage_list() {
     // Sad-path regression for the case where two PRs add near-identical names
     // and the contributor accidentally lists the same name twice in
-    // `variant_table.rs` — masking a real bug behind a single passed row.
+    // `variant_table.rs` - masking a real bug behind a single passed row.
     let mut seen: std::vec::Vec<&'static str> = std::vec::Vec::with_capacity(ALL_VARIANTS.len());
     for (name, _) in ALL_VARIANTS {
         assert!(
@@ -75,7 +75,7 @@ fn variant_names_are_unique_in_the_coverage_list() {
 fn discriminant_codes_fit_their_documented_category_range() {
     // Belt-and-suspenders guard: `every_contract_error_variant_has_a...`
     // catches same-code collisions; this test catches *cross-category*
-    // leakage — e.g. someone adding an Authorization variant that
+    // leakage - e.g. someone adding an Authorization variant that
     // accidentally lands in the Bond range.
     //
     // NOTE: payload-mismatch variants (DomainMismatch/OwnerMismatch/
@@ -126,8 +126,8 @@ fn discriminant_collision_panic_message_mentions_diagnostic() {
     // Explicit sad-path test: an artificial collision must surface the same
     // diagnostic string that the production code path emits, so engineers
     // searching CI logs can find the cause without reading test outputs.
-    // We construct the collision INLINE — independent of any particular state
-    // of `lib.rs` — so this test stays useful before and after collision fixes.
+    // We construct the collision INLINE - independent of any particular state
+    // of `lib.rs` - so this test stays useful before and after collision fixes.
     let synthetic: std::vec::Vec<(&'static str, u32)> =
         std::vec![("SyntheticA", 999_001_u32), ("SyntheticB", 999_001_u32)];
     let mut seen: std::vec::Vec<u32> = std::vec::Vec::with_capacity(synthetic.len());

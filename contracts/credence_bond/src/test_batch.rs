@@ -74,7 +74,10 @@ fn test_create_single_bond_in_batch() {
     let bond = result.bonds.get(0).unwrap();
     assert_eq!(bond.identity, identity);
     assert_eq!(bond.bonded_amount, 1000);
-    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
+    assert_eq!(
+        bond.bond_duration,
+        credence_math::Timestamp::SECONDS_PER_DAY
+    );
     assert!(bond.active);
     assert!(!bond.is_rolling);
 }
@@ -421,7 +424,7 @@ fn test_duplicate_bond_in_batch_fails() {
     client.create_bond_with_rolling(
         &identity,
         &1_000_000,
-        &credence_math::SECONDS_PER_DAY,
+        &credence_math::Timestamp::SECONDS_PER_DAY,
         &false,
         &0,
     );
@@ -541,7 +544,10 @@ fn test_atomic_failure_validation_order() {
 
     assert_eq!(result.created_count, 1);
     let bond = result.bonds.get(0).unwrap();
-    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
+    assert_eq!(
+        bond.bond_duration,
+        credence_math::Timestamp::SECONDS_PER_DAY
+    );
 }
 
 #[test]

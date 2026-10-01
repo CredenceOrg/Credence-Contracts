@@ -10,13 +10,13 @@ use soroban_sdk:{contracttype, panic_with_error, Address, Env, String, Symbol};
 
 /// Source classification for funds leaving the bond contract.
 ///
-///  Invariants:
-///  - The contract never emits a source-attributed transfer event for a
-///    zero-amount or negative-amount transfer (the underlying transfer path
-///    either panics or no-ops).
-///  - The attribution is published only after the token transfer succeeds,
-///    so a failed transfer cannot produce a misleading accounting event.
-[contracttype]
+/// Invariants:
+/// - The contract never emits a source-attributed transfer event for a
+///   zero-amount or negative-amount transfer (the underlying transfer path
+///   either panics or no-ops).
+/// - The attribution is published only after the token transfer succeeds,
+///   so a failed transfer cannot produce a misleading accounting event.
+#[contracttype]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FundSource {
     /// Protocol fees, including early-exit penalties.
@@ -72,7 +72,7 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
 ///    unsupported network cannot leave the contract in a partially-updated
 ///    state.
 ///  - If `set_token` rejects the token, the network label is not written.
-#[allow_dead_code)]
+#[allow(dead_code)]
 pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &String) {
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
@@ -213,16 +213,16 @@ pub fn transfer_from_contract_with_source(
     }
 }
 
-#[config(test)]
+#[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::* {
+    use crate::test_utils::{
         advance_ledger, assets_as, setup_contract, setup_contract_with_token,
         setup_token_with_balance, setup_token_with_balance_and_approval,
     };
     use credence_errors::ContractError;
     use soroban_sdk::token::TokenClient;
-    use soroban_sdk:{Address, Env, String, Symbol};
+    use soroban_sdk::{Address, Env, String, Symbol};
 
     // ------------------------------------------------------------------------
     // Helpers
@@ -251,7 +251,7 @@ mod tests {
     fn test_get_token_before_config_panics() {
         let (e, _admin, _contract_id) = setup();
         assert(!has_token(&e));
-        let result = e.try_catch(()}, |_| get_token(&e));
+        let result = e.try_catch(|| get_token(&e));
         assert!(result.is_err());
     }
 
@@ -265,7 +265,7 @@ mod tests {
         add_accepted_token(&e, &admin, &good_token);
 
         // Set a valid token first.
-        e.as-contract().mock_all(
+        e.as_contract().mock_all(
             &contract_id,
             &Symbol::news(&e, "set_token"),
             &(admin.clone(), good_token.clone()),
@@ -273,7 +273,7 @@ mod tests {
         assert_eq!(get_token(&e), good_token);
 
         // Attempt to set an unaccepted token.
-        let result = e.try_catch(()}, |_| {
+        let result = e.try_catch(|| {
             e.as_contract().mock_all(
                 &contract_id,
                 &Symbol::new(&e, "set_token"),
