@@ -133,6 +133,12 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     let bond_start = e.ledger().timestamp();
     let mut bonds: Vec<IdentityBond> = Vec::new(e);
 
+    // Read the tier thresholds once for the whole batch. `TierThresholds` is
+    // configuration, not per-item state, so every element in this batch
+    // classifies against the same value; reading it inside the loop would
+    // repeat the same storage read and deserialization N times.
+    let tier_thresholds = tiered_bond::get_tier_thresholds(e);
+
     // Step 2: Check for existing bonds (before creating any)
     for i in 0..params_list.len() {
         let params = params_list.get(i).unwrap();
@@ -163,7 +169,7 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
         e.storage().instance().set(&bond_key, &bond);
 
         // Emit tier change event for this bond
-        let tier = tiered_bond::get_tier_for_amount(e, params.amount);
+        let tier = tiered_bond::tier_for_amount_with_thresholds(params.amount, &tier_thresholds);
         tiered_bond::emit_tier_change_if_needed(e, &params.identity, BondTier::Bronze, tier);
 
         bonds.push_back(bond);

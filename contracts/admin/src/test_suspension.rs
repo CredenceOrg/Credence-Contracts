@@ -380,4 +380,40 @@ mod suspension_tests {
             );
         });
     }
+
+    #[test]
+    fn test_adversarial_regression_and_retry_scenarios() {
+        let env = Env::default();
+        let (contract, super_admin) = setup(&env);
+        let target = Address::generate(&env);
+
+        env.as_contract(&contract, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                AdminRole::Admin,
+            );
+        });
+        
+        let now = env.ledger().timestamp();
+        env.as_contract(&contract, || {
+            AdminContract::suspend_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                now + 100,
+            );
+        });
+
+        // Retry suspension
+        env.as_contract(&contract, || {
+            AdminContract::suspend_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                now + 200,
+            );
+        });
+    }
 }
