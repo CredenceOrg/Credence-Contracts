@@ -61,7 +61,7 @@ pub fn try_load_bond(env: &Env, contract: &Address) -> Option<IdentityBond> {
     env.as_contract(contract, || {
         env.storage()
             .instance()
-            .get::<_, IdentityBond>(&DataKey::Bond)
+            .get::<_, IdentityBond>(&DataKey::Bond(contract.clone()))
     })
 }
 

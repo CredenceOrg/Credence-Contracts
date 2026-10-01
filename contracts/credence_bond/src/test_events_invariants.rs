@@ -1,13 +1,12 @@
-/// Invariant and correctness tests for event emissions.
-///
-/// This module validates that events maintain critical invariants:
-/// - Emitted values match expected calculations (e.g., end_timestamp = start + duration)
-/// - Event data consistency (e.g., new_total >= added_amount)
-/// - Schema invariants (topic/data counts stay constant)
-/// - Type safety (values fit in declared types)
-///
-/// Intent: Ensure events are semantically correct and indexer-safe.
-
+//! Invariant and correctness tests for event emissions.
+//!
+//! This module validates that events maintain critical invariants:
+//! - Emitted values match expected calculations (e.g., end_timestamp = start + duration)
+//! - Event data consistency (e.g., new_total >= added_amount)
+//! - Schema invariants (topic/data counts stay constant)
+//! - Type safety (values fit in declared types)
+//!
+//! Intent: Ensure events are semantically correct and indexer-safe.
 #![cfg(test)]
 
 use crate::events;
@@ -93,7 +92,7 @@ mod bond_lifecycle_invariants {
     }
 
     #[test]
-    fn bond_increased_v2_new_total_>=_added_invariant() {
+    fn bond_increased_v2_new_total_ge_added_invariant() {
         let e = Env::default();
         let addr = TestAddress::generate(&e);
         let added = 500i128;

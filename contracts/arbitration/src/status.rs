@@ -64,6 +64,9 @@ pub enum ArbitrationError {
     /// Dispute is still active (Open, Voting, or Resolving).
     /// Used to block operations that require the dispute to be inactive or resolved.
     DisputeActive = 17,
+    /// A creator already has an unresolved dispute tracked as active.
+    /// This is raised when stale/duplicate active markers are still present.
+    OngoingDispute = 18,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -137,13 +140,21 @@ pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), Arbitratio
         DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving => {
             Err(ArbitrationError::DisputeActive)
         }
+        // `Archived` is not a ruling: the dispute was filed away by an admin and
+        // can be reopened, so consumers must not read it as resolved. This is
+        // deliberately stricter than `require_dispute_inactive`, which lets
+        // archived disputes through for lease work.
+        DisputeStatus::Archived => Err(ArbitrationError::DisputeActive),
     }
 }
 
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
     use super::*;
+    use std::vec;
+    use std::vec::Vec;
 
     // ============================================================================
     // Tests for: require_transition

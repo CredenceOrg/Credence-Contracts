@@ -54,6 +54,9 @@ mod test_access_control;
 #[cfg(test)]
 mod test_uniqueness;
 
+#[cfg(test)]
+mod test_boundary_recovery;
+
 #[contract]
 pub struct CredenceRegistry;
 

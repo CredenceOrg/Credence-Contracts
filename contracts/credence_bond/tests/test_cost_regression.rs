@@ -87,7 +87,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         let client = CredenceBondClient::new(&env, &env.register(credence_bond::CredenceBond, ()));
         let identity = Address::generate(&env);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
-        client.top_up(&(bond_amount / 2));
+        client.top_up(&identity, &(bond_amount / 2));
         out.insert("top_up".into(), measure(&env));
     }
 
@@ -99,7 +99,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         env.ledger().set_timestamp(0);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         env.ledger().set_timestamp(2_000);
-        client.withdraw(&(bond_amount / 10));
+        client.withdraw(&identity, &(bond_amount / 10));
         out.insert("withdraw".into(), measure(&env));
     }
 
@@ -115,7 +115,7 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         env.ledger().set_timestamp(0);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
         env.ledger().set_timestamp(100);
-        client.withdraw_early(&(bond_amount / 10));
+        client.withdraw_early(&identity, &(bond_amount / 10));
         out.insert("withdraw_early".into(), measure(&env));
     }
 
@@ -127,7 +127,8 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         let identity = Address::generate(&env);
         client.initialize(&admin, &None);
         client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
-        client.slash_bond(&admin, &(bond_amount / 10));
+        let salt = soroban_sdk::Bytes::new(&env);
+        client.slash_bond(&admin, &identity, &(bond_amount / 10), &salt);
         out.insert("slash_bond".into(), measure(&env));
     }
 
@@ -152,7 +153,6 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
 fn parse_baseline(text: &str) -> BTreeMap<String, EntryCost> {
     let mut costs = BTreeMap::new();
 
-    // Simple JSON parser for the known structure
     let lines: Vec<&str> = text.lines().collect();
     let mut i = 0;
     let mut current_entrypoint: Option<String> = None;
@@ -168,7 +168,6 @@ fn parse_baseline(text: &str) -> BTreeMap<String, EntryCost> {
     while i < lines.len() {
         let line = lines[i].trim();
 
-        // Detect entrypoint name: "\"name\": {
         if line.starts_with('"') && line.contains("\": {") {
             if let Some(prev_ep) = current_entrypoint.take() {
                 costs.insert(prev_ep, current_cost);
@@ -185,7 +184,6 @@ fn parse_baseline(text: &str) -> BTreeMap<String, EntryCost> {
             current_entrypoint = Some(line[1..name_end + 1].to_string());
         }
 
-        // Parse metrics: "key": value,
         if let Some(colon_pos) = line.find(':') {
             let key = line[..colon_pos].trim().trim_matches('"');
             let val_part = line[colon_pos + 1..].trim();
@@ -209,7 +207,6 @@ fn parse_baseline(text: &str) -> BTreeMap<String, EntryCost> {
         i += 1;
     }
 
-    // Don't forget the last entrypoint
     if let Some(ep) = current_entrypoint {
         costs.insert(ep, current_cost);
     }
@@ -217,7 +214,6 @@ fn parse_baseline(text: &str) -> BTreeMap<String, EntryCost> {
     costs
 }
 
-/// A single metric that exceeded tolerance.
 #[derive(Debug)]
 struct Regression {
     entrypoint: String,
@@ -227,7 +223,6 @@ struct Regression {
     pct: f64,
 }
 
-/// Compare current measurements against baseline and flag regressions.
 fn detect_regressions(
     baseline: &BTreeMap<String, EntryCost>,
     current: &BTreeMap<String, EntryCost>,
@@ -277,20 +272,14 @@ fn detect_regressions(
 
 #[test]
 fn test_storage_cost_no_regression() {
-    // Load baseline from the committed JSON file
     let baseline_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("cost_baseline.json");
     let baseline_text = std::fs::read_to_string(&baseline_path).expect(
         "cost_baseline.json not found; run `cargo run -p credence_bond --features gas-bench --bin update-cost-baseline`",
     );
     let baseline = parse_baseline(&baseline_text);
-
-    // Measure current costs
     let current = measure_all();
-
-    // Detect regressions
     let regressions = detect_regressions(&baseline, &current);
 
-    // Print summary table for visibility
     println!(
         "\n{:<16} {:>12} {:>12} {:>10} {:>10}",
         "entrypoint", "read_e", "write_e", "read_b", "write_b"
@@ -304,7 +293,6 @@ fn test_storage_cost_no_regression() {
         }
     }
 
-    // Assert no regressions
     if !regressions.is_empty() {
         let mut msg = format!(
             "\n❌ Storage cost regression(s) exceeded {}% tolerance:\n",
