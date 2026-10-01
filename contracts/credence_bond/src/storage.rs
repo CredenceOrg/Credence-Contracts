@@ -44,9 +44,7 @@ pub fn set_lock(e: &Env, value: bool) {
 }
 
 pub fn get_admin(e: &Env) -> Option<Address> {
-    e.storage()
-        .instance()
-        .get(&crate::DataKey::Admin)
+    e.storage().instance().get(&crate::DataKey::Admin)
 }
 
 #[cfg(test)]

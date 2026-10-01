@@ -19,6 +19,9 @@
 //! (loading/write readiness, permission, stale, retry, and recovery states)
 //! rather than unit-testing a single helper in isolation.
 
+#[cfg(test)]
+extern crate std;
+
 pub mod consts;
 pub mod governable;
 

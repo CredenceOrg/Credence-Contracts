@@ -511,3 +511,88 @@ fn pause_signer_count_invariant_holds_across_edits() {
     client.set_pause_signer(&super_admin, &s3, &true);
     assert_pause_signer_invariant(&e, &client, &all, 1);
 }
+
+// ---------------------------------------------------------------------------
+// set_pause_threshold — dedicated failure-boundary coverage
+// ---------------------------------------------------------------------------
+
+/// Only a SuperAdmin may call `set_pause_threshold`. Lesser roles and
+/// non-admins are rejected with `NotAdmin`; the threshold and epoch are
+/// unchanged after each rejected attempt.
+#[test]
+fn set_pause_threshold_requires_super_admin() {
+    let (e, client, super_admin) = setup();
+    let s1 = Address::generate(&e);
+    client.set_pause_signer(&super_admin, &s1, &true);
+
+    let operator = Address::generate(&e);
+    client.add_admin(&super_admin, &operator, &AdminRole::Operator);
+    let mid = Address::generate(&e);
+    client.add_admin(&super_admin, &mid, &AdminRole::Admin);
+    let stranger = Address::generate(&e);
+
+    let epoch_before = client.get_config_epoch();
+
+    for caller in [&operator, &mid, &stranger] {
+        let err = client
+            .try_set_pause_threshold(caller, &1u32)
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, soroban_sdk::Error::from_contract_error(ERR_NOT_ADMIN));
+    }
+
+    // Threshold remains at its initial value (0); epoch is untouched.
+    assert_eq!(client.get_config_epoch(), epoch_before);
+}
+
+/// When there are no registered signers any threshold > 0 is rejected as
+/// `ThresholdExceedsSigners`. Threshold 0 is always valid regardless of signer
+/// count and does not advance the epoch when it is already 0.
+#[test]
+fn set_pause_threshold_zero_signers() {
+    let (e, client, super_admin) = setup();
+
+    let epoch_before = client.get_config_epoch();
+    let events_before = e.events().all().len();
+
+    // Any positive threshold is invalid with 0 signers.
+    let err = client
+        .try_set_pause_threshold(&super_admin, &1u32)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ERR_THRESHOLD_EXCEEDS_SIGNERS)
+    );
+    assert_eq!(client.get_config_epoch(), epoch_before);
+    assert_eq!(e.events().all().len(), events_before);
+
+    // Threshold 0 when it is already 0 is an idempotent no-op.
+    client.set_pause_threshold(&super_admin, &0u32);
+    assert_eq!(client.get_config_epoch(), epoch_before);
+    assert_eq!(e.events().all().len(), events_before);
+}
+
+/// `set_pause_threshold` emits `pause_threshold_set` exactly once per real
+/// change and never on a no-op re-set, matching the epoch-bump contract.
+#[test]
+fn set_pause_threshold_emits_event_on_change_only() {
+    let (e, client, super_admin) = setup();
+    let s1 = Address::generate(&e);
+    client.set_pause_signer(&super_admin, &s1, &true);
+
+    let events_before = e.events().all().len();
+    let epoch_before = client.get_config_epoch();
+
+    // Real change: 0 → 1. One event, one epoch bump.
+    client.set_pause_threshold(&super_admin, &1u32);
+    assert_eq!(client.get_config_epoch(), epoch_before + 1);
+    assert_eq!(e.events().all().len(), events_before + 1);
+
+    // No-op re-set: 1 → 1. No event, no epoch bump.
+    let epoch_after = client.get_config_epoch();
+    let events_after = e.events().all().len();
+    client.set_pause_threshold(&super_admin, &1u32);
+    assert_eq!(client.get_config_epoch(), epoch_after);
+    assert_eq!(e.events().all().len(), events_after);
+}
