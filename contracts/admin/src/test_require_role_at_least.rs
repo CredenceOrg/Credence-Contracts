@@ -445,3 +445,140 @@ fn require_role_at_least_respects_suspended_until_zero() {
         AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
     }));
 }
+
+// ---------------------------------------------------------------------------
+// Adversarial Boundaries: Suspension, Zero Address, and Raw vs Effective lookups
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_suspended_admin_cannot_add_admin() {
+    let (env, contract, super_admin) = setup_env();
+    let admin = user(&env);
+    let target = user(&env);
+    as_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
+
+    let until_ts = env.ledger().timestamp() + 3600;
+    env.mock_all_auths();
+    env.as_contract(&contract, || {
+        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
+    });
+
+    env.mock_all_auths();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        env.as_contract(&contract, || {
+            AdminContract::add_admin(
+                env.clone(),
+                admin.clone(),
+                target.clone(),
+                AdminRole::Operator,
+            );
+        });
+    }));
+    assert!(
+        result.is_err(),
+        "suspended admin must not be allowed to use entrypoints guarded by require_role_at_least"
+    );
+}
+
+#[test]
+fn test_raw_get_admin_role_bypasses_suspension_and_deactivation() {
+    let (env, contract, super_admin) = setup_env();
+    let admin = user(&env);
+    as_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
+
+    // 1. Deactivated
+    env.mock_all_auths();
+    env.as_contract(&contract, || {
+        AdminContract::deactivate_admin(env.clone(), super_admin.clone(), admin.clone());
+    });
+
+    // has_role_at_least returns false
+    assert!(!env.as_contract(&contract, || {
+        AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
+    }));
+
+    // get_admin_role still returns Admin
+    let raw_role = env.as_contract(&contract, || {
+        AdminContract::get_admin_role(env.clone(), admin.clone())
+    });
+    assert_eq!(raw_role, AdminRole::Admin);
+
+    // Reactivate for suspension test
+    env.mock_all_auths();
+    env.as_contract(&contract, || {
+        AdminContract::reactivate_admin(env.clone(), super_admin.clone(), admin.clone());
+    });
+
+    // 2. Suspended
+    let until_ts = env.ledger().timestamp() + 3600;
+    env.mock_all_auths();
+    env.as_contract(&contract, || {
+        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
+    });
+
+    // has_role_at_least returns false
+    assert!(!env.as_contract(&contract, || {
+        AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
+    }));
+
+    // get_admin_role still returns Admin
+    let raw_role_susp = env.as_contract(&contract, || {
+        AdminContract::get_admin_role(env.clone(), admin.clone())
+    });
+    assert_eq!(raw_role_susp, AdminRole::Admin);
+}
+
+#[test]
+fn test_has_role_at_least_zero_address_and_self_address() {
+    let (env, contract, _) = setup_env();
+
+    let zero_addr = Address::from_string(&soroban_sdk::String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+    let self_addr = contract.clone();
+
+    // has_role_at_least safely returns false without panicking
+    assert!(!env.as_contract(&contract, || {
+        AdminContract::has_role_at_least(env.clone(), zero_addr.clone(), AdminRole::Operator)
+    }));
+    assert!(!env.as_contract(&contract, || {
+        AdminContract::has_role_at_least(env.clone(), self_addr.clone(), AdminRole::Operator)
+    }));
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #5)")]
+fn test_get_admin_role_zero_address_panics() {
+    let (env, contract, _) = setup_env();
+    let zero_addr = Address::from_string(&soroban_sdk::String::from_str(
+        &env,
+        "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+    ));
+    // get_admin_role for unknown/invalid address strictly panics
+    env.as_contract(&contract, || {
+        AdminContract::get_admin_role(env.clone(), zero_addr)
+    });
+}
+
+#[test]
+fn test_get_admin_info_raw_boundaries() {
+    let (env, contract, super_admin) = setup_env();
+    let admin = user(&env);
+    as_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
+
+    let until_ts = env.ledger().timestamp() + 86400;
+    env.mock_all_auths();
+    env.as_contract(&contract, || {
+        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
+    });
+
+    // get_admin_info returns exact raw struct regardless of effective suspension
+    let info = env.as_contract(&contract, || {
+        AdminContract::get_admin_info(env.clone(), admin.clone())
+    });
+
+    assert_eq!(info.role, AdminRole::Admin);
+    assert_eq!(info.active, true);
+    assert_eq!(info.suspended_until, until_ts);
+}
