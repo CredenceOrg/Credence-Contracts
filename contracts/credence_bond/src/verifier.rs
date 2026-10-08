@@ -354,7 +354,12 @@ pub fn record_attestation_revoked(e: &Env, verifier: &Address, weight: u32) {
         .attestations_revoked
         .checked_add(1)
         .expect("attestation count overflow");
-    info.reputation = info.reputation.checked_sub(w).expect("reputation overflow");
+    // Ensure reputation does not go negative when penalty exceeds current score
+    info.reputation = if w > info.reputation {
+        0
+    } else {
+        info.reputation.checked_sub(w).expect("reputation underflow")
+    };
     put_verifier_info(e, verifier, &info);
 
     emit_reputation_event(e, verifier, -w, &info, Symbol::new(e, "revocation"));

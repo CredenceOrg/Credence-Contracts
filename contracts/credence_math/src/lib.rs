@@ -137,6 +137,14 @@ pub fn sub_i128(a: i128, b: i128, message: &str) -> i128 {
     a.checked_sub(b).expect(message)
 }
 
+#[inline]
+#[must_use]
+pub fn sub_non_negative_i128(a: i128, b: i128, message: &str) -> i128 {
+    let res = a.checked_sub(b).expect(message);
+    assert!(res >= 0, "{}", message);
+    res
+}
+
 /// Checked `i128` multiplication with a stable panic message.
 #[inline]
 #[must_use]
