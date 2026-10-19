@@ -1928,7 +1928,7 @@ impl AdminContract {
                     (Symbol::new(&e, "pause_proposal_validation_failed"),),
                     (proposal_id, error_code),
                 );
-                panic_with_error!(&e, ContractError::InvalidPauseAction);
+                Self::require_valid_proposal_id(&e, proposal_id);
             }
         }
 
@@ -1958,7 +1958,7 @@ impl AdminContract {
         
         // ── Final Success Logging ───────────────────────────────────────────────
         e.events().publish(
-            (Symbol::new(&e, "pause_proposal_execution_completed"),),
+            (Symbol::new(&e, "pause_execution_completed"),),
             (proposal_id, e.ledger().sequence()),
         );
     }

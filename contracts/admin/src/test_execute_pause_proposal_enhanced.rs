@@ -86,18 +86,18 @@ fn test_execute_pause_proposal_success_single_signer() {
     assert!(!client.is_paused());
 
     client.execute_pause_proposal(&proposal_id);
+    let events = e.events().all();
     assert!(client.is_paused());
 
     // Verify epoch advancement and event emission
     assert_eq!(client.get_config_epoch(), initial_epoch + 2); // propose + execute
-    let events = e.events().all();
     assert!(events.len() > events_before);
 
     // Verify observability events are present
     let has_execution_event = events.iter().any(|(_, topic, _)| {
         if let Some(topics) = topic.get(0) {
             Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_executed_successfully"))
+                == Ok(Symbol::new(&e, "pause_proposal_executed"))
         } else {
             false
         }
@@ -114,7 +114,9 @@ fn test_execute_unpause_proposal_success() {
     let s1 = signers.get(0).unwrap();
 
     // First pause the contract
-    client.pause(&super_admin); // Direct pause as super admin
+    client.set_pause_threshold(&super_admin, &0);
+    client.pause(&super_admin);
+    client.set_pause_threshold(&super_admin, &1);
     assert!(client.is_paused());
 
     // Create and execute unpause proposal
@@ -140,10 +142,10 @@ fn test_execute_pause_proposal_multisig_success() {
     // Execute with sufficient approvals
     let events_before = e.events().all().len();
     client.execute_pause_proposal(&proposal_id);
+    let events = e.events().all();
     assert!(client.is_paused());
 
     // Verify comprehensive observability events
-    let events = e.events().all();
     assert!(events.len() > events_before);
 }
 
@@ -182,6 +184,7 @@ fn test_execute_pause_proposal_not_found() {
     let events_before = e.events().all().len();
 
     let result = client.try_execute_pause_proposal(&12345u64);
+    assert!(e.events().all().is_empty(), "failed calls roll back events");
     assert!(result.is_err());
     let error = result.unwrap_err().unwrap();
     assert_eq!(
@@ -193,9 +196,7 @@ fn test_execute_pause_proposal_not_found() {
     assert_eq!(client.get_config_epoch(), epoch_before);
     assert!(!client.is_paused());
 
-    // Verify error context event was emitted
-    let events = e.events().all();
-    assert!(events.len() > events_before);
+
 }
 
 #[test]
@@ -209,6 +210,7 @@ fn test_execute_pause_proposal_insufficient_approvals() {
 
     let result = client.try_execute_pause_proposal(&proposal_id);
     assert!(result.is_err());
+    assert!(e.events().all().is_empty(), "failed calls roll back events");
     let error = result.unwrap_err().unwrap();
     assert_eq!(
         error,
@@ -219,19 +221,8 @@ fn test_execute_pause_proposal_insufficient_approvals() {
     assert!(!client.is_paused());
     assert_eq!(client.get_config_epoch(), epoch_before);
 
-    // Verify diagnostic events were emitted
-    let events = e.events().all();
-    let has_insufficient_event = events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_error_context"))
-        } else {
-            false
-        }
-    });
-    assert!(
-        has_insufficient_event,
-        "Should emit insufficient approvals diagnostic event"
-    );
+    // Rejected invocations commit no contract events.
+    assert!(e.events().all().is_empty());
 }
 
 #[test]
@@ -309,8 +300,11 @@ fn test_execute_pause_proposal_threshold_exceeds_signers() {
     // Create valid proposal
     let proposal_id = client.pause(&s1).unwrap();
 
-    // Remove signer, making threshold > signer count
-    client.set_pause_signer(&super_admin, &s1, &false);
+    // Public signer removal clamps the threshold. Inject corrupt storage
+    // directly to exercise the configuration-validation failure boundary.
+    e.as_contract(&client.address, || {
+        e.storage().instance().set(&DataKey::PauseThreshold, &2u32);
+    });
 
     // Execution should fail with configuration error
     let result = client.try_execute_pause_proposal(&proposal_id);
@@ -383,7 +377,9 @@ fn test_execute_pause_proposal_idempotent_state() {
     let s1 = signers.get(0).unwrap();
 
     // Pause contract directly first
-    client.pause(&super_admin); // Direct pause
+    client.set_pause_threshold(&super_admin, &0);
+    client.pause(&super_admin);
+    client.set_pause_threshold(&super_admin, &1);
     assert!(client.is_paused());
 
     // Create pause proposal while already paused
@@ -394,13 +390,13 @@ fn test_execute_pause_proposal_idempotent_state() {
 
     // Execute pause proposal on already-paused contract (idempotent)
     client.execute_pause_proposal(&proposal_id);
+    let events = e.events().all();
 
     // Should remain paused and advance epoch (cleanup)
     assert!(client.is_paused());
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
 
     // Should emit idempotent execution events
-    let events = e.events().all();
     let has_idempotent_event = events.iter().any(|(_, topic, _)| {
         if let Some(topics) = topic.get(0) {
             Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_idempotent_execution"))
@@ -473,9 +469,9 @@ fn test_execute_pause_proposal_observability_events() {
 
     // Execute proposal
     client.execute_pause_proposal(&proposal_id);
-
     let events = e.events().all();
-    let new_events = events.slice(events_start..);
+
+    let new_events = events;
 
     // Verify execution context events
     let has_execution_started = new_events.iter().any(|(_, topic, _)| {
@@ -506,7 +502,7 @@ fn test_execute_pause_proposal_observability_events() {
     let has_success_event = new_events.iter().any(|(_, topic, _)| {
         if let Some(topics) = topic.get(0) {
             Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_executed_successfully"))
+                == Ok(Symbol::new(&e, "pause_proposal_executed"))
         } else {
             false
         }
@@ -528,24 +524,11 @@ fn test_execute_pause_proposal_error_observability() {
     let result = client.try_execute_pause_proposal(&proposal_id);
     assert!(result.is_err());
 
-    let events = e.events().all();
-    let new_events = events.slice(events_before..);
-
-    // Verify error diagnostic events
-    let has_error_context = new_events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_error_context"))
-                || Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_error_context"))
-        } else {
-            false
-        }
-    });
-    assert!(has_error_context, "Should emit error diagnostic events");
+    // Contract events are rolled back on failure; the typed error remains
+    // observable to callers and preserves the retry classification.
+    assert_eq!(result.unwrap_err().unwrap(), soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS));
+    assert!(e.events().all().is_empty());
 }
-
-// ==================================================================================
-// REGRESSION SCENARIOS - Protection against previously identified issues
-// ==================================================================================
 
 #[test]
 fn test_execute_pause_proposal_cleanup_completeness() {
@@ -555,9 +538,9 @@ fn test_execute_pause_proposal_cleanup_completeness() {
     // Create and execute proposal
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
+    let events = e.events().all();
 
     // Verify cleanup events were emitted
-    let events = e.events().all();
     let has_cleanup_event = events.iter().any(|(_, topic, _)| {
         if let Some(topics) = topic.get(0) {
             Symbol::try_from_val(&e, &topics)
@@ -579,9 +562,9 @@ fn test_execute_pause_proposal_state_transition_logging() {
     // Execute pause proposal
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
+    let events = e.events().all();
 
     // Verify state transition was logged
-    let events = e.events().all();
     let has_transition_event = events.iter().any(|(_, topic, _)| {
         if let Some(topics) = topic.get(0) {
             Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_state_transition"))
@@ -602,16 +585,16 @@ fn test_execute_pause_proposal_metrics_tracking() {
     // Execute proposal
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
-
     let events = e.events().all();
-    let new_events = events.slice(events_before..);
+
+    let new_events = events;
 
     // Verify metrics events were emitted
     let has_metrics_event = new_events.iter().any(|(_, topic, _)| {
         if let Some(topics) = topic.get(0) {
             Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_execution_metrics"))
                 || Symbol::try_from_val(&e, &topics)
-                    == Ok(Symbol::new(&e, "pause_proposal_execution_completed"))
+                    == Ok(Symbol::new(&e, "pause_execution_completed"))
         } else {
             false
         }

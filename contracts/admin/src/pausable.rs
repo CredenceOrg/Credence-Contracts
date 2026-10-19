@@ -615,7 +615,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     // ── Execution Success Event ─────────────────────────────────────────────
     // Emit successful execution event for observability
     e.events().publish(
-        (Symbol::new(e, "pause_proposal_executed_successfully"),),
+        (Symbol::new(e, "pause_proposal_executed"),),
         (proposal_id, action, state_changed, execution_duration),
     );
 }
@@ -859,7 +859,7 @@ fn validate_proposal_timing(e: &Env, proposal_id: u64, action: PauseAction) {
     // For non-matching IDs, we've already validated via require_matching_admin_epoch
     // This function provides additional context for monitoring and diagnostics
     e.events().publish(
-        (Symbol::new(e, "pause_proposal_epoch_mismatch_details"),),
+        (Symbol::new(e, "pause_epoch_mismatch_details"),),
         (proposal_id, current_expected_id),
     );
 }

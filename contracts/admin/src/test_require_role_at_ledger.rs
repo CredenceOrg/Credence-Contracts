@@ -37,7 +37,7 @@ fn setup() -> (Env, Address, Address) {
     env.mock_all_auths();
     let contract_address = env.register_contract(None, AdminContract);
     let super_admin = Address::generate(&env);
-    AdminContract::initialize(env.clone(), super_admin.clone(), 1, 10);
+    env.as_contract(&contract_address, || AdminContract::initialize(env.clone(), super_admin.clone(), 1, 10));
     (env, contract_address, super_admin)
 }
 
@@ -62,26 +62,26 @@ fn set_ts(env: &Env, ts: u64) {
 /// assigned_at == at_ledger → must pass.
 #[test]
 fn role_held_at_exact_assignment_ledger_passes() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 100);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
 
     // at_ledger == assigned_at(100) → OK
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100));
 }
 
 /// Role assigned at T=50, action timestamp T=100.
 /// assigned_at < at_ledger → must pass.
 #[test]
 fn role_held_before_action_ledger_passes() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 50);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
 
     // at_ledger(100) > assigned_at(50) → OK
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100));
 }
 
 // ---------------------------------------------------------------------------
@@ -93,35 +93,35 @@ fn role_held_before_action_ledger_passes() {
 #[test]
 #[should_panic(expected = "Error(Contract, #114)")]
 fn role_not_yet_granted_at_action_ledger_rejects() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 200);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
 
     // Action claims to be from T=100, but role wasn't granted until T=200.
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100));
 }
 
 /// Actor not registered → NotAdmin (code 100).
 #[test]
 #[should_panic(expected = "Error(Contract, #100)")]
 fn unknown_actor_rejects_with_not_admin() {
-    let (env, _cid, _super_admin) = setup();
+    let (env, contract_address, _super_admin) = setup();
     let stranger = Address::generate(&env);
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, stranger, 0);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, stranger, 0));
 }
 
 /// Actor has Operator role, check requires Admin → NotAdmin (code 100).
 #[test]
 #[should_panic(expected = "Error(Contract, #100)")]
 fn insufficient_role_level_rejects_with_not_admin() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 10);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
 
     // Actor is Operator, but Admin is required.
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Admin, actor, 10);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Admin, actor, 10));
 }
 
 // ---------------------------------------------------------------------------
@@ -133,51 +133,51 @@ fn insufficient_role_level_rejects_with_not_admin() {
 #[test]
 #[should_panic(expected = "Error(Contract, #100)")]
 fn role_revoked_before_action_ledger_rejects() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 10);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
     set_ts(&env, 50);
-    AdminContract::remove_admin(env.clone(), super_admin.clone(), actor.clone());
+    env.as_contract(&contract_address, || AdminContract::remove_admin(env.clone(), super_admin.clone(), actor.clone()));
 
     // Action claims T=100, but role was revoked at T=50.
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 100));
 }
 
 /// Boundary: assigned_at == at_ledger == 0 must pass (≤ comparison).
 #[test]
 fn role_held_at_boundary_ledger_passes() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 0);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
 
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 0);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 0));
 }
 
 /// Regression: re-adding an existing admin must not move `assigned_at`
 /// forward. A later action at the original assignment ledger must still pass.
 #[test]
 fn duplicate_add_admin_preserves_earliest_assignment() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 10);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
     set_ts(&env, 200);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
 
     // If assigned_at was overwritten to 200, this would reject with 114.
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 10);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 10));
 }
 
 #[test]
 fn test_adversarial_regression_and_retry_scenarios() {
-    let (env, _cid, super_admin) = setup();
+    let (env, contract_address, super_admin) = setup();
     set_ts(&env, 10);
     let actor = Address::generate(&env);
-    AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator);
+    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
     
     // Retry state
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10);
-    AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10);
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10));
+    env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor.clone(), 10));
 }

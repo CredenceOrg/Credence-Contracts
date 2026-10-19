@@ -205,6 +205,7 @@ fn sps_auth_super_admin_succeeds() {
     let events_before = e.events().all().len();
 
     client.set_pause_signer(&super_admin, &signer, &true);
+    let events = e.events().all();
 
     // State must reflect the change, epoch must advance exactly once, event emitted.
     assert_invariants(&e, &client, &[signer]);
@@ -214,8 +215,8 @@ fn sps_auth_super_admin_succeeds() {
         "I-3: successful enable must advance epoch by 1"
     );
     assert_eq!(
-        e.events().all().len(),
-        events_before + 1,
+        events.len(),
+        1,
         "I-4: successful enable must emit exactly one event"
     );
 }
@@ -437,7 +438,7 @@ fn sps_idempotent_retry_does_not_duplicate_event() {
 
     assert_eq!(
         e.events().all().len(),
-        events_after_first,
+        0,
         "retry must not emit a second pause_signer_set event"
     );
 }
@@ -699,16 +700,16 @@ fn sps_event_emitted_iff_state_changes() {
     let events_baseline = e.events().all().len();
 
     client.set_pause_signer(&super_admin, &signer, &true); // +1 event
-    assert_eq!(e.events().all().len(), events_baseline + 1);
+    assert_eq!(e.events().all().len(), 1);
 
     client.set_pause_signer(&super_admin, &signer, &true); // no-op
-    assert_eq!(e.events().all().len(), events_baseline + 1);
+    assert_eq!(e.events().all().len(), 0);
 
     client.set_pause_signer(&super_admin, &signer, &false); // +1 event
-    assert_eq!(e.events().all().len(), events_baseline + 2);
+    assert_eq!(e.events().all().len(), 1);
 
     client.set_pause_signer(&super_admin, &signer, &false); // no-op
-    assert_eq!(e.events().all().len(), events_baseline + 2);
+    assert_eq!(e.events().all().len(), 0);
 }
 
 /// Rejected calls (any error path) must emit zero events so off-chain indexers
@@ -732,7 +733,7 @@ fn sps_event_not_emitted_on_rejection() {
 
     assert_eq!(
         e.events().all().len(),
-        events_baseline,
+        0,
         "I-4: rejected calls must not emit any events"
     );
 }
