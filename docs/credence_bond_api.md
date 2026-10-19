@@ -107,19 +107,21 @@ Pulls additional approved custody tokens from the bonded identity into the contr
 
 - **Auth**: `identity.require_auth()`
 
-### `withdraw_bond(e: Env, identity: Address, amount: i128)`
+### `withdraw(e: Env, identity: Address, amount: i128)` and `withdraw_bond(e: Env, identity: Address, amount: i128)`
 
-Withdraws funds for an identity after the lock-up or notice period has elapsed.
+Decrease the bonded amount by `amount` and, when a USDC token is configured via `set_token`, transfer `amount` USDC from the bond contract back to the bonded identity. Both entrypoints perform the same canonical withdrawal flow; `withdraw_bond` is the lifecycle-friendly alias name used by some clients.
 
 - **Auth**: `identity.require_auth()`
-- **Note**: If called before the end of the lock-up on a standard bond, it will panic. Use `withdraw_early` instead.
+- **Custody**: real on-chain `TokenClient::transfer` push, gated by `token_integration::has_token()`. State writes happen *before* the external transfer (Checks–Effects–Interactions) so a hostile token contract cannot re-enter and double-spend against a post-withdrawal snapshot.
+- **Note**: If called before the end of the lock-up on a standard bond, the call panics. Use `withdraw_early` instead for an exit that routes a penalty to the early-exit treasury.
 
 ### `withdraw_early(e: Env, identity: Address, amount: i128)`
 
 Withdraws funds for an identity before the duration is over.
 
 - **Auth**: `identity.require_auth()`
-- **Penalty**: Applies a penalty defined in the `early_exit_penalty` module, which is transferred to the treasury while the net amount is transferred to the bonded identity.
+- **Custody**: real on-chain split — the penalty is pushed to the early-exit treasury via `token_integration::transfer_from_contract_with_source(FundSource::ProtocolFee)` and `net_amount = amount - penalty` is pushed back to the identity. Both transfers use the balance-delta guard that rejects fee-on-transfer tokens.
+- **Penalty**: Applies a penalty defined in the `early_exit_penalty` module; arithmetic is exact (`penalty + net_amount == amount`) and the invariant check (`ContractError::InvariantViolation`) reverts the entire transaction on drift.
 
 ---
 

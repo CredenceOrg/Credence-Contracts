@@ -145,3 +145,19 @@ fn test_set_borrow_frozen_blocked_when_paused() {
     client.pause(&admin);
     assert!(client.try_set_borrow_frozen(&admin, &true).is_err());
 }
+
+// ── top_up with identity blocked when frozen ───────────────────────────────────
+
+#[test]
+fn test_top_up_with_identity_blocked_when_frozen() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _bond_id) = test_helpers::setup_with_token(&e);
+
+    // Create bond before freezing
+    client.create_bond(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
+
+    client.set_borrow_frozen(&admin, &true);
+
+    assert!(client.try_top_up(&identity, &1_000_i128).is_err());
+}
+

@@ -142,12 +142,12 @@ fn prop_slash_does_not_mutate_bonded_amount() {
         let (e, client, admin) = setup_with_bond(bonded);
         let _ = &e;
 
-        let before = client.get_identity_state().bonded_amount;
+        let before = client.get_identity_state(&identity).bonded_amount;
         for _ in 0..5 {
             let slash = rng.range(0, bonded + 1);
             let _ = catch_unwind(AssertUnwindSafe(|| client.slash(&admin, &slash)));
         }
-        let after = client.get_identity_state().bonded_amount;
+        let after = client.get_identity_state(&identity).bonded_amount;
         assert_eq!(before, after, "bonded_amount must not change after slash");
     }
 }
@@ -165,7 +165,7 @@ fn prop_available_balance_never_negative() {
         for _ in 0..10 {
             let slash = rng.range(0, bonded * 2); // intentionally over-range
             let _ = catch_unwind(AssertUnwindSafe(|| client.slash(&admin, &slash)));
-            let state = client.get_identity_state();
+            let state = client.get_identity_state(&identity);
             let available = state.bonded_amount - state.slashed_amount;
             assert!(
                 available >= 0,
@@ -186,12 +186,12 @@ fn prop_slash_fully_slashed_bond_is_idempotent() {
 
     // Fully slash
     client.slash(&admin, &bonded);
-    let state = client.get_identity_state();
+    let state = client.get_identity_state(&identity);
     assert_eq!(state.slashed_amount, bonded);
 
     // Slash again — must not change slashed_amount
     client.slash(&admin, &bonded);
-    let state2 = client.get_identity_state();
+    let state2 = client.get_identity_state(&identity);
     assert_eq!(
         state2.slashed_amount, bonded,
         "double-slash must be idempotent"
@@ -433,7 +433,7 @@ fn regression_slash_vectors() {
             }
         }
 
-        let state = client.get_identity_state();
+        let state = client.get_identity_state(&identity);
         assert_eq!(
             state.slashed_amount, v.expected_final_slashed,
             "vector[{i}]: bonded={} slashes={:?} expected_slashed={} got={}",
@@ -488,12 +488,12 @@ fn regression_slash_does_not_change_tier() {
     let (e, client, admin) = setup_with_bond(bonded);
     let _ = &e;
 
-    let tier_before = get_tier_for_amount(&e, client.get_identity_state().bonded_amount);
+    let tier_before = get_tier_for_amount(&e, client.get_identity_state(&identity).bonded_amount);
     assert!(matches!(tier_before, BondTier::Silver));
 
     // Slash heavily — bonded_amount unchanged, so tier must stay Silver
     client.slash(&admin, &(bonded - 1_000));
-    let tier_after = get_tier_for_amount(&e, client.get_identity_state().bonded_amount);
+    let tier_after = get_tier_for_amount(&e, client.get_identity_state(&identity).bonded_amount);
     assert!(
         matches!(tier_after, BondTier::Silver),
         "tier must not change on slash (tier is based on bonded_amount)"

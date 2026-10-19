@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{Address, Env, String, Symbol};
 
 use crate::DataKey;
 
@@ -11,15 +11,7 @@ pub enum PauseAction {
 }
 
 fn require_admin_auth(e: &Env, admin: &Address) {
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
-    if stored_admin != *admin {
-        panic!("not admin");
-    }
-    admin.require_auth();
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 pub fn is_paused(e: &Env) -> bool {
@@ -164,7 +156,7 @@ pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
         .unwrap_or(0);
     if threshold == 0 {
         require_admin_auth(e, caller);
-        do_pause(e, None);
+        do_pause(e, None, &caller.to_string());
         None
     } else {
         propose_action(e, caller, PauseAction::Pause)
@@ -182,6 +174,20 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
         do_unpause(e, None);
         None
     } else {
+        // Admin override: admin can always unpause without a proposal to
+        // prevent governance lockout (mirrors credence_delegation::pausable).
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic!("not initialized"));
+
+        if *caller == stored_admin {
+            caller.require_auth();
+            do_unpause(e, None);
+            return None;
+        }
+
         propose_action(e, caller, PauseAction::Unpause)
     }
 }
@@ -245,7 +251,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     }
 
     match action {
-        1 => do_pause(e, Some(proposal_id)),
+        1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
         _ => panic!("invalid pause action"),
     }
@@ -255,13 +261,34 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .remove(&DataKey::PauseProposal(proposal_id));
 }
 
-fn do_pause(e: &Env, proposal_id: Option<u64>) {
+fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
     e.storage().instance().set(&DataKey::Paused, &true);
-    e.events().publish((Symbol::new(e, "paused"),), proposal_id);
+    e.events()
+        .publish((Symbol::new(e, "paused"),), (proposal_id, reason.clone()));
 }
 
 fn do_unpause(e: &Env, proposal_id: Option<u64>) {
     e.storage().instance().set(&DataKey::Paused, &false);
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);
+}
+
+// ============================================================================
+// Governance-Controlled Borrow Freeze Helpers
+// ============================================================================
+
+/// Returns `true` when new borrows/increases are frozen.
+#[must_use]
+pub fn is_borrow_frozen(e: &Env) -> bool {
+    crate::parameters::is_borrow_frozen(e)
+}
+
+/// Panics with `BorrowFrozen` if borrows are currently frozen.
+pub fn require_not_borrow_frozen(e: &Env) {
+    crate::parameters::require_not_borrow_frozen(e);
+}
+
+/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
+pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
+    crate::parameters::set_borrow_frozen(e, admin, frozen);
 }

@@ -185,6 +185,23 @@ fn early_exit_penalty_regression_vectors() {
     // base = 10000 * 1000 / 10000 = 1000
     // penalty = 1000 * 1 / 10 = 100
     assert_eq!(calculate_penalty(10000, 1, 10, 1000), 100);
+
+    // Case 4: docs/early-exit.md example — 10% rate, half duration
+    // amount = 500, penalty_bps = 1000 (10%), remaining = 183, total = 365
+    // base = 500 * 1000 / 10000 = 50
+    // penalty = 50 * 183 / 365 = 25 (floor)
+    assert_eq!(calculate_penalty(500, 183, 365, 1000), 25);
+
+    // Case 5: 100% penalty at full remaining
+    // amount = 10_000, penalty_bps = 10_000, remaining = total = 1000
+    // base = 10_000 * 10_000 / 10_000 = 10_000
+    // penalty = 10_000 * 1000 / 1000 = 10_000
+    assert_eq!(calculate_penalty(10_000, 1000, 1000, 10_000), 10_000);
+
+    // Case 6: zero penalty rate
+    // amount = 1_000_000, penalty_bps = 0, remaining = 50, total = 100
+    // base = 0 (multiply by 0), penalty = 0
+    assert_eq!(calculate_penalty(1_000_000, 50, 100, 0), 0);
 }
 
 #[test]

@@ -1,3 +1,5 @@
+extern crate std;
+
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
@@ -52,6 +54,42 @@ pub fn advance_ledger_sequence(e: &Env) {
     let mut info = e.ledger().get();
     info.sequence_number = info.sequence_number.saturating_add(1);
     e.ledger().set(info);
+}
+
+/// Jump the ledger forward by `n` sequences (test utility). Used by
+/// retention tests that need to step past an entry TTL.
+#[allow(dead_code)]
+pub fn advance_ledgers_by(e: &Env, n: u32) {
+    let mut info = e.ledger().get();
+    info.sequence_number = info.sequence_number.saturating_add(n);
+    e.ledger().set(info);
+}
+
+/// Assert that `f` reverts with the contract error `expected`.
+///
+/// The generated `try_*` client wrappers on this crate's client resolve to
+/// `Error(Context, InvalidAction)` instead of surfacing the contract's own
+/// error, so they cannot be used to assert *which* error a call produced. The
+/// tests in this crate therefore assert on the revert itself: catch the host
+/// panic and match the code that `panic_with_error!` embeds in the message as
+/// `Error(Contract, #<code>)`. This is the same mechanism `guards.rs` and
+/// `nonce.rs` use, with the code check added on top.
+#[allow(dead_code)]
+pub fn expect_contract_error_panic<F: FnOnce()>(expected: u32, f: F) {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .err()
+        .expect("expected the call to revert, but it succeeded");
+
+    let message = payload
+        .downcast_ref::<std::string::String>()
+        .map(std::string::String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("<non-string panic payload>");
+
+    assert!(
+        message.contains(&std::format!("#{expected}")),
+        "expected contract error #{expected}, but the revert was: {message}"
+    );
 }
 
 /// Default mint amount for tests (covers tier thresholds and most scenarios).

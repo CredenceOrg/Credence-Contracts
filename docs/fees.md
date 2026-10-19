@@ -7,7 +7,7 @@ A configurable fee is charged when creating a bond, as a percentage of the bonde
 ## Configuration
 
 - **Treasury**: Address that receives collected fees (set with fee config).
-- **Fee rate**: Basis opoints (e.g. 100 = 1%, 1_000 = 10%). Capped at
+- **Fee rate**: Basis points (e.g. 100 = 1%, 1_000 = 10%). Capped at
   `MAX_FEE_BPS` (issue #1027 governance safety rail).
 
 | Function | Auth | Description |

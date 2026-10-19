@@ -69,25 +69,40 @@ Execute a pause/unpause proposal once sufficient approvals are collected.
 - **When Paused**: Pause management functions remain available for recovery
 - **Exemptions**: The following functions are not blocked when the contract is paused:
   - Pause management: `pause()`, `unpause()`, `set_pause_signer()`, `set_pause_threshold()`, `approve_pause_proposal()`, `execute_pause_proposal()`
+  - Emergency drain scheduling / cancellation / execution: `schedule_emergency_drain()`, `cancel_emergency_drain()`, `emergency_drain_to_treasury()` — these either require the contract to be paused (inverse gate) or have no pause check (intentionally): see [Emergency Drain Exemptions](#emergency-drain-exemptions) below.
+
+### Emergency Drain Exemptions
+
+The emergency drain subsystem is a crisis-only recovery path and intentionally deviates from the standard pause gate:
+
+| Entrypoint | Pause behavior | Rationale |
+|---|---|---|
+| `schedule_emergency_drain` | **Inverse gate** — requires contract to be paused. Blocked when live. | Drain must not be possible during normal operation. |
+| `emergency_drain_to_treasury` | **Inverse gate** — requires contract to be paused. Blocked when live. | Drain must not be possible during normal operation. |
+| `cancel_emergency_drain` | **No pause gate** — callable in any state. | Admin must be able to cancel a pending drain schedule while paused (the only state where a drain could be scheduled). |
+
+These exemptions are hardened by independent security gates (timelock, admin auth, treasury-recipient check) as documented in the [emergency drain module](../contracts/credence_bond/src/emergency_drain.rs).
 
 ### CredenceBond Pause Coverage
 
-The bond contract stores its emergency pause flag at `DataKey::Paused`. Admins can call `pause(admin)` and `unpause(admin)` directly, and both functions emit audit events.
+The bond contract stores its emergency pause flag at `DataKey::Paused`. Admins can call `pause(admin)` and `unpause(admin)` directly, and both functions emit audit events. Multisig pause control is also exposed on the bond contract (mirroring `credence_delegation`):
 
-While paused, the bond contract blocks mutating bond lifecycle and incident-sensitive paths, including:
+- `set_pause_signer(admin, signer, enabled)`
+- `set_pause_threshold(admin, threshold)`
+- `approve_pause_proposal(signer, proposal_id)`
+- `execute_pause_proposal(proposal_id)`
 
-- `create_bond`
-- `top_up`
-- `withdraw`
-- `withdraw_early`
-- `request_withdrawal`
-- `renew_if_rolling`
-- `slash_bond`
-- `withdraw_bond`
-- `collect_fees`
-- Admin/configuration mutations such as attester registration, weight config, early-exit config, callback registration, fee deposits, and attestation add/revoke operations
+When a pause threshold `> 0` is configured, the stored admin may still call `unpause(admin)` directly to prevent governance lockout.
 
-Bond read paths remain callable while paused, including `is_paused`, `get_identity_state`, `get_tier`, `get_nonce`, `get_attestation`, `get_subject_attestations`, and `get_subject_attestation_count`.
+While paused, the bond contract blocks ALL mutating entrypoints, including:
+
+- **Bond lifecycle**: `create_bond`, `top_up`, `extend_duration`, `withdraw`, `withdraw_early`, `request_withdrawal`, `renew_if_rolling`, `withdraw_bond`
+- **Slashing / fees / liquidation**: `slash`, `slash_bond`, `collect_fees`, `deposit_fees`, `liquidate`
+- **Admin configuration**: `initialize`, `initialize_with_registry`, `set_accepted_tokens`, `set_token`, `set_early_exit_config`, `set_borrow_frozen`, `set_liquidation_treasury`, `set_slash_treasury`, `set_callback`, `batch_transfer`, `transfer_admin`, `transfer_upgrade_admin`, `accept_upgrade_admin`, `cancel_upgrade_admin_transfer`
+- **Attestations**: `register_attester`, `unregister_attester`, `add_attestation`, `add_attestation_batch`, `revoke_attestation`, `set_attester_stake`, `set_weight_config`
+- **Claims**: `expire_claims`
+
+Bond read paths remain callable while paused, including `is_paused`, `is_attester`, `is_borrow_frozen`, `is_liquidated`, `is_locked`, `version`, `describe_config`, `describe_bond`, `get_identity_state`, `get_tier`, `get_nonce`, `get_attestation`, `get_subject_attestations`, `get_subject_attestation_count`, `get_weight_config`, `get_liquidation_treasury`, `get_slash_treasury`, `get_pending_claims_page`, `get_drain_eta`, `get_latest_drain_id`, `get_drain_record`, and `get_pending_upgrade_admin`.
 
 Operationally, pausing during an active lock-up prevents withdrawals, early exits, rolling withdrawal requests, renewal, slashing, and fee collection until `unpause(admin)` succeeds. After unpause, the same state can continue through the normal lifecycle.
 
@@ -157,8 +172,14 @@ All pause mechanism implementations include comprehensive tests covering:
 - Threshold enforcement and invariants (no-lockout)
 - Admin override for unpausing
 - Read-only operation preservation
-- State-changing operation blocking
+- All mutating entrypoints are verified blocked when paused (bond lifecycle, admin config, attestations, slashing, fees, claims, emergency drain)
+- Emergency drain inverse-gate verification
+- Cancel emergency drain exemption verification
+- Pause management exemption verification
+- Unpause restores full operation
 - Error conditions and edge cases
+
+Tests are located in `contracts/credence_bond/src/test_pausable.rs`.
 
 ## Integration Notes
 

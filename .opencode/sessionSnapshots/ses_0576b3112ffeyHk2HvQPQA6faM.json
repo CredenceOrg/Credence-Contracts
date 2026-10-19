@@ -1,0 +1,31 @@
+{
+  "sessionId": "ses_0576b3112ffeyHk2HvQPQA6faM",
+  "exportedAt": 1785240385524,
+  "sessionData": {
+    "type": "sessionData",
+    "sessionId": "ses_0576b3112ffeyHk2HvQPQA6faM",
+    "title": "Bond lifecycle edge cases",
+    "messages": [
+      {
+        "role": "user",
+        "text": "Implement fast: Description\nExpand lifecycle tests to cover timestamp boundaries, invalid states, and negative paths with explicit errors.\n\nRequirements and context\nContracts-only. Secure, tested, documented.\nSuggested execution\nBranch: test/bond-lifecycle-edgecases-fresh\nFiles: contracts/credence_bond/src/test_create_bond.rs, .../src/test_increase_bond.rs, .../src/test_withdraw_bond.rs\nTest \ncargo test -p credence_bond",
+        "id": "msg_fa89675de001DuLV5JsXQB15fv",
+        "messageIndex": 2
+      },
+      {
+        "role": "user",
+        "text": "what are you running??",
+        "id": "msg_fa89e70bc001SHkKNjBzS51fyH",
+        "messageIndex": 3
+      }
+    ],
+    "segments": [],
+    "meta": {
+      "timelineMessageIds": [
+        "msg_fa89675de001DuLV5JsXQB15fv",
+        "msg_fa89e70bc001SHkKNjBzS51fyH"
+      ],
+      "segmentBackingMessageIds": []
+    }
+  }
+}

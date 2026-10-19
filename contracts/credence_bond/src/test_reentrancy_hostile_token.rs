@@ -153,7 +153,7 @@ fn hostile_token_reentry_into_slash_is_rejected() {
 
     assert_attack_rejected(&setup);
     assert_invariants(&e, &setup.contract_id);
-    let bond = setup.client.get_identity_state();
+    let bond = setup.client.get_identity_state(&identity);
     assert_eq!(bond.slashed_amount, OUTER_AMOUNT);
     assert_eq!(
         setup.token.balance(&setup.contract_id),
@@ -176,7 +176,7 @@ fn hostile_token_reentry_into_top_up_is_rejected() {
 
     assert_attack_rejected(&setup);
     assert_invariants(&e, &setup.contract_id);
-    let bond = setup.client.get_identity_state();
+    let bond = setup.client.get_identity_state(&identity);
     assert_eq!(bond.bonded_amount, INITIAL_BOND + OUTER_AMOUNT);
     assert_eq!(
         setup.token.balance(&setup.identity),

@@ -345,24 +345,6 @@
                               "symbol": "PauseApproval"
                             },
                             {
-                              "u64": 6304981028055832875
-                            },
-                            {
-                              "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M"
-                            }
-                          ]
-                        },
-                        "val": {
-                          "bool": true
-                        }
-                      },
-                      {
-                        "key": {
-                          "vec": [
-                            {
-                              "symbol": "PauseApproval"
-                            },
-                            {
                               "u64": 14680688552902899795
                             },
                             {
@@ -399,12 +381,12 @@
                               "symbol": "PauseApprovalCount"
                             },
                             {
-                              "u64": 6304981028055832875
+                              "u64": 14680688552902899795
                             }
                           ]
                         },
                         "val": {
-                          "u32": 1
+                          "u32": 0
                         }
                       },
                       {
@@ -414,7 +396,7 @@
                               "symbol": "PauseProposal"
                             },
                             {
-                              "u64": 6304981028055832875
+                              "u64": 14680688552902899795
                             }
                           ]
                         },
@@ -645,7 +627,7 @@
                 "symbol": "pause_proposed"
               },
               {
-                "u64": 6304981028055832875
+                "u64": 14680688552902899795
               }
             ],
             "data": {

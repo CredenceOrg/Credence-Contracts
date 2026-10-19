@@ -10,7 +10,11 @@
 //! 7. TTL is capped at MAX_TTL for very long-lived delegations.
 
 use super::*;
-use soroban_sdk::{String, testutils::storage::Persistent as PersistentTestutils, testutils::{Address as _, Ledger as _}, Env};
+use soroban_sdk::{
+    testutils::storage::Persistent as PersistentTestutils,
+    testutils::{Address as _, Ledger as _},
+    Env, String,
+};
 
 use crate::nonce::{LEDGER_BUMP_BUFFER, MAX_TTL, MIN_NONCE_TTL};
 

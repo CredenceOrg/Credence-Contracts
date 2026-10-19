@@ -81,6 +81,31 @@ impl Attestation {
         Self::validate_data(&self.attestation_data);
     }
 
+    /// Validates a freshly-supplied attestation payload before constructing an
+    /// [`Attestation`] record.
+    ///
+    /// This is the single entry point every contract-facing mutator
+    /// (`add_attestation`, `add_attestation_batch`, …) routes caller-supplied
+    /// (weight, data) through. Calling it instead of the individual
+    /// [`Self::validate_weight`] / [`Self::validate_data`] helpers guarantees
+    /// that no call site silently accepts an oversized `attestation_data` or
+    /// admits a derived weight that would later fail [Self::validate] after
+    /// storage has already been mutated.
+    ///
+    /// # Arguments
+    /// * `weight` - A precomputed or supplied weight in `[1, MAX_ATTESTATION_WEIGHT]`.
+    /// * `data`   - Caller-supplied attestation payload (e.g. claim type or hash).
+    ///
+    /// # Errors
+    /// Panics with `"attestation weight must be positive"` if `weight == 0`,
+    /// `"attestation weight exceeds maximum"` if `weight > MAX_ATTESTATION_WEIGHT`,
+    /// or `"attestation data exceeds maximum length"` if `data.len() > MAX_ATTESTATION_DATA_LENGTH`.
+    #[inline]
+    pub fn validate_input(weight: u32, data: &String) {
+        Self::validate_weight(weight);
+        Self::validate_data(data);
+    }
+
     /// Returns true if this attestation is currently active (not revoked).
     #[must_use]
     #[inline]

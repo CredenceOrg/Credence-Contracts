@@ -58,6 +58,7 @@ fn make_delegate_payload(
         nonce,
         scheme: 0,
         ledger_number: 0,
+        signature_domain: soroban_sdk::String::from_str(e, "CredenceDelegation"),
     }
 }
 

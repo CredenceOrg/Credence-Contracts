@@ -47,7 +47,7 @@ Delete the record for `owner`. Requires admin authorization. No-op if the record
 
 ### `get_record(owner: Address) -> Record`
 
-Return the record for `owner`. Panics with `"record not found"` if none exists, or `"record expired"` if the current timestamp is >= `expires_at`. Expired records are auto-purged on read.
+Return the record for `owner`. Panics with `"record not found"` if none exists, or with the `SignatureExpired` contract error (`Error(Contract, #222)`) if the current timestamp is >= `expires_at`. Expired records are auto-purged on read.
 
 ### `has_record(owner: Address) -> bool`
 

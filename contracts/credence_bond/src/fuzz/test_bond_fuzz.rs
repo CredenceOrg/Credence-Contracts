@@ -392,7 +392,7 @@ fn fuzz_bond_operations() {
                 match op {
                     // Slashing
                     0 => {
-                        let before = client.get_identity_state();
+                        let before = client.get_identity_state(&identity);
                         let slash_amount = sample_amount_for_slash(&mut rng, before.bonded_amount);
                         let res = catch_unwind(AssertUnwindSafe(|| {
                             // Mix between the two slashing entrypoints.
@@ -401,7 +401,7 @@ fn fuzz_bond_operations() {
                             } else {
                                 // `slash_bond` returns i128 (new_slashed).
                                 let _ = client.slash_bond(&admin, &slash_amount);
-                                client.get_identity_state()
+                                client.get_identity_state(&identity)
                             }
                         }));
                         match res {
@@ -422,7 +422,7 @@ fn fuzz_bond_operations() {
                     }
                     // Withdrawals
                     1 => {
-                        let state = client.get_identity_state();
+                        let state = client.get_identity_state(&identity);
                         assert_bond_invariants(&state);
                         let available = state
                             .bonded_amount
@@ -514,7 +514,7 @@ fn fuzz_bond_operations() {
                     }
                     // No-op / state check
                     _ => {
-                        let state = client.get_identity_state();
+                        let state = client.get_identity_state(&identity);
                         assert_bond_invariants(&state);
                     }
                 }

@@ -1,8 +1,8 @@
+#![allow(clippy::disallowed_macros)]
 // Off-chain CLI binary — issue #713 silences dynamic-string macros in
 // ON-CHAIN contract code only. Production contract wasm cannot depend on
 // `format!` for event topics or reverts, but an admin CLI printing JSON
 // status text is allowed and uses format!() for diagnostics.
-#![allow(clippy::disallowed_macros)]
 
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
@@ -305,5 +305,378 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
         });
         println!("{}", serde_json::to_string_pretty(&out)?);
         Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Boundary and recovery test coverage
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    // -----------------------------------------------------------------------
+    // Helpers
+    // -----------------------------------------------------------------------
+
+    /// A well-formed G-address (Stellar ed25519 public key) used across tests.
+    const VALID_G: &str = "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF";
+    /// A well-formed C-address (Soroban contract id) used across tests.
+    const VALID_C: &str = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+
+    fn parse_cli(args: &[&str]) -> Result<Cli, clap::Error> {
+        Cli::try_parse_from(args)
+    }
+
+    // -----------------------------------------------------------------------
+    // Argument builder: success paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn early_exit_args_valid() {
+        let args = build_early_exit_args(VALID_G, VALID_G, 100).expect("valid args");
+        assert_eq!(args.len(), 3);
+        assert!(matches!(args[2], ScVal::U32(100)));
+    }
+
+    #[test]
+    fn weight_args_valid() {
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        assert_eq!(args.len(), 3);
+        assert!(matches!(args[1], ScVal::U32(500)));
+        assert!(matches!(args[2], ScVal::U32(10_000)));
+    }
+
+    #[test]
+    fn pause_signer_args_valid() {
+        let args = build_pause_signer_args(VALID_G, VALID_G, true).expect("valid args");
+        assert_eq!(args.len(), 3);
+        assert!(matches!(args[2], ScVal::Bool(true)));
+    }
+
+    // -----------------------------------------------------------------------
+    // Argument builder: boundary values
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn early_exit_bps_boundary_zero() {
+        let args = build_early_exit_args(VALID_G, VALID_G, 0).expect("zero bps is valid");
+        assert!(matches!(args[2], ScVal::U32(0)));
+    }
+
+    #[test]
+    fn early_exit_bps_boundary_max() {
+        let args = build_early_exit_args(VALID_G, VALID_G, 10_000).expect("max bps is valid");
+        assert!(matches!(args[2], ScVal::U32(10_000)));
+    }
+
+    #[test]
+    fn weight_bps_boundary_zero() {
+        let args = build_weight_args(VALID_G, 0, 0).expect("zero values are valid");
+        assert!(matches!(args[1], ScVal::U32(0)));
+        assert!(matches!(args[2], ScVal::U32(0)));
+    }
+
+    #[test]
+    fn weight_bps_boundary_u32_max() {
+        let args = build_weight_args(VALID_G, u32::MAX, u32::MAX).expect("u32::MAX is valid");
+        assert!(matches!(args[1], ScVal::U32(u32::MAX)));
+        assert!(matches!(args[2], ScVal::U32(u32::MAX)));
+    }
+
+    #[test]
+    fn pause_signer_args_disabled() {
+        let args = build_pause_signer_args(VALID_G, VALID_G, false).expect("valid args");
+        assert!(matches!(args[2], ScVal::Bool(false)));
+    }
+
+    // -----------------------------------------------------------------------
+    // Argument builder: rejection paths
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn early_exit_args_reject_empty_admin() {
+        let err = build_early_exit_args("", VALID_G, 100).unwrap_err();
+        assert!(err.to_string().contains("invalid address"));
+    }
+
+    #[test]
+    fn early_exit_args_reject_empty_treasury() {
+        let err = build_early_exit_args(VALID_G, "", 100).unwrap_err();
+        assert!(err.to_string().contains("invalid address"));
+    }
+
+    #[test]
+    fn early_exit_args_reject_malformed_admin() {
+        let err = build_early_exit_args("not-an-address", VALID_G, 100).unwrap_err();
+        assert!(err.to_string().contains("invalid address"));
+    }
+
+    #[test]
+    fn weight_args_reject_malformed_admin() {
+        let err = build_weight_args("G123", 500, 10_000).unwrap_err();
+        assert!(err.to_string().contains("invalid address"));
+    }
+
+    #[test]
+    fn pause_signer_args_reject_malformed_signer() {
+        let err = build_pause_signer_args(VALID_G, "C-short", true).unwrap_err();
+        assert!(err.to_string().contains("invalid address"));
+    }
+
+    #[test]
+    fn addr_to_sc_val_rejects_garbage() {
+        let err = addr_to_sc_val("!!!").unwrap_err();
+        assert!(err.to_string().contains("invalid address"));
+    }
+
+    #[test]
+    fn addr_to_sc_val_accepts_g_address() {
+        let val = addr_to_sc_val(VALID_G).expect("valid G address");
+        assert!(matches!(val, ScVal::Address(_)));
+    }
+
+    #[test]
+    fn addr_to_sc_val_accepts_c_address() {
+        let val = addr_to_sc_val(VALID_C).expect("valid C address");
+        assert!(matches!(val, ScVal::Address(_)));
+    }
+
+    // -----------------------------------------------------------------------
+    // CLI parsing: defaults and env fallbacks
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn cli_defaults_are_applied() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "bond-set-early-exit-config",
+            "--admin",
+            VALID_G,
+            "--treasury",
+            VALID_G,
+            "--bps",
+            "100",
+        ])
+        .expect("parse ok");
+        assert_eq!(cli.rpc_url, "https://soroban-testnet.stellar.org");
+        assert_eq!(cli.network, "Test SDF Network ; September 2015");
+        assert!(!cli.submit);
+        assert!(cli.contract.is_none());
+        assert!(cli.signer.is_none());
+    }
+
+    #[test]
+    fn cli_submit_flag_parses() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+        assert!(cli.submit);
+    }
+
+    #[test]
+    fn cli_pause_signer_enabled_defaults_true() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "delegation-set-pause-signer",
+            "--admin",
+            VALID_G,
+            "--pause-signer",
+            VALID_G,
+        ])
+        .expect("parse ok");
+        match cli.command {
+            Commands::DelegationSetPauseSigner { enabled, .. } => assert!(enabled),
+            _ => panic!("wrong command"),
+        }
+    }
+
+    #[test]
+    fn cli_pause_signer_enabled_explicit_false() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "delegation-set-pause-signer",
+            "--admin",
+            VALID_G,
+            "--pause-signer",
+            VALID_G,
+            "--enabled",
+            "false",
+        ])
+        .expect("parse ok");
+        match cli.command {
+            Commands::DelegationSetPauseSigner { enabled, .. } => assert!(!enabled),
+            _ => panic!("wrong command"),
+        }
+    }
+
+    #[test]
+    fn cli_rejects_missing_required_admin() {
+        let err = parse_cli(&[
+            "credence-admin",
+            "bond-set-early-exit-config",
+            "--treasury",
+            VALID_G,
+            "--bps",
+            "100",
+        ])
+        .unwrap_err();
+        // clap exits with code 2 for missing required args.
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn cli_rejects_non_numeric_bps() {
+        let err = parse_cli(&[
+            "credence-admin",
+            "bond-set-early-exit-config",
+            "--admin",
+            VALID_G,
+            "--treasury",
+            VALID_G,
+            "--bps",
+            "not-a-number",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    #[test]
+    fn cli_rejects_bps_overflow() {
+        // u32 overflow must be rejected at parse time, not silently truncated.
+        let err = parse_cli(&[
+            "credence-admin",
+            "bond-set-early-exit-config",
+            "--admin",
+            VALID_G,
+            "--treasury",
+            VALID_G,
+            "--bps",
+            "4294967296",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    // -----------------------------------------------------------------------
+    // Recovery: --submit without signer must fail fast with a clear message
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn submit_without_signer_is_rejected() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--contract",
+            VALID_C,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let err = run(&cli, VALID_C, "set_weight_config", args).unwrap_err();
+        assert!(
+            err.to_string().contains("--signer"),
+            "expected signer-required error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn submit_with_invalid_signer_is_rejected() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--signer",
+            "not-a-secret",
+            "--contract",
+            VALID_C,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let err = run(&cli, VALID_C, "set_weight_config", args).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid signer key"),
+            "expected invalid-signer error, got: {err}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Recovery: invalid contract address must fail before any network I/O
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn run_rejects_invalid_contract_address() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let err = run(&cli, "not-a-contract", "set_weight_config", args).unwrap_err();
+        assert!(
+            err.to_string().contains("invalid contract address"),
+            "expected contract-address error, got: {err}"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Regression: dry-run path is deterministic and does not require signer
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn dry_run_does_not_require_signer() {
+        // A dry-run (no --submit) must succeed without a signer. We only
+        // exercise the argument-building half here so the test stays offline;
+        // the full dry-run path is covered by integration tests that capture
+        // stdout. This guards against regressions that would make a signer
+        // mandatory for read-only inspection.
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--contract",
+            VALID_C,
+            "bond-set-early-exit-config",
+            "--admin",
+            VALID_G,
+            "--treasury",
+            VALID_G,
+            "--bps",
+            "100",
+        ])
+        .expect("parse ok");
+        assert!(!cli.submit);
+        assert!(cli.signer.is_none());
+        let _ = build_early_exit_args(VALID_G, VALID_G, 100).expect("valid args");
     }
 }

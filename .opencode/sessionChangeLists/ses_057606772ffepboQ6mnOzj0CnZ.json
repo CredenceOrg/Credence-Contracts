@@ -1,0 +1,204 @@
+[
+  {
+    "id": "system:changeList:52f5aacffb15eacb8634c812523eec254953a76c",
+    "commitHead": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "commitBase": "1658b6487806d2e576f71bf051af25151077fd63",
+    "files": [
+      ".gitignore",
+      "contracts/credence_bond/src/early_exit_penalty.rs",
+      "contracts/credence_bond/src/emergency_drain.rs",
+      "contracts/credence_bond/src/idempotency.rs",
+      "contracts/credence_bond/src/lib.rs",
+      "contracts/credence_bond/src/test_access_control.rs",
+      "contracts/credence_bond/src/test_auth.rs",
+      "contracts/credence_bond/src/test_chaos.rs",
+      "contracts/credence_bond/src/test_claim_expiry_sweep.rs",
+      "contracts/credence_bond/src/test_create_bond.rs",
+      "contracts/credence_bond/src/test_increase_bond.rs",
+      "contracts/credence_bond/src/test_reentrancy.rs",
+      "contracts/credence_bond/src/test_slashing.rs",
+      "contracts/credence_bond/src/test_withdraw_bond.rs",
+      "contracts/credence_errors/src/lib.rs"
+    ],
+    "statsByPath": {
+      ".gitignore": {
+        "additions": 0,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/early_exit_penalty.rs": {
+        "additions": 1,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/emergency_drain.rs": {
+        "additions": 3,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/idempotency.rs": {
+        "additions": 0,
+        "deletions": 2
+      },
+      "contracts/credence_bond/src/lib.rs": {
+        "additions": 31,
+        "deletions": 175
+      },
+      "contracts/credence_bond/src/test_access_control.rs": {
+        "additions": 0,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/test_auth.rs": {
+        "additions": 18,
+        "deletions": 18
+      },
+      "contracts/credence_bond/src/test_chaos.rs": {
+        "additions": 19,
+        "deletions": 19
+      },
+      "contracts/credence_bond/src/test_claim_expiry_sweep.rs": {
+        "additions": 1,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/test_create_bond.rs": {
+        "additions": 146,
+        "deletions": 418
+      },
+      "contracts/credence_bond/src/test_increase_bond.rs": {
+        "additions": 90,
+        "deletions": 242
+      },
+      "contracts/credence_bond/src/test_reentrancy.rs": {
+        "additions": 7,
+        "deletions": 7
+      },
+      "contracts/credence_bond/src/test_slashing.rs": {
+        "additions": 2,
+        "deletions": 2
+      },
+      "contracts/credence_bond/src/test_withdraw_bond.rs": {
+        "additions": 155,
+        "deletions": 0
+      },
+      "contracts/credence_errors/src/lib.rs": {
+        "additions": 2,
+        "deletions": 37
+      }
+    },
+    "anchorMessageId": "msg_fa8b75817001Nbt4ABSXgtAfh7",
+    "userMessageId": "msg_fa89f9910001VIcn2jSPZ4LP2q",
+    "rootUserMessageId": "msg_fa89f9910001VIcn2jSPZ4LP2q",
+    "assistantMessageId": "msg_fa8b75817001Nbt4ABSXgtAfh7",
+    "createdAt": 1785242100045
+  },
+  {
+    "id": "system:changeList:d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "commitHead": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "commitBase": "52f5aacffb15eacb8634c812523eec254953a76c",
+    "files": [
+      "Cargo.lock",
+      "contracts/credence_bond/src/early_exit_penalty.rs",
+      "contracts/credence_bond/src/emergency_drain.rs",
+      "contracts/credence_bond/src/idempotency.rs",
+      "contracts/credence_bond/src/lib.rs",
+      "contracts/credence_bond/src/test_access_control.rs",
+      "contracts/credence_bond/src/test_auth.rs",
+      "contracts/credence_bond/src/test_chaos.rs",
+      "contracts/credence_bond/src/test_claim_expiry_sweep.rs",
+      "contracts/credence_bond/src/test_reentrancy.rs",
+      "contracts/credence_bond/src/test_slashing.rs",
+      "contracts/credence_bond/src/test_withdraw_bond.rs",
+      "contracts/credence_errors/src/lib.rs"
+    ],
+    "statsByPath": {
+      "Cargo.lock": {
+        "additions": 0,
+        "deletions": 9
+      },
+      "contracts/credence_bond/src/early_exit_penalty.rs": {
+        "additions": 1,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/emergency_drain.rs": {
+        "additions": 1,
+        "deletions": 3
+      },
+      "contracts/credence_bond/src/idempotency.rs": {
+        "additions": 2,
+        "deletions": 0
+      },
+      "contracts/credence_bond/src/lib.rs": {
+        "additions": 178,
+        "deletions": 24
+      },
+      "contracts/credence_bond/src/test_access_control.rs": {
+        "additions": 1,
+        "deletions": 0
+      },
+      "contracts/credence_bond/src/test_auth.rs": {
+        "additions": 18,
+        "deletions": 18
+      },
+      "contracts/credence_bond/src/test_chaos.rs": {
+        "additions": 19,
+        "deletions": 19
+      },
+      "contracts/credence_bond/src/test_claim_expiry_sweep.rs": {
+        "additions": 1,
+        "deletions": 1
+      },
+      "contracts/credence_bond/src/test_reentrancy.rs": {
+        "additions": 7,
+        "deletions": 7
+      },
+      "contracts/credence_bond/src/test_slashing.rs": {
+        "additions": 2,
+        "deletions": 2
+      },
+      "contracts/credence_bond/src/test_withdraw_bond.rs": {
+        "additions": 132,
+        "deletions": 437
+      },
+      "contracts/credence_errors/src/lib.rs": {
+        "additions": 37,
+        "deletions": 2
+      }
+    },
+    "anchorMessageId": "msg_fa8bc3957001qy3WlHxzq0HIxR",
+    "userMessageId": "msg_fa8b8d7b2001EAHaPq5Mz2Qcx1",
+    "rootUserMessageId": "msg_fa8b8d7b2001EAHaPq5Mz2Qcx1",
+    "assistantMessageId": "msg_fa8bc3957001qy3WlHxzq0HIxR",
+    "createdAt": 1785242346980
+  },
+  {
+    "id": "system:changeList:eda241db51611294a324742570ebe872e4074f2f",
+    "commitHead": "eda241db51611294a324742570ebe872e4074f2f",
+    "commitBase": "d6e5fefa61ba64d9b473971cbfebc3e86c28da2b",
+    "files": [
+      "contracts/credence_bond/src/lib.rs",
+      "contracts/credence_bond/src/test_create_bond.rs",
+      "contracts/credence_bond/src/test_increase_bond.rs",
+      "contracts/credence_bond/src/test_withdraw_bond.rs"
+    ],
+    "statsByPath": {
+      "contracts/credence_bond/src/lib.rs": {
+        "additions": 0,
+        "deletions": 4
+      },
+      "contracts/credence_bond/src/test_create_bond.rs": {
+        "additions": 251,
+        "deletions": 165
+      },
+      "contracts/credence_bond/src/test_increase_bond.rs": {
+        "additions": 213,
+        "deletions": 92
+      },
+      "contracts/credence_bond/src/test_withdraw_bond.rs": {
+        "additions": 289,
+        "deletions": 139
+      }
+    },
+    "anchorMessageId": "msg_fa8c3dd70001uoxSFPVmDedqaQ",
+    "userMessageId": "msg_fa8bd9b26001s4fncKkFCweL43",
+    "rootUserMessageId": "msg_fa8bd9b26001s4fncKkFCweL43",
+    "assistantMessageId": "msg_fa8c3dd70001uoxSFPVmDedqaQ",
+    "createdAt": 1785242850036
+  }
+]

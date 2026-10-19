@@ -39,15 +39,26 @@ This returns a `u64` representing the Unix timestamp of the current ledger.
 
 ## Common Time Conversions
 
-When defining durations, prefer explicit constants representing seconds:
+`credence_math` exports shared constants for the common time windows below.
+Import them instead of hardcoding the equivalent numeric literals, so the
+values stay consistent and self-documenting across the workspace:
 
-| Period | Seconds (u64) | Formula / Expression |
-| :--- | :--- | :--- |
-| **1 Minute** | `60` | `60` |
-| **1 Hour** | `3,600` | `60 * 60` |
-| **1 Day** | `86,400` | `24 * 60 * 60` |
-| **1 Week** | `604,800` | `7 * 24 * 60 * 60` |
-| **1 Year (365 days)** | `31,536,000` | `365 * 24 * 60 * 60` |
+```rust
+use credence_math::{
+    SECONDS_PER_MINUTE, SECONDS_PER_HOUR, SECONDS_PER_DAY, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
+};
+```
+
+| Period | Constant | Seconds (u64) | Formula / Expression |
+| :--- | :--- | :--- | :--- |
+| **1 Minute** | `SECONDS_PER_MINUTE` | `60` | `60` |
+| **1 Hour** | `SECONDS_PER_HOUR` | `3,600` | `60 * 60` |
+| **1 Day** | `SECONDS_PER_DAY` | `86,400` | `24 * 60 * 60` |
+| **1 Week** | `SECONDS_PER_WEEK` | `604,800` | `7 * 24 * 60 * 60` |
+| **1 Year (365 days)** | `SECONDS_PER_YEAR` | `31,536,000` | `365 * 24 * 60 * 60` |
+
+`SECONDS_PER_YEAR` assumes a fixed 365-day year and does not account for
+leap years.
 
 ### Concrete Code Example: Proposal Expiry
 

@@ -1,11 +1,11 @@
 #![cfg(test)]
 
-//! # Proptest: Batch Atomicity (Issue #747)
+//! # Proptest: Batch Atomicity
 //!
+
 //! Property-based tests that lock in the **between-batch invariant** for the
 //! `add_attestation_batch` entrypoint of `credence_bond`.
 //!
-//! ## Goal
 //!
 //! No batch-sized call may leave the contract in a *split-brain* state —
 //! partial success where some items of a batch landed in storage while the
@@ -44,9 +44,9 @@
 
 extern crate std;
 
-use credence_bond::{AttestationBatchItem, CredenceBond, CredenceBondClient};
 use credence_bond::soroban_sdk::testutils::Address as _;
 use credence_bond::soroban_sdk::{Address, Env, String, Vec};
+use credence_bond::{AttestationBatchItem, CredenceBond, CredenceBondClient};
 use proptest::prelude::*;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
@@ -139,6 +139,8 @@ proptest! {
             let nonce = client.get_nonce(&attester);
             items.push_back(AttestationBatchItem {
                 attester,
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(&env, &format!("clean-batch-{}", i)),
                 nonce,
             });
@@ -201,6 +203,8 @@ proptest! {
             let nonce = client.get_nonce(&attester);
             items.push_back(AttestationBatchItem {
                 attester,
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("poison-batch-{}", i),
@@ -254,6 +258,8 @@ proptest! {
             let nonce = client.get_nonce(&pool[0]);
             items.push_back(AttestationBatchItem {
                 attester: pool[0].clone(),
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("dup-{}", i),
@@ -307,6 +313,8 @@ proptest! {
             let nonce = client.get_nonce(&pool[i]);
             items.push_back(AttestationBatchItem {
                 attester: pool[i].clone(),
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("overweight-{}", i),
@@ -378,6 +386,8 @@ proptest! {
                 let nonce = client.get_nonce(&attester);
                 items.push_back(AttestationBatchItem {
                     attester,
+                    contract_id: Address::generate(&env),
+                    deadline: 0_u64,
                     attestation_data: make_attestation_data(
                         &env,
                         &format!("seq-{}-{}", step, i),

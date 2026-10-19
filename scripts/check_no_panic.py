@@ -135,7 +135,11 @@ def parse_mod_graph(root_file: Path):
         reachable.add(file)
         if not unconditional:
             test_gated.add(file)
-        lines = file.read_text().splitlines()
+        try:
+            lines = file.read_text().splitlines()
+        except UnicodeDecodeError as e:
+            print(f"Error reading file {file}: {e}")
+            raise
         n = len(lines)
         i = 0
         while i < n:
