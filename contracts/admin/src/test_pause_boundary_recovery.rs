@@ -44,6 +44,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Env};
 
@@ -149,12 +150,12 @@ fn assert_threshold_never_exceeds_count(e: &Env, client: &AdminContractClient) {
 /// no-op: no `paused` event is emitted and the epoch does not advance.
 #[test]
 fn direct_pause_while_already_paused_is_no_op() {
-    let (_, client, super_admin) = setup();
+    let (e, client, super_admin) = setup();
 
     client.pause(&super_admin);
     assert!(client.is_paused());
     let epoch = client.get_config_epoch();
-    let events = client.env().events().all().len();
+    let events = e.events().all().len();
 
     // Second pause: contract is already paused — idempotent no-op.
     let result = client.pause(&super_admin);
@@ -166,7 +167,7 @@ fn direct_pause_while_already_paused_is_no_op() {
         "epoch must not advance on a no-op pause"
     );
     assert_eq!(
-        client.env().events().all().len(),
+        e.events().all().len(),
         events,
         "no event must be emitted on a no-op pause"
     );
@@ -176,11 +177,11 @@ fn direct_pause_while_already_paused_is_no_op() {
 /// no-op: no `unpaused` event is emitted and the epoch does not advance.
 #[test]
 fn direct_unpause_while_already_unpaused_is_no_op() {
-    let (_, client, super_admin) = setup();
+    let (e, client, super_admin) = setup();
 
     assert!(!client.is_paused());
     let epoch = client.get_config_epoch();
-    let events = client.env().events().all().len();
+    let events = e.events().all().len();
 
     let result = client.unpause(&super_admin);
     assert_eq!(result, None, "direct-path unpause always returns None");
@@ -191,7 +192,7 @@ fn direct_unpause_while_already_unpaused_is_no_op() {
         "epoch must not advance on a no-op unpause"
     );
     assert_eq!(
-        client.env().events().all().len(),
+        e.events().all().len(),
         events,
         "no event must be emitted on a no-op unpause"
     );

@@ -51,7 +51,10 @@ mod zero_address_tests {
             .try_add_admin(&super_admin, &zero, &AdminRole::Admin)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         // Verify state is untouched
         assert_eq!(client.get_config_epoch(), initial_epoch);
@@ -71,7 +74,10 @@ mod zero_address_tests {
             .try_transfer_ownership(&super_admin, &zero)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         assert_eq!(client.get_config_epoch(), initial_epoch);
         assert!(client.get_pending_owner().is_none());
@@ -90,7 +96,10 @@ mod zero_address_tests {
             .try_update_admin_role(&super_admin, &zero, &AdminRole::Admin)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         assert_eq!(client.get_config_epoch(), initial_epoch);
     }
@@ -108,7 +117,10 @@ mod zero_address_tests {
             .try_reactivate_admin(&super_admin, &zero)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         assert_eq!(client.get_config_epoch(), initial_epoch);
     }
@@ -126,7 +138,10 @@ mod zero_address_tests {
             .try_deactivate_admin(&super_admin, &zero)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         assert_eq!(client.get_config_epoch(), initial_epoch);
     }
@@ -145,7 +160,10 @@ mod zero_address_tests {
             .try_remove_admin(&super_admin, &zero)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         assert_eq!(client.get_config_epoch(), initial_epoch);
         assert_eq!(client.get_admin_count(), initial_count);
@@ -164,7 +182,10 @@ mod zero_address_tests {
             .try_set_pause_signer(&super_admin, &zero, &true)
             .unwrap_err()
             .unwrap();
-        assert_eq!(err, ContractError::InvalidAdminAddress);
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::InvalidAdminAddress as u32)
+        );
 
         assert_eq!(client.get_config_epoch(), initial_epoch);
     }

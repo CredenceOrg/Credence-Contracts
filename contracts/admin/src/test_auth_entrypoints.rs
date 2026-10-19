@@ -14,6 +14,7 @@
 //! an unauthorised caller is rejected.
 
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env,
@@ -1056,8 +1057,8 @@ fn update_admin_role_round_trip_preserves_role_list_integrity() {
         AdminContract::get_admins_by_role(env.clone(), AdminRole::Admin)
     });
 
-    let op_count = op_list.iter().filter(|a| a == target).count();
-    let admin_count = admin_list.iter().filter(|a| a == target).count();
+    let op_count = op_list.iter().filter(|a| *a == target).count();
+    let admin_count = admin_list.iter().filter(|a| *a == target).count();
 
     assert_eq!(op_count, 1, "target must appear exactly once in Operator list");
     assert_eq!(admin_count, 0, "target must not appear in Admin list after demotion");

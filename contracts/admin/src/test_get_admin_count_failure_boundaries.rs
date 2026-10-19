@@ -181,7 +181,7 @@ fn total_count_ignores_suspension_while_effective_count_drops() {
     assert_eq!(client.get_admin_count(), 2);
     assert_eq!(client.get_effective_active_admin_count(), 2);
 
-    client.suspend_admin(&super_admin, &admin, 2_000);
+    client.suspend_admin(&super_admin, &admin, &2_000);
     assert_eq!(
         client.get_admin_count(),
         2,

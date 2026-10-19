@@ -1811,6 +1811,14 @@ mod test;
 #[cfg(test)]
 mod test_require_role_at_ledger;
 
+/// Configuration structure for observability
+#[derive(Clone, Debug)]
+struct PauseConfiguration {
+    threshold: u32,
+    signer_count: u32,
+    initialized: bool,
+}
+
 // Pause mechanism entrypoints
 #[contractimpl]
 impl AdminContract {
@@ -2020,37 +2028,6 @@ impl AdminContract {
         if threshold > 0 && signer_count == 0 {
             panic_with_error!(e, ContractError::ThresholdExceedsSigners);
         }
-    }
-
-    /// Validate that an address is not a sentinel or invalid value.
-    ///
-    /// # Security
-    /// Rejects addresses that could cause permanent loss of admin control:
-    /// * Zero/invalid address sentinel that cannot be controlled
-    /// * Contract's own address which would create circular dependencies
-    ///
-    /// # Arguments
-    /// * `address` - The address to validate
-    ///
-    /// # Panics
-    /// * `InvalidAdminAddress` - Address is invalid or a sentinel value
-    fn require_valid_admin_address(e: &Env, address: &Address) {
-        // Reject the zero/invalid address sentinel
-        if address.to_string() == String::from_str(e, INVALID_ADDRESS_SENTINEL) {
-            panic_with_error!(e, ContractError::InvalidAdminAddress);
-        }
-        // Reject self-reference to prevent circular dependencies
-        if *address == e.current_contract_address() {
-            panic_with_error!(e, ContractError::InvalidAdminAddress);
-        }
-    }
-
-    /// Configuration structure for observability
-    #[derive(Clone, Debug)]
-    struct PauseConfiguration {
-        threshold: u32,
-        signer_count: u32,
-        initialized: bool,
     }
 
     /// Enhanced proposal ID validation with detailed logging.

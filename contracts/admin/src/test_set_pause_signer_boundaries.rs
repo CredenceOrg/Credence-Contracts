@@ -33,7 +33,10 @@
 #![cfg(test)]
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
+extern crate std;
+use std::vec::Vec;
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Env, String};
 
