@@ -132,6 +132,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::SlippageExceeded as u32, 609);
     assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
     assert_eq!(ContractError::CorridorNotRegistered as u32, 611);
+    assert_eq!(ContractError::TokenChangeWithBalance as u32, 612);
 
     // Arithmetic (700-799)
     assert_eq!(ContractError::Overflow as u32, 700);

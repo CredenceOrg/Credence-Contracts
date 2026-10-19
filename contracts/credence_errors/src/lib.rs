@@ -771,6 +771,16 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     CorridorNotRegistered = 611,
 
+    /// `set_token` was called while the treasury still holds booked balances.
+    /// Changing the accounting token with a non-zero `TotalBalance` would
+    /// orphan the existing balances: the new token's contract balance could
+    /// not back the recorded `TotalBalance`, silently breaking the
+    /// `token.balance(contract) >= TotalBalance` invariant. The admin must
+    /// drain the treasury to zero before rotating the token.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    TokenChangeWithBalance = 612,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -975,7 +985,8 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalExpired
             | ContractError::SlippageExceeded
             | ContractError::TreasuryBeneficiaryMismatch
-            | ContractError::CorridorNotRegistered => ErrorCategory::Treasury,
+            | ContractError::CorridorNotRegistered
+            | ContractError::TokenChangeWithBalance => ErrorCategory::Treasury,
 
             ContractError::Overflow
             | ContractError::Underflow
@@ -1236,6 +1247,9 @@ impl ErrorExt for ContractError {
             ContractError::CorridorNotRegistered => {
                 "Settlement destination is not a registered corridor"
             }
+            ContractError::TokenChangeWithBalance => {
+                "Cannot change accounting token while treasury holds a non-zero balance"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -1433,6 +1447,7 @@ impl ErrorExt for ContractError {
             | ContractError::SlippageExceeded           // retry with looser min_amount_out
             | ContractError::TreasuryBeneficiaryMismatch // call with correct treasury address
             | ContractError::CorridorNotRegistered => true, // admin registers corridor, then retry
+            ContractError::TokenChangeWithBalance => true, // drain treasury to zero, then retry
 
             // FATAL Treasury: protocol-level failures.
             ContractError::InvalidFlashLoanCallback => false, // bad magic; same call will fail

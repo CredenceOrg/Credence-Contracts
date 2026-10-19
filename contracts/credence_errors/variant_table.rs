@@ -236,6 +236,10 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "CorridorNotRegistered",
         ContractError::CorridorNotRegistered,
     ), // 611
+    (
+        "TokenChangeWithBalance",
+        ContractError::TokenChangeWithBalance,
+    ), // 612
     // --- Arithmetic (700-799) ---
     ("Overflow", ContractError::Overflow),             // 700
     ("Underflow", ContractError::Underflow),           // 701
