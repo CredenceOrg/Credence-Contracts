@@ -34,6 +34,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 extern crate std;
+use std::vec::Vec;
 use crate::*;
 use soroban_sdk::testutils::Events as _;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
@@ -831,8 +832,7 @@ fn sps_lifecycle_full_add_use_remove() {
 
     // s1 alone can still pause (threshold == 1).
     // Start a fresh proposal epoch: completed IDs retain replay protection.
-    e.ledger()
-        .with_mut(|ledger| ledger.sequence_number += PROPOSAL_EPOCH_SIZE);
+    e.ledger().with_mut(|ledger| ledger.sequence_number += PROPOSAL_EPOCH_SIZE);
     let id3 = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&id3);
     assert!(client.is_paused());
