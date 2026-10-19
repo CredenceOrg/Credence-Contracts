@@ -140,10 +140,14 @@ fn admin_transferred_event_schema_matches() {
     client.initialize(&admin);
 
     let new_admin = Address::generate(&e);
+    e.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.propose_admin(&new_admin);
+    e.ledger()
+        .with_mut(|li| li.timestamp = 1_000 + min_delay_seconds());
 
     let _ = e.events().all();
 
-    client.transfer_admin(&new_admin);
+    client.accept_admin();
 
     let (topics, data) = only_event(&e);
 

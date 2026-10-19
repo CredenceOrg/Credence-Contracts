@@ -67,8 +67,17 @@ pub struct QueuedOperation {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAdmin {
+    pub address: Address,
+    pub eta: u64,
+    pub expires_at: u64,
+}
+
+#[contracttype]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     OperationCounter,
     Operation(u64),
     ExecutedOp(BytesN<32>),
@@ -255,17 +264,93 @@ impl TimelockContract {
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 
-    pub fn transfer_admin(e: Env, new_admin: Address) {
+    pub fn get_pending_admin(e: Env) -> Option<PendingAdmin> {
+        bump_instance_ttl(&e);
+        e.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
+    pub fn propose_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
         let current_admin = Self::get_admin(e.clone());
         current_admin.require_auth();
 
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        if new_admin == current_admin {
+            panic_with_error!(&e, ContractError::AdminUnchanged);
+        }
+        if new_admin == e.current_contract_address() {
+            panic_with_error!(&e, ContractError::InvalidAdminAddress);
+        }
+
+        let now = e.ledger().timestamp();
+        let eta = now
+            .checked_add(min_delay_seconds())
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+
+        let pending = PendingAdmin {
+            address: new_admin.clone(),
+            eta,
+            expires_at,
+        };
+        e.storage().instance().set(&DataKey::PendingAdmin, &pending);
 
         e.events().publish(
-            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
-            (current_admin, new_admin),
+            (Symbol::new(&e, "admin_proposed"),),
+            (current_admin, new_admin, eta, expires_at),
         );
+    }
+
+    pub fn accept_admin(e: Env) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        let pending: PendingAdmin = e
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
+
+        pending.address.require_auth();
+
+        let now = e.ledger().timestamp();
+        if !is_ready(pending.eta, now) {
+            panic_with_error!(&e, ContractError::TimelockNotReady);
+        }
+        if now > pending.expires_at {
+            panic_with_error!(&e, ContractError::SignatureExpired);
+        }
+
+        e.storage().instance().set(&DataKey::Admin, &pending.address);
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, pending.address),
+        );
+    }
+
+    pub fn cancel_admin_proposal(e: Env) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+
+        let pending: PendingAdmin = e
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
+
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+
+        e.events().publish(
+            (Symbol::new(&e, "admin_proposal_cancelled"),),
+            (current_admin, pending.address),
+        );
+    }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        Self::propose_admin(e, new_admin);
     }
 }
 
@@ -579,5 +664,117 @@ mod tests {
         // Verify the constant fits comfortably in u64 (no truncation).
         let delay: u64 = min_delay_seconds();
         assert_eq!(delay, 86_400_u64);
+    }
+
+    #[test]
+    fn admin_rotation_requires_delay() {
+        let (env, client, admin) = setup_env();
+        let new_admin = Address::generate(&env);
+        env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+        client.propose_admin(&new_admin);
+        let pending = client.get_pending_admin().unwrap();
+        assert_eq!(pending.address, new_admin);
+        assert_eq!(pending.eta, 1_000 + 86_400);
+
+        env.ledger().with_mut(|li| li.timestamp = 1_000 + 86_399);
+        assert_eq!(
+            client.try_accept_admin(),
+            Err(Ok(ContractError::TimelockNotReady.into()))
+        );
+        assert_eq!(client.get_admin(), admin);
+
+        env.ledger().with_mut(|li| li.timestamp = 1_000 + 86_400);
+        client.accept_admin();
+        assert_eq!(client.get_admin(), new_admin);
+        assert!(client.get_pending_admin().is_none());
+    }
+
+    #[test]
+    fn admin_rotation_requires_new_admin_auth() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let new_admin = Address::generate(&env);
+        let contract_id = env.register(TimelockContract, ());
+        let client = TimelockContractClient::new(&env, &contract_id);
+
+        env.mock_all_auths();
+        client.initialize(&admin);
+        env.ledger().with_mut(|li| li.timestamp = 1_000);
+        client.propose_admin(&new_admin);
+
+        env.ledger().with_mut(|li| li.timestamp = 1_000 + 86_400);
+        env.mock_auths(&[]);
+        assert!(client.try_accept_admin().is_err());
+        assert_eq!(client.get_admin(), admin);
+    }
+
+    #[test]
+    fn admin_rotation_expires() {
+        let (env, client, admin) = setup_env();
+        let new_admin = Address::generate(&env);
+        env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+        client.propose_admin(&new_admin);
+        let pending = client.get_pending_admin().unwrap();
+
+        env.ledger()
+            .with_mut(|li| li.timestamp = pending.eta + GRACE_PERIOD + 1);
+        assert_eq!(
+            client.try_accept_admin(),
+            Err(Ok(ContractError::SignatureExpired.into()))
+        );
+        assert_eq!(client.get_admin(), admin);
+    }
+
+    #[test]
+    fn admin_proposal_cancel() {
+        let (env, client, admin) = setup_env();
+        let new_admin = Address::generate(&env);
+        env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+        client.propose_admin(&new_admin);
+        client.cancel_admin_proposal();
+        assert!(client.get_pending_admin().is_none());
+
+        env.ledger().with_mut(|li| li.timestamp = 1_000 + 86_400);
+        assert_eq!(
+            client.try_accept_admin(),
+            Err(Ok(ContractError::NoPendingAdmin.into()))
+        );
+        assert_eq!(client.get_admin(), admin);
+    }
+
+    #[test]
+    fn propose_same_or_self_rejected() {
+        let (env, client, admin) = setup_env();
+        assert_eq!(
+            client.try_propose_admin(&admin),
+            Err(Ok(ContractError::AdminUnchanged.into()))
+        );
+        assert_eq!(
+            client.try_propose_admin(&client.address),
+            Err(Ok(ContractError::InvalidAdminAddress.into()))
+        );
+    }
+
+    #[test]
+    fn old_admin_retains_control_during_delay() {
+        let (env, client, admin) = setup_env();
+        let new_admin = Address::generate(&env);
+        env.ledger().with_mut(|li| li.timestamp = 1_000);
+
+        client.propose_admin(&new_admin);
+        env.ledger().with_mut(|li| li.timestamp = 10_000);
+
+        let op_hash = BytesN::from_array(&env, &[42; 32]);
+        let op_id = client.queue_operation(&admin, &op_hash, &min_delay_seconds());
+        assert_eq!(op_id, 0);
+
+        let other_hash = BytesN::from_array(&env, &[43; 32]);
+        assert_eq!(
+            client.try_queue_operation(&new_admin, &other_hash, &min_delay_seconds()),
+            Err(Ok(ContractError::NotAdmin.into()))
+        );
     }
 }

@@ -130,6 +130,15 @@ Cancels a pending operation.
 - `get_operation(op_id) -> Option<QueuedOperation>`
 - `is_operation_executed(op_hash) -> bool`
 - `get_admin() -> Address`
+- `get_pending_admin() -> Option<PendingAdmin>`
+
+### Admin Rotation (`propose_admin` / `accept_admin` / `cancel_admin_proposal`)
+
+Admin rotation follows a delayed two-step workflow subject to `min_delay_seconds()` and `GRACE_PERIOD`:
+
+1. `propose_admin(new_admin)` — Current admin proposes `new_admin` (rejecting self or unchanged address with `InvalidAdminAddress` / `AdminUnchanged`) and schedules `PendingAdmin { address, eta: now + min_delay_seconds(), expires_at: eta + GRACE_PERIOD }`. `transfer_admin(new_admin)` aliases `propose_admin(new_admin)`.
+2. `accept_admin()` — Proposed `new_admin` authorizes acceptance within `[eta, expires_at]`, rotating `DataKey::Admin` and clearing `DataKey::PendingAdmin`.
+3. `cancel_admin_proposal()` — Current admin cancels an active pending rotation before acceptance.
 
 ## Events
 
@@ -138,6 +147,9 @@ Cancels a pending operation.
 | `operation_queued`    | (tag, op_id)     | (proposer, op_hash, eta, expires_at)|
 | `operation_executed`  | (tag, op_id)     | op_hash                             |
 | `operation_cancelled` | (tag, op_id)     | op_hash                             |
+| `admin_proposed`      | (tag,)           | (current_admin, new_admin, eta, expires_at) |
+| `admin_transferred`   | (tag,)           | (old_admin, new_admin)              |
+| `admin_proposal_cancelled` | (tag,)      | (current_admin, pending_admin)      |
 
 ## Security Considerations
 
