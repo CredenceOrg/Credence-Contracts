@@ -1908,26 +1908,17 @@ impl AdminContract {
 
         // ── Execution Context Logging ───────────────────────────────────────────
         // Log execution start with context for monitoring and debugging
-        e.events().publish(
-            (Symbol::new(&e, "pause_proposal_execution_started"),),
-            (proposal_id, e.ledger().sequence(), e.ledger().timestamp()),
-        );
+        soroban_sdk::log!(&e, "pause_proposal_execution_started", (proposal_id, e.ledger().sequence(), e.ledger().timestamp()));
 
         // ── Input Validation ─────────────────────────────────────────────────────
         // Reject invalid proposal IDs before any state operations to ensure
         // deterministic failure boundaries independent of storage state
         match Self::validate_proposal_id_with_logging(&e, proposal_id) {
             Ok(()) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_proposal_validation_passed"),),
-                    proposal_id,
-                );
+                soroban_sdk::log!(&e, "pause_proposal_validation_passed", proposal_id);
             }
             Err(error_code) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_proposal_validation_failed"),),
-                    (proposal_id, error_code),
-                );
+                soroban_sdk::log!(&e, "pause_proposal_validation_failed", (proposal_id, error_code));
                 Self::require_valid_proposal_id(&e, proposal_id);
             }
         }
@@ -1936,16 +1927,10 @@ impl AdminContract {
         // Verify contract and configuration integrity before proposal execution
         match Self::validate_pause_configuration_with_logging(&e) {
             Ok(config) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_config_validation_passed"),),
-                    (config.threshold, config.signer_count, config.initialized),
-                );
+                soroban_sdk::log!(&e, "pause_config_validation_passed", (config.threshold, config.signer_count, config.initialized));
             }
             Err(error_code) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_config_validation_failed"),),
-                    (proposal_id, error_code),
-                );
+                soroban_sdk::log!(&e, "pause_config_validation_failed", (proposal_id, error_code));
                 // The specific error will be panicked by the validation function
                 Self::require_valid_pause_configuration(&e);
             }
@@ -1957,10 +1942,7 @@ impl AdminContract {
         pausable::execute_pause_proposal(&e, proposal_id);
         
         // ── Final Success Logging ───────────────────────────────────────────────
-        e.events().publish(
-            (Symbol::new(&e, "pause_execution_completed"),),
-            (proposal_id, e.ledger().sequence()),
-        );
+        soroban_sdk::log!(&e, "pause_execution_completed", (proposal_id, e.ledger().sequence()));
     }
 
     /// Validate that a proposal ID is within acceptable bounds and not a sentinel value.

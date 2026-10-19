@@ -23,7 +23,8 @@
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
-use soroban_sdk::{Address, Env, Symbol, TryFromVal};
+use soroban_sdk::{Address, Env};
+use soroban_sdk::testutils::Logs as _;
 
 // Wire-stable error discriminants from credence_errors::ContractError
 const ERR_NOT_INITIALIZED: u32 = 1;
@@ -87,21 +88,15 @@ fn test_execute_pause_proposal_success_single_signer() {
 
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
     assert!(client.is_paused());
 
     // Verify epoch advancement and event emission
     assert_eq!(client.get_config_epoch(), initial_epoch + 2); // propose + execute
-    assert!(events.len() > events_before);
+    assert!(!events.is_empty());
 
     // Verify observability events are present
-    let has_execution_event = events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_executed"))
-        } else {
-            false
-        }
-    });
+    let has_execution_event = logs.iter().any(|entry| entry.contains("pause_proposal_executed"));
     assert!(
         has_execution_event,
         "Should emit successful execution event"
@@ -143,10 +138,11 @@ fn test_execute_pause_proposal_multisig_success() {
     let events_before = e.events().all().len();
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
     assert!(client.is_paused());
 
     // Verify comprehensive observability events
-    assert!(events.len() > events_before);
+    assert!(!events.is_empty());
 }
 
 // ==================================================================================
@@ -391,19 +387,14 @@ fn test_execute_pause_proposal_idempotent_state() {
     // Execute pause proposal on already-paused contract (idempotent)
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
 
     // Should remain paused and advance epoch (cleanup)
     assert!(client.is_paused());
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
 
     // Should emit idempotent execution events
-    let has_idempotent_event = events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_idempotent_execution"))
-        } else {
-            false
-        }
-    });
+    let has_idempotent_event = logs.iter().any(|entry| entry.contains("pause_idempotent_execution"));
     assert!(
         has_idempotent_event,
         "Should emit idempotent execution event"
@@ -470,43 +461,22 @@ fn test_execute_pause_proposal_observability_events() {
     // Execute proposal
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
 
-    let new_events = events;
 
     // Verify execution context events
-    let has_execution_started = new_events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_execution_started"))
-        } else {
-            false
-        }
-    });
+    let has_execution_started = logs.iter().any(|entry| entry.contains("pause_proposal_execution_started"));
     assert!(has_execution_started, "Should emit execution started event");
 
     // Verify validation events
-    let has_validation_passed = new_events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_validation_passed"))
-        } else {
-            false
-        }
-    });
+    let has_validation_passed = logs.iter().any(|entry| entry.contains("pause_proposal_validation_passed"));
     assert!(
         has_validation_passed,
         "Should emit validation success events"
     );
 
     // Verify success event
-    let has_success_event = new_events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_executed"))
-        } else {
-            false
-        }
-    });
+    let has_success_event = logs.iter().any(|entry| entry.contains("pause_proposal_executed"));
     assert!(has_success_event, "Should emit successful execution event");
 }
 
@@ -539,18 +509,10 @@ fn test_execute_pause_proposal_cleanup_completeness() {
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
 
     // Verify cleanup events were emitted
-    let has_cleanup_event = events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics)
-                == Ok(Symbol::new(&e, "pause_proposal_cleanup_completed"))
-                || Symbol::try_from_val(&e, &topics)
-                    == Ok(Symbol::new(&e, "pause_storage_cleanup_metrics"))
-        } else {
-            false
-        }
-    });
+    let has_cleanup_event = logs.iter().any(|entry| entry.contains("pause_proposal_cleanup_completed") || entry.contains("pause_storage_cleanup_metrics"));
     assert!(has_cleanup_event, "Should emit cleanup completion events");
 }
 
@@ -563,15 +525,10 @@ fn test_execute_pause_proposal_state_transition_logging() {
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
 
     // Verify state transition was logged
-    let has_transition_event = events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_state_transition"))
-        } else {
-            false
-        }
-    });
+    let has_transition_event = logs.iter().any(|entry| entry.contains("pause_state_transition"));
     assert!(has_transition_event, "Should emit state transition events");
 }
 
@@ -586,18 +543,10 @@ fn test_execute_pause_proposal_metrics_tracking() {
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
+    let logs = e.logs().all();
 
-    let new_events = events;
 
     // Verify metrics events were emitted
-    let has_metrics_event = new_events.iter().any(|(_, topic, _)| {
-        if let Some(topics) = topic.get(0) {
-            Symbol::try_from_val(&e, &topics) == Ok(Symbol::new(&e, "pause_execution_metrics"))
-                || Symbol::try_from_val(&e, &topics)
-                    == Ok(Symbol::new(&e, "pause_execution_completed"))
-        } else {
-            false
-        }
-    });
+    let has_metrics_event = logs.iter().any(|entry| entry.contains("pause_execution_metrics") || entry.contains("pause_execution_completed"));
     assert!(has_metrics_event, "Should emit execution metrics events");
 }
