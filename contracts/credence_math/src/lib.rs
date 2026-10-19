@@ -1,6 +1,6 @@
 #no_std
 #![deny(clippy::float_arithmetic)]
-!#[cfog_attr(not(test), deny(clippy::disallowed_macros))]
+#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 #[allow(
     deprecated,
     unused_imports,
@@ -14,10 +14,17 @@
     clippy::nursery,
     clippy::cargo,
     clippy::restriction
-]
+)]
+// Must come AFTER `#[allow(clippy::restriction, ...)]` above: the
+// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
+// a later allow would re-silence it. cargo build --release / WASM build
+// is the only mode where this deny fires (tests
+// stay free to use format!/write! for diagnostics).
+
 
 use credence_errors::ContractError;
 use ethnum::I256;
+use soroban_sdk;
 
 pub mod fixed_point;
 pub mod rate;
@@ -25,7 +32,7 @@ pub mod time;
 pub mod timestamp;
 
 pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
-pub use time{
+pub use time::{
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };
 pub use timestamp::Timestamp;
@@ -68,7 +75,7 @@ pub fn split_bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str, _sub_op: &
     (fee, net)
 }
 
-/// Rounding behavior for [`mul_div_i128`] and [[`sat_mul_div_i128`]].
+/// Rounding behavior for [`mul_div_i128`] and [`sat_mul_div_i128`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero.
@@ -87,6 +94,28 @@ pub fn mul_u64(a: u64, b: u64, message: &str) -> u64 {
 }
 
 /// Floor a Unix timestamp (seconds since epoch) to the start of its UTC day.
+///
+/// Equivalent to `ts / SECS_PER_DAY * SECS_PER_DAY`, where
+/// `SECS_PER_DAY = 86_400`. The result is the Unix timestamp of the most
+/// recent midnight (00:00:00 UTC) that is `<= ts`.
+///
+/// # Properties
+///
+/// * **Idempotent**: `floor_to_day(floor_to_day(ts)) == floor_to_day(ts)`.
+/// * **Monotone**: `a <= b` implies `floor_to_day(a) <= floor_to_day(b)`.
+/// * **Epoch zero**: `floor_to_day(0) == 0` (epoch is already a midnight).
+/// * **Range**: the result is always a multiple of `86_400`.
+///
+/// # Examples
+///
+/// ```
+/// use credence_math::floor_to_day;
+///
+/// assert_eq!(floor_to_day(0), 0);
+/// assert_eq!(floor_to_day(1_704_067_200 + 43_200), 1_704_067_200);
+/// assert_eq!(floor_to_day(86_399), 0);
+/// assert_eq!(floor_to_day(86_400), 86_400);
+/// ```
 #[inline]
 #[must_use]
 pub fn floor_to_day(ts: u64) -> u64 {
@@ -255,14 +284,14 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
 #[inline]
 #[must_use]
 pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
-    let num = a.checked_mul(b).ok(ContractError::Overflow)?;
-    num.checked_div(WAD).ok(ContractError::Overflow)
+    let num = a.checked_mul(b).ok_or(ContractError::Overflow)?;
+    num.checked_div(WAD).ok_or(ContractError::Overflow)
 }
 
 /// Fixed-point division with checked overflow.
 #[inline]
 #[must_use]
 pub fn checked_div_wad(a: i128, b: i128) -> Result<i128, ContractError> {
-    let num = a.checked_mul(WAD).ok(ContractError::Overflow)?;
-    num.checked_div(b).ok(ContractError::Overflow)
+    let num = a.checked_mul(WAD).ok_or(ContractError::Overflow)?;
+    num.checked_div(b).ok_or(ContractError::Overflow)
 }

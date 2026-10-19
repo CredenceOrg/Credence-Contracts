@@ -55,12 +55,17 @@ pub fn get_high_value_bounties(env: Env, min_amount: i128, limit: u32) -> Vec<u6
         .get(&DataKey::EscrowIndex)
         .unwrap_or(Vec::new(&env));
     let mut results = Vec::new(&env);
+    let mut seen = Vec::new(&env);
     let mut count = 0u32;
     for i in 0..index.len() {
         if count >= limit {
             break;
         }
         let bounty_id = index.get(i).unwrap();
+        if seen.contains(&bounty_id) {
+            continue;
+        }
+        seen.push_back(bounty_id);
         if let Some(escrow) = env
             .storage()
             .persistent()
@@ -94,12 +99,17 @@ pub fn query_expiring_bounties(
     let now = env.ledger().timestamp();
     let deadline = now.saturating_add(window_seconds);
     let mut results = Vec::new(&env);
+    let mut seen = Vec::new(&env);
     let mut count = 0u32;
     for i in 0..index.len() {
         if count >= limit {
             break;
         }
         let bounty_id = index.get(i).unwrap();
+        if seen.contains(&bounty_id) {
+            continue;
+        }
+        seen.push_back(bounty_id);
         if let Some(escrow) = env
             .storage()
             .persistent()
@@ -130,8 +140,13 @@ pub fn get_depositor_stats(env: Env, depositor: Address) -> DepositorStats {
     let mut total_deposited: i128 = 0;
     let mut total_remaining: i128 = 0;
     let mut active_count: u32 = 0;
+    let mut seen = Vec::new(&env);
     for i in 0..index.len() {
         let bounty_id = index.get(i).unwrap();
+        if seen.contains(&bounty_id) {
+            continue;
+        }
+        seen.push_back(bounty_id);
         if let Some(escrow) = env
             .storage()
             .persistent()
@@ -166,8 +181,13 @@ pub fn get_aggregate_stats_full_scan(env: Env) -> AggregateStats {
     let mut total_value_locked: i128 = 0;
     let mut total_original_amount: i128 = 0;
     let mut active_count: u32 = 0;
+    let mut seen = Vec::new(&env);
     for i in 0..index.len() {
         let bounty_id = index.get(i).unwrap();
+        if seen.contains(&bounty_id) {
+            continue;
+        }
+        seen.push_back(bounty_id);
         if let Some(escrow) = env
             .storage()
             .persistent()
@@ -224,6 +244,17 @@ mod tests {
         remaining_amount: i128,
         status: EscrowStatus,
     ) {
+        setup_bounty_with_expiry(env, id, amount, remaining_amount, status, 2000);
+    }
+
+    fn setup_bounty_with_expiry(
+        env: &Env,
+        id: u64,
+        amount: i128,
+        remaining_amount: i128,
+        status: EscrowStatus,
+        expires_at: u64,
+    ) {
         let depositor = Address::generate(env);
         let escrow = Escrow {
             amount,
@@ -231,7 +262,7 @@ mod tests {
             status,
             depositor,
             created_at: 1000,
-            expires_at: 2000,
+            expires_at,
         };
         env.storage().persistent().set(&DataKey::Escrow(id), &escrow);
     }
@@ -362,6 +393,18 @@ mod tests {
         assert!(results.contains(&2u64));
     }
 
+    #[test]
+    fn high_value_boundary_is_inclusive_and_stale_duplicates_are_safe() {
+        let env = Env::default();
+        setup_bounty(&env, 1, 100, 100, EscrowStatus::Locked);
+        setup_index(&env, &[99, 1, 1]);
+
+        let results = get_high_value_bounties(env.clone(), 100, 10);
+        let expected: Vec<u64> = vec![&env, 1u64];
+        assert_eq!(results, expected);
+        assert!(get_high_value_bounties(env, 100, 0).is_empty());
+    }
+
     // ── query_expiring_bounties ──────────────────────────────────────────
 
     #[test]
@@ -385,6 +428,31 @@ mod tests {
 
         let results = query_expiring_bounties(env, 5000, 10);
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn expiry_window_includes_both_boundaries_and_skips_stale_duplicates() {
+        let env = Env::default();
+        env.ledger().with_mut(|li| li.timestamp = 1000);
+        setup_bounty_with_expiry(&env, 1, 1000, 1000, EscrowStatus::Locked, 1000);
+        setup_bounty_with_expiry(
+            &env,
+            2,
+            1000,
+            1000,
+            EscrowStatus::PartiallyRefunded,
+            1500,
+        );
+        setup_bounty_with_expiry(&env, 3, 1000, 1000, EscrowStatus::Locked, 1501);
+        setup_index(&env, &[99, 1, 2, 3, 1]);
+
+        let results = query_expiring_bounties(env.clone(), 500, 10);
+        let expected: Vec<u64> = vec![&env, 1u64, 2u64];
+        assert_eq!(results, expected);
+
+        let limited = query_expiring_bounties(env, 500, 1);
+        assert_eq!(limited.len(), 1);
+        assert_eq!(limited.get(0), Some(1u64));
     }
 
     // ── get_depositor_stats ──────────────────────────────────────────────
@@ -423,6 +491,29 @@ mod tests {
         assert_eq!(stats.active_count, 1);
     }
 
+    #[test]
+    fn depositor_stats_do_not_double_count_duplicate_index_entries() {
+        let env = Env::default();
+        let depositor = Address::generate(&env);
+        let escrow = Escrow {
+            amount: 1000,
+            remaining_amount: 800,
+            status: EscrowStatus::Locked,
+            depositor: depositor.clone(),
+            created_at: 1000,
+            expires_at: 2000,
+        };
+        env.storage()
+            .persistent()
+            .set(&DataKey::Escrow(1), &escrow);
+        setup_index(&env, &[99, 1, 1]);
+
+        let stats = get_depositor_stats(env, depositor);
+        assert_eq!(stats.total_deposited, 1000);
+        assert_eq!(stats.total_remaining, 800);
+        assert_eq!(stats.active_count, 1);
+    }
+
     // ── get_aggregate_stats_full_scan ────────────────────────────────────
 
     #[test]
@@ -437,5 +528,17 @@ mod tests {
         assert_eq!(stats.total_value_locked, 2500); // 1000 + 1500
         assert_eq!(stats.total_original_amount, 3000); // 1000 + 2000
         assert_eq!(stats.active_count, 2);
+    }
+
+    #[test]
+    fn aggregate_stats_saturate_and_ignore_duplicate_or_stale_entries() {
+        let env = Env::default();
+        setup_bounty(&env, 1, i128::MAX, i128::MAX, EscrowStatus::Locked);
+        setup_index(&env, &[99, 1, 1]);
+
+        let stats = get_aggregate_stats_full_scan(env);
+        assert_eq!(stats.total_value_locked, i128::MAX);
+        assert_eq!(stats.total_original_amount, i128::MAX);
+        assert_eq!(stats.active_count, 1);
     }
 }

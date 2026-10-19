@@ -23,7 +23,7 @@ fn test_create_bond_success() {
 
     let identity = Address::generate(&e);
     let amount = 1000_i128;
-    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
+    let duration = credence_math::SECONDS_PER_DAY;
 
     let bond = client.create_bond(&identity, &amount, &duration, &false, &0_u64);
 
@@ -45,7 +45,13 @@ fn test_create_bond_zero_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &0_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &0_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     assert_eq!(bond.bonded_amount, 0);
     assert!(bond.active);
@@ -62,7 +68,13 @@ fn test_create_bond_negative_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &(-100_i128), &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &(-100_i128),
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     assert_eq!(bond.bonded_amount, -100);
 }
@@ -79,7 +91,13 @@ fn test_create_bond_max_amount() {
 
     let identity = Address::generate(&e);
     let max_amount = i128::MAX;
-    let bond = client.create_bond(&identity, &max_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &max_amount,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     assert_eq!(bond.bonded_amount, max_amount);
 }
@@ -151,7 +169,13 @@ fn test_create_bond_duplicate() {
     let identity = Address::generate(&e);
 
     // Create first bond
-    let bond1 = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond1 = client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond1.bonded_amount, 1000);
 
     // Create second bond (overwrites first)
@@ -177,11 +201,17 @@ fn test_create_bond_different_identities() {
     let identity1 = Address::generate(&e);
     let identity2 = Address::generate(&e);
 
-    client.create_bond(&identity1, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond(
+        &identity1,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     let _bond2 = client.create_bond(&identity2, &2000_i128, &172800_u64, &false, &0_u64);
 
     // Due to single bond storage, only the last bond is stored
-    let stored_bond = client.get_identity_state(&identity);
+    let stored_bond = client.get_identity_state(&identity2);
     assert_eq!(stored_bond.identity, identity2);
     assert_eq!(stored_bond.bonded_amount, 2000);
 }
@@ -239,7 +269,13 @@ fn test_create_bond_min_positive_amount() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &1_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &1_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     assert_eq!(bond.bonded_amount, 1);
     assert!(bond.active);
@@ -257,7 +293,13 @@ fn test_create_bond_usdc_amount() {
 
     let identity = Address::generate(&e);
     let usdc_amount = 1000_000000_i128; // 1000 USDC with 6 decimals
-    let bond = client.create_bond(&identity, &usdc_amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &usdc_amount,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     assert_eq!(bond.bonded_amount, usdc_amount);
 }
@@ -273,7 +315,13 @@ fn test_create_bond_timestamp() {
     client.initialize(&admin, &None);
 
     let identity = Address::generate(&e);
-    let bond = client.create_bond(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     // bond_start should be set to ledger timestamp (can be 0 in test env)
     let ledger_time = e.ledger().timestamp();
@@ -294,7 +342,13 @@ fn test_create_bond_sequential() {
 
     for i in 1..=5 {
         let amount = i * 1000;
-        let bond = client.create_bond(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+        let bond = client.create_bond(
+            &identity,
+            &amount,
+            &credence_math::SECONDS_PER_DAY,
+            &false,
+            &0_u64,
+        );
         assert_eq!(bond.bonded_amount, amount);
     }
 
@@ -350,7 +404,13 @@ fn test_create_bond_one_below_min_duration_rejected() {
     let e = Env::default();
     let (client, _) = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1_000_i128, &(validation::MIN_BOND_DURATION - 1), &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1_000_i128,
+        &(validation::MIN_BOND_DURATION - 1),
+        &false,
+        &0_u64,
+    );
 }
 
 /// Duration one second above MAX is rejected.
@@ -360,7 +420,13 @@ fn test_create_bond_one_above_max_duration_rejected() {
     let e = Env::default();
     let (client, _) = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &1_000_i128, &(validation::MAX_BOND_DURATION + 1), &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &1_000_i128,
+        &(validation::MAX_BOND_DURATION + 1),
+        &false,
+        &0_u64,
+    );
 }
 
 /// Amount one below MIN is rejected.
@@ -370,7 +436,13 @@ fn test_create_bond_one_below_min_amount_rejected() {
     let e = Env::default();
     let (client, _) = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &(validation::MIN_BOND_AMOUNT - 1), &86_400_u64, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &(validation::MIN_BOND_AMOUNT - 1),
+        &86_400_u64,
+        &false,
+        &0_u64,
+    );
 }
 
 /// Amount one above MAX is rejected.
@@ -380,7 +452,11 @@ fn test_create_bond_one_above_max_amount_rejected() {
     let e = Env::default();
     let (client, _) = setup(&e);
     let identity = Address::generate(&e);
-    client.create_bond(&identity, &(validation::MAX_BOND_AMOUNT + 1), &86_400_u64, &false, &0_u64);
+    client.create_bond(
+        &identity,
+        &(validation::MAX_BOND_AMOUNT + 1),
+        &86_400_u64,
+        &false,
+        &0_u64,
+    );
 }
-
-

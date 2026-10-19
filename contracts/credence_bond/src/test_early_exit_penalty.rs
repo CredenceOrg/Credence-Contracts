@@ -30,7 +30,7 @@ fn test_early_exit_penalty_calculation_zero_penalty_rate() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -60,7 +60,7 @@ fn test_early_exit_penalty_calculation_max_penalty() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -69,7 +69,7 @@ fn test_early_exit_penalty_calculation_max_penalty() {
     let before_treasury = token_client.balance(&treasury);
     let before_contract = token_client.balance(&bond_contract_id);
 
-    // Withdraw at start: remaining = credence_math::Timestamp::SECONDS_PER_DAY, total = credence_math::Timestamp::SECONDS_PER_DAY -> full penalty
+    // Withdraw at start: remaining = credence_math::SECONDS_PER_DAY, total = credence_math::SECONDS_PER_DAY -> full penalty
     let bond = client.withdraw_early(&identity, &500);
     assert_eq!(bond.bonded_amount, 500);
     // Penalty = 500 * 100% = 500; user effectively gets 0 (penalty to treasury)
@@ -90,15 +90,15 @@ fn test_early_exit_penalty_half_remaining() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
-    // At t=44200: remaining=43200, total=credence_math::Timestamp::SECONDS_PER_DAY -> 50% of penalty rate -> 5% of amount
+    // At t=44200: remaining=43200, total=credence_math::SECONDS_PER_DAY -> 50% of penalty rate -> 5% of amount
     e.ledger().with_mut(|li| li.timestamp = 44200);
     let bond = client.withdraw_early(&identity, &100);
     assert_eq!(bond.bonded_amount, 900);
-    // Penalty = 100 * 10% * (43200/credence_math::Timestamp::SECONDS_PER_DAY) = 5
+    // Penalty = 100 * 10% * (43200/credence_math::SECONDS_PER_DAY) = 5
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn test_early_exit_emits_penalty_event() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -146,7 +146,7 @@ fn test_early_exit_rejected_after_lock_up() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -162,7 +162,7 @@ fn test_early_exit_fails_without_config_and_reverts_state() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -194,7 +194,7 @@ fn test_early_exit_without_config_uses_typed_error() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );

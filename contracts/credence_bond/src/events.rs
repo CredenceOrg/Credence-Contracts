@@ -591,12 +591,7 @@ pub fn emit_fee_config_updated(
     new_fee_bps: u32,
 ) {
     let topics = (Symbol::new(e, "fee_config_updated"), admin.clone());
-    let data = (
-        old_treasury,
-        new_treasury.clone(),
-        old_fee_bps,
-        new_fee_bps,
-    );
+    let data = (old_treasury, new_treasury.clone(), old_fee_bps, new_fee_bps);
     e.events().publish(topics, data);
 }
 

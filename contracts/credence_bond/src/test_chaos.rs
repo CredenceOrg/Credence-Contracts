@@ -90,7 +90,7 @@ mod tests {
         client.create_bond(
             &identity,
             &1000_i128,
-            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &credence_math::SECONDS_PER_DAY,
             &false,
             &0_u64,
         );
@@ -342,7 +342,7 @@ mod tests {
         client.create_bond(
             &identity,
             &1000_i128,
-            &credence_math::Timestamp::SECONDS_PER_DAY,
+            &credence_math::SECONDS_PER_DAY,
             &true,
             &3600_u64,
         );

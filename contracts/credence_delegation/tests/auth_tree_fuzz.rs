@@ -22,7 +22,14 @@ impl AuthProxy {
     ) {
         owner.require_auth();
         let bond_client = CredenceBondClient::new(&e, &bond_id);
-        bond_client.add_attestation(&owner, &subject, &String::from_str(&e, "fuzz_data"), &nonce);
+        bond_client.add_attestation(
+            &owner,
+            &subject,
+            &String::from_str(&e, "fuzz_data"),
+            &bond_id,
+            &nonce,
+            &nonce,
+        );
     }
 }
 

@@ -5,15 +5,15 @@
 // target contract. This file is a template and not tied into any crate by
 // default.
 
-//! Template: Idempotent accrual helper
-//!
-//! Usage:
-//! - Add the relevant storage keys to your contract's `DataKey` enum
-//!   (e.g., `LastAccrualTimestamp`, `InterestRatePerSecond`, `TotalDebt`, `TotalReserves`).
-//! - Adapt the checked arithmetic helpers (`checked_add_i128`, `checked_mul_i128`) to
-//!   the ones your contract uses (or import from `credence_math`).
-//! - Call `ensure_accrued(&e)` at the start of any public `borrow`/`repay` entry
-//!   points to guarantee state is fresh before principal-mutating operations.
+/// Template: Idempotent accrual helper
+///
+/// Usage:
+/// - Add the relevant storage keys to your contract's `DataKey` enum
+///   (e.g., `LastAccrualTimestamp`, `InterestRatePerSecond`, `TotalDebt`, `TotalReserves`).
+/// - Adapt the checked arithmetic helpers (`checked_add_i128`, `checked_mul_i128`) to
+///   the ones your contract uses (or import from `credence_math`).
+/// - Call `ensure_accrued(&e)` at the start of any public `borrow/repay` entry
+///   points to guarantee state is fresh before principal-mutating operations.
 
 use soroban_sdk::Env;
 
@@ -21,7 +21,7 @@ use soroban_sdk::Env;
 // in your contract. The code below intentionally uses comments/pseudocode to avoid
 // compile-time coupling; replace the comments with the real calls when adapting.
 
-pub mod accrual_helper_template {
+pub module accrual_helper_template {
     use super::*;
 
     /// Ensure interest is accrued up to the current ledger timestamp.
@@ -36,7 +36,7 @@ pub mod accrual_helper_template {
     /// - Implement the interest calculation that fits your model (per-second rate,
     ///   index-based, or other accrual model).
     pub fn ensure_accrued(e: &Env) {
-        // PSEUDOCODE / TEMPLATE - replace with concrete code in your contract.
+        // PSEUDOCODE - replace with concrete code in your contract.
         // let now: u64 = e.ledger().timestamp();
         // let last: u64 = e.storage().instance().get(&DataKey::LastAccrualTimestamp).unwrap_or(0_u64);
         // if now <= last {

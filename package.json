@@ -1,8 +1,0 @@
-{
-  "scripts": {
-    "reset-local-network": "sh scripts/reset_local_network.sh"
-  },
-  "dependencies": {
-    "cargo": "^0.8.0"
-  }
-}

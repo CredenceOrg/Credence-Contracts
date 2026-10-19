@@ -58,7 +58,8 @@ pub const SLASH_BLOCKED_REASON: &str = "slash blocked: collateral increased in t
 
 /// Reason symbol emitted / matched by
 /// [`require_cooldown_allowed_after_collateral_increase`].
-pub const COOLDOWN_BLOCKED_REASON: &str = "cooldown execution blocked: collateral increased in this ledger";
+pub const COOLDOWN_BLOCKED_REASON: &str =
+    "cooldown execution blocked: collateral increased in this ledger";
 
 /// Panics if the last collateral increase happened in the current ledger.
 ///

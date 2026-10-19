@@ -142,3 +142,69 @@ fn test_governance_multi_actor_delegation_flow() {
     assert_eq!(final_state.bonded_amount, 1_000);
     assert_eq!(final_state.slashed_amount, 125);
 }
+
+/// Boundary test: Exact quorum met vs missing quorum by 1 vote.
+#[test]
+fn test_governance_exact_quorum_and_majority_boundary() {
+    let e = Env::default();
+    let (client, admin, _identity, g1, g2, _g3) = setup(&e);
+
+    // Setup: 3 governors. Quorum is 66% (6600 bps). min 2.
+    // So 2 votes is exactly the quorum.
+    let proposal_id = client.propose_slash(&admin, &100_i128);
+    
+    // Only 1 vote - misses quorum
+    client.governance_vote(&g1, &proposal_id, &true);
+    
+    // 2nd vote - meets quorum exactly
+    client.governance_vote(&g2, &proposal_id, &true);
+    
+    let bond = client.execute_slash_with_governance(&admin, &proposal_id);
+    assert_eq!(bond.slashed_amount, 100);
+}
+
+/// Recovery test: Attempting to vote twice should panic.
+#[test]
+#[should_panic(expected = "already voted")]
+fn test_governance_double_vote() {
+    let e = Env::default();
+    let (client, admin, _identity, g1, _g2, _g3) = setup(&e);
+    let proposal_id = client.propose_slash(&admin, &100_i128);
+    client.governance_vote(&g1, &proposal_id, &true);
+    client.governance_vote(&g1, &proposal_id, &true);
+}
+
+/// Recovery test: Unauthorized voter (not governor or delegate) should panic.
+#[test]
+#[should_panic(expected = "not a governor or delegate")]
+fn test_governance_unauthorized_vote() {
+    let e = Env::default();
+    let (client, admin, _identity, _g1, _g2, _g3) = setup(&e);
+    let proposal_id = client.propose_slash(&admin, &100_i128);
+    let unauthorized = Address::generate(&e);
+    client.governance_vote(&unauthorized, &proposal_id, &true);
+}
+
+/// Recovery test: Cannot vote on a proposal that is already executed.
+#[test]
+#[should_panic(expected = "proposal not open for voting")]
+fn test_governance_vote_after_execution() {
+    let e = Env::default();
+    let (client, admin, _identity, g1, g2, g3) = setup(&e);
+    let proposal_id = client.propose_slash(&admin, &100_i128);
+    client.governance_vote(&g1, &proposal_id, &true);
+    client.governance_vote(&g2, &proposal_id, &true);
+    client.execute_slash_with_governance(&admin, &proposal_id);
+    
+    client.governance_vote(&g3, &proposal_id, &true);
+}
+
+/// Recovery test: Proposing a slash of 0 or negative should panic.
+#[test]
+#[should_panic(expected = "slash amount must be positive")]
+fn test_governance_zero_amount_proposal() {
+    let e = Env::default();
+    let (client, admin, _identity, _g1, _g2, _g3) = setup(&e);
+    client.propose_slash(&admin, &0_i128);
+}
+

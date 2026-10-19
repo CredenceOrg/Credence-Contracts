@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
@@ -1021,5 +1021,521 @@ mod tests {
         let (e, admin, _token, client) = setup();
         let collector = Address::generate(&e);
         client.collect_fees(&admin, &collector);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Boundary: exact expiry timestamp
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Withdrawing exactly at `bond_expiry` must succeed (now == expiry).
+    #[test]
+    fn test_withdraw_exactly_at_expiry() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, bond.bond_expiry);
+        assert!(client.is_matured(&owner));
+        assert_eq!(client.get_time_remaining(&owner), 0);
+
+        let withdrawn = client.withdraw(&owner);
+        assert!(!withdrawn.active);
+        assert_eq!(withdrawn.amount, 1000);
+    }
+
+    /// Early exit exactly at `bond_expiry` must be rejected (must use withdraw).
+    #[test]
+    #[should_panic(expected = "lock period has already elapsed; use withdraw")]
+    fn test_early_exit_exactly_at_expiry_rejected() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let penalty_treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &0_u32);
+        client.set_penalty_config(&admin, &penalty_treasury, &1_000_u32);
+
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, bond.bond_expiry);
+        client.withdraw_early(&owner);
+    }
+
+    /// Early exit one second before expiry must succeed.
+    #[test]
+    fn test_early_exit_one_second_before_expiry() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let penalty_treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &0_u32);
+        client.set_penalty_config(&admin, &penalty_treasury, &1_000_u32);
+
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, bond.bond_expiry - 1);
+        assert!(!client.is_matured(&owner));
+        assert_eq!(client.get_time_remaining(&owner), 1);
+
+        let result = client.withdraw_early(&owner);
+        assert!(!result.active);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Recovery: inactive bond cannot be withdrawn twice
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::BondNotActive)")]
+    fn test_double_withdraw_rejected() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, 86_401);
+        client.withdraw(&owner);
+        // Second withdraw must fail because bond is inactive.
+        client.withdraw(&owner);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::BondNotActive)")]
+    fn test_withdraw_early_after_withdraw_rejected() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let penalty_treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &0_u32);
+        client.set_penalty_config(&admin, &penalty_treasury, &1_000_u32);
+
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, 86_401);
+        client.withdraw(&owner);
+        // Early exit after full withdraw must fail.
+        client.withdraw_early(&owner);
+    }
+
+    /// After a bond is withdrawn (inactive), a new bond can be created by the
+    /// same owner — recovery path for re-bonding.
+    #[test]
+    fn test_rebond_after_withdraw() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, 86_401);
+        client.withdraw(&owner);
+
+        // Same owner can create a fresh bond.
+        let bond2 = client.create_bond(&owner, &2000_i128, &86_400_u64);
+        assert!(bond2.active);
+        assert_eq!(bond2.amount, 2000);
+        assert_eq!(bond2.bond_start, 86_401);
+        assert_eq!(bond2.bond_expiry, 86_401 + 86_400);
+    }
+
+    /// After early exit (inactive), a new bond can be created by the same owner.
+    #[test]
+    fn test_rebond_after_early_exit() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let penalty_treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &0_u32);
+        client.set_penalty_config(&admin, &penalty_treasury, &1_000_u32);
+
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        set_timestamp(&e, 100);
+        client.withdraw_early(&owner);
+
+        let bond2 = client.create_bond(&owner, &5000_i128, &86_400_u64);
+        assert!(bond2.active);
+        assert_eq!(bond2.amount, 5000);
+        assert_eq!(bond2.bond_start, 100);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Recovery: get_bond on nonexistent owner
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
+    fn test_get_bond_missing_panics() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.get_bond(&owner);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
+    fn test_withdraw_missing_bond_panics() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.withdraw(&owner);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
+    fn test_withdraw_early_missing_bond_panics() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.withdraw_early(&owner);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Boundary: penalty bps limits
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_penalty_bps_at_max_allowed() {
+        let (e, admin, _token, client) = setup();
+        let treasury = Address::generate(&e);
+        // 10_000 bps = 100% is the maximum allowed.
+        client.set_penalty_config(&admin, &treasury, &10_000_u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::InvalidPenaltyBps)")]
+    fn test_penalty_bps_above_max_rejected() {
+        let (e, admin, _token, client) = setup();
+        let treasury = Address::generate(&e);
+        client.set_penalty_config(&admin, &treasury, &10_001_u32);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::InvalidPenaltyBps)")]
+    fn test_fee_bps_above_max_rejected() {
+        let (e, admin, _token, client) = setup();
+        let treasury = Address::generate(&e);
+        client.set_fee_config(&admin, &treasury, &10_001_u32);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Boundary: amount = 1 (smallest positive)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_amount_one_accepted() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &1_i128, &86_400_u64);
+        assert_eq!(bond.amount, 1);
+        assert!(bond.active);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Boundary: fee rounding (floor division)
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Fee rounds down: 1 bps of 1 = 0 fee, net = 1.
+    #[test]
+    fn test_fee_rounds_down_to_zero() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &1_u32);
+
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &1_i128, &86_400_u64);
+        // 1 * 1 / 10_000 = 0 fee.
+        assert_eq!(bond.amount, 1);
+    }
+
+    /// Fee rounding: 1 bps of 9_999 = 0 (floor), net = 9_999.
+    #[test]
+    fn test_fee_rounding_floor() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &1_u32);
+
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &9_999_i128, &86_400_u64);
+        // 9_999 * 1 / 10_000 = 0 (floor).
+        assert_eq!(bond.amount, 9_999);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Boundary: penalty rounding
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Penalty rounds down: 1 bps of 1 = 0 penalty, net = 1.
+    #[test]
+    fn test_penalty_rounds_down_to_zero() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let penalty_treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &0_u32);
+        client.set_penalty_config(&admin, &penalty_treasury, &1_u32);
+
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1_i128, &86_400_u64);
+
+        set_timestamp(&e, 100);
+        let result = client.withdraw_early(&owner);
+        assert!(!result.active);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Recovery: penalty config removed after bond creation
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// A bond snapshots `penalty_bps` at creation. If the config is later
+    /// changed, the bond retains its original penalty. Early exit must still
+    /// route the penalty to the *current* penalty treasury.
+    #[test]
+    fn test_penalty_snapshot_retained_after_config_change() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let penalty_treasury_a = Address::generate(&e);
+        let penalty_treasury_b = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &0_u32);
+        client.set_penalty_config(&admin, &penalty_treasury_a, &1_000_u32);
+
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &1000_i128, &86_400_u64);
+        assert_eq!(bond.penalty_bps, 1_000);
+
+        // Admin changes penalty config after bond creation.
+        client.set_penalty_config(&admin, &penalty_treasury_b, &500_u32);
+
+        // Bond still has its original penalty_bps snapshot.
+        let fetched = client.get_bond(&owner);
+        assert_eq!(fetched.penalty_bps, 1_000);
+
+        set_timestamp(&e, 100);
+        let result = client.withdraw_early(&owner);
+        assert!(!result.active);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Recovery: collect_fees after multiple bonds
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_collect_fees_accumulates_across_bonds() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+        let collector = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        // 1% fee.
+        client.set_fee_config(&admin, &treasury, &100_u32);
+
+        let owner_a = Address::generate(&e);
+        let owner_b = Address::generate(&e);
+        client.create_bond(&owner_a, &100_000_i128, &86_400_u64);
+        client.create_bond(&owner_b, &200_000_i128, &86_400_u64);
+
+        // Total fees = 1_000 + 2_000 = 3_000.
+        let collected = client.collect_fees(&admin, &collector);
+        assert_eq!(collected, 3_000);
+
+        // Second collect must fail (accumulator zeroed).
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.collect_fees(&admin, &collector);
+        }));
+        assert!(result.is_err());
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Recovery: initialize guards
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::NotInitialized)")]
+    fn test_create_bond_before_initialize_panics() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let owner = Address::generate(&e);
+        // No initialize call — token is not set.
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+    }
+
+    #[test]
+    #[should_panic(expected = "Error(ContractError::NotInitialized)")]
+    fn test_get_admin_before_initialize_panics() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+        client.get_admin();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Admin transfer
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_transfer_admin_updates_admin() {
+        let (e, admin, _token, client) = setup();
+        let new_admin = Address::generate(&e);
+        client.transfer_admin(&new_admin);
+        assert_eq!(client.get_admin(), new_admin);
+        // Old admin no longer authorized.
+        let treasury = Address::generate(&e);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.set_penalty_config(&admin, &treasury, &100_u32);
+        }));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_set_admin_via_governable() {
+        let (e, _admin, _token, client) = setup();
+        let new_admin = Address::generate(&e);
+        client.set_admin(&new_admin);
+        assert_eq!(client.get_admin(), new_admin);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Regression: get_time_remaining saturates at 0
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_get_time_remaining_saturates_far_past_expiry() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+
+        // Advance far past expiry.
+        set_timestamp(&e, u64::MAX - 1);
+        assert_eq!(client.get_time_remaining(&owner), 0);
+        assert!(client.is_matured(&owner));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Regression: withdraw does not affect other owners' bonds
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_withdraw_isolated_per_owner() {
+        let (e, _admin, _token, client) = setup();
+        let owner_a = Address::generate(&e);
+        let owner_b = Address::generate(&e);
+
+        client.create_bond(&owner_a, &1000_i128, &86_400_u64);
+        client.create_bond(&owner_b, &2000_i128, &86_400_u64);
+
+        set_timestamp(&e, 86_401);
+        client.withdraw(&owner_a);
+
+        // Owner B's bond is unaffected.
+        let bond_b = client.get_bond(&owner_b);
+        assert!(bond_b.active);
+        assert_eq!(bond_b.amount, 2000);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Regression: fee config change does not affect existing bonds
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_fee_config_change_does_not_affect_existing_bond() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        let treasury = Address::generate(&e);
+
+        client.initialize(&admin, &token_addr);
+        client.set_fee_config(&admin, &treasury, &100_u32);
+
+        let owner = Address::generate(&e);
+        let bond = client.create_bond(&owner, &100_000_i128, &86_400_u64);
+        assert_eq!(bond.amount, 99_000); // 1% fee.
+
+        // Change fee to 10% — existing bond should be unaffected.
+        client.set_fee_config(&admin, &treasury, &1_000_u32);
+
+        let fetched = client.get_bond(&owner);
+        assert_eq!(fetched.amount, 99_000);
     }
 }

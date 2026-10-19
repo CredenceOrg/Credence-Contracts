@@ -10,17 +10,26 @@ pub const TIER_BRONZE_MAX: i128 = 1_000_000_000_000_000_000_000;
 pub const TIER_SILVER_MAX: i128 = 5_000_000_000_000_000_000_000;
 pub const TIER_GOLD_MAX: i128 = 20_000_000_000_000_000_000_000;
 
+/// Read the configured tier thresholds from contract storage, falling back to
+/// the compiled-in defaults when the contract has never been configured.
+///
+/// Hoisting this out of a loop avoids re-reading and re-deserializing the same
+/// `TierThresholds` entry for every element of a batch.
 #[must_use]
-pub fn get_tier_for_amount(e: &Env, amount: i128) -> BondTier {
-    let thresholds = e
-        .storage()
+pub fn get_tier_thresholds(e: &Env) -> crate::TierThresholds {
+    e.storage()
         .instance()
         .get::<_, crate::TierThresholds>(&crate::DataKey::TierThresholds)
         .unwrap_or(crate::TierThresholds {
             bronze_max: TIER_BRONZE_MAX,
             silver_max: TIER_SILVER_MAX,
             gold_max: TIER_GOLD_MAX,
-        });
+        })
+}
+
+#[must_use]
+pub fn get_tier_for_amount(e: &Env, amount: i128) -> BondTier {
+    let thresholds = get_tier_thresholds(e);
 
     tier_for_amount_with_thresholds(amount, &thresholds)
 }

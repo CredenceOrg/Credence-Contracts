@@ -1,4 +1,4 @@
-use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env};
+use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env, LedgerInfo};
 
 /// Storage key namespace for idempotent transactions.
 ///
@@ -239,5 +239,37 @@ mod tests {
 
         assert_eq!(a, Ok(payload(&env, b"alpha")));
         assert_eq!(b, Ok(payload(&env, b"beta")));
+        assert_eq!(a, Ok(payload(&env, b"alpha")));
+        assert_eq!(b, Ok(payload(&env, b"beta")));
+    }
+    
+    /// Verify that timestamp is recorded and matches ledger timestamp.
+    #[test]
+    fn timestamp_is_recorded_correctly() {
+        let env = Env::default();
+        // Set a known ledger timestamp
+        env.ledger().set(LedgerInfo {
+            timestamp: 12345,
+            protocol_version: 0,
+            sequence_number: 0,
+            base_reserve: 0,
+            min_temp_entry_ttl: 0,
+            min_persistent_entry_ttl: 0,
+            max_entry_ttl: 0,
+            base_fee: 0,
+            base_reserve: 0,
+            tx_fee: 0,
+            network_passphrase: Bytes::from_slice(&env, b"test"),
+        });
+        let caller = Address::generate(&env);
+        let id = tx_id(&env, 0x55);
+        let payload_res = payload(&env, b"data");
+        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || payload_res.clone());
+        // Retrieve stored result
+        let key = StorageKey::Idempotent(id);
+        let stored: StorageResult = env.storage().instance().get(&key).unwrap();
+        assert_eq!(stored.timestamp, 12345);
+        assert_eq!(stored.caller, caller);
+        assert_eq!(stored.result, payload_res);
     }
 }

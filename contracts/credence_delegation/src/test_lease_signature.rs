@@ -198,6 +198,15 @@ fn verify_delegated_signature_corrupted_unknown_scheme_99_panics_with_unknown_sc
 
 #[test]
 #[should_panic(expected = "Error(Contract, #504)")]
+fn verify_delegated_signature_first_unknown_scheme_panics_with_unknown_scheme() {
+    // 3 is the first tag after the wire-stable supported range 0..=2.
+    let e = fresh_env();
+    let owner = Address::generate(&e);
+    verify_delegated_signature(&e, &owner, &Bytes::new(&e), &Bytes::new(&e), 3);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #504)")]
 fn verify_delegated_signature_corrupted_unknown_scheme_max_panics_with_unknown_scheme() {
     let e = fresh_env();
     let owner = Address::generate(&e);

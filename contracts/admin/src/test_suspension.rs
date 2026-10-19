@@ -177,10 +177,14 @@ mod suspension_tests {
         });
     }
 
-    // ── 6. Suspending last active admin → InvalidPauseAction (107) ───────────
+    // ── 6. Suspending self → AdminUnchanged (111) ────────────────────────────
+    //
+    // Self-suspension is rejected before the MinAdmins guard is reached: an
+    // admin must not be able to lock themselves out, which would otherwise
+    // strand governance when the caller is the only effective admin.
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #107)")]
+    #[should_panic(expected = "Error(Contract, #111)")]
     fn test_suspend_below_min_admins_rejected() {
         let env = Env::default();
         let (contract, super_admin) = setup(&env);
@@ -377,6 +381,42 @@ mod suspension_tests {
                 admin.clone(),
                 new_op.clone(),
                 AdminRole::Operator,
+            );
+        });
+    }
+
+    #[test]
+    fn test_adversarial_regression_and_retry_scenarios() {
+        let env = Env::default();
+        let (contract, super_admin) = setup(&env);
+        let target = Address::generate(&env);
+
+        env.as_contract(&contract, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                AdminRole::Admin,
+            );
+        });
+        
+        let now = env.ledger().timestamp();
+        env.as_contract(&contract, || {
+            AdminContract::suspend_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                now + 100,
+            );
+        });
+
+        // Retry suspension
+        env.as_contract(&contract, || {
+            AdminContract::suspend_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                now + 200,
             );
         });
     }

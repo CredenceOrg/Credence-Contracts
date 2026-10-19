@@ -57,11 +57,13 @@ const SKIP_SLASH_INVARIANT: bool = cfg!(skip_slash_invariant);
 ///
 /// Returns `None` when no bond has been created yet (e.g. right after
 /// `initialize`). Callers that require a bond should use [`load_bond`].
-pub fn try_load_bond(env: &Env, contract: &Address) -> Option<IdentityBond> {
+/// `identity` is required because bond state is keyed per identity
+/// (`DataKey::Bond(Address)`).
+pub fn try_load_bond(env: &Env, contract: &Address, identity: &Address) -> Option<IdentityBond> {
     env.as_contract(contract, || {
         env.storage()
             .instance()
-            .get::<_, IdentityBond>(&DataKey::Bond)
+            .get::<_, IdentityBond>(&DataKey::Bond(identity.clone()))
     })
 }
 
@@ -69,8 +71,8 @@ pub fn try_load_bond(env: &Env, contract: &Address) -> Option<IdentityBond> {
 ///
 /// # Panics
 /// Panics if no bond exists. Use [`try_load_bond`] for the optional variant.
-pub fn load_bond(env: &Env, contract: &Address) -> IdentityBond {
-    try_load_bond(env, contract).expect("bond_invariants: expected a bond in storage")
+pub fn load_bond(env: &Env, contract: &Address, identity: &Address) -> IdentityBond {
+    try_load_bond(env, contract, identity).expect("bond_invariants: expected a bond in storage")
 }
 
 // ---------------------------------------------------------------------------
@@ -221,8 +223,8 @@ pub fn assert_bond_invariants(bond: &IdentityBond) {
 
 /// Assert all invariants that depend only on bond state, reading the bond from
 /// storage. No-op (returns) when the contract has no bond yet.
-pub fn assert_all_bond_invariants(env: &Env, contract: &Address) {
-    if let Some(bond) = try_load_bond(env, contract) {
+pub fn assert_all_bond_invariants(env: &Env, contract: &Address, identity: &Address) {
+    if let Some(bond) = try_load_bond(env, contract, identity) {
         assert_bond_invariants(&bond);
     }
 }
@@ -238,10 +240,10 @@ pub fn assert_all_bond_invariants(env: &Env, contract: &Address) {
 ///
 /// ```ignore
 /// client.create_bond(&id, &amount, &dur, &false, &0);
-/// assert_all_invariants(&env, &contract_id);
+/// assert_all_invariants(&env, &contract_id, &id);
 /// ```
-pub fn assert_all_invariants(env: &Env, contract: &Address) {
-    if let Some(bond) = try_load_bond(env, contract) {
+pub fn assert_all_invariants(env: &Env, contract: &Address, identity: &Address) {
+    if let Some(bond) = try_load_bond(env, contract, identity) {
         assert_bond_invariants(&bond);
         let subject = bond.identity.clone();
         assert_attestation_weight_sum_non_negative(env, contract, &subject);
@@ -252,8 +254,13 @@ pub fn assert_all_invariants(env: &Env, contract: &Address) {
 /// Variant of [`assert_all_invariants`] that also checks attestation invariants for
 /// an explicit `subject` (when the attestation subject differs from the bond
 /// identity).
-pub fn assert_all_invariants_for_subject(env: &Env, contract: &Address, subject: &Address) {
-    assert_all_bond_invariants(env, contract);
+pub fn assert_all_invariants_for_subject(
+    env: &Env,
+    contract: &Address,
+    subject: &Address,
+    bond_identity: &Address,
+) {
+    assert_all_bond_invariants(env, contract, bond_identity);
     assert_attestation_weight_sum_non_negative(env, contract, subject);
     assert_attestation_count_consistent(env, contract, subject);
 }

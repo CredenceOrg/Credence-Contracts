@@ -169,10 +169,10 @@ fn invalidate_nonce_range_succeeds_when_identity_authorizes() {
 #[test]
 fn set_revocation_grace_period_succeeds_when_admin_authorizes() {
     let (env, admin, _owner, client) = setup();
-    client.set_revocation_grace_period(&admin, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.set_revocation_grace_period(&admin, &credence_math::SECONDS_PER_DAY);
     assert_eq!(
         client.get_revocation_grace_period(),
-        credence_math::Timestamp::SECONDS_PER_DAY
+        credence_math::SECONDS_PER_DAY
     );
 }
 
@@ -182,7 +182,7 @@ fn set_revocation_grace_period_succeeds_when_admin_authorizes() {
 fn set_revocation_grace_period_rejected_when_non_admin_calls() {
     let (env, _admin, _owner, client) = setup();
     let stranger = Address::generate(&env);
-    client.set_revocation_grace_period(&stranger, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.set_revocation_grace_period(&stranger, &credence_math::SECONDS_PER_DAY);
 }
 
 // ---------------------------------------------------------------------------

@@ -102,7 +102,7 @@ where
         return (chunk, None);
     }
 
-    let end = (offset + effective_size).min(total);
+    let end = offset.saturating_add(effective_size).min(total);
 
     for i in offset..end {
         chunk.push_back(source.get(i).unwrap());
@@ -264,5 +264,57 @@ mod tests {
         assert_eq!(c1.get(0).unwrap(), c0.get(c0.len() - 1).unwrap() + 1);
         assert_eq!(c2.get(0).unwrap(), c1.get(c1.len() - 1).unwrap() + 1);
         assert_eq!(c3.get(0).unwrap(), c2.get(c2.len() - 1).unwrap() + 1);
+    }
+
+    #[test]
+    fn retry_same_offset_is_deterministic() {
+        // Models recovery scenarios where a transaction fails and the caller
+        // retries iteration starting from the same offset.
+        let e = Env::default();
+        let source = make_vec(&e, 50);
+        
+        let (attempt1_chunk, attempt1_next) = vec_chunks(&e, &source, 10, 5);
+        let (attempt2_chunk, attempt2_next) = vec_chunks(&e, &source, 10, 5);
+        let (attempt3_chunk, attempt3_next) = vec_chunks(&e, &source, 10, 5);
+        
+        assert_eq!(attempt1_chunk.len(), 5);
+        assert_eq!(attempt1_next, Some(15));
+        
+        // Ensure perfect determinism across multiple calls
+        assert_eq!(attempt1_chunk, attempt2_chunk);
+        assert_eq!(attempt1_next, attempt2_next);
+        assert_eq!(attempt2_chunk, attempt3_chunk);
+        assert_eq!(attempt2_next, attempt3_next);
+    }
+
+    #[test]
+    fn offset_exactly_at_len_returns_empty_and_no_next() {
+        // Boundary case: offset perfectly hits the end of the collection.
+        let e = Env::default();
+        let source = make_vec(&e, 5);
+        let (chunk, next) = vec_chunks(&e, &source, 5, 5);
+        assert_eq!(chunk.len(), 0);
+        assert!(next.is_none());
+    }
+
+    #[test]
+    fn offset_at_u32_max_returns_empty_safely() {
+        // Adverse condition: a stale or corrupted offset parameter.
+        let e = Env::default();
+        let source = make_vec(&e, 10);
+        let (chunk, next) = vec_chunks(&e, &source, u32::MAX, 5);
+        assert_eq!(chunk.len(), 0);
+        assert!(next.is_none());
+    }
+
+    #[test]
+    fn chunk_size_u32_max_handles_overflow_safely() {
+        // Boundary case: extremely large chunk size request preventing internal overflow.
+        let e = Env::default();
+        let source = make_vec(&e, 10);
+        // Using a non-zero offset ensures `offset + chunk_size` would mathematically overflow `u32`.
+        let (chunk, next) = vec_chunks(&e, &source, 5, u32::MAX);
+        assert_eq!(chunk.len(), 5);
+        assert!(next.is_none());
     }
 }

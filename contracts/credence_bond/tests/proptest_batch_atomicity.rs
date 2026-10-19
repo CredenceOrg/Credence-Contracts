@@ -139,6 +139,8 @@ proptest! {
             let nonce = client.get_nonce(&attester);
             items.push_back(AttestationBatchItem {
                 attester,
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(&env, &format!("clean-batch-{}", i)),
                 nonce,
             });
@@ -201,6 +203,8 @@ proptest! {
             let nonce = client.get_nonce(&attester);
             items.push_back(AttestationBatchItem {
                 attester,
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("poison-batch-{}", i),
@@ -254,6 +258,8 @@ proptest! {
             let nonce = client.get_nonce(&pool[0]);
             items.push_back(AttestationBatchItem {
                 attester: pool[0].clone(),
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("dup-{}", i),
@@ -307,6 +313,8 @@ proptest! {
             let nonce = client.get_nonce(&pool[i]);
             items.push_back(AttestationBatchItem {
                 attester: pool[i].clone(),
+                contract_id: Address::generate(&env),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("overweight-{}", i),
@@ -378,6 +386,8 @@ proptest! {
                 let nonce = client.get_nonce(&attester);
                 items.push_back(AttestationBatchItem {
                     attester,
+                    contract_id: Address::generate(&env),
+                    deadline: 0_u64,
                     attestation_data: make_attestation_data(
                         &env,
                         &format!("seq-{}-{}", step, i),

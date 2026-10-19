@@ -52,6 +52,8 @@ pub use multisig::*;
 #[cfg(test)]
 mod test_access_control;
 #[cfg(test)]
+mod test_max_pause_signers;
+#[cfg(test)]
 mod test_multisig;
 #[cfg(test)]
 mod test_pausable;

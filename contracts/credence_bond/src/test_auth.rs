@@ -128,7 +128,7 @@ fn create_bond_succeeds_when_identity_authorizes() {
     let bond = client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -154,7 +154,8 @@ fn add_attestation_succeeds_when_registered_attester_authorizes() {
     let data = soroban_sdk::String::from_str(&env, "kyc:verified");
     let deadline = env.ledger().timestamp() + 3600;
     let nonce = client2.get_nonce(&attester);
-    let attestation = client2.add_attestation(&attester, &subject, &data, &contract_id, &deadline, &nonce);
+    let attestation =
+        client2.add_attestation(&attester, &subject, &data, &contract_id, &deadline, &nonce);
     assert_eq!(attestation.verifier, attester);
     assert_eq!(attestation.identity, subject);
     assert!(!attestation.revoked);
@@ -171,7 +172,14 @@ fn add_attestation_rejected_when_attester_is_not_registered() {
     let contract_id = env.current_contract_address();
     let deadline = env.ledger().timestamp() + 3600;
     // Should panic: unregistered attester ? UnauthorizedAttester.
-    client.add_attestation(&unregistered, &subject, &data, &contract_id, &deadline, &0_u64);
+    client.add_attestation(
+        &unregistered,
+        &subject,
+        &data,
+        &contract_id,
+        &deadline,
+        &0_u64,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +308,7 @@ fn top_up_succeeds_when_identity_authorizes() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -318,7 +326,7 @@ fn top_up_rejected_when_stranger_calls() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -337,7 +345,7 @@ fn extend_duration_succeeds_when_identity_authorizes() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -355,7 +363,7 @@ fn extend_duration_rejected_when_stranger_calls() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -375,7 +383,7 @@ fn request_withdrawal_succeeds_when_identity_authorizes() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &true,
         &0_u64,
     );
@@ -395,7 +403,7 @@ fn request_withdrawal_rejected_when_stranger_calls() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &true,
         &0_u64,
     );
@@ -459,13 +467,13 @@ fn withdraw_early_succeeds_when_identity_authorizes() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
     // Advance to mid-period so early exit path is taken
     env.ledger().set(soroban_sdk::testutils::LedgerInfo {
-        timestamp: credence_math::Timestamp::SECONDS_PER_DAY / 2,
+        timestamp: credence_math::SECONDS_PER_DAY / 2,
         protocol_version: 22,
         sequence_number: 1,
         network_id: [0; 32],
@@ -492,13 +500,13 @@ fn withdraw_early_rejected_when_stranger_calls() {
     client.create_bond(
         &identity,
         &1000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
     // Advance to mid-period
     env.ledger().set(soroban_sdk::testutils::LedgerInfo {
-        timestamp: credence_math::Timestamp::SECONDS_PER_DAY / 2,
+        timestamp: credence_math::SECONDS_PER_DAY / 2,
         protocol_version: 22,
         sequence_number: 1,
         network_id: [0; 32],

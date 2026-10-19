@@ -275,14 +275,10 @@ fn execute_cooldown_forged_identity_rejected_without_mutation() {
         "execute_cooldown_withdrawal",
         (victim.clone(),).into_val(&e),
     );
-    let res =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.execute_cooldown_withdrawal(&victim);
-        }));
-    assert!(
-        res.is_err(),
-        "forged cooldown execution must be rejected"
-    );
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.execute_cooldown_withdrawal(&victim);
+    }));
+    assert!(res.is_err(), "forged cooldown execution must be rejected");
     assert!(
         client.get_cooldown_request(&victim).is_some(),
         "rejected cooldown execution must not clear the victim's request"
@@ -385,7 +381,10 @@ fn withdraw_early_forged_identity_rejected_without_mutation() {
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.withdraw_early(&victim, &4_000_i128);
     }));
-    assert!(res.is_err(), "forged-identity withdraw_early must be rejected");
+    assert!(
+        res.is_err(),
+        "forged-identity withdraw_early must be rejected"
+    );
 
     let after = client.get_identity_state(&victim);
     assert_eq!(
@@ -455,7 +454,10 @@ fn liquidate_forged_admin_rejected_without_mutation() {
     assert!(res.is_err(), "non-admin liquidate must be rejected");
 
     let bond = client.get_identity_state(&identity);
-    assert!(bond.active, "bond must remain active after rejected liquidate");
+    assert!(
+        bond.active,
+        "bond must remain active after rejected liquidate"
+    );
     assert!(
         !client.is_liquidated(&identity),
         "liquidated flag must not be set after rejected liquidate"

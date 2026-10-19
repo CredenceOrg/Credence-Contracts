@@ -386,6 +386,12 @@ pub fn scan_liquidation_candidates(
     e.storage()
         .instance()
         .set(&ScanKey::KeeperCursor(keeper.clone()), &next_cursor);
+    // Record the size of this scanned page to enforce proper cursor advancement.
+    // When the scan is complete (done), we reset the page size to 0.
+    let page_size = if done { 0 } else { scanned_count };
+    e.storage()
+        .instance()
+        .set(&ScanKey::KeeperLastPageSize(keeper.clone()), &page_size);
 
     e.events().publish(
         (Symbol::new(e, "liquidation_scan_page"), keeper.clone()),

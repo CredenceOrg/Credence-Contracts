@@ -336,7 +336,7 @@ use withdraw_attacker::{WithdrawAttacker, WithdrawAttackerClient};
 // ---------------------------------------------------------------------------
 fn setup_bond(e: &Env) -> (Address, Address, Address) {
     let (client, admin, identity, _token_id, contract_id) = test_helpers::setup_with_token(e);
-    client.create_bond(&identity, &10_000_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(&identity, &10_000_i128, &credence_math::SECONDS_PER_DAY);
 
     (contract_id, admin, identity)
 }

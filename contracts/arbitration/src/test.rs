@@ -652,3 +652,525 @@ fn test_pagination_concurrent_insert_during_walk() {
     assert_eq!(collected.get(1).unwrap(), arb2);
     assert_eq!(collected.get(2).unwrap(), arb3);
 }
+
+// ── Adversarial regression cases (issue #1451) ────────────────────────────────
+//
+// These cases target the boundaries an attacker or an integration bug would
+// probe: state that leaks across disputes, guards that are cleared too eagerly
+// (or not at all), time boundaries that are off by one, and authorization that
+// is checked after state has already been touched.
+
+struct AdversarialSetup<'a> {
+    env: Env,
+    client: CredenceArbitrationClient<'a>,
+    admin: Address,
+    arb1: Address,
+    arb2: Address,
+    creator: Address,
+}
+
+fn setup_adversarial() -> AdversarialSetup<'static> {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let arb1 = Address::generate(&env);
+    let arb2 = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let contract_id = env.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&env, &contract_id);
+    client.initialize(&admin);
+    client.register_arbitrator(&arb1, &10i128);
+    client.register_arbitrator(&arb2, &5i128);
+    AdversarialSetup {
+        env,
+        client,
+        admin,
+        arb1,
+        arb2,
+        creator,
+    }
+}
+
+fn open(s: &AdversarialSetup, tag: &str) -> u64 {
+    s.client
+        .create_dispute(&s.creator, &String::from_str(&s.env, tag), &3600u64)
+}
+
+// ---------------------------------------------------------------------------
+// Reopen must re-establish the active-dispute guard.
+//
+// Regression: reopen_dispute() set the dispute back to Voting but never wrote
+// DataKey::ActiveDispute. Resolving had already cleared that marker, so the
+// creator could open a second concurrent dispute while the reopened one was
+// still live — breaking the one-active-dispute-per-creator invariant.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_reopen_preserves_active_dispute_guard() {
+    let s = setup_adversarial();
+    let id = open(&s, "reopen-guard");
+
+    s.client.vote(&s.arb1, &id, &1);
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    s.client.archive_dispute(&s.admin, &id);
+    s.client.reopen_dispute(&s.admin, &id, &3600u64);
+
+    // The reopened dispute is live again, so the guard must be back.
+    assert_eq!(
+        s.client.get_dispute(&id).status,
+        status::DisputeStatus::Voting
+    );
+    let err = s
+        .client
+        .try_create_dispute(&s.creator, &String::from_str(&s.env, "second"), &3600u64)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::OngoingDispute);
+
+    // Resolving the reopened dispute releases the creator again.
+    s.client.vote(&s.arb1, &id, &2);
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    let next = open(&s, "after-resolve");
+    assert_ne!(next, id);
+}
+
+// ---------------------------------------------------------------------------
+// The active-dispute guard is per creator, so one creator cannot lock another.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_active_dispute_guard_is_scoped_per_creator() {
+    let s = setup_adversarial();
+    let other = Address::generate(&s.env);
+
+    let mine = open(&s, "mine");
+    assert_eq!(s.client.get_dispute(&mine).creator, s.creator);
+
+    // A different creator is unaffected by the first creator's live dispute.
+    let theirs = s
+        .client
+        .create_dispute(&other, &String::from_str(&s.env, "theirs"), &3600u64);
+    assert_eq!(s.client.get_dispute(&theirs).creator, other);
+
+    // Cancelling one dispute frees only that dispute's creator.
+    s.client.cancel_dispute(&s.creator, &mine, &None);
+    let reopened_mine = open(&s, "mine-again");
+    let err = s
+        .client
+        .try_create_dispute(&other, &String::from_str(&s.env, "theirs-again"), &3600u64)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::OngoingDispute);
+    assert_eq!(s.client.get_dispute(&reopened_mine).creator, s.creator);
+}
+
+// ---------------------------------------------------------------------------
+// A cancellation that is rejected must not clear the active-dispute guard.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_rejected_cancel_does_not_release_active_guard() {
+    let s = setup_adversarial();
+    let id = open(&s, "cancel-rejected");
+    let stranger = Address::generate(&s.env);
+
+    let err = s
+        .client
+        .try_cancel_dispute(&stranger, &id, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::NotAuthorized);
+
+    // Guard still held: the dispute is untouched and still blocks a new one.
+    assert_eq!(
+        s.client.get_dispute(&id).status,
+        status::DisputeStatus::Voting
+    );
+    let err = s
+        .client
+        .try_create_dispute(&s.creator, &String::from_str(&s.env, "blocked"), &3600u64)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, status::ArbitrationError::OngoingDispute);
+}
+
+// ---------------------------------------------------------------------------
+// Vote tallies and the "has voted" marker are keyed per dispute; a voter must
+// not be able to carry state from one dispute into another.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_vote_state_is_isolated_per_dispute() {
+    let s = setup_adversarial();
+    let first = s
+        .client
+        .create_dispute(&s.creator, &String::from_str(&s.env, "first"), &3600u64);
+
+    s.client.vote(&s.arb1, &first, &1);
+    assert!(s.client.has_voted(&first, &s.arb1));
+    assert_eq!(s.client.get_tally(&first, &1), 10i128);
+
+    // Settle the first dispute so the creator is free to open another.
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&first);
+
+    let second = s
+        .client
+        .create_dispute(&s.creator, &String::from_str(&s.env, "second"), &3600u64);
+
+    // Fresh dispute: no inherited vote marker, no inherited tally.
+    assert!(!s.client.has_voted(&second, &s.arb1));
+    assert_eq!(s.client.get_tally(&second, &1), 0i128);
+
+    // The same arbitrator may vote again on the new dispute.
+    s.client.vote(&s.arb1, &second, &2);
+    assert!(s.client.has_voted(&second, &s.arb1));
+    assert_eq!(s.client.get_tally(&second, &2), 10i128);
+    assert_eq!(s.client.get_tally(&second, &1), 0i128);
+}
+
+// ---------------------------------------------------------------------------
+// Reopen clears the previous round's votes; a stale "has voted" flag would
+// silently disenfranchise an arbitrator on the reopened dispute.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_reopen_clears_stale_vote_markers() {
+    let s = setup_adversarial();
+    let id = open(&s, "reopen-votes");
+    s.client.vote(&s.arb1, &id, &1);
+    s.client.vote(&s.arb2, &id, &2);
+
+    advance(&s.env, 3601);
+    assert_eq!(s.client.resolve_dispute(&id), 1);
+
+    s.client.archive_dispute(&s.admin, &id);
+    s.client.reopen_dispute(&s.admin, &id, &3600u64);
+
+    // Prior round's tallies and markers are gone.
+    assert_eq!(s.client.get_tally(&id, &1), 0i128);
+    assert_eq!(s.client.get_tally(&id, &2), 0i128);
+    assert!(!s.client.has_voted(&id, &s.arb1));
+    assert!(!s.client.has_voted(&id, &s.arb2));
+
+    // Both arbitrators can vote again, and quorum sees the new round only.
+    s.client.vote(&s.arb1, &id, &3);
+    s.client.vote(&s.arb2, &id, &3);
+    assert_eq!(s.client.get_tally(&id, &3), 15i128);
+}
+
+// ---------------------------------------------------------------------------
+// Time boundaries. voting_end is inclusive for voting and exclusive for
+// resolution, so the exact boundary second must behave consistently.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_vote_and_resolve_at_exact_voting_end_boundary() {
+    let s = setup_adversarial();
+    let id = s
+        .client
+        .create_dispute(&s.creator, &String::from_str(&s.env, "boundary"), &100u64);
+    let end = s.client.get_dispute(&id).voting_end;
+
+    // Pin the ledger exactly to voting_end: a vote is still accepted, but
+    // resolution must not be available yet.
+    let jump = end - s.env.ledger().timestamp();
+    advance(&s.env, jump);
+    assert_eq!(s.env.ledger().timestamp(), end);
+
+    s.client.vote(&s.arb1, &id, &1);
+    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
+    assert_eq!(err, status::ArbitrationError::VotingNotEnded);
+    assert_eq!(
+        s.client.get_dispute(&id).status,
+        status::DisputeStatus::Voting
+    );
+
+    // One second past the boundary, resolution succeeds.
+    advance(&s.env, 1);
+    assert_eq!(s.client.resolve_dispute(&id), 1);
+}
+
+#[test]
+fn test_vote_rejected_one_second_after_voting_end() {
+    let s = setup_adversarial();
+    let id = s
+        .client
+        .create_dispute(&s.creator, &String::from_str(&s.env, "expired"), &100u64);
+
+    advance(&s.env, 101);
+    let err = s.client.try_vote(&s.arb1, &id, &1).unwrap_err().unwrap();
+    assert_eq!(err, status::ArbitrationError::VotingInactive);
+
+    // The rejected vote left no marker and no tally behind.
+    assert!(!s.client.has_voted(&id, &s.arb1));
+    assert_eq!(s.client.get_tally(&id, &1), 0i128);
+}
+
+#[test]
+fn test_reopened_dispute_uses_fresh_voting_window() {
+    let s = setup_adversarial();
+    let id = s.client.create_dispute(
+        &s.creator,
+        &String::from_str(&s.env, "fresh-window"),
+        &10u64,
+    );
+    let original_end = s.client.get_dispute(&id).voting_end;
+
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    s.client.archive_dispute(&s.admin, &id);
+    s.client.reopen_dispute(&s.admin, &id, &500u64);
+
+    let reopened = s.client.get_dispute(&id);
+    assert_eq!(reopened.voting_start, s.env.ledger().timestamp());
+    assert!(reopened.voting_end > original_end);
+    assert_eq!(reopened.voting_end - reopened.voting_start, 500u64);
+
+    // The new window is actually usable.
+    s.client.vote(&s.arb1, &id, &1);
+    advance(&s.env, 501);
+    assert_eq!(s.client.resolve_dispute(&id), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Unregistering an arbitrator must strip its voting power immediately, and
+// re-registering must not resurrect the votes it already cast.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_unregistered_arbitrator_cannot_vote_or_revote() {
+    let s = setup_adversarial();
+    let id = s.client.create_dispute(
+        &s.creator,
+        &String::from_str(&s.env, "unregister"),
+        &3600u64,
+    );
+
+    s.client.vote(&s.arb2, &id, &1);
+    s.client.unregister_arbitrator(&s.arb2);
+
+    let err = s.client.try_vote(&s.arb2, &id, &2).unwrap_err().unwrap();
+    assert_eq!(err, status::ArbitrationError::NotArbitrator);
+
+    // The earlier vote's weight is still counted; the new one was not.
+    assert_eq!(s.client.get_tally(&id, &1), 5i128);
+    assert_eq!(s.client.get_tally(&id, &2), 0i128);
+    assert!(s.client.has_voted(&id, &s.arb2));
+
+    // Re-registering restores voting power but must NOT un-spend the vote
+    // already cast in this dispute: clearing VoterCasted on unregister would
+    // let a re-registered arbitrator double-vote and inflate the tally.
+    s.client.register_arbitrator(&s.arb2, &7i128);
+    let err = s.client.try_vote(&s.arb2, &id, &2).unwrap_err().unwrap();
+    assert_eq!(err, status::ArbitrationError::AlreadyVoted);
+    assert_eq!(s.client.get_tally(&id, &2), 0i128);
+
+    // In a *new* dispute the re-registered arbitrator votes at its new weight.
+    advance(&s.env, 3601);
+    s.client.resolve_dispute(&id);
+    let next = open(&s, "post-unregister");
+    s.client.vote(&s.arb2, &next, &2);
+    assert_eq!(s.client.get_tally(&next, &2), 7i128);
+}
+
+// ---------------------------------------------------------------------------
+// A dispute that was never created must not resolve, vote, or read as found.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_unknown_dispute_id_is_rejected_everywhere() {
+    let s = setup_adversarial();
+    let missing = 9_999u64;
+
+    assert_eq!(
+        s.client.try_get_dispute(&missing).unwrap_err().unwrap(),
+        status::ArbitrationError::DisputeNotFound
+    );
+    assert_eq!(
+        s.client
+            .try_vote(&s.arb1, &missing, &1)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::DisputeNotFound
+    );
+    assert_eq!(
+        s.client.try_resolve_dispute(&missing).unwrap_err().unwrap(),
+        status::ArbitrationError::DisputeNotFound
+    );
+    assert_eq!(
+        s.client
+            .try_cancel_dispute(&s.creator, &missing, &None)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::DisputeNotFound
+    );
+    assert_eq!(
+        s.client
+            .try_archive_dispute(&s.admin, &missing)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::DisputeNotFound
+    );
+    assert_eq!(
+        s.client
+            .try_reopen_dispute(&s.admin, &missing, &3600u64)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::DisputeNotFound
+    );
+
+    // Read-only views stay safe on a missing dispute.
+    assert_eq!(s.client.get_tally(&missing, &1), 0i128);
+    assert!(!s.client.has_voted(&missing, &s.arb1));
+}
+
+// ---------------------------------------------------------------------------
+// Authorization ordering: a non-admin must be rejected, and the rejected call
+// must not mutate state.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_non_admin_admin_actions_leave_state_unchanged() {
+    let s = setup_adversarial();
+    let impostor = Address::generate(&s.env);
+    let id = open(&s, "impostor");
+
+    // Impostor cannot cancel a dispute they do not own.
+    assert_eq!(
+        s.client
+            .try_cancel_dispute(&impostor, &id, &None)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotAuthorized
+    );
+
+    // Impostor cannot archive a still-voting dispute, nor reopen one.
+    assert_eq!(
+        s.client
+            .try_archive_dispute(&impostor, &id)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotAdmin
+    );
+    assert_eq!(
+        s.client
+            .try_reopen_dispute(&impostor, &id, &3600u64)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotAdmin
+    );
+
+    // Impostor cannot rewrite quorum or the arbitrator registry.
+    assert_eq!(
+        s.client
+            .try_set_quorum(&impostor, &1i128, &1u32)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotAdmin
+    );
+    assert_eq!(s.client.get_quorum(), (0i128, 0u32));
+    s.client.unregister_arbitrator(&s.arb1);
+    // Unregister is admin-gated via require_auth, so the impostor path above
+    // never reached it; the real admin's registry is what matters.
+    assert_eq!(
+        s.client.get_dispute(&id).status,
+        status::DisputeStatus::Voting
+    );
+    assert_eq!(
+        s.client
+            .try_get_arbitrator_weight(&s.arb1)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotArbitrator
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Quorum is a gate on the aggregate, not a per-outcome check: splitting votes
+// across outcomes can satisfy total weight while never resolving a winner.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_quorum_satisfied_by_split_votes_elects_lowest_outcome() {
+    let s = setup_adversarial();
+    // Weight quorum only, satisfied purely by splitting across two outcomes.
+    s.client.set_quorum(&s.admin, &15i128, &0u32);
+    let id = open(&s, "split-votes");
+
+    s.client.vote(&s.arb1, &id, &5);
+    s.client.vote(&s.arb2, &id, &6);
+
+    advance(&s.env, 3601);
+    // Outcome 5 carries the full weight of arb1; outcome 6 arb2's.
+    assert_eq!(s.client.resolve_dispute(&id), 5);
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, status::DisputeStatus::Resolved);
+    assert_eq!(d.outcome, 5);
+}
+
+#[test]
+fn test_quorum_zero_voters_still_ties() {
+    let s = setup_adversarial();
+    s.client.set_quorum(&s.admin, &0i128, &0u32);
+    let id = open(&s, "no-votes");
+
+    advance(&s.env, 3601);
+    assert_eq!(s.client.resolve_dispute(&id), 0);
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, status::DisputeStatus::Tied);
+    assert_eq!(d.outcome, 0);
+    // A tie must not leave the guard held: the creator can start again.
+    let next = open(&s, "after-tie");
+    assert_ne!(next, id);
+}
+
+// ---------------------------------------------------------------------------
+// After admin transfer, the old admin must lose every privileged path and the
+// new admin must gain them.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_admin_transfer_moves_all_privileges() {
+    let s = setup_adversarial();
+    let new_admin = Address::generate(&s.env);
+    s.client.transfer_admin(&new_admin);
+
+    // Old admin loses privileged operations.
+    assert_eq!(
+        s.client
+            .try_set_quorum(&s.admin, &10i128, &1u32)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotAdmin
+    );
+    assert_eq!(
+        s.client
+            .try_archive_dispute(&s.admin, &0u64)
+            .unwrap_err()
+            .unwrap(),
+        status::ArbitrationError::NotAdmin
+    );
+
+    // New admin has them.
+    s.client.set_quorum(&new_admin, &10i128, &1u32);
+    assert_eq!(s.client.get_quorum(), (10i128, 1u32));
+
+    // The paused flag and dispute state are untouched by the transfer.
+    assert!(!s.client.is_paused());
+}
+
+#[test]
+fn test_double_initialize_is_rejected_and_keeps_original_admin() {
+    let s = setup_adversarial();
+    let attacker = Address::generate(&s.env);
+
+    let err = s.client.try_initialize(&attacker).unwrap_err().unwrap();
+    assert_eq!(err, status::ArbitrationError::AlreadyInitialized);
+
+    // The original admin is still in charge.
+    s.client.set_quorum(&s.admin, &5i128, &1u32);
+    assert_eq!(s.client.get_quorum(), (5i128, 1u32));
+}

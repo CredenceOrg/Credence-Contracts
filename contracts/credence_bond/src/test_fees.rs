@@ -30,7 +30,13 @@ fn test_fee_zero_when_not_configured() {
     let (treasury, fee_bps) = client.get_fee_config();
     assert!(treasury.is_none());
     assert_eq!(fee_bps, 0);
-    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.bonded_amount, 1000);
 }
 
@@ -51,7 +57,13 @@ fn test_fee_calculated_on_create_bond() {
     let (client, admin, identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &100_u32); // 1%
-    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.bonded_amount, 990); // 1% fee = 10
 }
 
@@ -61,7 +73,13 @@ fn test_fee_one_percent() {
     let (client, admin, identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &100_u32);
-    let bond = client.create_bond_with_rolling(&identity, &10000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &10000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.bonded_amount, 9_900);
 }
 
@@ -71,7 +89,13 @@ fn test_fee_zero_bps() {
     let (client, admin, identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &0_u32);
-    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.bonded_amount, 1000);
 }
 
@@ -83,7 +107,13 @@ fn test_fee_max_bps_capped() {
     let (client, admin, identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &crate::fees::MAX_FEE_BPS);
-    let bond = client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.bonded_amount, 0);
 }
 
@@ -113,7 +143,13 @@ fn test_fee_large_amount() {
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &50_u32); // 0.5%
     let amount = 1_000_000_000_i128;
-    let bond = client.create_bond_with_rolling(&identity, &amount, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    let bond = client.create_bond_with_rolling(
+        &identity,
+        &amount,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     assert_eq!(bond.bonded_amount, 995_000_000); // 0.5% fee
 }
 
@@ -123,8 +159,20 @@ fn test_fee_accumulates_in_pool() {
     let (client, admin, identity) = setup(&e);
     let treasury = Address::generate(&e);
     client.set_fee_config(&admin, &treasury, &100_u32); // 1%
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64); // fee 10
-    client.create_bond_with_rolling(&identity, &2000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64); // fee 20
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    ); // fee 10
+    client.create_bond_with_rolling(
+        &identity,
+        &2000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    ); // fee 20
     let collected = client.collect_fees(&admin, &soroban_sdk::Bytes::new(&e));
     assert_eq!(collected, 10 + 20);
 }
@@ -224,10 +272,7 @@ fn test_rejected_set_fee_config_does_not_overwrite_storage() {
             &(crate::fees::MAX_FEE_BPS + 1),
         );
     }));
-    assert!(
-        panicking.is_err(),
-        "MAX_FEE_BPS+1 must panic the contract"
-    );
+    assert!(panicking.is_err(), "MAX_FEE_BPS+1 must panic the contract");
 
     // Storage on the *surviving* contract env is unchanged: the rejected
     // call on the OTHER env cannot have touched this env's storage.
@@ -260,12 +305,7 @@ fn last_fee_config_event(
         soroban_sdk::Symbol::new(e, "fee_config_updated").into_val(e);
     let expected_admin_val: soroban_sdk::Val = expected_admin.clone().into_val(e);
 
-    let mut hit: Option<(
-        Option<Address>,
-        Address,
-        u32,
-        u32,
-    )> = None;
+    let mut hit: Option<(Option<Address>, Address, u32, u32)> = None;
     for event in e.events().all() {
         if event.1.len() != 2 {
             continue;
@@ -283,12 +323,8 @@ fn last_fee_config_event(
         hit = Some((old_treasury, new_treasury, old_fee_bps, new_fee_bps));
     }
 
-    let (
-        old_treasury,
-        new_treasury,
-        old_fee_bps,
-        new_fee_bps,
-    ) = hit.expect("expected at least one fee_config_updated event emitted by admin");
+    let (old_treasury, new_treasury, old_fee_bps, new_fee_bps) =
+        hit.expect("expected at least one fee_config_updated event emitted by admin");
     (old_treasury, new_treasury, old_fee_bps, new_fee_bps)
 }
 
