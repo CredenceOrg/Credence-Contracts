@@ -2269,7 +2269,6 @@ impl CredenceBond {
     /// - [`ContractError::ContractPaused`] if the contract is paused.
     pub fn set_cooldown_period(e: Env, admin: Address, period: u64) {
         Self::require_not_paused(&e);
-        admin.require_auth();
         guards::require_admin(&e, &admin);
         let old = cooldown::get_cooldown_period(&e);
         cooldown::set_cooldown_period(&e, period);
@@ -2296,7 +2295,11 @@ impl CredenceBond {
     /// - If `amount` is not positive.
     /// - If `amount` exceeds available balance.
     /// - If a cooldown request is already pending.
-    pub fn request_cooldown_withdrawal(e: Env, identity: Address, amount: i128) {
+    pub fn request_cooldown_withdrawal(
+        e: Env,
+        identity: Address,
+        amount: i128,
+    ) -> cooldown::CooldownRequest {
         Self::require_not_paused(&e);
         identity.require_auth();
         let bond: IdentityBond = guards::load_bond(&e, &identity);
@@ -2326,6 +2329,7 @@ impl CredenceBond {
         cooldown::set_cooldown_request(&e, &identity, &request);
         cooldown::record_cooldown_request(&e);
         cooldown::emit_cooldown_requested(&e, &identity, amount);
+        request
     }
 
     /// Execute a previously requested cooldown withdrawal.
@@ -2342,38 +2346,97 @@ impl CredenceBond {
     pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         identity.require_auth();
-        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
-        // #1273: lifecycle invariant — a closed bond must not be mutated.
-        lifecycle::require_bond_active(&e, &bond);
+
+        Self::acquire_lock(&e);
+
+        let mut bond: IdentityBond = match e
+            .storage()
+            .instance()
+            .get(&DataKey::Bond(identity.clone()))
+        {
+            Some(b) => b,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::BondNotFound);
+            }
+        };
+
+        if !bond.active {
+            Self::release_lock(&e);
+            panic_with_error!(e, ContractError::BondNotActive);
+        }
+
         if bond.identity != identity {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotFound);
         }
-        let request = cooldown::get_cooldown_request(&e, &identity)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
+
+        let request = match cooldown::get_cooldown_request(&e, &identity) {
+            Some(r) => r,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::CooldownRequestNotFound);
+            }
+        };
+
         if request.requester != identity {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotBondOwner);
         }
-        same_ledger_liquidation_guard::require_cooldown_allowed_after_collateral_increase(&e);
+
+        let current_seq = e.ledger().sequence();
+        if let Some(last) = e
+            .storage()
+            .instance()
+            .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
+        {
+            if last == current_seq {
+                Self::release_lock(&e);
+                panic!("{}", same_ledger_liquidation_guard::COOLDOWN_BLOCKED_REASON);
+            }
+        }
+
         let now = e.ledger().timestamp();
         let cooldown_period = cooldown::get_cooldown_period(&e);
         if !cooldown::can_withdraw(now, request.requested_at, cooldown_period) {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
         }
+
         let available = bond.bonded_amount - bond.slashed_amount;
         if request.amount > available {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::InsufficientBalance);
         }
+
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
-        bond.bonded_amount = bond
-            .bonded_amount
-            .checked_sub(request.amount)
-            .ok_or(ContractError::Underflow)
-            .unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
+        bond.bonded_amount = match bond.bonded_amount.checked_sub(request.amount) {
+            Some(amt) => amt,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::Underflow);
+            }
+        };
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
+
+        // Effects: persist reduced bond state and clear cooldown request
+        let bond_key = DataKey::Bond(identity.clone());
+        e.storage().instance().set(&bond_key, &bond);
         cooldown::clear_cooldown_request(&e, &identity);
         bump_instance_ttl(&e);
+
+        // Interactions: custody transfer gated by has_token()
+        if token_integration::has_token(&e) {
+            token_integration::transfer_from_contract(&e, &identity, request.amount);
+        }
+
+        // Release reentrancy lock before event emission and invariant checking
+        Self::release_lock(&e);
+
         cooldown::emit_cooldown_executed(&e, &identity, request.amount);
+        invariants::assert_self_consistent(&e);
+
         bond
     }
 
