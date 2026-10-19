@@ -80,7 +80,6 @@ fn test_execute_pause_proposal_success_single_signer() {
     let s1 = signers.get(0).unwrap();
 
     let initial_epoch = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
     // Create and execute pause proposal
     let proposal_id = client.pause(&s1).unwrap();
@@ -135,7 +134,6 @@ fn test_execute_pause_proposal_multisig_success() {
     client.approve_pause_proposal(&s2, &proposal_id);
 
     // Execute with sufficient approvals
-    let events_before = e.events().all().len();
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
     let logs = e.logs().all();
@@ -177,7 +175,6 @@ fn test_execute_pause_proposal_not_found() {
     let (e, client, _super_admin, _signers) = setup_multisig(1, 1);
 
     let epoch_before = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
     let result = client.try_execute_pause_proposal(&12345u64);
     assert!(e.events().all().is_empty(), "failed calls roll back events");
@@ -381,7 +378,6 @@ fn test_execute_pause_proposal_idempotent_state() {
     // Create pause proposal while already paused
     let proposal_id = client.pause(&s1).unwrap();
 
-    let events_before = e.events().all().len();
     let epoch_before = client.get_config_epoch();
 
     // Execute pause proposal on already-paused contract (idempotent)
@@ -452,7 +448,6 @@ fn test_execute_pause_proposal_observability_events() {
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-    let events_start = e.events().all().len();
 
     // Create proposal and approve
     let proposal_id = client.pause(&s1).unwrap();
@@ -488,7 +483,6 @@ fn test_execute_pause_proposal_error_observability() {
     // Create proposal without sufficient approvals
     let proposal_id = client.pause(&s1).unwrap();
 
-    let events_before = e.events().all().len();
 
     // Try to execute with insufficient approvals
     let result = client.try_execute_pause_proposal(&proposal_id);
@@ -537,7 +531,6 @@ fn test_execute_pause_proposal_metrics_tracking() {
     let (e, client, _super_admin, signers) = setup_multisig(1, 1);
     let s1 = signers.get(0).unwrap();
 
-    let events_before = e.events().all().len();
 
     // Execute proposal
     let proposal_id = client.pause(&s1).unwrap();

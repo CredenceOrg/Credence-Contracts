@@ -10,7 +10,7 @@ use crate::DataKey;
 /// accept descriptive messages without the 32-byte Symbol limit and are
 /// disabled in release builds, preserving the deployable WASM size budget.
 /// 
-/// These events provide comprehensive visibility into execution flow while
+/// These diagnostics provide comprehensive visibility into execution flow while
 /// carefully avoiding exposure of sensitive information like addresses or
 /// internal state details that could be used maliciously.
 pub struct PauseObservability;
@@ -578,7 +578,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     let execution_duration = end_ledger.saturating_sub(start_ledger);
     
     // ── Execution Success Event ─────────────────────────────────────────────
-    // Emit successful execution event for observability
+    // Record successful execution in the debug diagnostic stream
     soroban_sdk::log!(e, "pause_proposal_executed", (proposal_id, action, state_changed, execution_duration));
 }
 

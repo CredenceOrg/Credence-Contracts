@@ -12,13 +12,13 @@
 //! `require_role_at_ledger` closes this gap by asserting that the actor's
 //! `assigned_at` timestamp is ≤ the ledger timestamp embedded in the signed
 //! action. If the role was granted *after* the action's ledger, the call is
-//! rejected with `ContractError::RoleNotHeldAtLedger` (code 114).
+//! rejected with `ContractError::RoleNotHeldAtLedger` (code 116).
 //!
 //! # Test structure
 //!
 //! - `role_held_at_exact_assignment_ledger_passes`    — happy path: assigned_at == at_ledger
 //! - `role_held_before_action_ledger_passes`          — happy path: assigned_at < at_ledger
-//! - `role_not_yet_granted_at_action_ledger_rejects`  — **negative**: assigned_at > at_ledger → 114
+//! - `role_not_yet_granted_at_action_ledger_rejects`  — **negative**: assigned_at > at_ledger → 116
 //! - `unknown_actor_rejects_with_not_admin`           — **negative**: unregistered actor → 100
 //! - `insufficient_role_level_rejects_with_not_admin` — **negative**: role too low → 100
 //! - `role_revoked_before_action_ledger_rejects`      — **adversarial**: revoked before action → 100
@@ -89,9 +89,9 @@ fn role_held_before_action_ledger_passes() {
 // ---------------------------------------------------------------------------
 
 /// Role assigned at T=200, action timestamp T=100.
-/// assigned_at(200) > at_ledger(100) → RoleNotHeldAtLedger (code 114).
+/// assigned_at(200) > at_ledger(100) → RoleNotHeldAtLedger (code 116).
 #[test]
-#[should_panic(expected = "Error(Contract, #114)")]
+#[should_panic(expected = "Error(Contract, #116)")]
 fn role_not_yet_granted_at_action_ledger_rejects() {
     let (env, contract_address, super_admin) = setup();
     set_ts(&env, 200);
@@ -164,9 +164,11 @@ fn duplicate_add_admin_preserves_earliest_assignment() {
     let actor = Address::generate(&env);
     env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
     set_ts(&env, 200);
-    env.as_contract(&contract_address, || AdminContract::add_admin(env.clone(), super_admin.clone(), actor.clone(), AdminRole::Operator));
+    let client = AdminContractClient::new(&env, &contract_address);
+    assert_eq!(client.try_add_admin(&super_admin, &actor, &AdminRole::Operator).unwrap_err().unwrap(),
+        soroban_sdk::Error::from_contract_error(ContractError::AlreadyActive as u32));
 
-    // If assigned_at was overwritten to 200, this would reject with 114.
+    // If assigned_at was overwritten to 200, this would reject with 116.
     env.as_contract(&contract_address, || AdminContract::check_role_at_ledger(env.clone(), AdminRole::Operator, actor, 10));
 }
 

@@ -1884,7 +1884,7 @@ impl AdminContract {
     /// * **System errors** (require investigation): Configuration inconsistencies
     ///
     /// ## Observability
-    /// * Comprehensive event logging for all execution phases
+    /// * Debug logging for all execution phases
     /// * Diagnostic metrics for performance monitoring
     /// * Error context logging without sensitive data exposure
     /// * State transition tracking for audit trails
@@ -1901,8 +1901,9 @@ impl AdminContract {
     /// * `InvalidAdminAddress` - Configuration contains invalid addresses
     /// * `ThresholdExceedsSigners` - Invalid threshold configuration
     ///
-    /// # Events
-    /// Emits execution attempt events for observability without exposing sensitive data
+    /// # Diagnostics
+    /// Records execution attempts through SDK debug logs. Governance events
+    /// remain limited to the existing pause/unpause state transitions.
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
         bump_instance_ttl(&e);
 
