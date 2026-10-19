@@ -1475,6 +1475,15 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
             ContractError::InvalidPercentSplit => true,
+
+            // Escrow
+            ContractError::EscrowNotFound => true,
+            ContractError::EscrowNotReleasable => false,
+            ContractError::EscrowNotRefundable => false,
+            ContractError::EscrowNotExpired => true,
+            ContractError::RefundExceedsRemaining => true,
+            ContractError::InvalidEscrowExpiry => true,
+            ContractError::NotEscrowParty => true,
         }
     }
 
@@ -2138,6 +2147,15 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
             ContractError::InvalidPercentSplit => true,
+
+            // Escrow
+            ContractError::EscrowNotFound => true,
+            ContractError::EscrowNotReleasable => false,
+            ContractError::EscrowNotRefundable => false,
+            ContractError::EscrowNotExpired => true,
+            ContractError::RefundExceedsRemaining => true,
+            ContractError::InvalidEscrowExpiry => true,
+            ContractError::NotEscrowParty => true,
         }
     }
 
@@ -2565,6 +2583,7 @@ mod tests {
             ErrorCategory::Delegation,
             ErrorCategory::Treasury,
             ErrorCategory::Arithmetic,
+            ErrorCategory::Escrow,
         ];
         for e in all_variants() {
             let cat = e.category();

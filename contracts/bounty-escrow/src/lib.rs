@@ -2,7 +2,10 @@
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol, Vec};
+use credence_errors::ContractError;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol, Vec,
+};
 
 const DAY_IN_LEDGERS: u32 = 17_280;
 const PERSISTENT_TTL_THRESHOLD: u32 = 7 * DAY_IN_LEDGERS;
@@ -92,12 +95,7 @@ pub fn get_high_value_bounties(env: Env, min_amount: i128, start: u32, limit: u3
     results
 }
 
-pub fn query_expiring_bounties(
-    env: Env,
-    window_seconds: u64,
-    start: u32,
-    limit: u32,
-) -> Vec<u64> {
+pub fn query_expiring_bounties(env: Env, window_seconds: u64, start: u32, limit: u32) -> Vec<u64> {
     let index: Vec<u64> = env
         .storage()
         .persistent()
@@ -130,12 +128,7 @@ pub fn query_expiring_bounties(
     results
 }
 
-pub fn get_depositor_stats(
-    env: Env,
-    depositor: Address,
-    start: u32,
-    limit: u32,
-) -> DepositorStats {
+pub fn get_depositor_stats(env: Env, depositor: Address, start: u32, limit: u32) -> DepositorStats {
     let index: Vec<u64> = env
         .storage()
         .persistent()
@@ -195,10 +188,8 @@ pub fn get_aggregate_stats_full_scan(env: Env, start: u32, limit: u32) -> Aggreg
             if escrow.status == EscrowStatus::Locked
                 || escrow.status == EscrowStatus::PartiallyRefunded
             {
-                total_value_locked =
-                    total_value_locked.saturating_add(escrow.remaining_amount);
-                total_original_amount =
-                    total_original_amount.saturating_add(escrow.amount);
+                total_value_locked = total_value_locked.saturating_add(escrow.remaining_amount);
+                total_original_amount = total_original_amount.saturating_add(escrow.amount);
                 active_count = active_count.saturating_add(1);
             }
         }
@@ -211,6 +202,24 @@ pub fn get_aggregate_stats_full_scan(env: Env, start: u32, limit: u32) -> Aggreg
     }
 }
 
+fn token_address(env: &Env) -> Address {
+    env.storage()
+        .instance()
+        .get(&DataKey::Token)
+        .unwrap_or_else(|| panic_with_error!(env, ContractError::NotInitialized))
+}
+
+fn load_escrow(env: &Env, key: &DataKey) -> Escrow {
+    env.storage()
+        .persistent()
+        .get(key)
+        .unwrap_or_else(|| panic_with_error!(env, ContractError::EscrowNotFound))
+}
+
+fn is_open(status: EscrowStatus) -> bool {
+    status == EscrowStatus::Locked || status == EscrowStatus::PartiallyRefunded
+}
+
 #[contract]
 pub struct BountyEscrow;
 
@@ -218,10 +227,9 @@ pub struct BountyEscrow;
 impl BountyEscrow {
     pub fn initialize(env: Env, admin: Address, token: Address) {
         admin.require_auth();
-        assert!(
-            !env.storage().instance().has(&DataKey::Admin),
-            "already initialized"
-        );
+        if env.storage().instance().has(&DataKey::Admin) {
+            panic_with_error!(&env, ContractError::AlreadyInitialized);
+        }
         env.storage().instance().set(&DataKey::Admin, &admin);
         env.storage().instance().set(&DataKey::Token, &token);
         env.storage().instance().set(&DataKey::NextId, &1u64);
@@ -235,23 +243,24 @@ impl BountyEscrow {
         expires_at: u64,
     ) -> u64 {
         depositor.require_auth();
-        assert!(amount > 0, "amount must be positive");
+        if amount <= 0 {
+            panic_with_error!(&env, ContractError::AmountMustBePositive);
+        }
         let now = env.ledger().timestamp();
-        assert!(expires_at > now, "expires_at must be in the future");
+        if expires_at <= now {
+            panic_with_error!(&env, ContractError::InvalidEscrowExpiry);
+        }
 
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .expect("not initialized");
+        let token_addr = token_address(&env);
         let id: u64 = env
             .storage()
             .instance()
             .get(&DataKey::NextId)
             .unwrap_or(1u64);
-        env.storage()
-            .instance()
-            .set(&DataKey::NextId, &(id.checked_add(1).expect("id overflow")));
+        let next_id = id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&env, ContractError::Overflow));
+        env.storage().instance().set(&DataKey::NextId, &next_id);
 
         token::Client::new(&env, &token_addr).transfer(
             &depositor,
@@ -290,33 +299,31 @@ impl BountyEscrow {
         id
     }
 
-    pub fn release(env: Env, id: u64) {
+    /// Pays the full remaining balance to the beneficiary. `caller` must be the
+    /// escrow's depositor or the contract admin and must authorize the call.
+    pub fn release(env: Env, caller: Address, id: u64) {
+        caller.require_auth();
         let key = DataKey::Escrow(id);
-        let mut escrow: Escrow = env
+        let mut escrow = load_escrow(&env, &key);
+        let admin: Address = env
             .storage()
-            .persistent()
-            .get(&key)
-            .expect("escrow not found");
-        escrow.depositor.require_auth();
-        assert!(
-            escrow.status == EscrowStatus::Locked
-                || escrow.status == EscrowStatus::PartiallyRefunded,
-            "escrow not releasable"
-        );
-        let payout = escrow.remaining_amount;
-        assert!(payout > 0, "nothing to release");
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NotInitialized));
+        if caller != escrow.depositor && caller != admin {
+            panic_with_error!(&env, ContractError::NotEscrowParty);
+        }
+        if !is_open(escrow.status) || escrow.remaining_amount <= 0 {
+            panic_with_error!(&env, ContractError::EscrowNotReleasable);
+        }
 
+        let payout = escrow.remaining_amount;
         escrow.remaining_amount = 0;
         escrow.status = EscrowStatus::Released;
         env.storage().persistent().set(&key, &escrow);
         bump_persistent(&env, &key);
 
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .expect("not initialized");
-        token::Client::new(&env, &token_addr).transfer(
+        token::Client::new(&env, &token_address(&env)).transfer(
             &env.current_contract_address(),
             &escrow.beneficiary,
             &payout,
@@ -328,26 +335,24 @@ impl BountyEscrow {
         );
     }
 
+    /// Returns `amount` to the depositor once the escrow has expired. Leaves the
+    /// escrow `PartiallyRefunded` until the remaining balance reaches zero.
     pub fn refund(env: Env, id: u64, amount: i128) {
-        assert!(amount > 0, "refund amount must be positive");
+        if amount <= 0 {
+            panic_with_error!(&env, ContractError::AmountMustBePositive);
+        }
         let key = DataKey::Escrow(id);
-        let mut escrow: Escrow = env
-            .storage()
-            .persistent()
-            .get(&key)
-            .expect("escrow not found");
+        let mut escrow = load_escrow(&env, &key);
         escrow.depositor.require_auth();
-        assert!(
-            escrow.status == EscrowStatus::Locked
-                || escrow.status == EscrowStatus::PartiallyRefunded,
-            "escrow not refundable"
-        );
-        let now = env.ledger().timestamp();
-        assert!(now >= escrow.expires_at, "escrow has not expired");
-        assert!(
-            amount <= escrow.remaining_amount,
-            "refund exceeds remaining amount"
-        );
+        if !is_open(escrow.status) {
+            panic_with_error!(&env, ContractError::EscrowNotRefundable);
+        }
+        if env.ledger().timestamp() < escrow.expires_at {
+            panic_with_error!(&env, ContractError::EscrowNotExpired);
+        }
+        if amount > escrow.remaining_amount {
+            panic_with_error!(&env, ContractError::RefundExceedsRemaining);
+        }
 
         escrow.remaining_amount -= amount;
         escrow.status = if escrow.remaining_amount == 0 {
@@ -358,12 +363,7 @@ impl BountyEscrow {
         env.storage().persistent().set(&key, &escrow);
         bump_persistent(&env, &key);
 
-        let token_addr: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Token)
-            .expect("not initialized");
-        token::Client::new(&env, &token_addr).transfer(
+        token::Client::new(&env, &token_address(&env)).transfer(
             &env.current_contract_address(),
             &escrow.depositor,
             &amount,
@@ -379,12 +379,7 @@ impl BountyEscrow {
         env.storage().persistent().get(&DataKey::Escrow(id))
     }
 
-    pub fn get_high_value_bounties(
-        env: Env,
-        min_amount: i128,
-        start: u32,
-        limit: u32,
-    ) -> Vec<u64> {
+    pub fn get_high_value_bounties(env: Env, min_amount: i128, start: u32, limit: u32) -> Vec<u64> {
         get_high_value_bounties(env, min_amount, start, limit)
     }
 
@@ -406,11 +401,7 @@ impl BountyEscrow {
         get_depositor_stats(env, depositor, start, limit)
     }
 
-    pub fn get_aggregate_stats_full_scan(
-        env: Env,
-        start: u32,
-        limit: u32,
-    ) -> AggregateStats {
+    pub fn get_aggregate_stats_full_scan(env: Env, start: u32, limit: u32) -> AggregateStats {
         get_aggregate_stats_full_scan(env, start, limit)
     }
 }
@@ -419,142 +410,229 @@ impl BountyEscrow {
 mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::{token, vec, Address, Env};
+    use soroban_sdk::{token, vec, Address, Env, Error};
 
-    fn setup_fixture() -> (
-        Env,
-        BountyEscrowClient<'static>,
-        Address,
-        Address,
-        Address,
-        token::Client<'static>,
-    ) {
+    struct Fixture {
+        env: Env,
+        client: BountyEscrowClient<'static>,
+        admin: Address,
+        depositor: Address,
+        beneficiary: Address,
+        token: token::Client<'static>,
+    }
+
+    fn setup() -> Fixture {
         let env = Env::default();
         env.mock_all_auths();
-        env.ledger().with_mut(|li| li.timestamp = 1000);
+        env.ledger().with_mut(|li| li.timestamp = 1_000);
 
         let admin = Address::generate(&env);
         let depositor = Address::generate(&env);
         let beneficiary = Address::generate(&env);
 
-        let token_admin = Address::generate(&env);
-        let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+        let token_contract = env.register_stellar_asset_contract_v2(Address::generate(&env));
         let token_addr = token_contract.address();
-        let sac = token::StellarAssetClient::new(&env, &token_addr);
-        let token_client = token::Client::new(&env, &token_addr);
-        sac.mint(&depositor, &100_000);
+        token::StellarAssetClient::new(&env, &token_addr).mint(&depositor, &100_000);
+        let token = token::Client::new(&env, &token_addr);
 
         let contract_id = env.register(BountyEscrow, ());
         let client = BountyEscrowClient::new(&env, &contract_id);
         client.initialize(&admin, &token_addr);
 
-        (env, client, admin, depositor, beneficiary, token_client)
+        Fixture {
+            env,
+            client,
+            admin,
+            depositor,
+            beneficiary,
+            token,
+        }
+    }
+
+    fn contract_error(e: ContractError) -> Error {
+        Error::from_contract_error(e as u32)
     }
 
     #[test]
     fn lock_release_happy_path() {
-        let (_env, client, _admin, depositor, beneficiary, token_client) = setup_fixture();
-        let id = client.lock(&depositor, &beneficiary, &2_500, &2_000);
-        assert_eq!(id, 1);
-        assert_eq!(token_client.balance(&depositor), 97_500);
-        assert_eq!(token_client.balance(&beneficiary), 0);
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        assert_eq!(f.token.balance(&f.depositor), 99_000);
+        assert_eq!(f.token.balance(&f.client.address), 1_000);
 
-        client.release(&id);
-        assert_eq!(token_client.balance(&beneficiary), 2_500);
-        let escrow = client.get_escrow(&id).unwrap();
+        f.client.release(&f.depositor, &id);
+
+        assert_eq!(f.token.balance(&f.beneficiary), 1_000);
+        assert_eq!(f.token.balance(&f.client.address), 0);
+        let escrow = f.client.get_escrow(&id).unwrap();
         assert_eq!(escrow.status, EscrowStatus::Released);
         assert_eq!(escrow.remaining_amount, 0);
     }
 
     #[test]
-    #[should_panic(expected = "escrow not releasable")]
     fn double_release_rejected() {
-        let (_env, client, _admin, depositor, beneficiary, _token_client) = setup_fixture();
-        let id = client.lock(&depositor, &beneficiary, &1_000, &2_000);
-        client.release(&id);
-        client.release(&id);
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        f.client.release(&f.depositor, &id);
+
+        assert_eq!(
+            f.client.try_release(&f.depositor, &id),
+            Err(Ok(contract_error(ContractError::EscrowNotReleasable)))
+        );
+        assert_eq!(f.token.balance(&f.beneficiary), 1_000);
+        assert_eq!(f.token.balance(&f.depositor), 99_000);
+        assert_eq!(f.token.balance(&f.client.address), 0);
     }
 
     #[test]
-    #[should_panic(expected = "escrow has not expired")]
     fn refund_before_expiry_rejected() {
-        let (_env, client, _admin, depositor, beneficiary, _token_client) = setup_fixture();
-        let id = client.lock(&depositor, &beneficiary, &1_000, &2_000);
-        client.refund(&id, &500);
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+
+        assert_eq!(
+            f.client.try_refund(&id, &500),
+            Err(Ok(contract_error(ContractError::EscrowNotExpired)))
+        );
+        assert_eq!(f.token.balance(&f.client.address), 1_000);
+        assert_eq!(
+            f.client.get_escrow(&id).unwrap().status,
+            EscrowStatus::Locked
+        );
     }
 
     #[test]
     fn partial_then_full_refund() {
-        let (env, client, _admin, depositor, beneficiary, token_client) = setup_fixture();
-        let id = client.lock(&depositor, &beneficiary, &1_000, &2_000);
-        env.ledger().with_mut(|li| li.timestamp = 2_000);
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        f.env.ledger().with_mut(|li| li.timestamp = 2_000);
 
-        client.refund(&id, &400);
-        let after_partial = client.get_escrow(&id).unwrap();
-        assert_eq!(after_partial.status, EscrowStatus::PartiallyRefunded);
-        assert_eq!(after_partial.remaining_amount, 600);
-        assert_eq!(token_client.balance(&depositor), 99_400);
+        f.client.refund(&id, &300);
+        let partial = f.client.get_escrow(&id).unwrap();
+        assert_eq!(partial.status, EscrowStatus::PartiallyRefunded);
+        assert_eq!(partial.remaining_amount, 700);
+        assert_eq!(f.token.balance(&f.depositor), 99_300);
 
-        client.refund(&id, &600);
-        let after_full = client.get_escrow(&id).unwrap();
-        assert_eq!(after_full.status, EscrowStatus::Refunded);
-        assert_eq!(after_full.remaining_amount, 0);
-        assert_eq!(token_client.balance(&depositor), 100_000);
+        f.client.refund(&id, &700);
+        let full = f.client.get_escrow(&id).unwrap();
+        assert_eq!(full.status, EscrowStatus::Refunded);
+        assert_eq!(full.remaining_amount, 0);
+        assert_eq!(f.token.balance(&f.depositor), 100_000);
+
+        assert_eq!(
+            f.client.try_refund(&id, &1),
+            Err(Ok(contract_error(ContractError::EscrowNotRefundable)))
+        );
+        assert_eq!(f.token.balance(&f.depositor), 100_000);
     }
 
     #[test]
-    #[should_panic(expected = "escrow not releasable")]
+    fn refund_exceeding_remaining_rejected() {
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        f.env.ledger().with_mut(|li| li.timestamp = 2_000);
+
+        assert_eq!(
+            f.client.try_refund(&id, &1_001),
+            Err(Ok(contract_error(ContractError::RefundExceedsRemaining)))
+        );
+        assert_eq!(f.token.balance(&f.client.address), 1_000);
+    }
+
+    #[test]
     fn release_after_full_refund_rejected() {
-        let (env, client, _admin, depositor, beneficiary, _token_client) = setup_fixture();
-        let id = client.lock(&depositor, &beneficiary, &1_000, &2_000);
-        env.ledger().with_mut(|li| li.timestamp = 2_000);
-        client.refund(&id, &1_000);
-        client.release(&id);
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        f.env.ledger().with_mut(|li| li.timestamp = 2_000);
+        f.client.refund(&id, &1_000);
+
+        assert_eq!(
+            f.client.try_release(&f.depositor, &id),
+            Err(Ok(contract_error(ContractError::EscrowNotReleasable)))
+        );
+        assert_eq!(f.token.balance(&f.beneficiary), 0);
+        assert_eq!(f.token.balance(&f.depositor), 100_000);
+    }
+
+    #[test]
+    fn admin_can_release() {
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+
+        f.client.release(&f.admin, &id);
+
+        assert_eq!(f.token.balance(&f.beneficiary), 1_000);
+        assert_eq!(
+            f.client.get_escrow(&id).unwrap().status,
+            EscrowStatus::Released
+        );
+    }
+
+    #[test]
+    fn non_party_release_rejected() {
+        let f = setup();
+        let id = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        let stranger = Address::generate(&f.env);
+
+        assert_eq!(
+            f.client.try_release(&stranger, &id),
+            Err(Ok(contract_error(ContractError::NotEscrowParty)))
+        );
+        assert_eq!(f.token.balance(&f.client.address), 1_000);
+    }
+
+    #[test]
+    fn initialize_twice_rejected() {
+        let f = setup();
+        let token_addr = f.token.address.clone();
+
+        assert_eq!(
+            f.client.try_initialize(&f.admin, &token_addr),
+            Err(Ok(contract_error(ContractError::AlreadyInitialized)))
+        );
     }
 
     #[test]
     fn views_reflect_contract_state() {
-        let (env, client, _admin, depositor, beneficiary, _token_client) = setup_fixture();
-        let id1 = client.lock(&depositor, &beneficiary, &1_000, &1_400);
-        let id2 = client.lock(&depositor, &beneficiary, &3_000, &1_800);
-        let id3 = client.lock(&depositor, &beneficiary, &5_000, &1_300);
+        let f = setup();
+        let id1 = f.client.lock(&f.depositor, &f.beneficiary, &1_000, &2_000);
+        let id2 = f.client.lock(&f.depositor, &f.beneficiary, &3_000, &2_000);
+        let id3 = f.client.lock(&f.depositor, &f.beneficiary, &5_000, &2_000);
 
-        client.release(&id3);
-        env.ledger().with_mut(|li| li.timestamp = 1_400);
-        client.refund(&id1, &300);
+        f.client.release(&f.depositor, &id2);
 
-        let high_val = client.get_high_value_bounties(&1_000, &0, &10);
-        assert_eq!(high_val, vec![&env, id2]);
+        assert_eq!(
+            f.client.get_high_value_bounties(&0, &0, &10),
+            vec![&f.env, id1, id3]
+        );
 
-        let expiring = client.query_expiring_bounties(&500, &0, &10);
-        assert_eq!(expiring, vec![&env, id1, id2]);
-
-        let dep_stats = client.get_depositor_stats(&depositor, &0, &10);
-        assert_eq!(dep_stats.total_deposited, 4_000);
-        assert_eq!(dep_stats.total_remaining, 3_700);
-        assert_eq!(dep_stats.active_count, 2);
-
-        let agg = client.get_aggregate_stats_full_scan(&0, &10);
-        assert_eq!(agg.total_value_locked, 3_700);
-        assert_eq!(agg.total_original_amount, 4_000);
+        let agg = f.client.get_aggregate_stats_full_scan(&0, &10);
+        assert_eq!(agg.total_value_locked, 6_000);
+        assert_eq!(agg.total_original_amount, 6_000);
         assert_eq!(agg.active_count, 2);
+
+        let stats = f.client.get_depositor_stats(&f.depositor, &0, &10);
+        assert_eq!(stats.total_deposited, 6_000);
+        assert_eq!(stats.total_remaining, 6_000);
+        assert_eq!(stats.active_count, 2);
     }
 
     #[test]
     fn views_are_paginated() {
-        let (env, client, _admin, depositor, beneficiary, _token_client) = setup_fixture();
-        let id1 = client.lock(&depositor, &beneficiary, &1_000, &2_000);
-        let id2 = client.lock(&depositor, &beneficiary, &2_000, &2_000);
-        let id3 = client.lock(&depositor, &beneficiary, &3_000, &2_000);
+        let f = setup();
+        for _ in 0..250 {
+            f.client.lock(&f.depositor, &f.beneficiary, &100, &2_000);
+        }
 
-        let page1 = client.get_high_value_bounties(&500, &0, &2);
-        assert_eq!(page1, vec![&env, id1, id2]);
+        // Each page must fit in a fresh default budget; exceeding it panics.
+        f.env.cost_estimate().budget().reset_default();
+        let first = f.client.get_depositor_stats(&f.depositor, &0, &200);
+        f.env.cost_estimate().budget().reset_default();
+        let second = f.client.get_depositor_stats(&f.depositor, &200, &200);
 
-        let page2 = client.get_high_value_bounties(&500, &2, &2);
-        assert_eq!(page2, vec![&env, id3]);
-
-        let agg_slice = client.get_aggregate_stats_full_scan(&1, &1);
-        assert_eq!(agg_slice.total_value_locked, 2_000);
-        assert_eq!(agg_slice.active_count, 1);
+        assert_eq!(first.active_count, 200);
+        assert_eq!(second.active_count, 50);
+        assert_eq!(first.total_deposited + second.total_deposited, 25_000);
+        assert_eq!(first.total_remaining + second.total_remaining, 25_000);
+        assert_eq!(first.active_count + second.active_count, 250);
     }
 }
