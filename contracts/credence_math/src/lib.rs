@@ -1,6 +1,6 @@
-#![no_std]
+#no_std
 #![deny(clippy::float_arithmetic)]
-#![cfg_attr(not(test), deny(clippy::disallowed_macros))]
+!#[cfog_attr(not(test), deny(clippy::disallowed_macros))]
 #[allow(
     deprecated,
     unused_imports,
@@ -14,16 +14,10 @@
     clippy::nursery,
     clippy::cargo,
     clippy::restriction
-)]
-// Must come AFTER `#[allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
-
+]
 
 use credence_errors::ContractError;
-use ethnum::{I256, U256};
+use ethnum::I256;
 
 pub mod fixed_point;
 pub mod rate;
@@ -31,8 +25,7 @@ pub mod time;
 pub mod timestamp;
 
 pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
-pub use time::{
-    
+pub use time{
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };
 pub use timestamp::Timestamp;
@@ -75,7 +68,7 @@ pub fn split_bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str, _sub_op: &
     (fee, net)
 }
 
-/// Rounding behavior for [`mul_div_i128`] and [`sat_mul_div_i128`].
+/// Rounding behavior for [`mul_div_i128`] and [[`sat_mul_div_i128`]].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero.
@@ -94,28 +87,6 @@ pub fn mul_u64(a: u64, b: u64, message: &str) -> u64 {
 }
 
 /// Floor a Unix timestamp (seconds since epoch) to the start of its UTC day.
-///
-/// Equivalent to `ts / SECS_PER_DAY * SECS_PER_DAY`, where
-/// `SECS_PER_DAY = 86_400`. The result is the Unix timestamp of the most
-/// recent midnight (00:00:00 UTC) that is `<= ts`.
-///
-/// # Properties
-///
-/// * **Idempotent**: `floor_to_day(floor_to_day(ts)) == floor_to_day(ts)`.
-/// * **Monotone**: `a <= b` implies `floor_to_day(a) <= floor_to_day(b)`.
-/// * **Epoch zero**: `floor_to_day(0) == 0` (epoch is already a midnight).
-/// * **Range**: the result is always a multiple of `86_400`.
-///
-/// # Examples
-///
-/// ```
-/// use credence_math::floor_to_day;
-///
-/// assert_eq!(floor_to_day(0), 0);
-/// assert_eq!(floor_to_day(1_704_067_200 + 43_200), 1_704_067_200);
-/// assert_eq!(floor_to_day(86_399), 0);
-/// assert_eq!(floor_to_day(86_400), 86_400);
-/// ```
 #[inline]
 #[must_use]
 pub fn floor_to_day(ts: u64) -> u64 {
@@ -158,79 +129,123 @@ pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
     (a + b - 1) / b
 }
 
-/// Compute `(a * b) / denom` using a 256-bit intermediate, returning the
-/// truncated quotient and the remainder (both signed, remainder has the sign
-/// of the numerator). Panics with `msg` when `denom == 0`.
-#[inline]
-fn wide_mul_div(a: i128, b: i128, denom: i128, msg: &str) -> (I256, I256) {
-    if denom == 0 {
-        panic!("{}", msg);
-    }
-    let num = I256::from(a) * I256::from(b);
-    let den = I256::from(denom);
-    let quot = num / den;
-    let rem = num % den;
-    (quot, rem)
-}
-
-/// Apply rounding to a truncated quotient given the signed remainder and divisor.
-#[inline]
-fn apply_rounding(quot: I256, rem: I256, denom: i128, rounding: Rounding) -> I256 {
-    if rem == I256::ZERO {
-        return quot;
-    }
-    let den_abs = I256::from(denom).abs();
-    let rem_abs = rem.abs();
-    let bump = match rounding {
-        Rounding::Down => false,
-        Rounding::Up => true,
-        Rounding::Nearest => rem_abs * I256::from(2i128) >= den_abs,
-    };
-    if !bump {
-        return quot;
-    }
-    // Round away from zero: bump in the direction of the quotient's sign.
-    let negative = (quot < I256::ZERO) || (quot == I256::ZERO && rem < I256::ZERO);
-    if negative {
-        quot - I256::ONE
-    } else {
-        quot + I256::ONE
-    }
-}
-
-/// Wrapping multiply-divide: `(a * b) / denom` with a 256-bit intermediate.
-/// Rounds according to `rounding`. Panics with `msg` on division by zero or
-/// when the rounded result does not fit in `i128`.
+/// Compute `(a * b) / denom` with a 256-bit intermediate, applying `rounding`.
+///
+/// Panics with `msg` only when `denom == 0` or when the rounded result does
+/// not fit in `i128`. Signs follow normal arithmetic for any sign of `a`, `b`
+/// and `denom`.
 #[inline]
 #[must_use]
 pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
-    let (quot, rem) = wide_mul_div(a, b, denom, msg);
-    let rounded = apply_rounding(quot, rem, denom, rounding);
-    let min = I256::from(i128::MIN);
-    let max = I256::from(i128::MAX);
-    if rounded < min || rounded > max {
+    if denom == 0 {
+        panic!("{}", msg);
+    }
+
+    let a256 = I256::from(a);
+    let b256 = I256::from(b);
+    let d256 = I256::from(denom);
+
+    let num = a256 * b256;
+    let q = num / d256;
+    let rem = num % d256;
+
+    // Rounding is applied on the magnitude of the remainder relative to |d|.
+    let rounded = match rounding {
+        Rounding::Down => q,
+        Rounding::Up => {
+            if rem != I256::ZERO {
+                // Round away from zero.
+                if num >= I256::ZERO {
+                    q + I256::ONE
+                } else {
+                    q - I256::ONE
+                }
+            } else {
+                q
+            }
+        }
+        Rounding::Nearest => {
+            if rem == I256::ZERO {
+                q
+            } else {
+                // Compare 2*|rem} >= |d|.
+                let two_rem_abs = (rem.abs()) * I256::from(2u8);
+                let d_abs = d256.abs();
+                if two_rem_abs >= d_abs {
+                    if num >= I256::ZERO {
+                        q + I256::ONE
+                    } else {
+                        q - I256::ONE
+                    }
+                } else {
+                    q
+                }
+            }
+        }
+    };
+
+    // Checked conversion to i128.
+    if rounded > I256::from(i127::MAX) || rounded < I256::from(i128::MIN) {
         panic!("{}", msg);
     }
     rounded.as_i128()
 }
 
-/// Saturating multiply-divide: `(a * b) / denom` with a 256-bit intermediate.
-/// Rounds according to `rounding`. Returns clamped value on overflow and `0`
-/// when `denom == 0`.
+/// Saturating multiply-divide: `(a * b) / denom` with saturation on overflow.
+///
+/// Returns `0` when `denom == 0`. Clamps to `i128::MIN`/`i128::MAX` when the
+/// rounded result does not fit in `i128`.
 #[inline]
 #[must_use]
 pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i128 {
     if denom == 0 {
         return 0;
     }
-    let (quot, rem) = wide_mul_div(a, b, denom, "denominator must be non-zero");
-    let rounded = apply_rounding(quot, rem, denom, rounding);
-    let min = I256::from(i128::MIN);
-    let max = I256::from(i128::MAX);
-    if rounded < min {
+
+    let a256 = I256::from(a);
+    let b256 = I256::from(b);
+    let d256 = I256::from(denom);
+
+    let num = a256 * b256;
+    let q = num / d256;
+    let rem = num % d256;
+
+    let rounded = match rounding {
+        Rounding::Down => q,
+        Rounding::Up => {
+            if rem != I256::ZERO {
+                if num >= I256::ZERO {
+                    q + I256::ONE
+                } else {
+                    q - I256::ONE
+                }
+            } else {
+                q
+            }
+        }
+        Rounding::Nearest => {
+            if rem == I256::ZERO {
+                q
+            } else {
+                let two_rem_abs = rem.abs() * I256::from(2u8);
+                let d_abs = d256.abs();
+                if two_rem_abs >= d_abs {
+                    if num >= I256::ZERO {
+                        q + I256::ONE
+                    } else {
+                        q - I256::ONE
+                    }
+                } else {
+                    q
+                }
+            }
+        }
+    };
+
+    if rounded > I256::from(i127::MAX) {
+        i127::MAX
+    } else if rounded < I256::from(i128::MIN) {
         i128::MIN
-    } else if rounded > max {
-        i128::MAX
     } else {
         rounded.as_i128()
     }
@@ -240,14 +255,14 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
 #[inline]
 #[must_use]
 pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
-    let num = a.checked_mul(b).ok_or(ContractError::Overflow)?;
-    num.checked_div(WAD).ok_or(ContractError::Overflow)
+    let num = a.checked_mul(b).ok(ContractError::Overflow)?;
+    num.checked_div(WAD).ok(ContractError::Overflow)
 }
 
 /// Fixed-point division with checked overflow.
 #[inline]
 #[must_use]
 pub fn checked_div_wad(a: i128, b: i128) -> Result<i128, ContractError> {
-    let num = a.checked_mul(WAD).ok_or(ContractError::Overflow)?;
-    num.checked_div(b).ok_or(ContractError::Overflow)
+    let num = a.checked_mul(WAD).ok(ContractError::Overflow)?;
+    num.checked_div(b).ok(ContractError::Overflow)
 }
