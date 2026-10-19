@@ -7,8 +7,6 @@
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env, String};
-use status::{ArbitrationError, DisputeStatus};
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 

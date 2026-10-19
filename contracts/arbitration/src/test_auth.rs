@@ -21,8 +21,7 @@
 use super::*;
 use interfaces::governable::GovernableClient;
 use soroban_sdk::testutils::{Address as _, Ledger as _, MockAuth, MockAuthInvoke};
-use soroban_sdk::{Address, Env, IntoVal, InvokeError, String};
-use status::ArbitrationError;
+use soroban_sdk::{IntoVal, InvokeError};
 
 // ---------------------------------------------------------------------------
 // Helpers

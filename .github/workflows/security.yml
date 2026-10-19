@@ -89,9 +89,11 @@ jobs:
             ${{ runner.os }}-clippy-
 
       - name: Run Clippy with security lints
+        shell: bash
         run: |
+          set -euo pipefail
           cargo clippy --all-targets --message-format=json -- \
-            -W clippy::integer_arithmetic \
+            -W clippy::arithmetic_side_effects \
             -W clippy::unwrap_used \
             -W clippy::expect_used \
             -W clippy::panic \

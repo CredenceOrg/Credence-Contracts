@@ -1,24 +1,5 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
@@ -51,8 +32,7 @@ const SIGNATURE_DOMAIN: &str = "CredenceArbitration";
 pub mod pausable;
 pub mod status;
 
-use status::ArbitrationError as Error;
-use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
+use status::{require_transition, ArbitrationError, DisputeStatus};
 
 use interfaces::governable::Governable;
 
@@ -662,13 +642,13 @@ impl CredenceArbitration {
     ///
     /// # Returns
     /// The arbitrator's weight as `u32` if registered, or `Error::NotArbitrator` if not.
-    pub fn get_arbitrator_weight(e: Env, arbitrator: Address) -> Result<u32, Error> {
+    pub fn get_arbitrator_weight(e: Env, arbitrator: Address) -> Result<u32, ArbitrationError> {
         bump_instance_ttl(&e);
         let weight: i128 = e
             .storage()
             .instance()
             .get(&DataKey::Arbitrator(arbitrator))
-            .ok_or(Error::NotArbitrator)?;
+            .ok_or(ArbitrationError::NotArbitrator)?;
         Ok(weight as u32)
     }
 

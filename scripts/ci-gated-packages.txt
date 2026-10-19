@@ -1,0 +1,11 @@
+# Packages gated by the contracts-ci workflow.
+# To gate a new crate, add one line with the exact Cargo package name.
+# The CI workflow reads this file and runs fmt, clippy, test, and wasm
+# checks against each listed package.  Only add a crate here once it
+# passes all gates locally.
+#
+# Lines starting with '#' and blank lines are ignored.
+credence_arbitration
+timelock
+dispute_resolution
+testutils

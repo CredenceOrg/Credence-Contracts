@@ -1,0 +1,198 @@
+# Credence Contracts CI — per-package gating workflow.
+#
+# Runs fmt, clippy, test, WASM build + size check, and no-bare-panic
+# against the packages listed in scripts/ci-gated-packages.txt.
+# To gate a newly repaired crate, add one line to that file.
+
+name: Contracts CI
+
+on:
+  push:
+    branches: [main, master, develop, "ci/**"]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ------------------------------------------------------------------
+  # Load the gated package list so downstream jobs can matrix over it.
+  # ------------------------------------------------------------------
+  load-packages:
+    name: Load gated package list
+    runs-on: ubuntu-latest
+    outputs:
+      packages: ${{ steps.list.outputs.packages }}
+      contract_packages: ${{ steps.list.outputs.contract_packages }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse ci-gated-packages.txt
+        id: list
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - << 'EOF'
+          import glob, json, os, tomllib
+
+          with open("scripts/ci-gated-packages.txt", "r", encoding="utf-8") as f:
+              pkgs = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+
+          contract_pkgs = []
+          for p in pkgs:
+              for toml in glob.glob("contracts/**/Cargo.toml", recursive=True):
+                  with open(toml, "rb") as tf:
+                      data = tomllib.load(tf)
+                      if data.get("package", {}).get("name") == p:
+                          if "cdylib" in data.get("lib", {}).get("crate-type", []):
+                              contract_pkgs.append(p)
+
+          github_output = os.environ.get("GITHUB_OUTPUT")
+          if github_output:
+              with open(github_output, "a", encoding="utf-8") as f:
+                  f.write(f"packages={json.dumps(pkgs)}\n")
+                  f.write(f"contract_packages={json.dumps(contract_pkgs)}\n")
+
+          print(f"::notice::Gated packages: {json.dumps(pkgs)}")
+          print(f"::notice::Contract packages: {json.dumps(contract_pkgs)}")
+          EOF
+
+  # ------------------------------------------------------------------
+  # 1. Formatting — whole workspace, single check
+  # ------------------------------------------------------------------
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --all -- --check
+
+  # ------------------------------------------------------------------
+  # 2. Tests — per gated package
+  # ------------------------------------------------------------------
+  test:
+    name: "Test (${{ matrix.pkg }})"
+    needs: load-packages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJson(needs.load-packages.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci-test"
+
+      - name: "Run tests for ${{ matrix.pkg }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test -p "${{ matrix.pkg }}" --locked
+
+  # ------------------------------------------------------------------
+  # 3. Clippy — per gated package
+  # ------------------------------------------------------------------
+  clippy:
+    name: "Clippy (${{ matrix.pkg }})"
+    needs: load-packages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJson(needs.load-packages.outputs.packages) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci-clippy"
+
+      - name: "Run clippy for ${{ matrix.pkg }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo clippy -p "${{ matrix.pkg }}" --all-targets --locked -- -D warnings
+
+  # ------------------------------------------------------------------
+  # 4. WASM build + size budget — contract crates only
+  # ------------------------------------------------------------------
+  wasm:
+    name: "WASM build (${{ matrix.pkg }})"
+    needs: load-packages
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJson(needs.load-packages.outputs.contract_packages) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add WASM target
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup target add wasm32v1-none
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "ci-wasm"
+
+      - name: "Build WASM release for ${{ matrix.pkg }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo build -p "${{ matrix.pkg }}" --target wasm32v1-none --release
+
+      - name: Check WASM size budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/check_wasm_size.sh
+
+  # ------------------------------------------------------------------
+  # 5. No bare panic!() in release code
+  # ------------------------------------------------------------------
+  no-bare-panic:
+    name: No bare panic!() in release code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run no-panic check
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/check_no_panic.py

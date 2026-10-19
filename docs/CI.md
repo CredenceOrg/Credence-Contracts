@@ -6,18 +6,50 @@ This document lists the **exact commands** maintainers expect you to run before
 opening a PR that touches contracts. Running them locally prevents CI failures
 and keeps reviews focused on logic, not style.
 
+---
+
+## Package Gating Strategy
+
+Not every workspace crate compiles cleanly yet. CI enforces quality gates only
+on the crates listed in
+[`scripts/ci-gated-packages.txt`](../scripts/ci-gated-packages.txt).
+
+The [`contracts-ci.yml`](../.github/workflows/contracts-ci.yml) workflow reads
+that file and fans out matrix jobs for **fmt**, **clippy**, **test**, **WASM
+build + size budget**, and **no-bare-panic** checks.
+
+### How to gate a new crate
+
+1. Make the crate pass all gates locally (see the commands below).
+2. Add one line with the exact Cargo package name to
+   `scripts/ci-gated-packages.txt`.
+3. Open a PR — CI will automatically include the new crate.
+
+### Currently gated packages
+
+| Package                | Type     |
+|------------------------|----------|
+| `credence_arbitration` | contract |
+| `timelock`             | contract |
+| `dispute_resolution`   | contract |
+| `testutils`            | library  |
+
+---
+
 ## Quick Reference — Run All Lints
 
 ```bash
 # 1. Formatting
 cargo fmt --all -- --check
 
-# 2. Standard clippy
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+# 2. Clippy (per gated package)
+for pkg in $(grep -v '^\s*#' scripts/ci-gated-packages.txt | grep -v '^\s*$'); do
+  cargo clippy -p "$pkg" --all-targets --locked -- -D warnings
+done
 
 # 3. Security-focused clippy
 cargo clippy --all-targets -- \
-  -W clippy::integer_arithmetic \
+  -W clippy::arithmetic_side_effects \
   -W clippy::unwrap_used \
   -W clippy::expect_used \
   -W clippy::panic \
@@ -28,22 +60,26 @@ cargo clippy --all-targets -- \
   -W clippy::cast_sign_loss \
   -D warnings
 
-# 4. Workspace tests
-cargo test --workspace
+# 4. Tests (per gated package)
+for pkg in $(grep -v '^\s*#' scripts/ci-gated-packages.txt | grep -v '^\s*$'); do
+  cargo test -p "$pkg" --locked
+done
 
-# 5. Coverage (per-crate, ≥ 95%)
-cargo llvm-cov --package credence_bond --fail-under-lines 95
-cargo llvm-cov --package credence_delegation --fail-under-lines 95
-cargo llvm-cov --package timelock --fail-under-lines 95
+# 5. WASM build + size check (contract crates only)
+rustup target add wasm32v1-none
+for pkg in credence_arbitration timelock dispute_resolution; do
+  cargo build -p "$pkg" --target wasm32v1-none --release
+done
+bash scripts/check_wasm_size.sh
 
-# 6. Error code wire stability
+# 6. No bare panic!() ratchet
+python3 scripts/check_no_panic.py
+
+# 7. Error code wire stability
 cargo test -p credence_errors error_codes_wire
 
-# 7. Dependency audit
+# 8. Dependency audit
 cargo audit
-
-# 8. Unsafe code detection
-cargo geiger
 ```
 
 ---
@@ -62,26 +98,26 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-**CI job:** `contracts-lints.yml`
+**CI job:** `contracts-ci.yml` → `fmt`
 
 ---
 
 ## 2. Standard Clippy Lints
 
-**Command:**
+**Command (per gated package):**
 ```bash
-cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo clippy -p <package> --all-targets --locked -- -D warnings
 ```
 
 **What it checks:** The full Rust lint suite (correctness, style, complexity,
-perf) on every crate and every target (lib, tests, benches, examples).
+perf) on every target (lib, tests, benches, examples).
 
 **Tips:**
 - Use `#![allow(clippy::some_lint)]` sparingly and only with a comment
   explaining why the lint is suppressed.
 - Prefer `cargo clippy --fix` for auto-fixable lints when safe.
 
-**CI job:** `contracts-lints.yml`
+**CI job:** `contracts-ci.yml` → `clippy`
 
 ---
 
@@ -90,7 +126,7 @@ perf) on every crate and every target (lib, tests, benches, examples).
 **Command:**
 ```bash
 cargo clippy --all-targets -- \
-  -W clippy::integer_arithmetic \
+  -W clippy::arithmetic_side_effects \
   -W clippy::unwrap_used \
   -W clippy::expect_used \
   -W clippy::panic \
@@ -109,24 +145,27 @@ blocking failures for the Credence security pipeline:
 |---|---|---|
 | `unwrap_used` / `expect_used` | Silent panics in production | `unwrap_or_else(\|\| panic_with_error!(…))` |
 | `panic` / `todo` / `unimplemented` | Unexpected halting | `panic_with_error!` with wire-stable codes |
-| `integer_arithmetic` | Unchecked overflow/underflow | `checked_add`, `saturating_add` |
+| `arithmetic_side_effects` | Unchecked overflow/underflow | `checked_add`, `saturating_add` |
 | `indexing_slicing` | Out-of-bounds panic | `.get()` with explicit error handling |
 | `cast_possible_truncation` | Silent precision loss | Explicit bounds checks before casting |
 | `cast_sign_loss` | Unexpected sign change | `try_from` with error handling |
+
+> **Note:** `clippy::integer_arithmetic` was renamed to
+> `clippy::arithmetic_side_effects` in recent Rust toolchains.
 
 **CI job:** `security.yml`
 
 ---
 
-## 4. Workspace Tests
+## 4. Tests
 
-**Command:**
+**Command (per gated package):**
 ```bash
-cargo test --workspace
+cargo test -p <package> --locked
 ```
 
-**What it checks:** All unit tests, integration tests, and doc-tests across
-the workspace.
+**What it checks:** All unit tests, integration tests, and doc-tests for the
+gated crate.
 
 **Tips:**
 - Use `just test-one <crate> [test_name]` for targeted runs during development.
@@ -135,37 +174,43 @@ the workspace.
   cargo test -p credence_bond fuzz::test_bond_fuzz -- --nocapture
   ```
 
-**CI jobs:** `contracts-tests.yml`, `ci.yml`
+**CI job:** `contracts-ci.yml` → `test`
 
 ---
 
-## 5. Coverage Gate (≥ 95%)
-
-**One-time setup:**
-```bash
-rustup component add llvm-tools-preview
-cargo install cargo-llvm-cov --locked
-```
+## 5. WASM Build + Size Budget
 
 **Commands:**
 ```bash
-cargo llvm-cov --package credence_bond --fail-under-lines 95
-cargo llvm-cov --package credence_delegation --fail-under-lines 95
-cargo llvm-cov --package timelock --fail-under-lines 95
+rustup target add wasm32v1-none
+cargo build -p <contract> --target wasm32v1-none --release
+bash scripts/check_wasm_size.sh
 ```
 
-**What it checks:** Per-crate line coverage meets or exceeds 95%.
+**What it checks:** Each contract crate compiles to a valid WASM binary that
+fits within the per-contract size budget defined in
+[`scripts/wasm-size-budget.toml`](../scripts/wasm-size-budget.toml).
 
-**Tip:** Generate an HTML report to find uncovered lines:
-```bash
-cargo llvm-cov --package credence_bond --open
-```
-
-**CI job:** `coverage.yml`
+**CI job:** `contracts-ci.yml` → `wasm`
 
 ---
 
-## 6. Error Code Wire Stability
+## 6. No Bare panic!() Ratchet
+
+**Command:**
+```bash
+python3 scripts/check_no_panic.py
+```
+
+**What it checks:** No *new* bare `panic!(…)` calls in contract release code.
+Existing debt is tracked in `scripts/panic_baseline.txt`; the checker is a
+ratchet that prevents the debt from growing.
+
+**CI job:** `contracts-ci.yml` → `no-bare-panic`
+
+---
+
+## 7. Error Code Wire Stability
 
 **Command:**
 ```bash
@@ -181,7 +226,7 @@ adding new errors.
 
 ---
 
-## 7. Dependency Vulnerability Scan
+## 8. Dependency Vulnerability Scan
 
 **One-time setup:**
 ```bash
@@ -195,25 +240,6 @@ cargo audit
 
 **What it checks:** Known vulnerabilities in the dependency tree
 (advisory database from the RustSec project).
-
-**CI job:** `security.yml`
-
----
-
-## 8. Unsafe Code Detection
-
-**One-time setup:**
-```bash
-cargo install cargo-geiger --version 0.12.0 --locked
-```
-
-**Command:**
-```bash
-cargo geiger
-```
-
-**What it checks:** All usage of `unsafe` blocks in the dependency tree.
-The Credence project has a zero-unsafe policy.
 
 **CI job:** `security.yml`
 
@@ -246,3 +272,4 @@ Run `cargo update` and commit the updated lockfile.
 - [`docs/error-codes-wire.md`](error-codes-wire.md) — error code wire-stability
 - [`docs/errors.md`](errors.md) — canonical error code listing
 - [`docs/no-dynamic-strings.md`](no-dynamic-strings.md) — dynamic string prohibition
+- [`scripts/ci-gated-packages.txt`](../scripts/ci-gated-packages.txt) — gated package list

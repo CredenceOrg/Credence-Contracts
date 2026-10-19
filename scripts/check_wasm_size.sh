@@ -9,7 +9,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUDGET_FILE="${WASM_BUDGET_FILE:-$SCRIPT_DIR/wasm-size-budget.toml}"
-WASM_DIR="$REPO_ROOT/target/wasm32-unknown-unknown/release"
+# Support both the legacy wasm32-unknown-unknown target and the newer
+# wasm32v1-none target.  An explicit WASM_DIR env var takes precedence.
+if [[ -n "${WASM_DIR:-}" ]]; then
+  : # caller override
+elif [[ -d "$REPO_ROOT/target/wasm32v1-none/release" ]]; then
+  WASM_DIR="$REPO_ROOT/target/wasm32v1-none/release"
+else
+  WASM_DIR="$REPO_ROOT/target/wasm32-unknown-unknown/release"
+fi
 GLOBAL_OVERRIDE_KB="${1:-}"
 
 read_default_kb() {

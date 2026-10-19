@@ -1,6 +1,5 @@
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Env, String};
 
 fn advance(e: &Env, secs: u64) {
     e.ledger().set(soroban_sdk::testutils::LedgerInfo {
