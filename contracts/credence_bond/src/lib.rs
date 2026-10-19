@@ -1053,6 +1053,13 @@ impl CredenceBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
+
+        // Validate inputs on the normalized 18-decimal amount before any token
+        // transfer, so a rejected bond never makes the token call.
+        validation::validate_bond_amount_for_token(&e, amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage_for_token(&e, amount, max_leverage);
+
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &identity, amount);
         }
@@ -1062,11 +1069,6 @@ impl CredenceBond {
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
-
-        // Validate inputs
-        validation::validate_bond_amount(amount);
-        let max_leverage = parameters::get_max_leverage(&e);
-        leverage::validate_leverage(&e, amount, max_leverage);
 
         let bond = IdentityBond {
             identity: identity.clone(),
@@ -2076,10 +2078,10 @@ impl CredenceBond {
         let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
         let old_tier = tiered_bond::get_tier_for_amount(&e, old_available);
 
-        // Validate the new total amount
-        validation::validate_bond_amount(new_bonded_amount);
+        // Validate the new total amount on the normalized 18-decimal value.
+        validation::validate_bond_amount_for_token(&e, new_bonded_amount);
         let max_leverage = parameters::get_max_leverage(&e);
-        leverage::validate_leverage(&e, new_bonded_amount, max_leverage);
+        leverage::validate_leverage_for_token(&e, new_bonded_amount, max_leverage);
 
         bond.bonded_amount = new_bonded_amount;
 
