@@ -2014,6 +2014,12 @@ impl CredenceBond {
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
+        // The admin address is public, so require_auth is mandatory to prevent
+        // an unauthenticated caller from passing a known admin address and
+        // slashing any bond. validate_admin in slashing.rs remains a pure
+        // address comparison; it does not call require_auth to avoid a
+        // second auth entry for the same address (which the host rejects).
+        admin.require_auth();
         slashing::slash_bond(&e, &admin, &identity, amount)
     }
 
