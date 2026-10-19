@@ -1030,7 +1030,8 @@ mod tests {
         client.create_bond(&owner, &1000_i128, &86_400_u64);
         let key = DataKey::Bond(owner.clone());
         let contract_id = client.address.clone();
-        e.ledger().with_mut(|li| li.sequence_number += BOND_TTL_THRESHOLD / 2);
+        e.ledger()
+            .with_mut(|li| li.sequence_number = STORAGE_TTL_EXTEND_TO - 1);
         client.get_bond(&owner);
         let ttl = e.as_contract(&contract_id, || e.storage().persistent().get_ttl(&key));
         assert!(ttl >= BOND_TTL_THRESHOLD);
@@ -1041,7 +1042,8 @@ mod tests {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
         let contract_id = client.address.clone();
-        e.ledger().with_mut(|li| li.sequence_number += STORAGE_TTL_THRESHOLD / 2);
+        e.ledger()
+            .with_mut(|li| li.sequence_number = STORAGE_TTL_EXTEND_TO - 1);
         client.get_time_remaining(&owner);
         let ttl = e.as_contract(&contract_id, || e.storage().instance().get_ttl());
         assert!(ttl >= STORAGE_TTL_THRESHOLD);
