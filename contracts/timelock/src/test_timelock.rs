@@ -1,7 +1,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    Address, BytesN, Env,
+    Address, BytesN, Env, vec, IntoVal,
 };
 
 fn setup_env() -> (Env, TimelockContractClient<'static>, Address) {
@@ -372,3 +372,211 @@ fn test_is_ready_boundary_suite() {
     // expires_at + 1 -> true (is_ready only checks now >= eta; expiry is checked separately)
     assert!(is_ready(eta, eta + GRACE_PERIOD + 1));
 }
+
+// ─── Acceptance criteria tests for issue #1625 ─────────────────────────────
+
+/// AC: call_bound_op_invokes_target - queue set_value(7), execute at ETA, target's get_value() == 7.
+#[test]
+fn test_call_bound_op_invokes_target() {
+    let (env, client, admin) = setup_env();
+    
+    // Register a mock target contract
+    let target_id = env.register(TimelockContract, ()); // Use same contract type for simplicity
+    let target_client = TimelockContractClient::new(&env, &target_id);
+    target_client.initialize(&admin);
+
+    let delay = 86_400; // minimum delay
+    let salt = BytesN::from_array(&env, &[100; 32]);
+
+    // Queue a call to transfer_admin (we'll use this as our "set_value" equivalent)
+    let func = Symbol::new(&env, "transfer_admin");
+    let new_admin = Address::generate(&env);
+    let args = vec![&env, (&new_admin.clone()).into_val(&env)];
+    let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
+
+    let op = client.get_operation(&op_id).unwrap();
+    assert_eq!(op.status, OperationStatus::Pending);
+
+    // Before ETA: must fail
+    env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
+    let res = client.try_execute_operation(&op_id);
+    assert!(res.is_err());
+
+    // At ETA: execute
+    env.ledger().with_mut(|li| li.timestamp = op.eta);
+    let _result = client.try_execute_operation(&op_id);
+
+    // Verify the transfer happened (new admin is set)
+    assert_eq!(target_client.get_admin(), new_admin);
+
+    let op_after = client.get_operation(&op_id).unwrap();
+    assert_eq!(op_after.status, OperationStatus::Executed);
+}
+
+/// AC: call_bound_op_not_before_eta - execute at eta - 1 returns TimelockNotReady, target unchanged.
+#[test]
+fn test_call_bound_op_not_before_eta() {
+    let (env, client, admin) = setup_env();
+    
+    // Register a mock target contract
+    let target_id = env.register(TimelockContract, ());
+    let target_client = TimelockContractClient::new(&env, &target_id);
+    target_client.initialize(&admin);
+    let original_admin = target_client.get_admin();
+
+    let delay = 86_400;
+    let salt = BytesN::from_array(&env, &[101; 32]);
+    let func = Symbol::new(&env, "transfer_admin");
+    let new_admin = Address::generate(&env);
+    let args = vec![&env, (&new_admin).into_val(&env)];
+
+    let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
+    let op = client.get_operation(&op_id).unwrap();
+
+    // Try to execute before ETA
+    env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
+    let res = client.try_execute_operation(&op_id);
+    assert!(res.is_err());
+
+    // Target should be unchanged
+    assert_eq!(target_client.get_admin(), original_admin);
+
+    // Operation should still be pending
+    let op_after = client.get_operation(&op_id).unwrap();
+    assert_eq!(op_after.status, OperationStatus::Pending);
+}
+
+/// AC: call_bound_op_executes_once - second execute fails, target invoked exactly once.
+#[test]
+fn test_call_bound_op_executes_once() {
+    let (env, client, admin) = setup_env();
+    
+    // Register a mock target contract
+    let target_id = env.register(TimelockContract, ());
+    let _target_client = TimelockContractClient::new(&env, &target_id);
+    _target_client.initialize(&admin);
+
+    let delay = 86_400;
+    let salt = BytesN::from_array(&env, &[102; 32]);
+    let func = Symbol::new(&env, "transfer_admin");
+    let new_admin = Address::generate(&env);
+    let args = vec![&env, (&new_admin).into_val(&env)];
+
+    let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
+    let op = client.get_operation(&op_id).unwrap();
+
+    // Execute at ETA
+    env.ledger().with_mut(|li| li.timestamp = op.eta);
+    client.execute_operation(&op_id);
+
+    // Second execute should fail
+    let res = client.try_execute_operation(&op_id);
+    assert!(res.is_err());
+}
+
+/// AC: failing_target_reverts_status - if target panics, operation stays Pending.
+#[test]
+fn test_failing_target_reverts_status() {
+    let (env, client, admin) = setup_env();
+    
+    // Register a mock target contract  
+    let target_id = env.register(TimelockContract, ());
+    let _target_client = TimelockContractClient::new(&env, &target_id);
+    _target_client.initialize(&admin);
+
+    let delay = 86_400;
+    let salt = BytesN::from_array(&env, &[103; 32]);
+    // Use initialize on a contract that's already initialized - should fail
+    let func = Symbol::new(&env, "initialize");
+    let args = vec![&env, (&admin.clone()).into_val(&env)];
+
+    let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
+    let op = client.get_operation(&op_id).unwrap();
+    let op_hash = op.op_hash;
+
+    // Execute at ETA - should fail because target panics (already initialized)
+    env.ledger().with_mut(|li| li.timestamp = op.eta);
+    let res = client.try_execute_operation(&op_id);
+    assert!(res.is_err());
+
+    // Operation should still be pending (status reverted)
+    let op_after = client.get_operation(&op_id).unwrap();
+    assert_eq!(op_after.status, OperationStatus::Pending);
+
+    // Hash should not be marked as executed
+    assert!(!client.is_operation_executed(&op_hash));
+}
+
+/// AC: hash_binds_all_fields - hash_call differs when target, func, any arg or salt changes.
+#[test]
+fn test_hash_binds_all_fields() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let timelock_id = env.register(TimelockContract, ());
+    let timelock_client = TimelockContractClient::new(&env, &timelock_id);
+    let admin = Address::generate(&env);
+    timelock_client.initialize(&admin);
+
+    let target = Address::generate(&env);
+    let func = Symbol::new(&env, "transfer_admin");
+    let salt = BytesN::from_array(&env, &[1; 32]);
+    let args = vec![&env, (&admin).into_val(&env)];
+
+    let hash1 = timelock_client.hash_call(&target, &func, &args, &salt);
+
+    // Different target
+    let target2 = Address::generate(&env);
+    let hash2 = timelock_client.hash_call(&target2, &func, &args, &salt);
+    assert_ne!(hash1, hash2, "hash should differ when target changes");
+
+    // Different func
+    let func2 = Symbol::new(&env, "get_admin");
+    let hash3 = timelock_client.hash_call(&target, &func2, &args, &salt);
+    assert_ne!(hash1, hash3, "hash should differ when func changes");
+
+    // Different arg
+    let args2 = vec![&env, (&Address::generate(&env)).into_val(&env)];
+    let hash4 = timelock_client.hash_call(&target, &func, &args2, &salt);
+    assert_ne!(hash1, hash4, "hash should differ when args change");
+
+    // Different salt
+    let salt2 = BytesN::from_array(&env, &[2; 32]);
+    let hash5 = timelock_client.hash_call(&target, &func, &args, &salt2);
+    assert_ne!(hash1, hash5, "hash should differ when salt changes");
+}
+
+/// AC: cancelled_call_never_runs - cancel, then execute at ETA. Target untouched.
+#[test]
+fn test_cancelled_call_never_runs() {
+    let (env, client, admin) = setup_env();
+    
+    // Register a mock target contract
+    let target_id = env.register(TimelockContract, ());
+    let target_client = TimelockContractClient::new(&env, &target_id);
+    target_client.initialize(&admin);
+    let original_admin = target_client.get_admin();
+
+    let delay = 86_400;
+    let salt = BytesN::from_array(&env, &[104; 32]);
+    let func = Symbol::new(&env, "transfer_admin");
+    let new_admin = Address::generate(&env);
+    let args = vec![&env, (&new_admin).into_val(&env)];
+
+    let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
+    let op = client.get_operation(&op_id).unwrap();
+
+    // Cancel before ETA
+    client.cancel_operation(&admin, &op_id);
+
+    let op_after_cancel = client.get_operation(&op_id).unwrap();
+    assert_eq!(op_after_cancel.status, OperationStatus::Cancelled);
+
+    // Advance to ETA and try to execute
+    env.ledger().with_mut(|li| li.timestamp = op.eta);
+    let res = client.try_execute_operation(&op_id);
+    assert!(res.is_err());
+
+    // Target should be unchanged
+    assert_eq!(target_client.get_admin(), original_admin);
+}
+

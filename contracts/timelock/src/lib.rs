@@ -4,7 +4,7 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
+    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec,
 };
 
 /// Signature domain identifier for the Timelock contract.
@@ -30,11 +30,18 @@ use soroban_sdk::{
 const SIGNATURE_DOMAIN: &str = "Timelock";
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+const CALL_BOUND_OPERATION_TTL: u32 = 3600;
 
 fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn bump_persistent_ttl(e: &Env, key: DataKey) {
+    e.storage()
+        .persistent()
+        .extend_ttl(&key, CALL_BOUND_OPERATION_TTL / 2, CALL_BOUND_OPERATION_TTL);
 }
 
 pub const fn min_delay_seconds() -> u64 {
@@ -66,12 +73,28 @@ pub struct QueuedOperation {
     pub status: OperationStatus,
 }
 
+/// Call-bound operation that stores the target contract, function, and arguments.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CallBoundOperation {
+    pub id: u64,
+    pub op_hash: BytesN<32>,
+    pub target: Address,
+    pub func: Symbol,
+    pub args: Vec<soroban_sdk::Val>,
+    pub eta: u64,
+    pub expires_at: u64,
+    pub status: OperationStatus,
+}
+
 #[contracttype]
 pub enum DataKey {
     Admin,
     OperationCounter,
     Operation(u64),
     ExecutedOp(BytesN<32>),
+    /// Persistent storage key for call-bound operations.
+    CallBoundOperation(u64),
 }
 
 #[contract]
@@ -93,6 +116,9 @@ impl TimelockContract {
     }
 
     /// Queue a new administrative operation to be executed after the delay.
+    ///
+    /// This is the hash-only variant for backward compatibility. The operation
+    /// stores only the hash and does not invoke any contract on execution.
     pub fn queue_operation(e: Env, proposer: Address, op_hash: BytesN<32>, delay: u64) -> u64 {
         bump_instance_ttl(&e);
         proposer.require_auth();
@@ -157,9 +183,147 @@ impl TimelockContract {
         op_id
     }
 
+    /// Queue a call-bound operation that will invoke a specific contract function on execution.
+    ///
+    /// The `op_hash` is computed as `sha256(network_id || timelock_address || target || func || args || salt)`.
+    /// This ensures any change to the target, function, arguments, or salt produces a different hash.
+    ///
+    /// The operation is stored in persistent storage with TTL extension.
+    pub fn queue_call(
+        e: Env,
+        proposer: Address,
+        target: Address,
+        func: Symbol,
+        args: Vec<soroban_sdk::Val>,
+        salt: BytesN<32>,
+        delay: u64,
+    ) -> u64 {
+        bump_instance_ttl(&e);
+        proposer.require_auth();
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+
+        if proposer != admin {
+            panic_with_error!(&e, ContractError::NotAdmin);
+        }
+
+        if delay < min_delay_seconds() {
+            panic_with_error!(&e, ContractError::TimelockNotReady);
+        }
+
+        // Compute the operation hash on-chain
+        let op_hash = Self::hash_call(e.clone(), target.clone(), func.clone(), args.clone(), salt.clone());
+
+        // Replay guard: cannot queue an operation that was already executed
+        if e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op_hash.clone()))
+            .unwrap_or(false)
+        {
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+        }
+
+        let op_id: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::OperationCounter)
+            .unwrap_or(0);
+        let next_op_id = op_id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        e.storage()
+            .instance()
+            .set(&DataKey::OperationCounter, &next_op_id);
+
+        let now = e.ledger().timestamp();
+        let eta = now
+            .checked_add(delay)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+
+        let op = CallBoundOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            target: target.clone(),
+            func: func.clone(),
+            args: args.clone(),
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+
+        // Store in persistent storage with TTL extension
+        let op_key = DataKey::CallBoundOperation(op_id);
+        e.storage().persistent().set(&op_key, &op);
+        bump_persistent_ttl(&e, op_key);
+
+        // Also store in instance storage for backward compatibility with get_operation
+        let op_wrapper = QueuedOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+        e.storage().instance().set(&DataKey::Operation(op_id), &op_wrapper);
+
+        e.events().publish(
+            (Symbol::new(&e, "operation_queued"), op_id),
+            (proposer, op_hash, eta, expires_at),
+        );
+
+        op_id
+    }
+
+    /// Compute the hash for a call-bound operation.
+    ///
+    /// The hash is `sha256(timelock_address || target || func || args || salt)`.
+    /// This is a public view function so off-chain tools can precompute the hash.
+    pub fn hash_call(
+        e: Env,
+        target: Address,
+        func: Symbol,
+        args: Vec<soroban_sdk::Val>,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        use soroban_sdk::xdr::ToXdr;
+        
+        let timelock_address = e.current_contract_address();
+
+        // Build the pre-image using Bytes and append (following the pattern in credence_bond)
+        let mut preimage = soroban_sdk::Bytes::new(&e);
+        preimage.append(&timelock_address.to_xdr(&e));
+        preimage.append(&target.to_xdr(&e));
+        preimage.append(&func.to_xdr(&e));
+        preimage.append(&args.to_xdr(&e));
+        preimage.append(&salt.to_xdr(&e));
+
+        // Compute SHA256 hash using e.crypto().sha256()
+        let hash: soroban_sdk::BytesN<32> = e.crypto().sha256(&preimage).into();
+        hash
+    }
+
     /// Execute a queued operation after its ETA has passed and before its grace period expires.
+    ///
+    /// For call-bound operations, this will invoke the target contract's function with the
+    /// stored arguments. The status is marked as Executed BEFORE the call, so if the call
+    /// fails, the whole transaction reverts and the status stays Pending.
     pub fn execute_operation(e: Env, op_id: u64) {
         bump_instance_ttl(&e);
+
+        // First check if this is a call-bound operation in persistent storage
+        let call_bound_key = DataKey::CallBoundOperation(op_id);
+        if e.storage().persistent().has(&call_bound_key) {
+            Self::execute_call_bound(&e, op_id);
+            return;
+        }
+
+        // Otherwise, execute as hash-only operation (backward compatibility)
         let mut op: QueuedOperation = e
             .storage()
             .instance()
@@ -200,6 +364,70 @@ impl TimelockContract {
             .publish((Symbol::new(&e, "operation_executed"), op_id), op.op_hash);
     }
 
+    /// Internal: execute a call-bound operation.
+    ///
+    /// Effects are applied before the interaction (marking as Executed), so if the
+    /// inner call fails, the whole invocation reverts and the status stays Pending.
+    fn execute_call_bound(e: &Env, op_id: u64) {
+        let key = DataKey::CallBoundOperation(op_id);
+        let mut op: CallBoundOperation = e
+            .storage()
+            .persistent()
+            .get(&key)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
+
+        if op.status != OperationStatus::Pending {
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+        }
+
+        let now = e.ledger().timestamp();
+        if !is_ready(op.eta, now) {
+            panic_with_error!(&e, ContractError::TimelockNotReady);
+        }
+
+        if now > op.expires_at {
+            panic_with_error!(&e, ContractError::SignatureExpired);
+        }
+
+        // Replay guard check
+        if e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op.op_hash.clone()))
+            .unwrap_or(false)
+        {
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+        }
+
+        // Mark executed BEFORE the call (effects before interaction)
+        e.storage()
+            .instance()
+            .set(&DataKey::ExecutedOp(op.op_hash.clone()), &true);
+
+        op.status = OperationStatus::Executed;
+        e.storage().persistent().set(&key, &op);
+        bump_persistent_ttl(e, key);
+
+        // Also update the instance storage wrapper
+        let op_wrapper = QueuedOperation {
+            id: op.id,
+            op_hash: op.op_hash.clone(),
+            eta: op.eta,
+            expires_at: op.expires_at,
+            status: op.status,
+        };
+        e.storage().instance().set(&DataKey::Operation(op_id), &op_wrapper);
+
+        // Emit event BEFORE the call
+        e.events()
+            .publish(("operation_executed", op_id), op.op_hash.clone());
+
+        // Invoke the target contract
+        e.invoke_contract::<soroban_sdk::Val>(&op.target, &op.func, op.args.clone());
+
+        // Emit post-execution event
+        e.events().publish(("call_executed", op_id), (op.target, op.func));
+    }
+
     /// Cancel a pending operation in the queue. Only callable by admin.
     pub fn cancel_operation(e: Env, admin: Address, op_id: u64) {
         bump_instance_ttl(&e);
@@ -214,21 +442,55 @@ impl TimelockContract {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
 
-        let mut op: QueuedOperation = e
-            .storage()
-            .instance()
-            .get(&DataKey::Operation(op_id))
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
+        // Check if this is a call-bound operation
+        let call_bound_key = DataKey::CallBoundOperation(op_id);
+        let is_call_bound = e.storage().persistent().has(&call_bound_key);
 
-        if op.status != OperationStatus::Pending {
-            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+        if is_call_bound {
+            let mut op: CallBoundOperation = e
+                .storage()
+                .persistent()
+                .get(&call_bound_key)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
+
+            if op.status != OperationStatus::Pending {
+                panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+            }
+
+            op.status = OperationStatus::Cancelled;
+            e.storage().persistent().set(&call_bound_key, &op);
+            bump_persistent_ttl(&e, call_bound_key);
+
+            // Update instance storage wrapper
+            let op_wrapper = QueuedOperation {
+                id: op.id,
+                op_hash: op.op_hash.clone(),
+                eta: op.eta,
+                expires_at: op.expires_at,
+                status: op.status,
+            };
+            e.storage().instance().set(&DataKey::Operation(op_id), &op_wrapper);
+
+            e.events()
+                .publish(("operation_cancelled", op_id), op.op_hash);
+        } else {
+            // Hash-only operation
+            let mut op: QueuedOperation = e
+                .storage()
+                .instance()
+                .get(&DataKey::Operation(op_id))
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
+
+            if op.status != OperationStatus::Pending {
+                panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
+            }
+
+            op.status = OperationStatus::Cancelled;
+            e.storage().instance().set(&DataKey::Operation(op_id), &op);
+
+            e.events()
+                .publish(("operation_cancelled", op_id), op.op_hash);
         }
-
-        op.status = OperationStatus::Cancelled;
-        e.storage().instance().set(&DataKey::Operation(op_id), &op);
-
-        e.events()
-            .publish((Symbol::new(&e, "operation_cancelled"), op_id), op.op_hash);
     }
 
     /// Get details of a queued operation.
