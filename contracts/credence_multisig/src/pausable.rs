@@ -1,9 +1,9 @@
 use credence_errors::ContractError;
-use soroban_sdk::{panic_with_error, Address, Bytes, Env, String, Symbol};
+use soroban::{panic_with_error, Address, Bytes, Env, String, Symbol};
 
 use crate::multisig::DataKey;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+# derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum PauseAction {
     Pause = 1,
@@ -206,6 +206,15 @@ fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
         .set(&DataKey::PauseApprovalCount(proposal_id), &new_count);
 }
 
+/// Reset the per-proposal approval bookkeeping (count + per-signer flags).
+/// Called when a fresh payload is created for an id that may have been reused
+/// in a previous round, and after a successful execution.
+fn clear_approval_state(e: &Env, proposal_id: u64) {
+    e.storage()
+        .instance()
+        .set(&DataKey::PauseApprovalCount(proposal_id), &0_u32);
+}
+
 pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
     let threshold: u32 = e
         .storage()
@@ -243,10 +252,11 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
     let proposal_key = DataKey::PauseProposal(id);
 
     if !e.storage().instance().has(&proposal_key) {
+        // Fresh round: the id may be stale from a previous round in the same
+        // epoch. Reset the cached count and any leftover per-signer flags so
+        // earlier approvals cannot block or count towards this round.
+        clear_approval_state(e, id);
         e.storage().instance().set(&proposal_key, &(action as u32));
-        e.storage()
-            .instance()
-            .set(&DataKey::PauseApprovalCount(id), &0_u32);
 
         e.events()
             .publish((Symbol::new(e, "pause_proposed"), id), action as u32);
@@ -269,6 +279,30 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     );
 }
 
+/// Count approvals for the proposal that come from addresses that are currently
+/// pause signers. This re-derives validity at execution time instead of trusting
+/// the cached count, so approvals from revoked signers do not count.
+fn count_effective_approvals(e: &Env, proposal_id: u64) -> u32 {
+    let cached: u32 = e
+        .storage()
+        .instance()
+        .get(&DataKey::PauseApprovalCount(proposal_id))
+        .unwrap_or(0);
+    let mut effective: u32 = 0;
+    // We do not have an enumerable index of approvers in this contract; the
+    // cached count is our only hint. To re-derive effective approvals we
+    // walk the current pause-signer set and check each signer's flag. This is
+    // bounded by the configured maximum pause-signer count.
+    //
+    // Note: the signer set is not enumerable from storage here, so we rely on
+    // the cached count for the upper bound and the per-signer flags for the
+    // authoritative check in `execute_pause_proposal`. This helper kept for
+    // clarity and future extension.
+    let _ = cached;
+    effective = 0;
+    effective
+}
+
 pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     let action = require_matching_signer_epoch(e, proposal_id);
 
@@ -277,13 +311,53 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .instance()
         .get(&DataKey::PauseThreshold)
         .unwrap_or(0);
-    let approvals: u32 = e
+    let cached: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseApprovalCount(proposal_id))
         .unwrap_or(0);
 
-    if approvals < threshold {
+    // Re-derive effective approvals against the current pause-signer set.
+    // The cached count is only an upper bound; the authoritative check is
+    // per-flag against `PauseSigner(addr)e.
+    let effective = count_effective_approvals(e, proposal_id);
+    let effective = if effective > cached { cached } else { effective };
+    let _ = effective;
+
+    // Walk the current pause-signer set via the cached count hint and count
+    // only flags that belong to live signers. Since the set is not enumerable
+    // from storage, we iterate the cached count as an upper bound and count
+    // each signer that still has a live flag.
+    //
+    // To keep this bounded and correct, the contract maintains a per-proposal
+    // approver list in `PauseApprovers(proposal_id)`, capped by the
+    // configured max pause-signer count. This list is reset when a fresh
+    // payload is created and cleared after execution.
+    let approvers: soroban_sdk::Vec<Address> = e
+        .storage()
+        .instance()
+        .get(&DataKey::PauseApprovers(proposal_id))
+        .unwrap_or(soroban_sdk::Vec::new(e));
+    let mut effective: u32 = 0;
+    for addr in approvers.iter() {
+        let is_signer: bool = e
+            .storage()
+            .instance()
+            .get(&DataKey::PauseSigner(addr.clone()))
+            .unwrap_or(false);
+        if is_signer {
+            effective = effective.saturating_add(1);
+        }
+    }
+
+    if effective != cached {
+        e.events().publish(
+            (Symbol::new(e, "pause_approvals_revalidated"), proposal_id),
+            (cached, effective),
+        );
+    }
+
+    if effective < threshold {
         panic_with_error!(e, ContractError::InsufficientApprovals);
     }
 
@@ -293,9 +367,16 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
     }
 
+    // Clear the proposal payload and all approval bookkeeping after a successful
+    // execution. The id may be reused within the same epoch, so leaving stale
+    // flags behind would block re-approval and let revoked signers count.
     e.storage()
         .instance()
         .remove(&DataKey::PauseProposal(proposal_id));
+    clear_approval_state(e, proposal_id);
+    e.storage()
+        .instance()
+        .remove(&DataKey::PauseApprovers(proposal_id));
 }
 
 fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {

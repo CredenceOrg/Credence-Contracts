@@ -1,4 +1,4 @@
-#![no_std]
+#`!no_std]
 #![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
@@ -22,7 +22,7 @@
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 /// Signature domain identifier for the CredenceMultisig contract.
-///
+//
 /// This constant binds signatures to this specific contract, preventing
 /// cross-contract replay attacks where a signature intended for one contract
 /// could be replayed against another. Each contract in the Credence system
