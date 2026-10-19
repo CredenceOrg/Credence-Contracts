@@ -67,6 +67,10 @@ pub enum ArbitrationError {
     /// A creator already has an unresolved dispute tracked as active.
     /// This is raised when stale/duplicate active markers are still present.
     OngoingDispute = 18,
+    /// Creator attempted to cancel a dispute after votes were cast or after the voting deadline.
+    CancelNotAllowed = 19,
+    /// Dispute creator attempted to cast a vote on their own dispute.
+    ConflictOfInterest = 20,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -147,7 +151,6 @@ pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), Arbitratio
         DisputeStatus::Archived => Err(ArbitrationError::DisputeActive),
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -924,9 +927,7 @@ mod tests {
             let to = DisputeStatus::Voting;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_transition(from, to))
-                .collect();
+            let results: Vec<_> = (0..10).map(|_| require_transition(from, to)).collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -951,9 +952,7 @@ mod tests {
             let status = DisputeStatus::Resolved;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_dispute_resolved(&status))
-                .collect();
+            let results: Vec<_> = (0..10).map(|_| require_dispute_resolved(&status)).collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -1118,8 +1117,8 @@ mod tests {
                     let result = require_transition(*from, *to);
                     // Every transition must be either Ok or InvalidTransition
                     match result {
-                        Ok(()) => {}, // valid
-                        Err(ArbitrationError::InvalidTransition) => {}, // invalid
+                        Ok(()) => {}                                   // valid
+                        Err(ArbitrationError::InvalidTransition) => {} // invalid
                         Err(e) => panic!("Unexpected error: {:?}", e),
                     }
                 }

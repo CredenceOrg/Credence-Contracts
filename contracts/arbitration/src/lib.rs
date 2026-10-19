@@ -7,6 +7,7 @@
     dead_code,
     unused_assignments,
     unused_mut,
+    unexpected_cfgs,
     mismatched_lifetime_syntaxes,
     clippy::all,
     clippy::pedantic,
@@ -116,7 +117,10 @@ fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), Arbitrat
         return Ok(());
     };
 
-    let Some(dispute) = e.storage().instance().get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
+    let Some(dispute) = e
+        .storage()
+        .instance()
+        .get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
     else {
         e.storage().instance().remove(&key);
         return Ok(());
@@ -348,6 +352,18 @@ impl CredenceArbitration {
         let from = dispute.status.clone();
         require_transition(from, DisputeStatus::Cancelled)?;
 
+        if caller == dispute.creator && from == DisputeStatus::Voting {
+            let voter_count: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::VoterCounter(dispute_id))
+                .unwrap_or(0);
+            let now = e.ledger().timestamp();
+            if voter_count > 0 || now > dispute.voting_end {
+                return Err(ArbitrationError::CancelNotAllowed);
+            }
+        }
+
         dispute.status = DisputeStatus::Cancelled;
         dispute.cancellation_reason = reason.clone();
         dispute.cancelled_by_role = Some(role.clone());
@@ -394,6 +410,10 @@ impl CredenceArbitration {
             .instance()
             .get(&DataKey::Dispute(dispute_id))
             .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        if voter == dispute.creator {
+            return Err(ArbitrationError::ConflictOfInterest);
+        }
 
         // Must be in Voting status
         if dispute.status != DisputeStatus::Voting {

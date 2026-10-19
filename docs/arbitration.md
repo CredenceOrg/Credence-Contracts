@@ -85,8 +85,11 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | QuorumNotMet       | 13   | Quorum requirements were not met         |
 | ReasonTooLong      | 14   | Cancellation reason exceeds the limit    |
 | PromiseNotKept     | 15   | The promise outcome did not match reality |
-| DisputeActive      | 16   | Dispute is still active and blocks this action |
-| OngoingDispute     | 17   | Creator already has an unresolved dispute |
+| CursorOutOfRange   | 16   | Pagination cursor is out of range        |
+| DisputeActive      | 17   | Dispute is still active and blocks this action |
+| OngoingDispute     | 18   | Creator already has an unresolved dispute |
+| CancelNotAllowed   | 19   | Creator cannot cancel after votes are cast or after the voting deadline |
+| ConflictOfInterest | 20   | Dispute creator cannot vote on their own dispute |
 
 ## Contract Functions
 
@@ -106,13 +109,15 @@ Removes an arbitrator's voting rights. Requires admin authorization.
 
 Creates a new dispute. Requires creator authorization. Returns the dispute ID. Status starts as `Voting`.
 
-### `cancel_dispute(caller: Address, dispute_id: u64) -> Result<(), ArbitrationError>`
+### `cancel_dispute(caller: Address, dispute_id: u64, reason: Option<String>) -> Result<(), ArbitrationError>`
 
-Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status.
+Cancels a dispute from `Open` or `Voting` status.
+- **Creator**: may cancel only while `VoterCounter(dispute_id) == 0` and `now <= voting_end`. Otherwise returns `ArbitrationError::CancelNotAllowed` (`19`).
+- **Admin**: may cancel a `Voting` dispute at any time before resolution as a moderation override (`cancelled_by_role = "admin"`).
 
 ### `vote(voter: Address, dispute_id: u64, outcome: u32) -> Result<(), ArbitrationError>`
 
-Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status.
+Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator and must not be the dispute creator (`voter == dispute.creator` returns `ArbitrationError::ConflictOfInterest` (`20`)). Dispute must be in `Voting` status within `[voting_start, voting_end]`.
 
 ### `resolve_dispute(dispute_id: u64) -> Result<u32, ArbitrationError>`
 
