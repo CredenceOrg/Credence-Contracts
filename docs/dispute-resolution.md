@@ -32,12 +32,12 @@ Valid state transitions:
 
 ## Functions
 
-| Function          | Parameters                            | Description                                     |
-| ----------------- | ------------------------------------- | ----------------------------------------------- |
-| `create_dispute`  | `resolver: Address` → `u64`           | Creates a new dispute with the given resolver.  |
-| `get_dispute`     | `id: u64` → `Dispute`                 | Returns the dispute details.                    |
-| `resolve_dispute` | `id: u64, outcome: String` → `Result` | Sets the outcome and transitions to `Resolved`. |
-| `close`           | `id: u64` → `Result`                  | Finalises the dispute (transition to `Closed`). |
+| Function          | Parameters                                         | Description                                               |
+| ----------------- | -------------------------------------------------- | --------------------------------------------------------- |
+| `create_dispute`  | `creator: Address, resolver: Address` → `u64`      | Requires `creator` auth; creates a sequential dispute ID. |
+| `get_dispute`     | `id: u64` → `Dispute`                              | Returns the dispute details from persistent storage.      |
+| `resolve_dispute` | `id: u64, outcome: String` → `Result`              | Sets the outcome and transitions to `Resolved`.           |
+| `close`           | `id: u64` → `Result`                               | Finalises the dispute (transition to `Closed`).           |
 
 ## Errors
 
@@ -50,10 +50,11 @@ Valid state transitions:
 
 ## Events
 
-| Event              | Topics             | Data              | Trigger           |
-| ------------------ | ------------------ | ----------------- | ----------------- |
-| `dispute_closed`   | `("closed", id)`   | `("by", Address)` | `close`           |
-| `dispute_resolved` | `("resolved", id)` | `("by", Address)` | `resolve_dispute` |
+| Event              | Topics             | Data                            | Trigger           |
+| ------------------ | ------------------ | ------------------------------- | ----------------- |
+| `dispute_created`  | `("created", id)`  | `(creator, resolver)`           | `create_dispute`  |
+| `dispute_closed`   | `("closed", id)`   | `("by", Address)`               | `close`           |
+| `dispute_resolved` | `("resolved", id)` | `("by", Address)`               | `resolve_dispute` |
 
 ## Authorisation
 
