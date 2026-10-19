@@ -67,8 +67,17 @@ pub struct QueuedOperation {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAdmin {
+    pub address: Address,
+    pub eta: u64,
+    pub expires_at: u64,
+}
+
+#[contracttype]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     OperationCounter,
     Operation(u64),
     ExecutedOp(BytesN<32>),
@@ -255,17 +264,90 @@ impl TimelockContract {
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 
-    pub fn transfer_admin(e: Env, new_admin: Address) {
+    /// Propose a new admin. The current admin remains in control until the
+    /// proposed admin accepts after the minimum delay.
+    pub fn propose_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
         let current_admin = Self::get_admin(e.clone());
         current_admin.require_auth();
 
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        if new_admin == current_admin {
+            panic_with_error!(&e, ContractError::AdminUnchanged);
+        }
+        if new_admin == e.current_contract_address() {
+            panic_with_error!(&e, ContractError::InvalidAdminAddress);
+        }
+
+        let now = e.ledger().timestamp();
+        let eta = now
+            .checked_add(min_delay_seconds())
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let pending = PendingAdmin {
+            address: new_admin.clone(),
+            eta,
+            expires_at,
+        };
+        e.storage().instance().set(&DataKey::PendingAdmin, &pending);
 
         e.events().publish(
-            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
-            (current_admin, new_admin),
+            (Symbol::new(&e, "admin_proposed"),),
+            (current_admin, new_admin, eta, expires_at),
         );
+    }
+
+    /// Accept a pending admin proposal once its delay has elapsed.
+    pub fn accept_admin(e: Env) {
+        bump_instance_ttl(&e);
+        let pending: PendingAdmin = e
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
+        pending.address.require_auth();
+
+        let now = e.ledger().timestamp();
+        if !is_ready(pending.eta, now) {
+            panic_with_error!(&e, ContractError::TimelockNotReady);
+        }
+        if now > pending.expires_at {
+            panic_with_error!(&e, ContractError::SignatureExpired);
+        }
+
+        let current_admin = Self::get_admin(e.clone());
+        e.storage()
+            .instance()
+            .set(&DataKey::Admin, &pending.address);
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, pending.address),
+        );
+    }
+
+    /// Cancel the pending admin proposal. Only the current admin may cancel.
+    pub fn cancel_admin_proposal(e: Env) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+        let pending: PendingAdmin = e
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+        e.events().publish(
+            (Symbol::new(&e, "admin_proposal_cancelled"),),
+            (current_admin, pending.address),
+        );
+    }
+
+    /// Get the pending admin proposal, if one exists.
+    pub fn get_pending_admin(e: Env) -> Option<PendingAdmin> {
+        bump_instance_ttl(&e);
+        e.storage().instance().get(&DataKey::PendingAdmin)
     }
 }
 

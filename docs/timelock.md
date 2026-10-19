@@ -98,6 +98,29 @@ Sets up the contract. Must be called once.
 |-----------|---------|---------------------------------------------------|
 | `admin`   | Address | Address authorized to queue and cancel operations |
 
+### Admin rotation
+
+Admin rotation now follows a delayed, two-step flow; the former immediate
+`transfer_admin(new_admin)` entrypoint has been removed. A current admin
+compromised before this change could transfer control to an attacker in one
+transaction, bypassing the delay enforced for queued operations. Rotation now
+uses the same minimum delay and grace window as those operations, while
+requiring the proposed admin to authenticate the acceptance.
+
+1. The current admin calls `propose_admin(new_admin)`. The proposal records
+   `eta = now + min_delay_seconds()` and `expires_at = eta + GRACE_PERIOD`.
+2. The current admin retains control and may cancel the proposal during the
+   delay by calling `cancel_admin_proposal()`.
+3. The proposed admin calls `accept_admin()` at any time in the inclusive
+   window `[eta, expires_at]`. Acceptance updates the admin and clears the
+   pending proposal.
+4. If the proposal expires, it can no longer be accepted. The current admin
+   may replace it by proposing again.
+
+`propose_admin` rejects the current admin address and the timelock contract's
+own address. Acceptance before ETA fails with `ContractError::TimelockNotReady`;
+acceptance after expiry fails with `ContractError::SignatureExpired`.
+
 ### `queue_operation(proposer, op_hash, delay) -> u64`
 
 Queues a new operation. Returns a unique operation ID.
@@ -130,6 +153,13 @@ Cancels a pending operation.
 - `get_operation(op_id) -> Option<QueuedOperation>`
 - `is_operation_executed(op_hash) -> bool`
 - `get_admin() -> Address`
+- `get_pending_admin() -> Option<PendingAdmin>`
+
+Admin rotation entrypoints:
+
+- `propose_admin(new_admin)`
+- `accept_admin()`
+- `cancel_admin_proposal()`
 
 ## Events
 
@@ -138,6 +168,9 @@ Cancels a pending operation.
 | `operation_queued`    | (tag, op_id)     | (proposer, op_hash, eta, expires_at)|
 | `operation_executed`  | (tag, op_id)     | op_hash                             |
 | `operation_cancelled` | (tag, op_id)     | op_hash                             |
+| `admin_proposed`      | (tag)            | (current_admin, new_admin, eta, expires_at) |
+| `admin_transferred`   | (tag)            | (old_admin, new_admin)              |
+| `admin_proposal_cancelled` | (tag)       | (current_admin, proposed_admin)     |
 
 ## Security Considerations
 

@@ -1,8 +1,10 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
+    testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
     Address, BytesN, Env,
 };
+
+use soroban_sdk::IntoVal;
 
 fn setup_env() -> (Env, TimelockContractClient<'static>, Address) {
     let env = Env::default();
@@ -12,6 +14,131 @@ fn setup_env() -> (Env, TimelockContractClient<'static>, Address) {
     let client = TimelockContractClient::new(&env, &contract_id);
     client.initialize(&admin);
     (env, client, admin)
+}
+
+fn propose_admin_at(
+    env: &Env,
+    client: &TimelockContractClient<'static>,
+    new_admin: &Address,
+) -> PendingAdmin {
+    env.ledger().with_mut(|li| li.timestamp = 1_000);
+    client.propose_admin(new_admin);
+    client.get_pending_admin().unwrap()
+}
+
+fn assert_contract_error<T, I: std::fmt::Debug>(
+    result: Result<Result<T, soroban_sdk::Error>, Result<soroban_sdk::Error, I>>,
+    expected: ContractError,
+) {
+    match result {
+        Err(Ok(error)) => assert_eq!(
+            error,
+            soroban_sdk::Error::from_contract_error(expected as u32)
+        ),
+        _ => panic!("expected contract error {expected:?}"),
+    }
+}
+
+#[test]
+fn admin_rotation_requires_delay() {
+    let (env, client, old_admin) = setup_env();
+    let new_admin = Address::generate(&env);
+    let pending = propose_admin_at(&env, &client, &new_admin);
+
+    env.ledger().with_mut(|li| li.timestamp = pending.eta - 1);
+    assert_contract_error(client.try_accept_admin(), ContractError::TimelockNotReady);
+    assert_eq!(client.get_admin(), old_admin);
+
+    env.ledger().with_mut(|li| li.timestamp = pending.eta);
+    client.accept_admin();
+    assert_eq!(client.get_admin(), new_admin);
+}
+
+#[test]
+fn admin_rotation_requires_new_admin_auth() {
+    let env = Env::default();
+    let old_admin = Address::generate(&env);
+    let contract_id = env.register(TimelockContract, ());
+    let client = TimelockContractClient::new(&env, &contract_id);
+    client.initialize(&old_admin);
+
+    env.mock_all_auths();
+    let new_admin = Address::generate(&env);
+    let pending = propose_admin_at(&env, &client, &new_admin);
+
+    env.ledger().with_mut(|li| li.timestamp = pending.eta);
+    env.mock_auths(&[MockAuth {
+        address: &old_admin,
+        invoke: &MockAuthInvoke {
+            contract: &contract_id,
+            fn_name: "accept_admin",
+            args: ().into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    assert!(client.try_accept_admin().is_err());
+    assert_eq!(client.get_admin(), old_admin);
+}
+
+#[test]
+fn admin_rotation_expires() {
+    let (env, client, old_admin) = setup_env();
+    let new_admin = Address::generate(&env);
+    let pending = propose_admin_at(&env, &client, &new_admin);
+
+    env.ledger()
+        .with_mut(|li| li.timestamp = pending.expires_at + 1);
+    assert_contract_error(client.try_accept_admin(), ContractError::SignatureExpired);
+    assert_eq!(client.get_admin(), old_admin);
+}
+
+#[test]
+fn admin_proposal_cancel() {
+    let (env, client, old_admin) = setup_env();
+    let new_admin = Address::generate(&env);
+    let pending = propose_admin_at(&env, &client, &new_admin);
+
+    client.cancel_admin_proposal();
+    assert_eq!(client.get_pending_admin(), None);
+    env.ledger().with_mut(|li| li.timestamp = pending.eta);
+    assert_contract_error(client.try_accept_admin(), ContractError::NoPendingAdmin);
+    assert_eq!(client.get_admin(), old_admin);
+}
+
+#[test]
+fn propose_same_or_self_rejected() {
+    let (_env, client, old_admin) = setup_env();
+    assert_contract_error(
+        client.try_propose_admin(&old_admin),
+        ContractError::AdminUnchanged,
+    );
+
+    let contract_address = client.address.clone();
+    assert_contract_error(
+        client.try_propose_admin(&contract_address),
+        ContractError::InvalidAdminAddress,
+    );
+}
+
+#[test]
+fn old_admin_retains_control_during_delay() {
+    let (env, client, old_admin) = setup_env();
+    let new_admin = Address::generate(&env);
+    propose_admin_at(&env, &client, &new_admin);
+
+    let op_hash = BytesN::from_array(&env, &[42; 32]);
+    assert_eq!(
+        client.queue_operation(&old_admin, &op_hash, &min_delay_seconds()),
+        0
+    );
+    assert!(client
+        .try_queue_operation(
+            &new_admin,
+            &BytesN::from_array(&env, &[43; 32]),
+            &min_delay_seconds()
+        )
+        .is_err());
+    assert_eq!(client.get_admin(), old_admin);
 }
 
 /// Boundary test: timestamp at eta - 1 (1 second before ETA).
@@ -198,9 +325,7 @@ fn test_boundary_full_lifecycle_window_sweep() {
     let id_1 = client.queue_operation(&admin, &hash_1, &delay);
     let op_1 = client.get_operation(&id_1).unwrap();
     env.ledger().with_mut(|li| li.timestamp = op_1.eta - 1);
-    assert!(
-        client.try_execute_operation(&id_1).is_err()
-    );
+    assert!(client.try_execute_operation(&id_1).is_err());
 
     // 2. Exactly at ETA -> Ok
     let hash_2 = BytesN::from_array(&env, &[22; 32]);
@@ -240,10 +365,9 @@ fn test_boundary_full_lifecycle_window_sweep() {
     let hash_5 = BytesN::from_array(&env, &[25; 32]);
     let id_5 = client.queue_operation(&admin, &hash_5, &delay);
     let op_5 = client.get_operation(&id_5).unwrap();
-    env.ledger().with_mut(|li| li.timestamp = op_5.expires_at + 1);
-    assert!(
-        client.try_execute_operation(&id_5).is_err()
-    );
+    env.ledger()
+        .with_mut(|li| li.timestamp = op_5.expires_at + 1);
+    assert!(client.try_execute_operation(&id_5).is_err());
 }
 
 /// Boundary test: cancel at boundaries (eta - 1, eta, expires_at).
