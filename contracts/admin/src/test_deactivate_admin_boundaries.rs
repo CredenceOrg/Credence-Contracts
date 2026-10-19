@@ -18,7 +18,6 @@
 #![cfg(test)]
 
 use crate::*;
-use soroban_sdk::testutils::Events as _;
 use credence_errors::Role;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, String};

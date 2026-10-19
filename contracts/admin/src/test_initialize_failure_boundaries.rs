@@ -21,8 +21,8 @@
 #![cfg(test)]
 
 use crate::*;
-use soroban_sdk::testutils::Events as _;
 use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::{Address, Env};
 
 // Wire-stable error discriminants (`credence_errors::ContractError`).

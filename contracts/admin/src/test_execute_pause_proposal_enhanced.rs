@@ -22,9 +22,9 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
+use soroban_sdk::testutils::Logs as _;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
 use soroban_sdk::{Address, Env};
-use soroban_sdk::testutils::Logs as _;
 
 // Wire-stable error discriminants from credence_errors::ContractError
 const ERR_NOT_INITIALIZED: u32 = 1;
@@ -95,7 +95,9 @@ fn test_execute_pause_proposal_success_single_signer() {
     assert!(!events.is_empty());
 
     // Verify observability events are present
-    let has_execution_event = logs.iter().any(|entry| entry.contains("pause_proposal_executed"));
+    let has_execution_event = logs
+        .iter()
+        .any(|entry| entry.contains("pause_proposal_executed"));
     assert!(
         has_execution_event,
         "Should emit successful execution event"
@@ -188,8 +190,6 @@ fn test_execute_pause_proposal_not_found() {
     // Verify no state change occurred
     assert_eq!(client.get_config_epoch(), epoch_before);
     assert!(!client.is_paused());
-
-
 }
 
 #[test]
@@ -390,7 +390,9 @@ fn test_execute_pause_proposal_idempotent_state() {
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
 
     // Should emit idempotent execution events
-    let has_idempotent_event = logs.iter().any(|entry| entry.contains("pause_idempotent_execution"));
+    let has_idempotent_event = logs
+        .iter()
+        .any(|entry| entry.contains("pause_idempotent_execution"));
     assert!(
         has_idempotent_event,
         "Should emit idempotent execution event"
@@ -448,7 +450,6 @@ fn test_execute_pause_proposal_observability_events() {
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-
     // Create proposal and approve
     let proposal_id = client.pause(&s1).unwrap();
     client.approve_pause_proposal(&s2, &proposal_id);
@@ -458,20 +459,25 @@ fn test_execute_pause_proposal_observability_events() {
     let events = e.events().all();
     let logs = e.logs().all();
 
-
     // Verify execution context events
-    let has_execution_started = logs.iter().any(|entry| entry.contains("pause_proposal_execution_started"));
+    let has_execution_started = logs
+        .iter()
+        .any(|entry| entry.contains("pause_proposal_execution_started"));
     assert!(has_execution_started, "Should emit execution started event");
 
     // Verify validation events
-    let has_validation_passed = logs.iter().any(|entry| entry.contains("pause_proposal_validation_passed"));
+    let has_validation_passed = logs
+        .iter()
+        .any(|entry| entry.contains("pause_proposal_validation_passed"));
     assert!(
         has_validation_passed,
         "Should emit validation success events"
     );
 
     // Verify success event
-    let has_success_event = logs.iter().any(|entry| entry.contains("pause_proposal_executed"));
+    let has_success_event = logs
+        .iter()
+        .any(|entry| entry.contains("pause_proposal_executed"));
     assert!(has_success_event, "Should emit successful execution event");
 }
 
@@ -483,14 +489,16 @@ fn test_execute_pause_proposal_error_observability() {
     // Create proposal without sufficient approvals
     let proposal_id = client.pause(&s1).unwrap();
 
-
     // Try to execute with insufficient approvals
     let result = client.try_execute_pause_proposal(&proposal_id);
     assert!(result.is_err());
 
     // Contract events are rolled back on failure; the typed error remains
     // observable to callers and preserves the retry classification.
-    assert_eq!(result.unwrap_err().unwrap(), soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS));
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS)
+    );
     assert!(e.events().all().is_empty());
 }
 
@@ -506,7 +514,10 @@ fn test_execute_pause_proposal_cleanup_completeness() {
     let logs = e.logs().all();
 
     // Verify cleanup events were emitted
-    let has_cleanup_event = logs.iter().any(|entry| entry.contains("pause_proposal_cleanup_completed") || entry.contains("pause_storage_cleanup_metrics"));
+    let has_cleanup_event = logs.iter().any(|entry| {
+        entry.contains("pause_proposal_cleanup_completed")
+            || entry.contains("pause_storage_cleanup_metrics")
+    });
     assert!(has_cleanup_event, "Should emit cleanup completion events");
 }
 
@@ -522,7 +533,9 @@ fn test_execute_pause_proposal_state_transition_logging() {
     let logs = e.logs().all();
 
     // Verify state transition was logged
-    let has_transition_event = logs.iter().any(|entry| entry.contains("pause_state_transition"));
+    let has_transition_event = logs
+        .iter()
+        .any(|entry| entry.contains("pause_state_transition"));
     assert!(has_transition_event, "Should emit state transition events");
 }
 
@@ -531,15 +544,15 @@ fn test_execute_pause_proposal_metrics_tracking() {
     let (e, client, _super_admin, signers) = setup_multisig(1, 1);
     let s1 = signers.get(0).unwrap();
 
-
     // Execute proposal
     let proposal_id = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&proposal_id);
     let events = e.events().all();
     let logs = e.logs().all();
 
-
     // Verify metrics events were emitted
-    let has_metrics_event = logs.iter().any(|entry| entry.contains("pause_execution_metrics") || entry.contains("pause_execution_completed"));
+    let has_metrics_event = logs.iter().any(|entry| {
+        entry.contains("pause_execution_metrics") || entry.contains("pause_execution_completed")
+    });
     assert!(has_metrics_event, "Should emit execution metrics events");
 }
