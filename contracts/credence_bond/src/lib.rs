@@ -205,6 +205,9 @@ mod test_verify_stringified_bytes;
 #[cfg(test)]
 mod test_lib_boundary_recovery;
 
+#[cfg(test)]
+mod test_attestation_dedup_cap;
+
 /// Boundary and edge-case tests for event emissions (#1324).
 /// Validates numeric boundaries, invalid inputs, empty values, and large collections.
 // [pre-broken on main] #[cfg(test)]
@@ -1268,6 +1271,12 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::DuplicateAttestation);
         }
 
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        if count >= parameters::MAX_ATTESTATIONS {
+            panic_with_error!(e, ContractError::StorageCapReached);
+        }
+
         let counter_key = DataKey::AttestationCounter;
         let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
         let next_id = id
@@ -1296,6 +1305,7 @@ impl CredenceBond {
         e.storage()
             .instance()
             .set(&DataKey::Attestation(id), &attestation);
+        e.storage().instance().set(&dedup_key, &true);
 
         let subject_key = DataKey::SubjectAttestations(subject.clone());
         let mut attestations: Vec<u64> = e
@@ -1307,11 +1317,7 @@ impl CredenceBond {
         e.storage().instance().set(&subject_key, &attestations);
         bump_instance_ttl(&e);
 
-        let count_key = DataKey::SubjectAttestationCount(subject.clone());
-        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage()
-            .instance()
-            .set(&count_key, &count.saturating_add(1));
+        e.storage().instance().set(&count_key, &(count + 1));
         bump_instance_ttl(&e);
 
         e.events().publish(
@@ -1381,6 +1387,15 @@ impl CredenceBond {
             if e.storage().instance().has(&dedup_key) {
                 panic_with_error!(e, ContractError::DuplicateAttestation);
             }
+        }
+
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        let updated_count = count
+            .checked_add(n)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::StorageCapReached));
+        if updated_count > parameters::MAX_ATTESTATIONS {
+            panic_with_error!(e, ContractError::StorageCapReached);
         }
 
         // Get weight configuration
@@ -1462,11 +1477,7 @@ impl CredenceBond {
             .set(&subject_key, &subject_attestations);
 
         // Update SubjectAttestationCount
-        let count_key = DataKey::SubjectAttestationCount(subject.clone());
-        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage()
-            .instance()
-            .set(&count_key, &count.saturating_add(n));
+        e.storage().instance().set(&count_key, &updated_count);
 
         bump_instance_ttl(&e);
 
