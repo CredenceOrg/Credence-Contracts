@@ -2,15 +2,18 @@ This documentation provides a comprehensive reference for the `CredenceArbitrati
 
 ---
 
-# ⚖️ CredenceArbitration API Reference
+# ⚕️ CredenceArbitration API Reference
 
 The **CredenceArbitration** contract enables a multi-party arbitration system. Administrators can register trusted arbitrators with specific voting weights, and users can submit disputes that are resolved based on the majority weight of arbitrator votes.
 
-## 🏗 Data Structures
+## 🏬 Data Structures
 
 ### `Dispute`
 
 Represents the state and parameters of an arbitration case.
+
+The `round` field is a monotonically increasing counter that identifies the current voting round for the dispute. It starts at `0 ` when the dispute is created and is incremented every time the dispute is reopened by an admin. All per-dispute vote state (voter flags, tallies, and voter counts) is keyed by `(dispute_id, round)`, so incrementing the round effectively voids all prior votes without having to enumerate voters.
+
 | Field | Type | Description |
 | :--- | :--- | :--- |
 | `id` | `u64` | Unique identifier for the dispute. |
@@ -20,6 +23,7 @@ Represents the state and parameters of an arbitration case.
 | `voting_end` | `u64` | Ledger timestamp when voting closes. |
 | `resolved` | `bool` | Whether the dispute has been finalized. |
 | `outcome` | `u32` | The winning result (0 = tie/unresolved). |
+| `round` | `u32` | Voting round counter. Incremented on every `reopen_dispute`; all vote state is scoped to the current round. |
 
 ---
 
@@ -52,6 +56,7 @@ Opens a new case for arbitration.
 
 * **Duration**: Number of seconds the voting window remains open.
 * **Returns**: The `id` of the newly created dispute.
+* **Constraints**: A creator may only have one active dispute (in `Voting` or `Resolving`) at a time. Returns `OngoingDispute` otherwise.
 
 ### `vote(e: Env, voter: Address, dispute_id: u64, outcome: u32)`
 
@@ -60,9 +65,8 @@ Casts a weighted vote for a specific outcome.
 * **Weighted Tally**: The total score for an outcome is the sum of the `weight` of all arbitrators who voted for it.
 * **Constraints**:
 * Voter must be a registered arbitrator.
-* One vote per arbitrator per dispute.
+* One vote per arbitrator per dispute round. Reopening a dispute starts a new round and voids all previous votes.
 * Must occur between `voting_start` and `voting_end`.
-
 
 
 ### `resolve_dispute(e: Env, dispute_id: u64) -> u32`
@@ -73,17 +77,25 @@ Calculates the winner and closes the case.
 * **Ties**: If two or more outcomes have the same maximum weight, the outcome is set to `0` (Unresolved).
 * **Prerequisite**: Must be called after the `voting_end` timestamp.
 
+### `reopen_dispute(e: Env, admin: Address, dispute_id: u64, duration: u64)`
+
+Moves an `Archived` dispute back into `VOTING_STATE` for a fresh round of voting.
+
+* **Auth**: Requires Admin signature.
+* **Round**: Increments `Dispute.round`. All previous votes (tallies, voter flags, and voter counts) are keyed by the old round and are thus voided. The cost is constant and independent of the number of registered arbitrators.
+* **Constraints**: The dispute's creator must not have another active dispute (in `Voting` or `Resolving`). Returns `OngoingDispute` otherwise, and the dispute remains `Archived`.
+
 ---
 
 ## 🔍 Read-Only View Functions
 
 | Function | Returns | Description |
 | --- | --- | --- |
-| `get_dispute` | `Dispute` | Returns the full details and current status of a dispute. |
-| `get_tally` | `i128` | Returns the current accumulated weight for a specific outcome. |
+| `get_dispute` | `Dispute` | Returns the full details and current status of a dispute, including the current `round`. |
+| `get_tally` | `i128` | Returns the current accumulated weight for a specific outcome in the current round. |
 | `get_arbitrator_weight` | `Result<u32, Error>` | Returns the voting weight of an arbitrator. Returns `Error::NotArbitrator` if unregistered. |
-| `has_voted` | `bool` | Returns `true` if the arbitrator has already voted on the specified dispute, `false` otherwise. |
-| `get_arbitrators_page` | `(Vec<Address>, Option<u32>)` | Returns a page of registered arbitrator addresses starting at `cursor` up to `limit`. |
+| `has_voted` | `bool` | Returns `true` if the arbitrator has already voted on the specified dispute in the **current round**, `false` otherwise. |
+| `get_arbitrators_page` | `(Vec<Address>, Option<u32>)`| Returns a page of registered arbitrator addresses starting at `cursor` up to `limit`. |
 
 ### 📖 Pagination Semantics (`get_arbitrators_page`)
 
@@ -104,10 +116,10 @@ Calculates the winner and closes the case.
 | `AlreadyInitialized` | Attempted to call `initialize` more than once. |
 | `WeightNotPositive` | Attempted to register an arbitrator with a weight $\le 0$. |
 | `VotingInactive` | Attempted to vote before the start or after the end time, or dispute not in Voting state. |
-| `AlreadyVoted` | Attempted to cast multiple votes on the same dispute. |
+| `AlreadyVoted` | Attempted to cast multiple votes on the same dispute round. |
+| `OngoingDispute` | The creator already has a dispute in `Voting` or `Resolving` (emitted by `create_dispute` or `reopen_dispute`). |
 | `VotingNotEnded` | Attempted to call `resolve_dispute` before the deadline. |
 | `NotArbitrator` | The specified address is not a registered arbitrator (returned by `get_arbitrator_weight` or `vote`). |
 | `DisputeNotFound` | The specified dispute ID does not exist in storage. |
 | `InvalidTransition` | Attempted an invalid dispute status transition. |
 | `NotAuthorized` | Caller is not authorized (e.g. non-creator/non-admin trying to cancel). |
-
