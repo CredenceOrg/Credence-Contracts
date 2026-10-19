@@ -334,7 +334,7 @@ impl FixedDurationBond {
         bond
     }
 
-    /// Withdraw full principal after lock period. Deactivates bond.
+    /// Withdraw full principal after lock period and remove the bond record.
     pub fn withdraw(e: Env, owner: Address) -> FixedBond {
         bump_instance_ttl(&e);
         owner.require_auth();
@@ -363,7 +363,7 @@ impl FixedDurationBond {
         bond
     }
 
-    /// Withdraw before lock period with penalty deducted.
+    /// Withdraw before lock period with penalty deducted and remove the bond record.
     pub fn withdraw_early(e: Env, owner: Address) -> FixedBond {
         bump_instance_ttl(&e);
         owner.require_auth();
@@ -1206,7 +1206,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotActive)")]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
     fn test_double_withdraw_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1219,7 +1219,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotActive)")]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
     fn test_withdraw_early_after_withdraw_rejected() {
         let e = Env::default();
         e.mock_all_auths();
