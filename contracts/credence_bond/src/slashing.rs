@@ -61,11 +61,15 @@ pub fn validate_admin(e: &Env, caller: &Address) {
     }
 }
 
-/// NatSpec-style: Core slashing logic for reducing bond value.
+/// Internal core slashing logic for reducing bond value.
+///
+/// This function performs the actual slashing operations without authentication.
+/// It is called by both `slash_bond` (with admin auth) and `slash_bond` entrypoint
+/// (with reentrancy lock and admin auth via guards).
 ///
 /// Executes the slash with full validation:
-/// 1. Validates caller is admin (panics if not)
-/// 2. Rejects zero/negative slash amounts
+/// 1. Rejects zero/negative slash amounts
+/// 2. Calls same-ledger liquidation guard
 /// 3. Computes available balance (bonded - already_slashed)
 /// 4. Rejects slash that exceeds available balance (enforces bounds: no silent capping)
 /// 5. Updates bond state with checked arithmetic
@@ -76,7 +80,7 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 ///
 /// # Arguments
 /// * `e` - Soroban environment
-/// * `admin` - Address claiming admin authority
+/// * `admin` - Address claiming admin authority (for reward claims)
 /// * `identity` - Address of the bonded identity to slash
 /// * `amount` - Amount to slash (i128, must be > 0 and <= available balance)
 ///
@@ -85,7 +89,6 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 ///
 /// # Panics
 /// - `"slash amount must be positive"` if `amount <= 0`
-/// - `"not admin"` if caller is not the contract admin
 /// - `"not initialized"` if contract not initialized
 /// - `"no bond"` if no bond exists for the identity
 /// - `"slash exceeds bond"` if `amount > bonded_amount - slashed_amount`
@@ -94,11 +97,10 @@ pub fn validate_admin(e: &Env, caller: &Address) {
 /// # Security Notes
 /// - Slash is bounded by available balance (bonded - slashed), not just bonded_amount.
 ///   Requests ABOVE the available balance are REJECTED — not silently capped.
-///   This is consistent with `slash_bond` (the reentrancy-guarded entrypoint in lib.rs).
 /// - Slashing is monotonic (always increases, never decreases without an unslash)
 /// - Cannot slash bonds that don't exist (panic on "no bond")
 /// - Slasher receives 10% of slashed amount as reward (pull-payment)
-pub fn slash_bond(
+pub(crate) fn apply_slash(
     e: &Env,
     admin: &Address,
     identity: &Address,
@@ -109,9 +111,7 @@ pub fn slash_bond(
         panic!("slash amount must be positive");
     }
 
-    // Step 2: Authorization check
-    validate_admin(e, admin);
-
+    // Step 2: Same-ledger liquidation guard
     crate::same_ledger_liquidation_guard::require_slash_allowed_after_collateral_increase(e);
 
     // Step 3: Retrieve current bond state
@@ -121,6 +121,11 @@ pub fn slash_bond(
         .instance()
         .get::<_, crate::IdentityBond>(&key)
         .unwrap_or_else(|| panic!("no bond"));
+
+    // Check that bond is active
+    if !bond.active {
+        panic_with_error!(e, ContractError::BondNotActive);
+    }
 
     // Step 4: Compute available balance = bonded - already_slashed.
     //
@@ -227,6 +232,55 @@ pub fn slash_bond(
     );
 
     bond
+}
+
+/// NatSpec-style: Core slashing logic for reducing bond value.
+///
+/// Executes the slash with full validation:
+/// 1. Validates caller is admin (panics if not)
+/// 2. Rejects zero/negative slash amounts
+/// 3. Computes available balance (bonded - already_slashed)
+/// 4. Rejects slash that exceeds available balance (enforces bounds: no silent capping)
+/// 5. Updates bond state with checked arithmetic
+/// 6. Appends a normalized SlashRecord to persistent history
+/// 7. Adds slashing reward claim for the slasher
+/// 8. Persists bond state and emits slashing events
+/// 9. Transfers slashed funds to configured treasury
+///
+/// # Arguments
+/// * `e` - Soroban environment
+/// * `admin` - Address claiming admin authority
+/// * `identity` - Address of the bonded identity to slash
+/// * `amount` - Amount to slash (i128, must be > 0 and <= available balance)
+///
+/// # Returns
+/// Updated `IdentityBond` with modified `slashed_amount`
+///
+/// # Panics
+/// - `"slash amount must be positive"` if `amount <= 0`
+/// - `"not admin"` if caller is not the contract admin
+/// - `"not initialized"` if contract not initialized
+/// - `"no bond"` if no bond exists for the identity
+/// - `"slash exceeds bond"` if `amount > bonded_amount - slashed_amount`
+/// - `"slashing caused overflow"` if arithmetic overflows (unreachable in practice)
+///
+/// # Security Notes
+/// - Slash is bounded by available balance (bonded - slashed), not just bonded_amount.
+///   Requests ABOVE the available balance are REJECTED — not silently capped.
+///   This is consistent with `slash_bond` (the reentrancy-guarded entrypoint in lib.rs).
+/// - Slashing is monotonic (always increases, never decreases without an unslash)
+/// - Cannot slash bonds that don't exist (panic on "no bond")
+/// - Slasher receives 10% of slashed amount as reward (pull-payment)
+pub fn slash_bond(
+    e: &Env,
+    admin: &Address,
+    identity: &Address,
+    amount: i128,
+) -> crate::IdentityBond {
+    // Authorization check
+    validate_admin(e, admin);
+
+    apply_slash(e, admin, identity, amount)
 }
 
 /// Get next slash ID for tracking purposes
