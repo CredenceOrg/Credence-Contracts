@@ -65,6 +65,28 @@ pub enum EmergencyDataKey {
 - **snake_case**: Consistent with Rust naming conventions for enum variants in this codebase.
 - **Descriptive parameterized variants**: `Bond(Address)` clearly indicates the key is indexed by address, making the storage layout self-documenting.
 
+## Arbitration Contract Storage Layout
+
+The arbitration contract separates global configuration from per-entity records:
+
+- **Instance storage** holds only small, global configuration: `Admin`, quorum settings, pause state, and monotonic counters. These entries are loaded on every invocation, so they must stay small and bounded.
+- **Persistent storage** holds per-entity `Dispute(u64)` records. Each read and write extends the record's TTL according to the storage TTL policy (clamped to the network maximum).
+
+### Arbitration keys
+
+| Key | Storage | Description |
+| --- | --- | --- |
+| `Admin` | instance | Contract administrator |
+| `Quorum` | instance | Voting quorum configuration |
+| `Paused` | instance | Global pause state |
+| `DisputeCounter` | instance | Monotonic counter for dispute IDs |
+| `Dispute(u64)` | persistent | Individual dispute record, TTL-extended on access |
+| `VoterCasted(u64, Address)` | instance | Whether a voter has cast a vote for a dispute |
+| `VoterCounter(u64)` | instance | Number of votes cast for a dispute |
+| `DisputeVotes(u64)` | instance | Vote tally for a dispute |
+
+Dispute records are never stored in instance storage: doing so would make the cost of every entry point grow with the total number and size of disputes ever created. Descriptions are bounded (1024 bytes) to keep individual records small.
+
 ## Related Documentation
 
 - [Datakey Fingerprint](datakey-fingerprint.md) - Storage key stability and migration considerations
