@@ -12,6 +12,9 @@ A Soroban smart contract that allows users to lock USDC for a **fixed, predeterm
 | **Language**         | Rust / Soroban SDK 22.0                                           |
 | **Token standard**   | SAC-compatible (USDC/any SAC token)                               |
 | **Bond storage**     | Persistent — one active bond per owner address                    |
+| **Bond record TTL** | Extended to the Soroban maximum (~1 year) on create and access      |
+| **Withdrawn records** | Removed after successful withdrawal; withdrawal events remain the audit record |
+| **Instance TTL**     | Extended to the Soroban maximum on every contract entry point      |
 | **Security pattern** | Checks-Effects-Interactions (state written before token transfer) |
 
 ---
@@ -65,14 +68,17 @@ pub struct FixedBond {
 
 ## Security Properties
 
-1. **Exact lock enforcement** — `withdraw` panics with `"lock period has not elapsed yet"` if called before `bond_expiry`.
-2. **No early exit without penalty** — `withdraw_early` panics if `penalty_bps == 0` for the bond.
-3. **Overflow-safe expiry** — `bond_start.checked_add(duration)` panics on overflow.
-4. **One-bond-per-owner** — `create_bond` panics if an active bond already exists.
-5. **Auth required** — `owner.require_auth()` on all mutating owner calls; `caller.require_auth()` + admin equality check on all admin calls.
-6. **CEI pattern** — Bond state (`active = false`) is written to storage _before_ any token transfer.
-7. **Positive amounts only** — `amount <= 0` panics.
-8. **Bounded duration** — duration must be between 1 second and 365 days inclusive; out-of-range values panic.
+1. **Persistent bond storage** — Each owner's record is stored under `DataKey::Bond(owner)` in persistent storage, so reads do not load an ever-growing shared instance entry.
+2. **TTL refresh** — Bond entries refresh their TTL on create and read. Instance storage refreshes on every contract entry point. Both use a 3,156,000-ledger threshold and extend-to TTL of 6,312,000 ledgers (Soroban's maximum entry TTL).
+3. **Withdrawal cleanup** — Successful normal or early withdrawals remove the owner's record; the emitted withdrawal event remains the audit record, and the owner can bond again.
+4. **Exact lock enforcement** — `withdraw` panics with `"lock period has not elapsed yet"` if called before `bond_expiry`.
+5. **No early exit without penalty** — `withdraw_early` panics if `penalty_bps == 0` for the bond.
+6. **Overflow-safe expiry** — `bond_start.checked_add(duration)` panics on overflow.
+7. **One-bond-per-owner** — `create_bond` panics if an active bond already exists.
+8. **Auth required** — `owner.require_auth()` on all mutating owner calls; `caller.require_auth()` + admin equality check on all admin calls.
+9. **CEI pattern** — Bond state is removed from storage _before_ any token transfer.
+10. **Positive amounts only** — `amount <= 0` panics.
+11. **Bounded duration** — duration must be between 1 second and 365 days inclusive; out-of-range values panic.
 
 ---
 
