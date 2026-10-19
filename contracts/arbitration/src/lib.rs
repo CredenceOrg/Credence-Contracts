@@ -345,6 +345,20 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         };
 
+        // Creator may only cancel before any votes are cast and within the voting window.
+        // Admin retains a moderation override to cancel a Voting dispute at any time.
+        if role == Symbol::short("creator") {
+            let voter_count: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::VoterCounter(dispute_id))
+                .unwrap_or(0);
+            let now = e.ledger().timestamp();
+            if voter_count != 0 || now > dispute.voting_end {
+                return Err(ArbitrationError::CancelNotAllowed);
+            }
+        }
+
         let from = dispute.status.clone();
         require_transition(from, DisputeStatus::Cancelled)?;
 
@@ -394,6 +408,10 @@ impl CredenceArbitration {
             .instance()
             .get(&DataKey::Dispute(dispute_id))
             .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        if voter == dispute.creator {
+            return Err(ArbitrationError::ConflictOfInterest);
+        }
 
         // Must be in Voting status
         if dispute.status != DisputeStatus::Voting {

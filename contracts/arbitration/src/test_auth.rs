@@ -806,3 +806,101 @@ fn quorum_failure_keeps_votes_and_active_dispute_guard_intact() {
         ArbitrationError::OngoingDispute
     );
 }
+
+// ---------------------------------------------------------------------------
+// G. Conflict-of-interest: creator cancellation and self-voting
+// ---------------------------------------------------------------------------
+
+/// The creator may cancel while no arbitrator has voted and the voting window
+/// is still open. This is the only cancellation path available to a creator.
+#[test]
+fn creator_cancel_before_any_vote_ok() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+
+    client.cancel_dispute(&s.creator, &id, &None);
+    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Cancelled);
+}
+
+/// Once a vote has been cast the creator can no longer cancel: doing so would
+/// let them discard a losing tally. The dispute stays in Voting and the
+/// creator's ActiveDispute guard remains, blocking a fresh dispute.
+#[test]
+fn creator_cancel_after_vote_rejected() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+    client.vote(&s.arb, &id, &2_u32);
+
+    assert_eq!(
+        client
+            .try_cancel_dispute(&s.creator, &id, &None)
+            .unwrap_err()
+            .unwrap(),
+        ArbitrationError::CancelNotAllowed
+    );
+    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Voting);
+
+    let other = String::from_str(&s.env, "second dispute");
+    assert_eq!(
+        client
+            .try_create_dispute(&s.creator, &other, &3600_u64)
+            .unwrap_err()
+            .unwrap(),
+        ArbitrationError::OngoingDispute
+    );
+}
+
+/// The creator cannot cancel after the voting window has closed, even with no
+/// votes cast, because resolution is now the only legitimate exit.
+#[test]
+fn creator_cancel_after_deadline_rejected() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+    advance(&s.env, 3601);
+
+    assert_eq!(
+        client
+            .try_cancel_dispute(&s.creator, &id, &None)
+            .unwrap_err()
+            .unwrap(),
+        ArbitrationError::CancelNotAllowed
+    );
+    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Voting);
+}
+
+/// The admin retains the moderation override and may cancel a Voting dispute
+/// after votes have been cast; the emitted event records the admin role.
+#[test]
+fn admin_cancel_after_votes_ok() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+    client.vote(&s.arb, &id, &2_u32);
+
+    client.cancel_dispute(&s.admin, &id, &None);
+    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Cancelled);
+}
+
+/// A creator who is also a registered arbitrator cannot vote on their own
+/// dispute: the call is rejected before any state write, so `has_voted` stays
+/// false and the tally is unchanged.
+#[test]
+fn creator_cannot_vote_own_dispute() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    client.register_arbitrator(&s.creator, &10_i128);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+
+    assert_eq!(
+        client
+            .try_vote(&s.creator, &id, &1_u32)
+            .unwrap_err()
+            .unwrap(),
+        ArbitrationError::ConflictOfInterest
+    );
+    assert!(!client.has_voted(&id, &s.creator));
+    assert_eq!(client.get_tally(&id, &1_u32), 0_i128);
+}
