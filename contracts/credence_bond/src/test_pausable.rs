@@ -71,7 +71,8 @@ fn test_pause_blocks_all_mutating_entrypoints() {
     assert!(client.try_set_slash_treasury(&admin, &treasury).is_err());
     assert!(client.try_collect_fees(&admin, &Bytes::new(&e)).is_err());
     assert!(client.try_deposit_fees(&1_000_i128).is_err());
-    assert!(client.try_set_callback(&stranger).is_err());
+    assert!(client.try_set_callback(&admin, &stranger).is_err());
+    assert!(client.try_clear_callback(&admin).is_err());
     assert!(client.try_liquidate(&admin, &identity).is_err());
     assert!(client.try_batch_transfer(&admin, &Vec::new(&e)).is_err());
 

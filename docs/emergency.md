@@ -98,7 +98,7 @@ While paused, the bond contract blocks ALL mutating entrypoints, including:
 
 - **Bond lifecycle**: `create_bond`, `top_up`, `extend_duration`, `withdraw`, `withdraw_early`, `request_withdrawal`, `renew_if_rolling`, `withdraw_bond`
 - **Slashing / fees / liquidation**: `slash`, `slash_bond`, `collect_fees`, `deposit_fees`, `liquidate`
-- **Admin configuration**: `initialize`, `initialize_with_registry`, `set_accepted_tokens`, `set_token`, `set_early_exit_config`, `set_borrow_frozen`, `set_liquidation_treasury`, `set_slash_treasury`, `set_callback`, `batch_transfer`, `transfer_admin`, `transfer_upgrade_admin`, `accept_upgrade_admin`, `cancel_upgrade_admin_transfer`
+- **Admin configuration**: `initialize`, `initialize_with_registry`, `set_accepted_tokens`, `set_token`, `set_early_exit_config`, `set_borrow_frozen`, `set_liquidation_treasury`, `set_slash_treasury`, `set_callback`, `clear_callback`, `batch_transfer`, `transfer_admin`, `transfer_upgrade_admin`, `accept_upgrade_admin`, `cancel_upgrade_admin_transfer`
 - **Attestations**: `register_attester`, `unregister_attester`, `add_attestation`, `add_attestation_batch`, `revoke_attestation`, `set_attester_stake`, `set_weight_config`
 - **Claims**: `expire_claims`
 

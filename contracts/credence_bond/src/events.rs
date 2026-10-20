@@ -633,3 +633,32 @@ pub fn emit_bond_liquidated(
     let data = (residual, reason, timestamp, admin.clone());
     e.events().publish(topics, data);
 }
+
+/// Emitted when the testing callback hook is installed or replaced.
+///
+/// # Topics
+/// * `Symbol` - `"callback_set"`
+///
+/// # Data
+/// * `Option<Address>` - Previous callback (`None` when it was unset)
+/// * `Option<Address>` - New callback
+///
+/// Only the admin can change the callback, so this event marks the single
+/// authority that can redirect `on_withdraw` / `on_slash` / `on_collect`.
+pub fn emit_callback_set(e: &Env, old: Option<Address>, new: Option<Address>) {
+    let topics = (Symbol::new(e, "callback_set"),);
+    e.events().publish(topics, (old, new));
+}
+
+/// Emitted when the testing callback hook is removed.
+///
+/// # Topics
+/// * `Symbol` - `"callback_cleared"`
+///
+/// # Data
+/// * `Option<Address>` - The callback that was removed (`None` when none was
+///   installed)
+pub fn emit_callback_cleared(e: &Env, old: Option<Address>) {
+    let topics = (Symbol::new(e, "callback_cleared"),);
+    e.events().publish(topics, old);
+}
