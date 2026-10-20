@@ -115,7 +115,7 @@ mod tests {
         let (client, admin, _) = setup_with_bond(&e);
 
         let cb = e.register(PanickingCallback, ());
-        client.set_callback(&cb);
+        client.set_callback(&admin, &cb);
 
         assert_eq!(client.get_identity_state(&identity).slashed_amount, 0);
         assert!(!client.is_locked());
@@ -143,10 +143,10 @@ mod tests {
     #[test]
     fn chaos_injection_2_withdraw_bond_callback_panic_reverts_state() {
         let e = Env::default();
-        let (client, _, identity) = setup_with_bond(&e);
+        let (client, admin, identity) = setup_with_bond(&e);
 
         let cb = e.register(PanickingCallback, ());
-        client.set_callback(&cb);
+        client.set_callback(&admin, &cb);
 
         assert!(client.get_identity_state(&identity).active);
 
@@ -184,7 +184,7 @@ mod tests {
         client.deposit_fees(&500_i128);
 
         let cb = e.register(PanickingCallback, ());
-        client.set_callback(&cb);
+        client.set_callback(&admin, &cb);
 
         // collect_fees: zeros fee storage, calls on_collect ? panic ? rollback.
         let result = client.try_collect_fees(&admin);
@@ -195,7 +195,7 @@ mod tests {
 
         // INVARIANT: fees must be intact. Verify via a clean second call.
         let noop = e.register(NoOpCallback, ());
-        client.set_callback(&noop);
+        client.set_callback(&admin, &noop);
         let recovered = client.collect_fees(&admin);
         assert_eq!(
             recovered, 500,

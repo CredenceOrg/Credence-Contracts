@@ -134,6 +134,7 @@ single record rather than being keyed by address.
 | `IdempotencyKey(Bytes)` | Dedup key for webhook-triggered admin operations |
 | `BorrowFrozen` | Global borrow-freeze flag |
 | `ExecutedOp(BytesN<32>)` | Executed-upgrade replay guard |
+| `Callback` | Testing hook invoked by `withdraw_bond` / `slash_bond` / `collect_fees`; admin-only write (issue #1614). Replaces the old untyped `Symbol("callback")` slot |
 
 **`UpgradeKey`** (`lib.rs`, sub-keyed under `DataKey::Upgrade`, **instance**):
 `Auth(Address)`, `AuthorizedUpgraders`, `Implementation`, `Admin`,

@@ -72,8 +72,14 @@ checked mutation.
 ### `PanickingCallback` contract (`src/test_chaos.rs`)
 
 A callback contract whose every hook (`on_slash`, `on_withdraw`, `on_collect`)
-unconditionally panics.  Registered via `set_callback()` to simulate a
-malicious or broken downstream contract.
+unconditionally panics.  Registered via `set_callback(admin, callback)` to
+simulate a malicious or broken downstream contract.
+
+Because the hook runs in the middle of `withdraw_bond`, `slash_bond` and
+`collect_fees`, only the stored admin may install it (issue #1614): an
+unauthenticated setter would otherwise let anyone revert all three operations
+for every user indefinitely.  `clear_callback(admin)` is the recovery path and
+removes the hook again.
 
 ### `NoOpCallback` contract (`src/test_chaos.rs`)
 

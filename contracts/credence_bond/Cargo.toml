@@ -75,6 +75,11 @@ path = "tests/slash_bond_validation.rs"
 name = "access_control_boundaries"
 path = "tests/access_control_boundaries.rs"
 
+# Admin authorization for the testing callback hook (issue #1614).
+[[test]]
+name = "test_callback_auth"
+path = "tests/test_callback_auth.rs"
+
 [dependencies]
 credence_errors = { path = "../credence_errors" }
 credence_math = { path = "../credence_math" }

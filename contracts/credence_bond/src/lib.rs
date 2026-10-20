@@ -405,6 +405,11 @@ pub enum DataKey {
     /// `[crate::fees::MIN_FEE_BPS, crate::fees::MAX_FEE_BPS]` per
     /// issue #1027. Value: `u32`.
     FeeBps,
+    /// Testing callback contract invoked from `withdraw_bond`, `slash_bond`
+    /// and `collect_fees`. Value: `Address`. Admin-only: see
+    /// [`CredenceBond::set_callback`]. Appended so existing discriminants are
+    /// not renumbered.
+    Callback,
 }
 
 /// Sub-key namespace for upgrade-authorization storage entries.
@@ -2241,8 +2246,11 @@ impl CredenceBond {
         invariants::assert_self_consistent(&e);
 
         // chaos: external callback panic must result in atomic state revert and lock release.
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+        if let Some(cb_addr) = e
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Callback)
+        {
             let fn_name = Symbol::new(&e, "on_withdraw");
             let args: Vec<Val> = Vec::from_array(&e, [withdraw_amount.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
@@ -2507,8 +2515,11 @@ impl CredenceBond {
 
         slashing::emit_slashing_event(&e, &identity, slash_amount, new_slashed);
 
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+        if let Some(cb_addr) = e
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Callback)
+        {
             let fn_name = Symbol::new(&e, "on_slash");
             let args: Vec<Val> = Vec::from_array(&e, [slash_amount.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
@@ -2559,8 +2570,11 @@ impl CredenceBond {
         let fees: i128 = e.storage().instance().get(&fee_key).unwrap_or(0);
         e.storage().instance().set(&fee_key, &0_i128);
 
-        let cb_key = Symbol::new(&e, "callback");
-        if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
+        if let Some(cb_addr) = e
+            .storage()
+            .instance()
+            .get::<_, Address>(&DataKey::Callback)
+        {
             let fn_name = Symbol::new(&e, "on_collect");
             let args: Vec<Val> = Vec::from_array(&e, [fees.into_val(&e)]);
             e.invoke_contract::<Val>(&cb_addr, &fn_name, args);
@@ -2829,11 +2843,26 @@ impl CredenceBond {
         updated
     }
 
-    /// Register a callback contract for testing hooks.
+    /// Register a callback contract for testing hooks. **Admin only.**
     ///
     /// The registered contract receives `on_withdraw`, `on_slash`, and `on_collect` calls
     /// from [`withdraw_bond`](Self::withdraw_bond), [`slash_bond`](Self::slash_bond),
     /// and [`collect_fees`](Self::collect_fees) respectively.
+    ///
+    /// The hook is invoked in the middle of those operations while the
+    /// reentrancy lock is held, so an unauthenticated setter would let any
+    /// account point it at a contract that always panics and permanently revert
+    /// withdrawals, slashing and fee collection for every user. Authorization is
+    /// therefore delegated to [`guards::require_admin`], which performs the
+    /// stored-admin check and exactly one `admin.require_auth()`.
+    ///
+    /// # Panics
+    /// - [`ContractError::ContractPaused`] if the contract is paused.
+    /// - [`ContractError::NotInitialized`] if no admin is stored.
+    /// - [`ContractError::NotAdmin`] if `admin` is not the stored admin.
+    ///
+    /// # Events
+    /// Emits `callback_set(old, new)`.
     ///
     /// # Example
     ///
@@ -2849,13 +2878,42 @@ impl CredenceBond {
     /// let admin = Address::generate(&e);
     /// let callback = Address::generate(&e);
     /// client.initialize(&admin, &None);
-    /// client.set_callback(&callback);
+    /// client.set_callback(&admin, &callback);
     /// ```
-    pub fn set_callback(e: Env, addr: Address) {
+    pub fn set_callback(e: Env, admin: Address, addr: Address) {
         Self::require_not_paused(&e);
-        e.storage()
-            .instance()
-            .set(&Symbol::new(&e, "callback"), &addr);
+        guards::require_admin(&e, &admin);
+
+        let old: Option<Address> = e.storage().instance().get(&DataKey::Callback);
+        e.storage().instance().set(&DataKey::Callback, &addr);
+        bump_instance_ttl(&e);
+
+        events::emit_callback_set(&e, old, Some(addr));
+    }
+
+    /// Remove the testing callback hook. **Admin only.**
+    ///
+    /// After this call `withdraw_bond`, `slash_bond` and `collect_fees` run
+    /// without invoking an external contract. This is the recovery path for a
+    /// callback that reverts, and for the reentrancy and chaos test suites that
+    /// install one on purpose.
+    ///
+    /// # Panics
+    /// - [`ContractError::ContractPaused`] if the contract is paused.
+    /// - [`ContractError::NotInitialized`] if no admin is stored.
+    /// - [`ContractError::NotAdmin`] if `admin` is not the stored admin.
+    ///
+    /// # Events
+    /// Emits `callback_cleared(old)`.
+    pub fn clear_callback(e: Env, admin: Address) {
+        Self::require_not_paused(&e);
+        guards::require_admin(&e, &admin);
+
+        let old: Option<Address> = e.storage().instance().get(&DataKey::Callback);
+        e.storage().instance().remove(&DataKey::Callback);
+        bump_instance_ttl(&e);
+
+        events::emit_callback_cleared(&e, old);
     }
 
     /// Check if the reentrancy lock is held.
