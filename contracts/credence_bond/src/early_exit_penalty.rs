@@ -143,14 +143,24 @@ pub fn emit_penalty_event(
 mod tests {
     use super::*;
     use crate::math::BPS_DENOMINATOR;
+    use crate::{CredenceBond, CredenceBondClient};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env};
 
-    fn setup_env() -> Env {
-        Env::default()
+    /// Register a real contract and return `(env, contract_id)` so the
+    /// storage-touching module functions can run inside a contract context.
+    fn setup_contract() -> (Env, Address) {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let client = CredenceBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        client.initialize(&admin, &None);
+        (e, contract_id)
     }
 
-    fn addr(e: &Env, seed: u8) -> Address {
-        Address::generate(e, &seed)
+    fn addr(e: &Env, _seed: u8) -> Address {
+        Address::generate(e)
     }
 
     // -----------------------------------------------------------------------
@@ -161,21 +171,21 @@ mod tests {
     fn test_calculate_penalty_full_remaining_charges_full_rate() {
         // 1000 amount, 10% penalty, full remaining -> 100.
         let penalty = calculate_penalty(1000, 100, 100, 1000);
-        assert_eq(penalty, 100);
+        assert_eq!(penalty, 100);
     }
 
     #[test]
     fn test_calculate_penalty_half_remaining_charges_half() {
         // 1000 amount, 10% penalty, half remaining -> 50.
         let penalty = calculate_penalty(1000, 50, 100, 1000);
-        assert_eq(penalty, 50);
+        assert_eq!(penalty, 50);
     }
 
     #[test]
     fn test_calculate_penalty_quarter_remaining() {
         // 1000 amount, 20% penalty, quarter remaining -> 50.
         let penalty = calculate_penalty(1000, 25, 100, 2000);
-        assert_eq(penalty, 50);
+        assert_eq!(penalty, 50);
     }
 
     // -----------------------------------------------------------------------
@@ -184,44 +194,44 @@ mod tests {
 
     #[test]
     fn test_calculate_penalty_zero_duration_returns_zero() {
-        assert_eq(calculate_penalty(1000, 100, 0, 10000), 0);
+        assert_eq!(calculate_penalty(1000, 100, 0, 10000), 0);
     }
 
     #[test]
     fn test_calculate_penalty_zero_remaining_returns_zero() {
-        assert_eq(calculate_penalty(1000, 0, 100, 10000), 0);
+        assert_eq!(calculate_penalty(1000, 0, 100, 10000), 0);
     }
 
     #[test]
     fn test_calculate_penalty_remaining_equals_duration_full_rate() {
-        assert_eq(calculate_penalty(1000, 100, 100, 1000), 100);
+        assert_eq!(calculate_penalty(1000, 100, 100, 1000), 100);
     }
 
     #[test]
     fn test_calculate_penalty_remaining_greater_than_duration_clamps() {
         // Remaining > duration must not exceed the full rate charge.
-        assert_eq(calculate_penalty(1000, 500, 100, 1000), 100);
+        assert_eq!(calculate_penalty(1000, 500, 100, 1000), 100);
     }
 
     #[test]
     fn test_calculate_penalty_zero_amount_returns_zero() {
-        assert_eq(calculate_penalty(0, 50, 100, 1000), 0);
+        assert_eq!(calculate_penalty(0, 50, 100, 1000), 0);
     }
 
     #[test]
     fn test_calculate_penalty_negative_amount_returns_zero() {
-        assert_eq(calculate_penalty(-1000, 50, 100, 1000), 0);
+        assert_eq!(calculate_penalty(-1000, 50, 100, 1000), 0);
     }
 
     #[test]
     fn test_calculate_penalty_zero_bps_returns_zero() {
-        assert_eq(calculate_penalty(1000, 50, 100, 0), 0);
+        assert_eq!(calculate_penalty(1000, 50, 100, 0), 0);
     }
 
     #[test]
     fn test_calculate_penalty_full_bps_full_remaining_returns_amount() {
         // 100% penalty with full remaining charges the entire amount.
-        assert_eq(
+        assert_eq!(
             calculate_penalty(1000, 100, 100, BPS_DENOMINATOR as u32),
             1000,
         );
@@ -231,7 +241,7 @@ mod tests {
     fn test_calculate_penalty_out_of_range_bps_clamps_to_amount() {
         // Defensive: a misconfigured bps greater than 10000 must not
         // over-charge the user.
-        assert_eq(
+        assert_eq!(
             calculate_penalty(1000, 100, 100, 20000),
             1000,
         );
@@ -240,15 +250,15 @@ mod tests {
     #[test]
     fn test_calculate_penalty_one_bps_one_remaining_rounds_down() {
         // 1 bps of 1000 = 0.1 units -> rounds down to 0.
-        assert_eq(calculate_penalty(1000, 1, 100, 1), 0);
+        assert_eq!(calculate_penalty(1000, 1, 100, 1), 0);
     }
 
     #[test]
     fn test_calculate_penalty_max_inputs_does_not_overflow() {
         // Large inputs must not panic or wrap; the result is clamped.
         let penalty = calculate_penalty(i128::MAX, 10, 10, BPS_DENOMINATOR as u32);
-        assert(penalty >= 0);
-        assert(penalty <= i128::MAX);
+        assert!(penalty >= 0);
+        assert!(penalty <= i128::MAX);
     }
 
     #[test]
@@ -256,7 +266,7 @@ mod tests {
         // Repeated calls with identical inputs produce identical results.
         let a = calculate_penalty(12345, 67, 100, 250);
         let b = calculate_penalty(12345, 67, 100, 250);
-        assert_eq(a, b);
+        assert_eq!(a, b);
     }
 
     // -----------------------------------------------------------------------
@@ -265,77 +275,90 @@ mod tests {
 
     #[test]
     fn test_set_and_get_config_roundtrip() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 1);
-        set_config(&e, treasury.clone(), 500);
-        let config = get_config(&e).expect("config should be set");
-        assert_eq(config.penalty_bps, 500);
-        assert_eq(config.treasury, treasury);
+        e.as_contract(&contract_id, || {
+            set_config(&e, treasury.clone(), 500);
+            let config = get_config(&e).expect("config should be set");
+            assert_eq!(config.penalty_bps, 500);
+            assert_eq!(config.treasury, treasury.clone());
+        });
     }
 
     #[test]
     fn test_get_config_when_unset_returns_error() {
-        let e = setup_env();
-        let result = get_config(&e);
-        assert(result.is_error());
-        assert_eq(result.unwrap_error(), ContractError::EarlyExitConfigNotSet);
+        let (e, contract_id) = setup_contract();
+        e.as_contract(&contract_id, || {
+            let result = get_config(&e);
+            assert_eq!(result, Err(ContractError::EarlyExitConfigNotSet));
+        });
     }
 
     #[test]
     fn test_set_config_zero_bps_is_valid() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 2);
-        set_config(&e, treasury.clone(), 0);
-        let config = get_config(&e).unwrap();
-        assert_eq(config.penalty_bps, 0);
-        assert_eq(config.treasury, treasury);
+        e.as_contract(&contract_id, || {
+            set_config(&e, treasury.clone(), 0);
+            let config = get_config(&e).unwrap();
+            assert_eq!(config.penalty_bps, 0);
+            assert_eq!(config.treasury, treasury.clone());
+        });
     }
 
     #[test]
     fn test_set_config_max_bps_is_valid() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 3);
-        set_config(&e, treasury.clone(), BPS_DENOMINATOR as u32);
-        let config = get_config(&e).unwrap();
-        assert_eq(config.penalty_bps, BPS_DENOMINATOR as u32);
+        e.as_contract(&contract_id, || {
+            set_config(&e, treasury.clone(), BPS_DENOMINATOR as u32);
+            let config = get_config(&e).unwrap();
+            assert_eq!(config.penalty_bps, BPS_DENOMINATOR as u32);
+        });
     }
 
     #[test]
     #[should_panic]
     fn test_set_config_rejects_bps_above_max() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 4);
-        set_config(&e, treasury, (BPS_DENOMINATOR as u32) + 1);
+        e.as_contract(&contract_id, || {
+            set_config(&e, treasury, (BPS_DENOMINATOR as u32) + 1);
+        });
     }
 
     #[test]
     fn test_set_config_is_idompotent_and_overwrites() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let treasury_a = addr(&e, 5);
         let treasury_b = addr(&e, 6);
-        set_config(&e, treasury_a.clone(), 100);
-        set_config(&e, treasury_a.clone(), 100);
-        let config = get_config(&e).unwrap();
-        assert_eq(config.penalty_bps, 100);
-        assert_eq(config.treasury, treasury_a);
+        e.as_contract(&contract_id, || {
+            set_config(&e, treasury_a.clone(), 100);
+            set_config(&e, treasury_a.clone(), 100);
+            let config = get_config(&e).unwrap();
+            assert_eq!(config.penalty_bps, 100);
+            assert_eq!(config.treasury, treasury_a.clone());
 
-        // Overwriting with a new treasury and bps must take effect.
-        set_config(&e, treasury_b.clone(), 250);
-        let config = get_config(&e).unwrap();
-        assert_eq(config.penalty_bps, 250);
-        assert_eq(config.treasury, treasury_b);
+            // Overwriting with a new treasury and bps must take effect.
+            set_config(&e, treasury_b.clone(), 250);
+            let config = get_config(&e).unwrap();
+            assert_eq!(config.penalty_bps, 250);
+            assert_eq!(config.treasury, treasury_b.clone());
+        });
     }
 
     #[test]
     fn test_get_config_recovers_after_initial_error() {
         // Recovery: failed read, then set, then retry successfully.
-        let e = setup_env();
-        assert(get_config(&e).is_error());
-        let treasury = addr(&e, 7);
-        set_config(&e, treasury.clone(), 750);
-        let config = get_config(&e).unwrap();
-        assert_eq(config.penalty_bps, 750);
-        assert_eq(config.treasury, treasury);
+        let (e, contract_id) = setup_contract();
+        e.as_contract(&contract_id, || {
+            assert_eq!(get_config(&e), Err(ContractError::EarlyExitConfigNotSet));
+            let treasury = addr(&e, 7);
+            set_config(&e, treasury.clone(), 750);
+            let config = get_config(&e).unwrap();
+            assert_eq!(config.penalty_bps, 750);
+            assert_eq!(config.treasury, treasury.clone());
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -344,20 +367,24 @@ mod tests {
 
     #[test]
     fn test_full_lifecycle_config_then_penalty() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 8);
-        set_config(&e, treasury.clone(), 2000);
-        let config = get_config(&e).unwrap();
-        let penalty = calculate_penalty(10_000, 50, 100, config.penalty_bps);
-        // 20% * 50% * 10000 = 1000.
-        assert_eq(penalty, 1000);
+        e.as_contract(&contract_id, || {
+            set_config(&e, treasury.clone(), 2000);
+            let config = get_config(&e).unwrap();
+            let penalty = calculate_penalty(10_000, 50, 100, config.penalty_bps);
+            // 20% * 50% * 10000 = 1000.
+            assert_eq!(penalty, 1000);
+        });
     }
 
     #[test]
     fn test_emit_penalty_event_does_not_panic() {
-        let e = setup_env();
+        let (e, contract_id) = setup_contract();
         let identity = addr(&e, 9);
         let treasury = addr(&e, 10);
-        emit_penalty_event(&e, &identity, 1000, 100, &treasury);
+        e.as_contract(&contract_id, || {
+            emit_penalty_event(&e, &identity, 1000, 100, &treasury);
+        });
     }
 }
