@@ -335,17 +335,23 @@ TTL: no `extend_ttl` calls.
 
 ### timelock
 
-Single enum `DataKey` (`contracts/timelock/src/lib.rs`), all **instance**
-storage.
+Single enum `DataKey` (`contracts/timelock/src/lib.rs`). Operations live in
+**persistent** storage because their `args` vector is unbounded; the rest is
+**instance** storage.
 
-| Variant | Used for |
-|---|---|
-| `Admin` | Admin address |
-| `OperationCounter` | Next operation id |
-| `Operation(u64)` | Queued operation (op hash, eta, expiry, status) |
-| `ExecutedOp(BytesN<32>)` | Replay guard keyed by op hash |
+| Variant | Tier | Used for |
+|---|---|---|
+| `Admin` | instance | Admin address |
+| `OperationCounter` | instance | Next operation id |
+| `ExecutedOp(BytesN<32>)` | instance | Replay guard keyed by op hash |
+| `Operation(u64)` | persistent | Queued operation (op hash, eta, expiry, status) |
+| `Call(u64)` | persistent | Call bound to an operation (`target`, `func`, `args`, `salt`) |
 
-TTL: standard `31_536_000` / half-life pattern via `bump_instance_ttl()`.
+TTL: instance uses the standard `31_536_000` / half-life pattern via
+`bump_instance_ttl()`; persistent operation and call entries use
+`PERSISTENT_TTL_THRESHOLD = 518_400` and `PERSISTENT_TTL_EXTEND_TO = 3_110_400`
+(both below the network maximum entry TTL) via `bump_persistent_ttl()`, on every
+write and read.
 Separately, `min_delay_seconds() = 86_400` and `GRACE_PERIOD = 86_400` are
 business-logic timers (minimum queue delay, post-ETA execution window) —
 not ledger-entry TTLs — and shouldn't be confused with the storage bump
