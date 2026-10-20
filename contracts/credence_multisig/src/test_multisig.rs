@@ -1300,12 +1300,11 @@ fn test_prune_expired_proposals_paused() {
 
 // ==================== Property Tests ====================
 
-/// Strategy that builds a `Vec<Address>` by randomly picking from a small
-/// pool of pre-generated addresses (with repetition allowed). The returned
-/// vector is the **deduplicated** set, but the raw multiset is what the
-/// strategy shrinks on — exercising the invariant that the output length
-/// never exceeds the input length and every unique element is preserved.
-fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, Vec<Address>)> {
+/// Strategy that produces a pool size and an index vector, both free of
+/// `Env` so that proptest can derive `Debug` for shrinking.  The `Env` and
+/// `Vec<Address>` values are constructed inside the test body where
+/// `Debug` is not required.
+fn deduped_signer_list_strategy() -> impl Strategy<Value = (usize, std::vec::Vec<usize>)> {
     (1_usize..20_usize)
         .prop_flat_map(|pool_size| {
             (1_usize..20_usize).prop_flat_map(move |pick_count| {
@@ -1315,41 +1314,6 @@ fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, V
                 proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
                     .prop_map(move |indices| (pool_size, indices))
             })
-        })
-        .prop_map(|(pool_size, indices)| {
-            let e = Env::default();
-            e.mock_all_auths();
-
-            // Build a small pool of distinct addresses.
-            let mut pool = Vec::new(&e);
-            for _ in 0..pool_size {
-                pool.push_back(Address::generate(&e));
-            }
-
-            // Build the raw input list from the indices (may contain duplicates).
-            let raw_len = indices.len();
-            let mut raw = Vec::new(&e);
-            for &idx in &indices {
-                raw.push_back(pool.get(idx as u32).unwrap());
-            }
-
-            // Deduplicate: scan and keep first occurrence of each address.
-            let mut deduped = Vec::new(&e);
-            for i in 0..raw.len() {
-                let addr = raw.get(i).unwrap();
-                let mut already_seen = false;
-                for j in 0..deduped.len() {
-                    if deduped.get(j).unwrap() == addr {
-                        already_seen = true;
-                        break;
-                    }
-                }
-                if !already_seen {
-                    deduped.push_back(addr);
-                }
-            }
-
-            (e, raw, deduped)
         })
 }
 
@@ -1362,8 +1326,39 @@ proptest! {
 
     #[test]
     fn prop_signer_list_length_le_input_length_every_unique_preserved_once(
-        (e, raw, deduped) in deduped_signer_list_strategy()
+        (pool_size, indices) in deduped_signer_list_strategy()
     ) {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        // Build a small pool of distinct addresses.
+        let mut pool = Vec::new(&e);
+        for _ in 0..pool_size {
+            pool.push_back(Address::generate(&e));
+        }
+
+        // Build the raw input list from the indices (may contain duplicates).
+        let mut raw = Vec::new(&e);
+        for &idx in &indices {
+            raw.push_back(pool.get(idx as u32).unwrap());
+        }
+
+        // Deduplicate: scan and keep first occurrence of each address.
+        let mut deduped = Vec::new(&e);
+        for i in 0..raw.len() {
+            let addr = raw.get(i).unwrap();
+            let mut already_seen = false;
+            for j in 0..deduped.len() {
+                if deduped.get(j).unwrap() == addr {
+                    already_seen = true;
+                    break;
+                }
+            }
+            if !already_seen {
+                deduped.push_back(addr);
+            }
+        }
+
         let contract_id = e.register(CredenceMultiSig, ());
         let client = CredenceMultiSigClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
@@ -1406,7 +1401,7 @@ proptest! {
         for i in 0..list.len() {
             let si = list.get(i).unwrap();
             let occurrences = (0..list.len())
-                .filter(|j| list.get(j).unwrap() == si)
+                .filter(|j| list.get(*j).unwrap() == si)
                 .count();
             assert_eq!(occurrences, 1, "SignerList must contain each signer at most once");
         }
@@ -1454,7 +1449,7 @@ proptest! {
         for i in 0..len {
             let si = list_after_remove.get(i).unwrap();
             let occurrences = (0..len)
-                .filter(|j| list_after_remove.get(j).unwrap() == si)
+                .filter(|j| list_after_remove.get(*j).unwrap() == si)
                 .count();
             assert_eq!(occurrences, 1, "SignerList must never contain duplicates after add/remove");
         }
