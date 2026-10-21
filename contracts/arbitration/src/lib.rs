@@ -66,7 +66,7 @@ pub struct Dispute {
     pub voting_end: u64,
     /// Canonical status — replaces the old `resolved: bool`.
     pub status: DisputeStatus,
-    /// Winning outcome (0 only when status == Tied, >0 = specific outcome).
+    /// Winning outcome (0 for Tied or NoQuorum, >0 = specific outcome).
     /// The outcome field must never be 0 if status == Resolved, as vote() rejects outcome 0 as InvalidOutcome.
     pub outcome: u32,
     pub cancellation_reason: Option<String>,
@@ -464,7 +464,7 @@ impl CredenceArbitration {
             return Err(ArbitrationError::VotingNotEnded);
         }
 
-        // --- Quorum check (before Resolving transition) ---
+        // --- Quorum check ---
         let min_total_weight: i128 = e
             .storage()
             .instance()
@@ -496,11 +496,36 @@ impl CredenceArbitration {
             let voters_met = voter_count >= min_voters;
 
             if !weight_met || !voters_met {
+                require_transition(DisputeStatus::Voting, DisputeStatus::Resolving)?;
+                dispute.status = DisputeStatus::Resolving;
+                e.events().publish(
+                    (Symbol::new(&e, "status_transition"), dispute_id),
+                    (
+                        DisputeStatus::Voting as u32,
+                        DisputeStatus::Resolving as u32,
+                    ),
+                );
+
+                require_transition(DisputeStatus::Resolving, DisputeStatus::NoQuorum)?;
+                dispute.status = DisputeStatus::NoQuorum;
+                dispute.outcome = 0;
+                e.storage()
+                    .instance()
+                    .set(&DataKey::Dispute(dispute_id), &dispute);
+                clear_active_dispute(&e, &dispute.creator);
+
+                e.events().publish(
+                    (Symbol::new(&e, "status_transition"), dispute_id),
+                    (
+                        DisputeStatus::Resolving as u32,
+                        DisputeStatus::NoQuorum as u32,
+                    ),
+                );
                 e.events().publish(
                     (Symbol::new(&e, "quorum_not_met"), dispute_id),
                     (total_weight, min_total_weight, voter_count, min_voters),
                 );
-                return Err(ArbitrationError::QuorumNotMet);
+                return Ok(0);
             }
         }
         // --- End quorum check ---
@@ -588,7 +613,7 @@ impl CredenceArbitration {
 
     /// Set quorum requirements for dispute resolution.
     ///
-    /// Once set, `resolve_dispute` will reject with `QuorumNotMet` unless:
+    /// Once set, `resolve_dispute` will finalize as `NoQuorum` unless:
     /// - The sum of all vote weights cast ≥ `min_total_weight`
     /// - The number of distinct voters ≥ `min_voters`
     ///
@@ -780,7 +805,7 @@ impl CredenceArbitration {
     }
 
     /// Archive a finalized dispute. Only callable by admin.
-    /// Dispute must be in Resolved, Tied, or Cancelled status.
+    /// Dispute must be in Resolved, Tied, NoQuorum, or Cancelled status.
     pub fn archive_dispute(
         e: Env,
         admin: Address,
@@ -954,3 +979,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_archive_reopen;
+
+#[cfg(test)]
+mod test_events_schema;

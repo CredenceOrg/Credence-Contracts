@@ -296,27 +296,25 @@ fn test_invalid_register_negative_weight() {
 // ── quorum tests ──────────────────────────────────────────────────────────────
 
 #[test]
-fn test_resolve_fails_when_weight_quorum_not_met() {
+fn test_resolve_finishes_when_weight_quorum_not_met() {
     let s = setup();
     let id = open_dispute(&s);
     s.client.vote(&s.arb, &id, &1); // weight = 10
     s.client.set_quorum(&s.admin, &100, &0); // need weight ≥ 100
     advance(&s.env, 3601);
-    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
-    assert_eq!(err, ArbitrationError::QuorumNotMet);
-    // Dispute stays Voting — caller can try again later
-    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Voting);
+    assert_eq!(s.client.resolve_dispute(&id), 0);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::NoQuorum);
 }
 
 #[test]
-fn test_resolve_fails_when_voter_quorum_not_met() {
+fn test_resolve_finishes_when_voter_quorum_not_met() {
     let s = setup();
     let id = open_dispute(&s);
     s.client.vote(&s.arb, &id, &1); // 1 voter
     s.client.set_quorum(&s.admin, &0, &2); // need ≥ 2 voters
     advance(&s.env, 3601);
-    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
-    assert_eq!(err, ArbitrationError::QuorumNotMet);
+    assert_eq!(s.client.resolve_dispute(&id), 0);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::NoQuorum);
 }
 
 #[test]
@@ -341,8 +339,8 @@ fn test_resolve_with_weight_quorum_met_but_voter_quorum_not() {
     s.client.vote(&s.arb, &id, &1); // weight 10, 1 voter
     s.client.set_quorum(&s.admin, &10, &2); // weight OK (10≥10), voters NOT (1<2)
     advance(&s.env, 3601);
-    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
-    assert_eq!(err, ArbitrationError::QuorumNotMet);
+    assert_eq!(s.client.resolve_dispute(&id), 0);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::NoQuorum);
 }
 
 #[test]
@@ -355,8 +353,8 @@ fn test_resolve_with_voter_quorum_met_but_weight_quorum_not() {
     s.client.vote(&arb2, &id, &2); // weight 5,  2 voters
     s.client.set_quorum(&s.admin, &20, &2); // weight NOT (15<20), voters OK (2≥2)
     advance(&s.env, 3601);
-    let err = s.client.try_resolve_dispute(&id).unwrap_err().unwrap();
-    assert_eq!(err, ArbitrationError::QuorumNotMet);
+    assert_eq!(s.client.resolve_dispute(&id), 0);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::NoQuorum);
 }
 
 #[test]
@@ -382,6 +380,8 @@ fn test_status_machine_all_valid_transitions() {
     assert!(require_transition(DisputeStatus::Voting, DisputeStatus::Cancelled).is_ok());
     assert!(require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved).is_ok());
     assert!(require_transition(DisputeStatus::Resolving, DisputeStatus::Tied).is_ok());
+    assert!(require_transition(DisputeStatus::Resolving, DisputeStatus::NoQuorum).is_ok());
+    assert!(require_transition(DisputeStatus::NoQuorum, DisputeStatus::Archived).is_ok());
 }
 
 #[test]
@@ -394,9 +394,12 @@ fn test_status_machine_all_invalid_transitions() {
         (DisputeStatus::Voting, DisputeStatus::Open),
         (DisputeStatus::Voting, DisputeStatus::Resolved),
         (DisputeStatus::Voting, DisputeStatus::Tied),
+        (DisputeStatus::Voting, DisputeStatus::NoQuorum),
         (DisputeStatus::Resolving, DisputeStatus::Open),
         (DisputeStatus::Resolving, DisputeStatus::Voting),
         (DisputeStatus::Resolving, DisputeStatus::Cancelled),
+        (DisputeStatus::NoQuorum, DisputeStatus::Voting),
+        (DisputeStatus::NoQuorum, DisputeStatus::Resolved),
         (DisputeStatus::Resolved, DisputeStatus::Open),
         (DisputeStatus::Resolved, DisputeStatus::Voting),
         (DisputeStatus::Resolved, DisputeStatus::Resolving),

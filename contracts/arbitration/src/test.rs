@@ -344,11 +344,11 @@ fn test_quorum_single_voter_under_min_voters() {
     let dispute_id = client.create_dispute(&creator, &String::from_str(&e, "Q1"), &3600);
     client.vote(&arb, &dispute_id, &1);
     advance(&e, 3601);
-    let err = client
-        .try_resolve_dispute(&dispute_id)
-        .unwrap_err()
-        .unwrap();
-    assert_eq!(err, status::ArbitrationError::QuorumNotMet);
+    assert_eq!(client.resolve_dispute(&dispute_id), 0);
+    assert_eq!(
+        client.get_dispute(&dispute_id).status,
+        status::DisputeStatus::NoQuorum
+    );
 }
 
 // ── Pagination edge-case tests (issue #1298) ──────────────────────────────────
