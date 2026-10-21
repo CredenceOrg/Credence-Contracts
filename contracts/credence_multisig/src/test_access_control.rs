@@ -28,6 +28,9 @@
 //! | `unpause`                 | pause signer/admin | Via pausable module            |
 //! | `get_*` (read-only)       | anyone             | Permissionless views           |
 
+extern crate alloc;
+extern crate std;
+
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, BytesN, Env, IntoVal, Val, Vec};
@@ -256,14 +259,34 @@ fn test_submit_proposal_rejects_non_signer() {
         invoke: &soroban_sdk::testutils::MockAuthInvoke {
             contract: &client.address,
             fn_name: "submit_proposal",
-            args: (&attacker, &target, &calldata, &ActionType::ContractCall)
+            args: (
+                attacker.clone(),
+                ActionType::ContractCall,
+                Some(target.clone()),
+                None::<soroban_sdk::String>,
+                Some(calldata.clone()),
+                soroban_sdk::String::from_str(&env, "Unauthorized call"),
+                0_u64,
+                None::<soroban_sdk::String>,
+                BytesN::from_array(&env, &[0; 32]),
+            )
                 .into_val(&env),
             sub_invokes: &[],
         },
     }]);
 
     let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        client.submit_proposal(&attacker, &target, &calldata, &ActionType::ContractCall);
+        client.submit_proposal(
+            &attacker,
+            &ActionType::ContractCall,
+            &Some(target),
+            &None,
+            &Some(calldata),
+            &soroban_sdk::String::from_str(&env, "Unauthorized call"),
+            &0,
+            &None,
+            &BytesN::from_array(&env, &[0; 32]),
+        );
     }));
     assert!(res.is_err(), "submit_proposal must reject non-signer");
 }
@@ -277,7 +300,17 @@ fn test_submit_proposal_succeeds_as_signer() {
     let target = Address::generate(&env);
     let calldata = soroban_sdk::Bytes::new(&env);
 
-    let proposal_id = client.submit_proposal(&signer, &target, &calldata, &ActionType::ContractCall);
+    let proposal_id = client.submit_proposal(
+        &signer,
+        &ActionType::ContractCall,
+        &Some(target),
+        &None,
+        &Some(calldata),
+        &soroban_sdk::String::from_str(&env, "Authorized call"),
+        &0,
+        &None,
+        &BytesN::from_array(&env, &[1; 32]),
+    );
     let proposal = client.get_proposal(&proposal_id);
     assert_eq!(proposal.proposer, signer);
 }
