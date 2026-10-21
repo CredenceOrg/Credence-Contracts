@@ -249,21 +249,37 @@ TTL: standard `31_536_000` / half-life pattern.
 
 ### credence_registry
 
-Two enums, both **instance** storage: `storage::DataKey` (the production
-key set) and `idempotency::StorageKey` (currently unused by any production
-entry point — see note).
+Two enums: `storage::DataKey` (the production key set) and
+`idempotency::StorageKey` (currently unused by any production entry point —
+see note).
 
 **`storage::DataKey`** (`contracts/credence_registry/src/storage.rs`):
+
+Instance storage (fixed-size config and counters — never grows with the
+registry):
 
 | Variant | Used for |
 |---|---|
 | `Admin` | Admin address |
 | `Paused`, `PauseSigner(Address)`, `PauseSignerCount`, `PauseThreshold`, `PauseProposalCounter`, `PauseProposal(u32)`, `PauseApproval(u32, Address)`, `PauseApprovalCount(u32)` | Pause multisig — proposal ids are `u32`; `PauseProposal` stores the action as the `Symbol` `pause` or `unpause` |
-| `IdentityToBond(Address)` | Forward mapping: identity → registry entry |
-| `BondToIdentity(Address)` | Reverse mapping: bond contract → identity |
-| `RegisteredIdentities` | Insertion-ordered `Vec<Address>` of all registered identities |
-| `AllowNonInterface(Address)` | Audit flag when a bond opted out of the interface check |
 | `BondCodeHash` | Admin-pinned WASM code hash for trustless bond self-registration |
+| `IdentityCount` | Number of identities in the insertion index (`u32`) |
+
+Persistent storage (one entry per identity; read/written with a TTL bump):
+
+| Variant | Used for |
+|---|---|
+| `IdentityToBond(Address)` | Forward mapping: identity → `RegistryEntry` |
+| `BondToIdentity(Address)` | Reverse mapping: bond contract → identity |
+| `AllowNonInterface(Address)` | Audit flag when a bond opted out of the interface check |
+| `IdentityAt(u32)` | Identity at a position in the insertion index |
+| `IdentityIndex(Address)` | Position of an identity in the insertion index |
+| `RegisteredIdentities` | **Legacy.** The old unbounded `Vec<Address>` in instance storage. No longer read or written; the variant is retained so existing discriminants do not shift |
+
+`register` appends with `IdentityAt(IdentityCount)` / `IdentityIndex(identity)`
+and bumps `IdentityCount`; `remove` is swap-and-pop (the tail entry moves into
+the freed slot). Both are O(1) in storage operations. Persistent TTL: threshold
+`1_555_200`, target `3_110_400` ledgers.
 
 **`idempotency::StorageKey`** (`contracts/credence_registry/src/idempotency.rs`):
 `Idempotent(BytesN<32>)` — maps a dedup key to a cached result. No
@@ -273,7 +289,8 @@ overlap with any `storage::DataKey` variant, so it introduces no collision
 risk if wired in later — flagged here only so it isn't mistaken for dead
 code to delete.
 
-TTL: standard `31_536_000` / half-life pattern.
+TTL: instance entries use the standard `31_536_000` / half-life pattern;
+persistent entries use `3_110_400` / half.
 
 ### credence_treasury
 
