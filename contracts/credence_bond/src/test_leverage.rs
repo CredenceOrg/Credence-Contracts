@@ -135,9 +135,10 @@ fn unit_leverage_one_equals_cap_one_passes() {
 
 /// One step over the cap must trigger LeverageExceeded.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn unit_leverage_one_over_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 7_u32;
     // (cap + 1) × MIN_BOND_AMOUNT → leverage = cap + 1 > cap → must panic.
     validate_leverage(&e, (cap as i128 + 1) * MIN_BOND_AMOUNT, cap);
@@ -145,9 +146,10 @@ fn unit_leverage_one_over_cap_reverts() {
 
 /// Confirm the same boundary holds at cap = 1: 2 × MIN_BOND_AMOUNT reverts.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn unit_two_x_above_cap_one_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     validate_leverage(&e, 2 * MIN_BOND_AMOUNT, 1_u32);
 }
 
@@ -177,9 +179,10 @@ fn unit_cap_one_min_bond_plus_one_passes_due_to_floor_division() {
 
 /// Only the first multiple above floor forces leverage = 2 > 1.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn unit_cap_one_two_x_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     validate_leverage(&e, 2 * MIN_BOND_AMOUNT, 1_u32);
 }
 
@@ -197,9 +200,10 @@ fn unit_max_leverage_cap_exactly_at_cap_passes() {
 
 /// One step above MAX_MAX_LEVERAGE reverts.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn unit_max_leverage_cap_one_over_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = MAX_MAX_LEVERAGE;
     validate_leverage(&e, (cap as i128 + 1) * MIN_BOND_AMOUNT, cap);
 }
@@ -216,6 +220,7 @@ fn unit_max_leverage_cap_one_over_reverts() {
 #[test]
 fn unit_i128_max_amount_with_huge_cap_passes() {
     let e = Env::default();
+    e.mock_all_auths();
     // In test mode: MIN_BOND_AMOUNT = 1_000; i128::MAX / 1_000 ≈ 1.7e35
     // u32::MAX as i128 = 4_294_967_295 which is much smaller, so we need a
     // cap large enough.  Use u32::MAX — if the computed leverage > u32::MAX
@@ -240,7 +245,7 @@ fn unit_i128_max_amount_with_huge_cap_passes() {
                 .or_else(|| payload.downcast_ref::<&str>().copied())
                 .unwrap_or("");
             assert!(
-                msg.contains("leverage exceeds maximum") || msg.is_empty(),
+                msg.contains("#212") || msg.is_empty(),
                 "unexpected panic: expected LeverageExceeded or no panic, got: {:?}",
                 msg
             );
@@ -287,9 +292,10 @@ fn unit_floor_division_just_below_third_multiple_passes() {
 
 /// `3 × MIN_BOND_AMOUNT` = leverage 3 > cap 2 → must revert.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn unit_floor_division_third_multiple_above_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     validate_leverage(&e, 3 * MIN_BOND_AMOUNT, 2_u32);
 }
 
@@ -342,9 +348,10 @@ fn integration_create_bond_at_cap_exact_boundary_succeeds() {
 
 /// Bond one step above the cap must revert with LeverageExceeded.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn integration_create_bond_one_over_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 10_u32;
     let amount = (cap as i128 + 1) * MIN_BOND_AMOUNT; // 11× — one over
     let (client, admin, identity, ..) = setup_with_token_mint(&e, amount * 4);
@@ -355,9 +362,10 @@ fn integration_create_bond_one_over_cap_reverts() {
 
 /// A rolling bond respects the same leverage cap.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn integration_create_rolling_bond_above_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 5_u32;
     let amount = (cap as i128 + 1) * MIN_BOND_AMOUNT;
     let notice = ONE_DAY;
@@ -376,9 +384,10 @@ fn integration_create_rolling_bond_above_cap_reverts() {
 /// This verifies that the cap change takes effect immediately for the next
 /// bond, with no grace window or stale-cache bug.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn integration_reduced_cap_blocks_previously_valid_amount() {
     let e = Env::default();
+    e.mock_all_auths();
     let original_cap = 100_u32;
     let amount = 50 * MIN_BOND_AMOUNT; // 50× — fine under 100×
 
@@ -406,9 +415,10 @@ fn integration_reduced_cap_blocks_previously_valid_amount() {
 /// A top_up that pushes the total bonded amount above the cap reverts.
 /// The combined (original + top_up) leverage is checked, not just the top_up.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn integration_top_up_crosses_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 5_u32;
     let initial = 3 * MIN_BOND_AMOUNT; // 3× — below cap 5×
     let topup = 3 * MIN_BOND_AMOUNT; // would make total 6× — above cap
@@ -440,9 +450,10 @@ fn integration_top_up_to_exact_cap_succeeds() {
 
 /// A top_up one unit above the exact cap reverts (tight off-by-one).
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn integration_top_up_one_over_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 5_u32;
     let initial = cap as i128 * MIN_BOND_AMOUNT; // exactly at cap
                                                  // Adding MIN_BOND_AMOUNT would make total = (cap + 1) × MIN_BOND_AMOUNT
@@ -628,9 +639,10 @@ fn decimal_six_at_cap_succeeds() {
 
 /// 101 units at a cap of 100 must revert.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn decimal_six_above_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 100_u32;
     let amount = 101 * MIN_BOND_AMOUNT; // 101×
     let (client, admin, identity, ..) = setup_with_token_mint(&e, amount * 4);
@@ -660,9 +672,10 @@ fn decimal_large_amount_at_high_cap_no_overflow() {
 
 /// Large amounts one step above the cap revert correctly without overflowing.
 #[test]
-#[should_panic(expected = "leverage exceeds maximum")]
+#[should_panic(expected = "#212")]
 fn decimal_large_amount_one_over_high_cap_reverts() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 1_000_u32;
     let amount = (cap as i128 + 1) * MIN_BOND_AMOUNT;
     let (client, admin, identity, ..) = setup_with_token_mint(&e, amount * 4);
@@ -708,6 +721,7 @@ fn regression_checked_div_never_overflows_for_valid_amounts() {
 #[test]
 fn regression_checked_div_boundary_produces_leverage_exceeded_not_overflow() {
     let e = Env::default();
+    e.mock_all_auths();
     let cap = 5_u32;
 
     // This must be LeverageExceeded, not Overflow.
@@ -724,7 +738,7 @@ fn regression_checked_div_boundary_produces_leverage_exceeded_not_overflow() {
         .unwrap_or("");
     // The panic must mention leverage, not arithmetic overflow.
     assert!(
-        msg.contains("leverage exceeds maximum") || msg.is_empty(),
+        msg.contains("#212") || msg.is_empty(),
         "expected LeverageExceeded panic, got: {:?}",
         msg
     );

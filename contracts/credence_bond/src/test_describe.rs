@@ -45,6 +45,7 @@ fn test_describe_config_returns_none_when_uninitialized() {
 #[test]
 fn test_describe_config_after_initialize() {
     let e = Env::default();
+    e.mock_all_auths();
     let (client, admin) = setup(&e);
 
     let cfg = client.describe_config().unwrap();
@@ -53,10 +54,14 @@ fn test_describe_config_after_initialize() {
     // Early-exit config not set yet.
     assert!(cfg.early_exit_treasury.is_none());
     assert!(cfg.early_exit_penalty_bps.is_none());
-    // Weight config defaults (see weighted_attestation::DEFAULT_WEIGHT_MULTIPLIER_BPS).
+    // Weight config defaults. Updated for current behaviour: when
+    // `set_weight_config` has never been called, `get_weight_config` falls back
+    // to `(0, DEFAULT_MAX_WEIGHT)` (see its doc comment) — the multiplier is 0,
+    // not `DEFAULT_WEIGHT_MULTIPLIER_BPS`. Only `max_weight` uses the default.
+    assert_eq!(cfg.weight_multiplier_bps, 0);
     assert_eq!(
-        cfg.weight_multiplier_bps,
-        weighted_attestation::DEFAULT_WEIGHT_MULTIPLIER_BPS
+        cfg.weight_max,
+        weighted_attestation::DEFAULT_MAX_WEIGHT
     );
 }
 

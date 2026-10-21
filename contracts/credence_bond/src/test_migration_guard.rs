@@ -4,9 +4,10 @@ use crate::migration::{require_no_ongoing_migration, MigrationStatus};
 use soroban_sdk::Env;
 
 #[test]
-#[should_panic(expected = "Error(Contract, #125)")]
+#[should_panic(expected = "Error(Contract, #124)")]
 fn migration_guard_rejects_in_progress_state() {
     let e = Env::default();
+    e.mock_all_auths();
 
     require_no_ongoing_migration(&e, MigrationStatus::InProgress);
 }

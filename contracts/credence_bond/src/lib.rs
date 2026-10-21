@@ -559,6 +559,10 @@ impl CredenceBond {
 
     /// Initialize the contract with admin authority.
     ///
+    /// Per `docs/UPGRADE.md`, initialisation also records the deployer as the
+    /// upgrade admin and grants it the `Upgrader` role, so the four
+    /// upgrade-admin entrypoints are reachable without a separate call.
+    ///
     /// Errors:
     /// - `ContractError::AlreadyInitialized` if called more than once.
     ///
@@ -572,6 +576,11 @@ impl CredenceBond {
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+        // Record the deployer as upgrade admin and grant it the Upgrader role
+        // (docs/UPGRADE.md: "At initialisation ... the deployer address is
+        // automatically granted the `Upgrader` role and recorded as the
+        // upgrade admin.").
+        upgrade_auth::initialize_upgrade_auth(&e, &admin);
         if let Some(registry) = registry {
             e.invoke_contract::<()>(
                 &registry,

@@ -168,9 +168,10 @@ fn migrate_v1_to_v2_is_scoped_to_the_requested_identity() {
 /// The pre-existing `test_migration_guard` only panics inside the guard; this
 /// exercises the guard in front of an actual storage mutation.
 #[test]
-#[should_panic(expected = "Error(Contract, #125)")]
+#[should_panic(expected = "Error(Contract, #124)")]
 fn in_progress_status_blocks_the_migration() {
     let e = Env::default();
+    e.mock_all_auths();
     let cid = register(&e);
     let identity = Address::generate(&e);
     let original = populated_bond(&identity);
