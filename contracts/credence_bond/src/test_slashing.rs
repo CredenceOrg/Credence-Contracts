@@ -907,3 +907,163 @@ fn test_slash_reward_checked_div_preserves_value() {
     let bond = client.slash(&admin, &identity, &1_000_i128);
     assert_eq!(bond.slashed_amount, 1_000);
 }
+
+// ============================================================================
+// Acceptance Tests for slash_bond entrypoint
+// ============================================================================
+
+/// Test that slash_bond moves funds to treasury (empty salt = no idempotency).
+#[test]
+fn test_slash_bond_moves_funds_to_treasury() {
+    let e = Env::default();
+    let (client, admin, identity, token_id, bond_id) = test_helpers::setup_with_token(&e);
+
+    let treasury = Address::generate(&e);
+    client.set_slash_treasury(&admin, &treasury);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    test_helpers::advance_ledger_sequence(&e);
+
+    use soroban_sdk::token::TokenClient;
+    let token = TokenClient::new(&e, &token_id);
+
+    let bond_bal_before = token.balance(&bond_id);
+    let treasury_bal_before = token.balance(&treasury);
+
+    let empty_salt = soroban_sdk::Bytes::new(&e);
+    let new_slashed = client.slash_bond(&admin, &identity, &100_i128, &empty_salt);
+
+    let bond_bal_after = token.balance(&bond_id);
+    let treasury_bal_after = token.balance(&treasury);
+
+    assert_eq!(new_slashed, 100);
+    assert_eq!(bond_bal_before - bond_bal_after, 100);
+    assert_eq!(treasury_bal_after - treasury_bal_before, 100);
+
+    let bond = client.get_identity_state(&identity);
+    assert_eq!(bond.slashed_amount, 100);
+}
+
+/// Test that slash_bond appends to slash history.
+#[test]
+fn test_slash_bond_appends_history() {
+    let e = Env::default();
+    let (client, admin, identity) = setup(&e);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    test_helpers::advance_ledger_sequence(&e);
+
+    let empty_salt = soroban_sdk::Bytes::new(&e);
+    let new_slashed = client.slash_bond(&admin, &identity, &100_i128, &empty_salt);
+
+    assert_eq!(new_slashed, 100);
+
+    let records = client.get_slash_history_page(&identity, &0, &10);
+    assert_eq!(records.len(), 1);
+
+    let record = records.get(0).unwrap();
+    assert_eq!(record.slash_amount, 100);
+    assert_eq!(record.total_slashed_after, 100);
+}
+
+/// Test that slash_bond is idempotent on salt.
+#[test]
+fn test_slash_bond_idempotent_on_salt() {
+    let e = Env::default();
+    let (client, admin, identity) = setup(&e);
+    client.create_bond(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    test_helpers::advance_ledger_sequence(&e);
+
+    let salt1 = soroban_sdk::Bytes::from_slice(&e, b"salt_abc");
+    let new_slashed1 = client.slash_bond(&admin, &identity, &100_i128, &salt1);
+    assert_eq!(new_slashed1, 100);
+
+    // Second call with same salt should fail with DuplicateIdempotencyKey
+    assert!(client
+        .try_slash_bond(&admin, &identity, &100_i128, &salt1)
+        .is_err());
+
+    // Different salt should succeed
+    let salt2 = soroban_sdk::Bytes::from_slice(&e, b"salt_xyz");
+    let new_slashed2 = client.slash_bond(&admin, &identity, &100_i128, &salt2);
+    assert_eq!(new_slashed2, 200);
+
+    let bond = client.get_identity_state(&identity);
+    assert_eq!(bond.slashed_amount, 200);
+}
+
+/// Test that slash and slash_bond produce equivalent results.
+#[test]
+fn test_slash_and_slash_bond_equivalent() {
+    let e = Env::default();
+
+    // First contract using slash()
+    let (client1, admin1, identity1, token_id1, bond_id1) = test_helpers::setup_with_token(&e);
+    let treasury1 = Address::generate(&e);
+    client1.set_slash_treasury(&admin1, &treasury1);
+    client1.create_bond(
+        &identity1,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    test_helpers::advance_ledger_sequence(&e);
+    let bond1 = client1.slash(&admin1, &identity1, &250_i128);
+
+    // Second contract using slash_bond()
+    let (client2, admin2, identity2, token_id2, bond_id2) = test_helpers::setup_with_token(&e);
+    let treasury2 = Address::generate(&e);
+    client2.set_slash_treasury(&admin2, &treasury2);
+    client2.create_bond(
+        &identity2,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    test_helpers::advance_ledger_sequence(&e);
+    let empty_salt = soroban_sdk::Bytes::new(&e);
+    let new_slashed2 = client2.slash_bond(&admin2, &identity2, &250_i128, &empty_salt);
+    let bond2 = client2.get_identity_state(&identity2);
+
+    // Check IdentityBond fields are equal
+    assert_eq!(bond1.bonded_amount, bond2.bonded_amount);
+    assert_eq!(bond1.slashed_amount, bond2.slashed_amount);
+    assert_eq!(new_slashed2, 250);
+
+    // Check slash history is equal
+    let history1 = client1.get_slash_history_page(&identity1, &0, &10);
+    let history2 = client2.get_slash_history_page(&identity2, &0, &10);
+    assert_eq!(history1.len(), history2.len());
+    assert_eq!(history1.get(0).unwrap().slash_amount, history2.get(0).unwrap().slash_amount);
+    assert_eq!(
+        history1.get(0).unwrap().total_slashed_after,
+        history2.get(0).unwrap().total_slashed_after
+    );
+
+    // Check treasury balances are equal
+    use soroban_sdk::token::TokenClient;
+    let token1 = TokenClient::new(&e, &token_id1);
+    let token2 = TokenClient::new(&e, &token_id2);
+    let treasury1_bal = token1.balance(&treasury1);
+    let treasury2_bal = token2.balance(&treasury2);
+    assert_eq!(treasury1_bal, treasury2_bal);
+    assert_eq!(treasury1_bal, 250);
+}

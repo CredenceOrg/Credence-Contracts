@@ -2450,63 +2450,26 @@ impl CredenceBond {
             validation::MAX_FINITE_BYTES_LENGTH,
         );
 
-        // Check idempotency if a salt is provided (non-empty)
-        // NOTE: idempotency module temporarily disabled during merge fix; re-enable when module is available
-        // if idempotency_salt.len() > 0 {
-        //     idempotency::check_and_record(
-        //         &e,
-        //         &admin,
-        //         &Symbol::new(&e, "slash_bond"),
-        //         &idempotency_salt,
-        //     );
-        // }
-
         // Admin check happens before the lock is acquired so an unauthorized
         // caller never leaves the reentrancy lock held.
         guards::require_admin(&e, &admin);
 
-        if slash_amount <= 0 {
-            panic_with_error!(e, ContractError::InvalidBondAmount);
+        // Check idempotency if a salt is provided (non-empty)
+        if idempotency_salt.len() > 0 {
+            idempotency::check_and_record(
+                &e,
+                &admin,
+                &Symbol::new(&e, "slash_bond"),
+                &idempotency_salt,
+            );
         }
 
         Self::acquire_lock(&e);
 
-        let bond_key = DataKey::Bond(identity.clone());
-        let bond: IdentityBond = guards::load_bond(&e, &identity);
+        // Delegate to the slashing module's core logic
+        let bond = slashing::apply_slash(&e, &admin, &identity, slash_amount);
 
-        if !bond.active {
-            Self::release_lock(&e);
-            panic_with_error!(e, ContractError::BondNotActive);
-        }
-
-        let new_slashed = match bond.slashed_amount.checked_add(slash_amount) {
-            Some(v) => v,
-            None => {
-                Self::release_lock(&e);
-                panic_with_error!(e, ContractError::Overflow);
-            }
-        };
-        if new_slashed > bond.bonded_amount {
-            Self::release_lock(&e);
-            panic_with_error!(e, ContractError::SlashExceedsBond);
-        }
-
-        let updated = IdentityBond {
-            identity: bond.identity.clone(),
-            bonded_amount: bond.bonded_amount,
-            bond_start: bond.bond_start,
-            bond_duration: bond.bond_duration,
-            slashed_amount: new_slashed,
-            active: bond.active,
-            is_rolling: bond.is_rolling,
-            withdrawal_requested_at: bond.withdrawal_requested_at,
-            notice_period_duration: bond.notice_period_duration,
-        };
-        e.storage().instance().set(&bond_key, &updated);
-        bump_instance_ttl(&e);
-
-        slashing::emit_slashing_event(&e, &identity, slash_amount, new_slashed);
-
+        // Callback invocation after slash is applied
         let cb_key = Symbol::new(&e, "callback");
         if let Some(cb_addr) = e.storage().instance().get::<_, Address>(&cb_key) {
             let fn_name = Symbol::new(&e, "on_slash");
@@ -2515,7 +2478,7 @@ impl CredenceBond {
         }
 
         Self::release_lock(&e);
-        new_slashed
+        bond.slashed_amount
     }
 
     /// Collect accumulated protocol fees. Only callable by admin.
