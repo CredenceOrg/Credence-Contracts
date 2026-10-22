@@ -296,14 +296,15 @@ const events = await server.getEvents({
 - `topic[0]`: `Symbol("treasury_withdrawal_executed")`
 - `topic[1]`: `u64` — proposal ID
 
-**Data**: `(recipient: Address, min_amount_out: i128, actual_amount: i128)`
+**Data**: `(recipient: Address, min_amount_out: i128, actual_amount: i128, treasury_debit: i128)`
 
 | Field | Type | Index? | Notes |
 |-------|------|--------|-------|
 | proposal_id | u64 | Yes (topic[1]) | Links to proposal event |
 | recipient | Address | No | Withdrawal destination |
 | min_amount_out | i128 | No | Minimum acceptable |
-| actual_amount | i128 | No | Actual outflow |
+| actual_amount | i128 | No | Amount actually credited to `recipient` (recipient balance delta) |
+| treasury_debit | i128 | No | Amount actually debited from the treasury (contract balance delta). Equals `actual_amount` for standard tokens; larger with fee-on-transfer tokens. |
 
 **Recommended index keys**:
 - Primary: `(proposal_id, timestamp)` — settlement tracking

@@ -26,7 +26,7 @@ Open ──────> Voting ──────> Resolving ──────
 
 - `Open → Voting` — Voting period begins immediately when a dispute is created.
 - `Voting → Resolving` — The voting period ends and `resolve_dispute` begins tallying.
-- `Voting → Cancelled` — The dispute is cancelled by the creator or admin.
+- `Voting → Cancelled` — The dispute is cancelled by the creator (only before any vote is cast and before `voting_end`) or by the admin (at any time before resolution).
 - `Resolving → Resolved` — The tally produces a clear winner.
 - `Resolving → Tied` — The tally produces an equal highest-weight outcome.
 - `Resolving → NoQuorum` — Voting ended without meeting the configured quorum.
@@ -97,6 +97,8 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | PromiseNotKept     | 15   | The promise outcome did not match reality |
 | DisputeActive      | 16   | Dispute is still active and blocks this action |
 | OngoingDispute     | 17   | Creator already has an unresolved dispute |
+| CancelNotAllowed   | 19   | Creator cannot cancel after votes or after voting_end |
+| ConflictOfInterest | 20   | Voter is the creator of the dispute       |
 
 ## Contract Functions
 
@@ -118,11 +120,11 @@ Creates a new dispute. Requires creator authorization. Returns the dispute ID. S
 
 ### `cancel_dispute(caller: Address, dispute_id: u64) -> Result<(), ArbitrationError>`
 
-Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status.
+Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status. The creator may cancel a `Voting` dispute only while no votes have been cast (`VoterCounter(dispute_id) == 0`) and `now <= voting_end`; otherwise the call returns `CancelNotAllowed`. The admin may cancel a `Voting` dispute at any time before resolution, and the `dispute_cancelled` event reports `cancelled_by_role` as `"admin"`.
 
 ### `vote(voter: Address, dispute_id: u64, outcome: u32) -> Result<(), ArbitrationError>`
 
-Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status.
+Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status. A dispute's creator cannot vote on their own dispute; such a call returns `ConflictOfInterest`.
 
 ### `resolve_dispute(dispute_id: u64) -> Result<u32, ArbitrationError>`
 
@@ -156,6 +158,8 @@ Returns the current total weight for a specific outcome.
 - Overflow protection for weight tallies and counters
 - Canonical status machine prevents invalid state transitions
 - Result-based error handling for all state-changing operations
+- Creator cancellation is bounded by vote count and voting deadline to prevent discarding a losing tally
+- Conflict-of-interest check prevents a creator from voting on their own dispute
 
 ## Testing
 
@@ -165,6 +169,9 @@ The contract includes comprehensive test coverage:
 - Tie scenarios
 - Double-voting prevention
 - Unauthorized voter rejection
+- Creator cancellation restrictions (before votes, after votes, after deadline)
+- Admin cancellation override after votes
+- Creator cannot vote on own dispute
 - All valid status transitions
 - All invalid status transitions (regression tests)
 - Edge cases (zero/negative weights, outcome validation, etc.)

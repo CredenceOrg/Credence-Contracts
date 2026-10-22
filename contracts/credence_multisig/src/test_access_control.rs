@@ -66,8 +66,8 @@ struct PrivilegedCase {
     invoke: fn(&Env, &CredenceMultiSigClient<'_>, &Address),
 }
 
-fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
-    alloc::vec![
+fn get_privileged_cases() -> std::vec::Vec<PrivilegedCase> {
+    std::vec![
         PrivilegedCase {
             name: "add_signer",
             invoke: |env, client, caller| {
@@ -251,8 +251,8 @@ fn test_admin_entrypoints_reject_uninitialized() {
 fn test_submit_proposal_rejects_non_signer() {
     let env = Env::default();
     let (client, _admin, _signers, attacker) = setup(&env);
-    let target = Address::generate(&env);
-    let calldata = soroban_sdk::Bytes::new(&env);
+    let op_hash = BytesN::from_array(&env, &[42u8; 32]);
+    let description = soroban_sdk::String::from_str(&env, "test");
 
     env.mock_auths(&[soroban_sdk::testutils::MockAuth {
         address: &attacker,
@@ -297,8 +297,8 @@ fn test_submit_proposal_succeeds_as_signer() {
     env.mock_all_auths();
     let (client, _admin, signers, _attacker) = setup(&env);
     let signer = signers.get(0).unwrap();
-    let target = Address::generate(&env);
-    let calldata = soroban_sdk::Bytes::new(&env);
+    let op_hash = BytesN::from_array(&env, &[43u8; 32]);
+    let description = soroban_sdk::String::from_str(&env, "test");
 
     let proposal_id = client.submit_proposal(
         &signer,

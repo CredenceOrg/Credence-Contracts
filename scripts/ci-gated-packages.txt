@@ -1,0 +1,15 @@
+# Packages gated by contracts-ci.yml.
+# Each line is a Cargo package name (as declared in that crate's Cargo.toml
+# `[package] name` field).  The CI workflow reads this file to drive the
+# fmt, test, clippy, wasm, and no-bare-panic jobs.
+#
+# To gate a new crate:
+#   1. Ensure `cargo test -p <name> --locked` passes locally.
+#   2. Ensure `cargo clippy -p <name> --all-targets --locked -- -D warnings` passes.
+#   3. If it is a contract (no_std + cdylib), ensure it builds for wasm32v1-none.
+#   4. Add its name here — one line, no trailing whitespace.
+#   5. Open a PR; the CI workflow will pick it up automatically.
+credence_arbitration
+timelock
+dispute_resolution
+testutils
