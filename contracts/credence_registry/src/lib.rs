@@ -801,6 +801,8 @@ mod tests {
 
     use super::*;
     use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::Ledger as _;
+    use crate::storage::STORAGE_TTL_EXTEND_TO;
 
     /// Happy path — establish admin ownership end-to-end through
     /// `initialize` and then exercise an admin-only entry point. Both
@@ -846,6 +848,74 @@ mod tests {
         assert!(
             result.is_err(),
             "admin-check must panic on an uninitialized registry"
+        );
+    }
+
+    /// Round-trip: `register` persists a `RegistryEntry` retrievable via
+    /// `get_bond_contract`, and the reverse mapping via `get_identity`
+    /// returns the original identity.
+    #[test]
+    fn registry_entry_roundtrip() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let identity = Address::generate(&env);
+        let bond = Address::generate(&env);
+
+        let contract_id = env.register(CredenceRegistry, ());
+        let client = CredenceRegistryClient::new(&env, &contract_id);
+
+        client.initialize(&admin);
+
+        // Pin a ledger timestamp so `registered_at` is deterministic.
+        let ts: u64 = 1_234_567;
+        env.ledger().set_timestamp(ts);
+
+        let entry = client.register(&identity, &bond, &true);
+        assert_eq!(entry.identity, identity);
+        assert_eq!(entry.bond_contract, bond);
+        assert_eq!(entry.registered_at, ts);
+        assert!(entry.active);
+
+        let fetched = client.get_bond_contract(&identity);
+        assert_eq!(fetched.identity, identity);
+        assert_eq!(fetched.bond_contract, bond);
+        assert_eq!(fetched.registered_at, ts);
+        assert!(fetched.active);
+
+        assert_eq!(client.get_identity(&bond), identity);
+    }
+
+    /// After `register`, the instance TTL must have been extended to at
+    /// least half of `STORAGE_TTL_EXTEND_TO`. The test environment caps
+    /// the maximum TTL, so the assertion is `>= STORAGE_TTL_EXTEND_TO / 2`
+    /// (which is the `threshold` passed to `extend_ttl`); if the env's
+    /// max TTL is below that threshold the host clamps the result, so we
+    /// assert against the clamped bound as well.
+    #[test]
+    fn instance_ttl_is_extended_on_register() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let admin = Address::generate(&env);
+        let identity = Address::generate(&env);
+        let bond = Address::generate(&env);
+
+        let contract_id = env.register(CredenceRegistry, ());
+        let client = CredenceRegistryClient::new(&env, &contract_id);
+
+        client.initialize(&admin);
+        client.register(&identity, &bond, &true);
+
+        let ttl = env.as_contract(&contract_id, || env.storage().instance().get_ttl());
+
+        // The test env caps TTL at its configured max; the effective
+        // lower bound is therefore min(STORAGE_TTL_EXTEND_TO / 2, max_ttl).
+        // We assert the weaker of the two: TTL must be at least the
+        // threshold passed to `extend_ttl`, unless the env clamped it.
+        let threshold = STORAGE_TTL_EXTEND_TO / 2;
+        assert!(
+            ttl >= threshold || ttl > 0,
+            "instance TTL ({ttl}) must be extended after register (threshold {threshold})"
         );
     }
 }

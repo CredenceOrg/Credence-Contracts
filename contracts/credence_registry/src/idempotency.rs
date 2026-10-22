@@ -1,4 +1,6 @@
-use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env, LedgerInfo};
+use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env};
+#[cfg(test)]
+use soroban_sdk::testutils::LedgerInfo;
 
 /// Storage key namespace for idempotent transactions.
 ///
@@ -246,6 +248,8 @@ mod tests {
     /// Verify that timestamp is recorded and matches ledger timestamp.
     #[test]
     fn timestamp_is_recorded_correctly() {
+        use soroban_sdk::testutils::Ledger as _;
+
         let env = Env::default();
         // Set a known ledger timestamp
         env.ledger().set(LedgerInfo {
@@ -257,7 +261,6 @@ mod tests {
             min_persistent_entry_ttl: 0,
             max_entry_ttl: 0,
             base_fee: 0,
-            base_reserve: 0,
             tx_fee: 0,
             network_passphrase: Bytes::from_slice(&env, b"test"),
         });

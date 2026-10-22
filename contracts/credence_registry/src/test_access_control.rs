@@ -25,6 +25,8 @@
 //! | `register_trustless`    | bond contract (self)| Code-hash verification         |
 //! | `get_*` (read-only)     | anyone              | Permissionless views           |
 
+extern crate alloc;
+
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
@@ -208,7 +210,7 @@ fn test_exhaustive_non_admin_rejected() {
     let (client, _admin, attacker) = setup(&env);
 
     for case in get_privileged_cases() {
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let res = soroban_sdk::testutils::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (case.invoke)(&env, &client, &attacker);
         }));
 
@@ -229,7 +231,7 @@ fn test_exhaustive_uninitialized_rejected() {
     let caller = Address::generate(&env);
 
     for case in get_privileged_cases() {
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let res = soroban_sdk::testutils::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (case.invoke)(&env, &client, &caller);
         }));
 
