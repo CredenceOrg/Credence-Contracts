@@ -1,29 +1,32 @@
 #![cfg(test)]
 
-//! # Access Control Matrix — CredenceRegistry
-//!
-//! Enumerates every admin-restricted entrypoint and verifies that
-//! non-admin callers and uninitialized contracts are rejected.
-//!
-//! ## Entrypoint Matrix
-//!
-//! | Entrypoint              | Required Caller     | Notes                          |
-//! |-------------------------|---------------------|--------------------------------|
-//! | `initialize`            | caller (self-auth)  | One-time setup                 |
-//! | `register`              | admin               | Requires `require_admin_auth`  |
-//! | `deactivate`            | admin               | Requires `require_admin_auth`  |
-//! | `remove`                | admin               | Requires `require_admin_auth`  |
-//! | `reactivate`            | admin               | Requires `require_admin_auth`  |
-//! | `transfer_admin`        | admin (current)     | Requires `require_admin_auth`  |
-//! | `set_bond_code_hash`    | admin               | Requires `require_admin_auth`  |
-//! | `set_pause_signer`      | admin               | Admin-gated via pausable       |
-//! | `set_pause_threshold`   | admin               | Admin-gated via pausable       |
-//! | `approve_pause_proposal`| pause signer        | Signer-gated                   |
-//! | `execute_pause_proposal`| anyone              | Permissionless (threshold-gated)|
-//! | `pause`                 | pause signer / admin| Via pausable module            |
-//! | `unpause`               | pause signer / admin| Via pausable module            |
-//! | `register_trustless`    | bond contract (self)| Code-hash verification         |
-//! | `get_*` (read-only)     | anyone              | Permissionless views           |
+extern crate std;
+extern crate alloc;
+
+// # Access Control Matrix — CredenceRegistry
+//
+// Enumerates every admin-restricted entrypoint and verifies that
+// non-admin callers and uninitialized contracts are rejected.
+//
+// ## Entrypoint Matrix
+//
+// | Entrypoint              | Required Caller     | Notes                          |
+// |-------------------------|---------------------|--------------------------------|
+// | `initialize`            | caller (self-auth)  | One-time setup                 |
+// | `register`              | admin               | Requires `require_admin_auth`  |
+// | `deactivate`            | admin               | Requires `require_admin_auth`  |
+// | `remove`                | admin               | Requires `require_admin_auth`  |
+// | `reactivate`            | admin               | Requires `require_admin_auth`  |
+// | `transfer_admin`        | admin (current)     | Requires `require_admin_auth`  |
+// | `set_bond_code_hash`    | admin               | Requires `require_admin_auth`  |
+// | `set_pause_signer`      | admin               | Admin-gated via pausable       |
+// | `set_pause_threshold`   | admin               | Admin-gated via pausable       |
+// | `approve_pause_proposal`| pause signer        | Signer-gated                   |
+// | `execute_pause_proposal`| anyone              | Permissionless (threshold-gated)|
+// | `pause`                 | pause signer / admin| Via pausable module            |
+// | `unpause`               | pause signer / admin| Via pausable module            |
+// | `register_trustless`    | bond contract (self)| Code-hash verification         |
+// | `get_*` (read-only)     | anyone              | Permissionless views           |
 
 use crate::*;
 use soroban_sdk::testutils::Address as _;
@@ -207,7 +210,7 @@ fn test_exhaustive_non_admin_rejected() {
     let env = Env::default();
     let (client, _admin, attacker) = setup(&env);
 
-    for case in get_privileged_cases() {
+    for case in get_privileged_cases().into_iter() {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (case.invoke)(&env, &client, &attacker);
         }));
@@ -228,7 +231,7 @@ fn test_exhaustive_uninitialized_rejected() {
     let client = CredenceRegistryClient::new(&env, &contract_id);
     let caller = Address::generate(&env);
 
-    for case in get_privileged_cases() {
+    for case in get_privileged_cases().into_iter() {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (case.invoke)(&env, &client, &caller);
         }));
