@@ -24,15 +24,36 @@ pub enum DisputeStatus {
 
 /// On-ledger dispute record.
 ///
-/// Stored in instance storage keyed by the dispute `id`.  All fields are
-/// written once at creation and then updated only through the guarded entry
+/// Stored in persistent storage keyed by `DataKey::Dispute(u64)`. All fields
+/// are written once at creation and then updated only through the guarded entry
 /// points (`resolve`, `close`).
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
     pub id: u64,
+    pub creator: Address,
     pub status: DisputeStatus,
     pub resolver: Address,
+}
+
+const STORAGE_TTL_EXTEND_TO: u32 = 3600;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn bump_persistent_ttl(e: &Env, key: DataKey) {
+    e.storage()
+        .persistent()
+        .extend_ttl(&key, STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+#[contracttype]
+pub enum DataKey {
+    DisputeCounter,
+    Dispute(u64),
 }
 
 #[contract]
@@ -46,24 +67,44 @@ impl DisputeResolutionContract {
 
     /// Create a new dispute and return its unique `u64` ID.
     ///
-    /// The `resolver` is the only address that may subsequently call
-    /// `resolve()` or `close()`.  No authorization is required from the
-    /// *creator*; the caller simply names who will arbitrate the dispute.
+    /// The `creator` must authorize the call. The `resolver` is the only
+    /// address that may subsequently call `resolve()` or `close()`.
+    ///
+    /// IDs are assigned from a monotonically increasing counter.
     ///
     /// # Events
-    /// Publishes `("created", id)` → `("resolver", resolver)` on success.
-    pub fn create_dispute(env: Env, resolver: Address) -> u64 {
-        let id: u64 = env.prng().gen();
+    /// Publishes `("created", id)` → `(creator, resolver)` on success.
+    pub fn create_dispute(env: Env, creator: Address, resolver: Address) -> u64 {
+        bump_instance_ttl(&env);
+        creator.require_auth();
+
+        let counter_key = DataKey::DisputeCounter;
+        let id: u64 = env.storage().instance().get(&counter_key).unwrap_or(0);
+        let next_id = id
+            .checked_add(1)
+            .unwrap_or_else(|| env.panic_with_error(DisputeError::DisputeNotFound));
+        env.storage().instance().set(&counter_key, &next_id);
+
+        // Defensive: ensure we never overwrite an existing dispute.
+        let dispute_key = DataKey::Dispute(id);
+        if env.storage().persistent().has(&dispute_key) {
+            env.panic_with_error(DisputeError::DisputeNotFound);
+        }
+
         let dispute = Dispute {
             id,
+            creator: creator.clone(),
             status: DisputeStatus::Open,
             resolver: resolver.clone(),
         };
-        env.storage().instance().set(&id, &dispute);
+
+        // Store in persistent storage with TTL extension.
+        env.storage().persistent().set(&dispute_key, &dispute);
+        bump_persistent_ttl(&env, dispute_key);
 
         env.events().publish(
             (symbol_short!("created"), id),
-            (symbol_short!("resolver"), resolver),
+            (creator, resolver),
         );
 
         id
@@ -71,7 +112,7 @@ impl DisputeResolutionContract {
 
     /// Mark an `Open` dispute as `Resolved`.
     ///
-    /// Only the named `resolver` may call this.  A dispute that is already
+    /// Only the named `resolver` may call this. A dispute that is already
     /// `Resolved` or `Closed` cannot be re-resolved.
     ///
     /// # Errors
@@ -81,11 +122,19 @@ impl DisputeResolutionContract {
     /// - `Unauthorized`     – `caller` is not the dispute's resolver.
     ///
     /// # Events
-    /// Publishes `("resolved", id)` → `("by", caller)` on success.
+    /// Publishes `("resolved", id)` → `(creator, caller)` on success.
     pub fn resolve(env: Env, caller: Address, id: u64) -> Result<(), DisputeError> {
+        bump_instance_ttl(&env);
         caller.require_auth();
 
+        let key = DataKey::Dispute(id);
         let mut dispute = Self::get_dispute(env.clone(), id)?;
+
+        // Authorization check BEFORE status check: a non-resolver always gets
+        // Unauthorized, even on closed disputes.
+        if caller != dispute.resolver {
+            return Err(DisputeError::Unauthorized);
+        }
 
         // Terminal-state guard: both Resolved and Closed are terminal for this
         // transition so that idempotent callers get a clear error rather than
@@ -94,16 +143,13 @@ impl DisputeResolutionContract {
             return Err(DisputeError::AlreadyClosed);
         }
 
-        if caller != dispute.resolver {
-            return Err(DisputeError::Unauthorized);
-        }
-
         dispute.status = DisputeStatus::Resolved;
-        env.storage().instance().set(&id, &dispute);
+        env.storage().persistent().set(&key, &dispute);
+        bump_persistent_ttl(&env, key);
 
         env.events().publish(
             (symbol_short!("resolved"), id),
-            (symbol_short!("by"), caller),
+            (dispute.creator.clone(), caller),
         );
 
         Ok(())
@@ -112,7 +158,7 @@ impl DisputeResolutionContract {
     /// Mark a dispute as `Closed` (terminal state).
     ///
     /// Accepts disputes in either `Open` or `Resolved` state so that callers
-    /// can skip the intermediate resolve step if needed.  Once `Closed` the
+    /// can skip the intermediate resolve step if needed. Once `Closed` the
     /// record is immutable.
     ///
     /// # Errors
@@ -121,27 +167,31 @@ impl DisputeResolutionContract {
     /// - `Unauthorized`     – `caller` is not the dispute's resolver.
     ///
     /// # Events
-    /// Publishes `("closed", id)` → `("by", caller)` on success.
+    /// Publishes `("closed", id)` → `(creator, caller)` on success.
     pub fn close(env: Env, caller: Address, id: u64) -> Result<(), DisputeError> {
+        bump_instance_ttl(&env);
         caller.require_auth();
 
+        let key = DataKey::Dispute(id);
         let mut dispute = Self::get_dispute(env.clone(), id)?;
+
+        // Authorization check BEFORE status check: a non-resolver always gets
+        // Unauthorized, even on closed disputes.
+        if caller != dispute.resolver {
+            return Err(DisputeError::Unauthorized);
+        }
 
         // Invariant: no double-close.
         if dispute.status == DisputeStatus::Closed {
             return Err(DisputeError::AlreadyClosed);
         }
 
-        // Invariant: only the named resolver may close.
-        if caller != dispute.resolver {
-            return Err(DisputeError::Unauthorized);
-        }
-
         dispute.status = DisputeStatus::Closed;
-        env.storage().instance().set(&id, &dispute);
+        env.storage().persistent().set(&key, &dispute);
+        bump_persistent_ttl(&env, key);
 
         env.events()
-            .publish((symbol_short!("closed"), id), (symbol_short!("by"), caller));
+            .publish((symbol_short!("closed"), id), (dispute.creator.clone(), caller));
 
         Ok(())
     }
@@ -155,9 +205,14 @@ impl DisputeResolutionContract {
     /// # Errors
     /// - `DisputeNotFound` – no dispute exists with the given `id`.
     pub fn get_dispute(env: Env, id: u64) -> Result<Dispute, DisputeError> {
-        env.storage()
-            .instance()
-            .get(&id)
-            .ok_or(DisputeError::DisputeNotFound)
+        bump_instance_ttl(&env);
+        let key = DataKey::Dispute(id);
+        let dispute = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(DisputeError::DisputeNotFound)?;
+        bump_persistent_ttl(&env, key);
+        Ok(dispute)
     }
 }

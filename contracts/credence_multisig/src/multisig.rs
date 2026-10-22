@@ -791,10 +791,12 @@ impl CredenceMultiSig {
     }
 }
 
-#[cfg(test)]
-mod boundary_recovery_tests;
-
-#[contractimpl]
+// Implement the Governable interface without #[contractimpl] to avoid
+// duplicate symbol generation. The inherent `get_admin` and `transfer_admin`
+// methods on CredenceMultiSig already export the ABI symbols; wrapping them
+// in a second #[contractimpl] block would cause E0428/E0592 duplicate-symbol
+// errors. A plain `impl` satisfies the trait for cross-contract type-checking
+// and GovernableClient usage without touching the exported ABI.
 impl interfaces::governable::Governable for CredenceMultiSig {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)

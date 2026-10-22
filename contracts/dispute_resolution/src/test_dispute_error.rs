@@ -5,12 +5,16 @@
 //! traits behave, and drive the one boundary where the contract emits the error
 //! (an unknown dispute id) to show the mapping is deterministic and free of
 //! side effects.
+//!
+//! Note: This module uses `#[allow(deprecated)]` because the migration from
+//! `register_contract` to `register` is handled separately.
+#![allow(deprecated)]
 
 extern crate std;
 
 use crate::error::DisputeError;
 use crate::{DisputeResolutionContract, DisputeStatus};
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{testutils::Address as _, Address, Env};
 
 // ---------------------------------------------------------------------------
 // Enum boundary: wire codes and derived traits
@@ -98,15 +102,18 @@ fn missing_lookup_is_deterministic_and_side_effect_free() {
 #[test]
 fn created_dispute_is_returned_and_the_error_is_only_for_absent_ids() {
     let e = Env::default();
+    e.mock_all_auths();
     let contract_id = register(&e);
 
     e.as_contract(&contract_id, || {
         let resolver = contract_id.clone();
-        let id = DisputeResolutionContract::create_dispute(e.clone(), resolver.clone());
+        let creator = Address::generate(&e);
+        let id = DisputeResolutionContract::create_dispute(e.clone(), creator.clone(), resolver.clone());
 
         // Success boundary: the stored dispute round-trips.
         let dispute = DisputeResolutionContract::get_dispute(e.clone(), id).unwrap();
         assert_eq!(dispute.id, id);
+        assert_eq!(dispute.creator, creator);
         assert_eq!(dispute.status, DisputeStatus::Open);
         assert_eq!(dispute.resolver, resolver);
 

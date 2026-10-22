@@ -3,6 +3,7 @@
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
+use interfaces::governable::Governable;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, token, Address, Env, Symbol,
 };
@@ -166,7 +167,6 @@ impl FixedDurationBond {
 
     /// Set an optional bond-creation fee. 0 = disabled.
     pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
-        admin.require_auth();
         require_admin(&e, &admin);
         require_valid_penalty_bps(&e, fee_bps);
         e.storage()
@@ -180,7 +180,6 @@ impl FixedDurationBond {
     /// `base_penalty_bps` = 0 disables early exit.
     /// `treasury` receives the penalty on early exit.
     pub fn set_penalty_config(e: Env, admin: Address, treasury: Address, base_penalty_bps: u32) {
-        admin.require_auth();
         require_admin(&e, &admin);
         require_valid_penalty_bps(&e, base_penalty_bps);
         e.storage().instance().set(
@@ -196,7 +195,6 @@ impl FixedDurationBond {
 
     /// Transfer all accrued creation fees to `recipient`. Panics if no fees.
     pub fn collect_fees(e: Env, admin: Address, recipient: Address) -> i128 {
-        admin.require_auth();
         require_admin(&e, &admin);
 
         let fees: i128 = e
@@ -512,8 +510,8 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use soroban_sdk::testutils::{Address as _, Ledger};
-    use soroban_sdk::token::StellarAssetClient;
+    use soroban_sdk::testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke};
+    use soroban_sdk::{token::StellarAssetClient, IntoVal};
 
     /// Helper: set the ledger timestamp to an absolute value.
     fn set_timestamp(e: &Env, ts: u64) {
@@ -587,7 +585,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidBondDuration)")]
+    #[should_panic(expected = "HostError: Error(Contract, #216)")]
     fn test_duration_zero_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -595,7 +593,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidBondDuration)")]
+    #[should_panic(expected = "HostError: Error(Contract, #216)")]
     fn test_duration_above_max_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -603,7 +601,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidBondDuration)")]
+    #[should_panic(expected = "HostError: Error(Contract, #216)")]
     fn test_duration_well_above_max_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -626,7 +624,7 @@ mod tests {
 
     /// Near u64::MAX: a duration that causes overflow should be rejected.
     #[test]
-    #[should_panic(expected = "Error(ContractError::Overflow)")]
+    #[should_panic(expected = "HostError: Error(Contract, #700)")]
     fn test_overflow_near_u64_max() {
         let e = Env::default();
         e.mock_all_auths();
@@ -647,7 +645,7 @@ mod tests {
 
     /// At u64::MAX, even MIN_BOND_DURATION (1) overflows.
     #[test]
-    #[should_panic(expected = "Error(ContractError::Overflow)")]
+    #[should_panic(expected = "HostError: Error(Contract, #700)")]
     fn test_overflow_at_u64_max() {
         let e = Env::default();
         e.mock_all_auths();
@@ -690,7 +688,7 @@ mod tests {
 
     /// MAX_BOND_DURATION + 1 is rejected by bounds check (before overflow check).
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidBondDuration)")]
+    #[should_panic(expected = "HostError: Error(Contract, #216)")]
     fn test_max_duration_plus_one_at_boundary_rejected() {
         let e = Env::default();
         e.mock_all_auths();
@@ -813,7 +811,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidBondAmount)")]
+    #[should_panic(expected = "HostError: Error(Contract, #214)")]
     fn test_amount_zero_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -821,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidBondAmount)")]
+    #[should_panic(expected = "HostError: Error(Contract, #214)")]
     fn test_amount_negative_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -841,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondAlreadyExists)")]
+    #[should_panic(expected = "HostError: Error(Contract, #218)")]
     fn test_duplicate_bond_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -954,7 +952,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::NotAdmin)")]
+    #[should_panic(expected = "HostError: Error(Contract, #100)")]
     fn test_non_admin_cannot_set_penalty_config() {
         let (e, _admin, _token, client) = setup();
         let impostor = Address::generate(&e);
@@ -963,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::AlreadyInitialized)")]
+    #[should_panic(expected = "HostError: Error(Contract, #2)")]
     fn test_double_initialize_panics() {
         let (e, admin, token, client) = setup();
         client.initialize(&admin, &token);
@@ -1103,7 +1101,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotActive)")]
+    #[should_panic(expected = "HostError: Error(Contract, #201)")]
     fn test_double_withdraw_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1116,7 +1114,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotActive)")]
+    #[should_panic(expected = "HostError: Error(Contract, #201)")]
     fn test_withdraw_early_after_withdraw_rejected() {
         let e = Env::default();
         e.mock_all_auths();
@@ -1196,7 +1194,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
+    #[should_panic(expected = "HostError: Error(Contract, #200)")]
     fn test_get_bond_missing_panics() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1204,7 +1202,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
+    #[should_panic(expected = "HostError: Error(Contract, #200)")]
     fn test_withdraw_missing_bond_panics() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1212,7 +1210,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
+    #[should_panic(expected = "HostError: Error(Contract, #200)")]
     fn test_withdraw_early_missing_bond_panics() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1232,7 +1230,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidPenaltyBps)")]
+    #[should_panic(expected = "HostError: Error(Contract, #211)")]
     fn test_penalty_bps_above_max_rejected() {
         let (e, admin, _token, client) = setup();
         let treasury = Address::generate(&e);
@@ -1240,7 +1238,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::InvalidPenaltyBps)")]
+    #[should_panic(expected = "HostError: Error(Contract, #211)")]
     fn test_fee_bps_above_max_rejected() {
         let (e, admin, _token, client) = setup();
         let treasury = Address::generate(&e);
@@ -1421,7 +1419,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::NotInitialized)")]
+    #[should_panic(expected = "HostError: Error(Contract, #1)")]
     fn test_create_bond_before_initialize_panics() {
         let e = Env::default();
         e.mock_all_auths();
@@ -1435,7 +1433,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(ContractError::NotInitialized)")]
+    #[should_panic(expected = "HostError: Error(Contract, #1)")]
     fn test_get_admin_before_initialize_panics() {
         let e = Env::default();
         e.mock_all_auths();
@@ -1537,5 +1535,108 @@ mod tests {
 
         let fetched = client.get_bond(&owner);
         assert_eq!(fetched.amount, 99_000);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Admin auth: strict single-auth coverage
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// Each admin setter records exactly one authorization for the admin per
+    /// invocation. Auth is provided through `mock_auths` (not `mock_all_auths`)
+    /// with a single explicit entry per call: a second `require_auth` in the
+    /// same frame would consume a second entry and fail with
+    /// `Error(Auth, ExistingValue)`.
+    #[test]
+    fn admin_setters_work_with_strict_auth() {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        client.initialize(&admin, &token_addr);
+
+        // set_fee_config: one explicit auth entry for the admin.
+        let treasury = Address::generate(&e);
+        e.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_fee_config",
+                args: (admin.clone(), treasury.clone(), 100_u32).into_val(&e),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_fee_config(&admin, &treasury, &100_u32);
+        let auths = e.auths();
+        assert_eq!(auths.len(), 1);
+        assert_eq!(auths[0].0, admin);
+
+        // set_penalty_config: one explicit auth entry for the admin.
+        let penalty_treasury = Address::generate(&e);
+        e.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "set_penalty_config",
+                args: (admin.clone(), penalty_treasury.clone(), 1_000_u32).into_val(&e),
+                sub_invokes: &[],
+            },
+        }]);
+        client.set_penalty_config(&admin, &penalty_treasury, &1_000_u32);
+        let auths = e.auths();
+        assert_eq!(auths.len(), 1);
+        assert_eq!(auths[0].0, admin);
+
+        // Seed accumulated fees (setup only), then collect with one explicit
+        // auth entry for the admin.
+        e.mock_all_auths();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &100_000_i128, &86_400_u64);
+
+        let collector = Address::generate(&e);
+        e.mock_auths(&[MockAuth {
+            address: &admin,
+            invoke: &MockAuthInvoke {
+                contract: &contract_id,
+                fn_name: "collect_fees",
+                args: (admin.clone(), collector.clone()).into_val(&e),
+                sub_invokes: &[],
+            },
+        }]);
+        let collected = client.collect_fees(&admin, &collector);
+        assert_eq!(collected, 1_000);
+        let auths = e.auths();
+        assert_eq!(auths.len(), 1);
+        assert_eq!(auths[0].0, admin);
+    }
+
+    /// A non-admin caller is rejected with `NotAdmin`.
+    #[test]
+    fn non_admin_setter_rejected() {
+        let (e, _admin, _token, client) = setup();
+        let stranger = Address::generate(&e);
+        let treasury = Address::generate(&e);
+
+        let err = client
+            .try_set_fee_config(&stranger, &treasury, &100_u32)
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(
+            err,
+            soroban_sdk::Error::from_contract_error(ContractError::NotAdmin as u32)
+        );
+    }
+
+    /// `set_admin`/`get_admin` round-trip through the Governable impl.
+    #[test]
+    fn governable_roundtrip() {
+        let (e, _admin, _token, client) = setup();
+        let new_admin = Address::generate(&e);
+
+        client.set_admin(&new_admin);
+        assert_eq!(client.get_admin(), new_admin);
     }
 }
