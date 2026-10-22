@@ -132,13 +132,13 @@ mod tests {
         assert_eq!(ContractError::ContractPaused as u32, 106);
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-        assert_eq!(ContractError::ZeroBytes32 as u32, 127);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 109);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
     #[test]
     fn test_code_role_required() {
-        assert_eq!(ContractError::RoleRequired as u32, 128);
+        assert_eq!(ContractError::RoleRequired as u32, 127);
     }
 
     #[test]
@@ -241,6 +241,7 @@ mod tests {
         assert_eq!(ContractError::SlippageExceeded as u32, 609);
         assert_eq!(ContractError::TreasuryBeneficiaryMismatch as u32, 610);
         assert_eq!(ContractError::CorridorNotRegistered as u32, 611);
+        assert_eq!(ContractError::TokenChangeWithBalance as u32, 612);
     }
 
     #[test]
@@ -445,6 +446,7 @@ mod tests {
             ContractError::SlippageExceeded,
             ContractError::TreasuryBeneficiaryMismatch,
             ContractError::CorridorNotRegistered,
+            ContractError::TokenChangeWithBalance,
         ];
         for v in &treasury_variants {
             assert_eq!(
@@ -1466,6 +1468,7 @@ mod tests {
             ContractError::SlippageExceeded => true,
             ContractError::TreasuryBeneficiaryMismatch => true, // call with the correct treasury address
             ContractError::CorridorNotRegistered => true, // admin registers the corridor, then retry
+            ContractError::TokenChangeWithBalance => true, // drain treasury to zero, then retry
 
             // Registry pagination: caller can supply a valid cursor.
             ContractError::CursorOutOfRange => true,
@@ -1475,6 +1478,15 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
             ContractError::InvalidPercentSplit => true,
+
+            // Escrow
+            ContractError::EscrowNotFound => true,
+            ContractError::EscrowNotReleasable => false,
+            ContractError::EscrowNotRefundable => false,
+            ContractError::EscrowNotExpired => true,
+            ContractError::RefundExceedsRemaining => true,
+            ContractError::InvalidEscrowExpiry => true,
+            ContractError::NotEscrowParty => true,
         }
     }
 
@@ -1917,12 +1929,12 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #128)")]
+    #[should_panic(expected = "Error(Contract, #127)")]
     fn test_require_role_user_panics_when_not_held() {
         let e = soroban_sdk::Env::default();
         let actor = soroban_sdk::Address::generate(&e);
         // Negative test: the actor does NOT hold the User role, so this must
-        // panic with `RoleRequired` (code 128).
+        // panic with `RoleRequired` (code 127).
         crate::require_role(&e, Role::User, &actor, false);
     }
 
@@ -1994,277 +2006,6 @@ mod tests {
         e.ledger().with_mut(|li| li.timestamp = u64::MAX);
         // expires_at == 0 → never expires.
         assert!(crate::require_within_ttl_result(&e, 0).is_ok());
-    }
-
-    // ---------------------------------------------------------------------------
-    // is_recoverable() — exhaustive classification tests
-    // ---------------------------------------------------------------------------
-
-    /// Mirror of `impl ErrorExt for ContractError::is_recoverable`.
-    ///
-    /// This match is exhaustive: adding a new variant to `ContractError` without
-    /// adding it here is a compile error, enforcing that every new code gets an
-    /// explicit recoverability decision before it lands.
-    fn expected_is_recoverable(e: ContractError) -> bool {
-        match e {
-            // Initialization
-            ContractError::NotInitialized => true,
-            ContractError::AlreadyInitialized => true,
-
-            // Authorization
-            ContractError::NotAdmin => true,
-            ContractError::NotBondOwner => true,
-            ContractError::UnauthorizedAttester => true,
-            ContractError::NotOriginalAttester => true,
-            ContractError::NotSigner => true,
-            ContractError::UnauthorizedDepositor => true,
-            ContractError::ContractPaused => true,
-            ContractError::InvalidPauseAction => true,
-            ContractError::InsufficientSignatures => true,
-            ContractError::ZeroBytes32 => true,
-            ContractError::InvalidAdminAddress => true,
-            ContractError::AdminUnchanged => true,
-            ContractError::TimelockNotReady => true,
-            ContractError::AdminSuspended => true,
-            ContractError::BorrowFrozen => true,
-            ContractError::NoPendingAdmin => true,
-            ContractError::RoleNotHeldAtLedger => true,
-            ContractError::EmergencyDrainNotPermitted => true,
-            ContractError::TimestampInFuture => true,
-            ContractError::InvalidMaxPauseSigners => true,
-            ContractError::OutsideBusinessHours => true,
-            ContractError::LeaseScopeMismatch => true,
-            ContractError::LeaseExpired => true,
-            ContractError::CrossContractCallerMismatch => false, // contract topology bug; no retry path
-            ContractError::MigrationInProgress => true,         // wait for migration to complete
-            ContractError::MaxPauseSignersExceeded => true,     // remove a signer or raise the cap
-            ContractError::LeaseSignerMismatch => true,
-            ContractError::RoleRequired => true,
-            ContractError::StaleAdminEpoch => false, // stale epoch; must re-propose
-            ContractError::StaleSignerEpoch => false,
-
-            // Bond
-            ContractError::BondNotFound => true,
-            ContractError::BondNotActive => true,
-            ContractError::InsufficientBalance => true,
-            ContractError::SlashExceedsBond => true,
-            ContractError::LockupNotExpired => true,
-            ContractError::NotRollingBond => true,
-            ContractError::WithdrawalAlreadyRequested => true,
-            ContractError::ReentrancyDetected => false, // SECURITY HALT
-            ContractError::InvalidNonce => true,
-            ContractError::NegativeStake => true,
-            ContractError::EarlyExitConfigNotSet => true,
-            ContractError::InvalidPenaltyBps => true,
-            ContractError::LeverageExceeded => true,
-            ContractError::UnsupportedToken => true,
-            ContractError::InvalidBondAmount => true,
-            ContractError::AmountExplicitlyZero => true,
-            ContractError::InvalidBondDuration => true,
-            ContractError::InvalidNoticePeriod => true,
-            ContractError::BondAlreadyExists => true,
-            ContractError::OwnerMismatch => false,
-            ContractError::TargetMismatch => false,
-            ContractError::ContractIdMismatch => false,
-            ContractError::SignatureExpired => true,
-            ContractError::TreasuryNotConfigured => true,
-            ContractError::StorageCapReached => false,          // system capacity; operator-only fix
-            ContractError::DomainMismatch => false,
-            ContractError::CursorOutOfRange => true,
-            ContractError::BatchTooLarge => true,
-            ContractError::EmptyBatch => true,
-            ContractError::UnsupportedDecimals => true,
-            ContractError::InvalidStringifiedBytes => true,
-            ContractError::UnauthorizedToken => true,
-            ContractError::DuplicateIdempotencyKey => true,
-            ContractError::InvariantViolation => false,          // post-write drift; code bug
-            ContractError::InvalidCurrency => true,
-            ContractError::SnapshotGenerationMismatch => false,  // state-epoch mismatch
-            ContractError::CooldownRequestAlreadyPending => true,
-            ContractError::CooldownRequestNotFound => true,
-            ContractError::CooldownPeriodNotElapsed => true,
-            ContractError::BytesTooLarge => true,
-
-            // Attestation
-            ContractError::DuplicateAttestation => true,
-            ContractError::AttestationNotFound => true,
-            ContractError::AttestationAlreadyRevoked => true,
-            ContractError::InvalidAttestationWeight => true,
-            ContractError::AttestationWeightExceedsMax => true,
-
-            // Registry
-            ContractError::IdentityAlreadyRegistered => true,
-            ContractError::BondContractAlreadyRegistered => true,
-            ContractError::IdentityNotRegistered => true,
-            ContractError::BondContractNotRegistered => true,
-            ContractError::AlreadyDeactivated => true,
-            ContractError::AlreadyActive => true,
-            ContractError::InvalidContractAddress => true,
-            ContractError::ContractCodeVerificationFailed => true,
-            ContractError::UnsupportedInterface => true,
-
-            // Delegation
-            ContractError::ExpiryInPast => true,
-            ContractError::DelegationNotFound => true,
-            ContractError::AlreadyRevoked => true,
-            ContractError::DelegationExpiryTooLong => true,
-            ContractError::UnknownScheme => false,          // unsupported scheme; cannot retry
-            ContractError::VerifierAlreadyRegistered => true,
-            ContractError::VerifierNotRegistered => true,
-            ContractError::VerificationFailed => false,     // crypto failure; same input will fail
-            ContractError::RevocationGraceExpired => false, // terminal; only admin can extend grace
-            ContractError::DelegationNotExpired => true,    // wait for expiry then retry
-            ContractError::PayloadTooOld => true,           // re-sign with current ledger number
-            ContractError::DelegationInactive => false,     // terminal delegation state
-            ContractError::PromiseNotKept => false,          // hash mismatch; not retryable
-            ContractError::StaleEpoch => false,             // stale epoch; must re-propose
-
-            // Treasury
-            ContractError::AmountMustBePositive => true,
-            ContractError::ThresholdExceedsSigners => true,
-            ContractError::InsufficientTreasuryBalance => true,
-            ContractError::ProposalNotFound => true,
-            ContractError::ProposalAlreadyExecuted => true, // idempotent
-            ContractError::InsufficientApprovals => true,
-            ContractError::InvalidFlashLoanCallback => false, // bad magic; same call will fail
-            ContractError::FlashLoanRepaymentFailed => false, // bad repayment
-            ContractError::ProposalExpired => true,
-            ContractError::SlippageExceeded => true,
-            ContractError::TreasuryBeneficiaryMismatch => true,
-            ContractError::CorridorNotRegistered => true,
-
-            // Arithmetic
-            ContractError::Overflow => false,
-            ContractError::Underflow => false,
-            ContractError::DivisionByZero => false,
-            ContractError::InvalidPercentSplit => true,
-        }
-    }
-
-    /// Compile-time exhaustiveness + runtime agreement check.
-    ///
-    /// The exhaustive match in `expected_is_recoverable` above forces every
-    /// new variant to receive a classification decision at compile time.
-    /// This test then asserts the documented table agrees with the live
-    /// `is_recoverable()` implementation for every variant.
-    #[test]
-    fn test_is_recoverable_exhaustive() {
-        for (_, e) in ALL_VARIANTS {
-            assert_eq!(
-                e.is_recoverable(),
-                expected_is_recoverable(*e),
-                "is_recoverable() classification drift for {:?} (wire code {})",
-                e,
-                *e as u32
-            );
-        }
-    }
-
-    /// Metadata guarantees: must not panic, must be `Copy`-safe.
-    #[test]
-    fn test_is_recoverable_is_const_safe() {
-        let e = ContractError::Overflow;
-        let _ = e.is_recoverable();
-        let _ = e.is_recoverable();
-        assert!(!e.is_recoverable());
-
-        let e = ContractError::AlreadyInitialized;
-        assert!(e.is_recoverable());
-    }
-
-    /// Spot-check a recoverable sample per category.
-    #[test]
-    fn test_is_recoverable_recoverable_samples() {
-        assert!(ContractError::NotInitialized.is_recoverable());
-        assert!(ContractError::AlreadyInitialized.is_recoverable());
-        assert!(ContractError::NotAdmin.is_recoverable());
-        assert!(ContractError::NotBondOwner.is_recoverable());
-        assert!(ContractError::ContractPaused.is_recoverable());
-        assert!(ContractError::BorrowFrozen.is_recoverable());
-        assert!(ContractError::MigrationInProgress.is_recoverable());
-        assert!(ContractError::MaxPauseSignersExceeded.is_recoverable());
-        assert!(ContractError::OutsideBusinessHours.is_recoverable());
-        assert!(ContractError::BondNotFound.is_recoverable());
-        assert!(ContractError::InvalidNonce.is_recoverable());
-        assert!(ContractError::CooldownRequestAlreadyPending.is_recoverable());
-        assert!(ContractError::CooldownRequestNotFound.is_recoverable());
-        assert!(ContractError::CooldownPeriodNotElapsed.is_recoverable());
-        assert!(ContractError::BytesTooLarge.is_recoverable());
-        assert!(ContractError::DuplicateAttestation.is_recoverable());
-        assert!(ContractError::IdentityNotRegistered.is_recoverable());
-        assert!(ContractError::ExpiryInPast.is_recoverable());
-        assert!(ContractError::AlreadyRevoked.is_recoverable());
-        assert!(ContractError::AmountMustBePositive.is_recoverable());
-        assert!(ContractError::ProposalAlreadyExecuted.is_recoverable());
-        assert!(ContractError::InsufficientApprovals.is_recoverable());
-        assert!(ContractError::InvalidPercentSplit.is_recoverable());
-    }
-
-    /// Spot-check a fatal sample per category.
-    #[test]
-    fn test_is_recoverable_fatal_samples() {
-        assert!(!ContractError::CrossContractCallerMismatch.is_recoverable());
-        assert!(!ContractError::StaleAdminEpoch.is_recoverable());
-        assert!(!ContractError::StaleSignerEpoch.is_recoverable());
-        assert!(!ContractError::ReentrancyDetected.is_recoverable());
-        assert!(!ContractError::StorageCapReached.is_recoverable());
-        assert!(!ContractError::InvariantViolation.is_recoverable());
-        assert!(!ContractError::SnapshotGenerationMismatch.is_recoverable());
-        assert!(!ContractError::DomainMismatch.is_recoverable());
-        assert!(!ContractError::OwnerMismatch.is_recoverable());
-        assert!(!ContractError::TargetMismatch.is_recoverable());
-        assert!(!ContractError::ContractIdMismatch.is_recoverable());
-        assert!(!ContractError::VerificationFailed.is_recoverable());
-        assert!(!ContractError::UnknownScheme.is_recoverable());
-        assert!(!ContractError::RevocationGraceExpired.is_recoverable());
-        assert!(!ContractError::DelegationInactive.is_recoverable());
-        assert!(!ContractError::PromiseNotKept.is_recoverable());
-        assert!(!ContractError::StaleEpoch.is_recoverable());
-        assert!(!ContractError::InvalidFlashLoanCallback.is_recoverable());
-        assert!(!ContractError::FlashLoanRepaymentFailed.is_recoverable());
-        assert!(!ContractError::Overflow.is_recoverable());
-        assert!(!ContractError::Underflow.is_recoverable());
-        assert!(!ContractError::DivisionByZero.is_recoverable());
-    }
-
-    /// Regression: `DelegationInactive` must be fatal (not recoverable).
-    /// A revoked/expired delegation is a terminal state the caller cannot
-    /// work past without administrative intervention.
-    #[test]
-    fn test_delegation_inactive_is_fatal_not_recoverable() {
-        assert!(!ContractError::DelegationInactive.is_recoverable());
-    }
-
-    /// Regression: `CrossContractCallerMismatch` is fatal — it indicates a
-    /// contract topology misconfiguration that callers cannot fix by retrying.
-    #[test]
-    fn test_cross_contract_caller_mismatch_is_fatal() {
-        assert!(!ContractError::CrossContractCallerMismatch.is_recoverable());
-    }
-
-    /// Regression: `SnapshotGenerationMismatch` is fatal — the caller must
-    /// restart the scan from a fresh snapshot, not retry the same operation.
-    #[test]
-    fn test_snapshot_generation_mismatch_is_fatal() {
-        assert!(!ContractError::SnapshotGenerationMismatch.is_recoverable());
-    }
-
-    /// Regression: `StaleAdminEpoch` / `StaleSignerEpoch` are fatal — a stale
-    /// epoch reference in a proposal ID cannot be corrected by the caller
-    /// without re-deriving the proposal in the current epoch.
-    #[test]
-    fn test_stale_epoch_variants_are_fatal() {
-        assert!(!ContractError::StaleAdminEpoch.is_recoverable());
-        assert!(!ContractError::StaleSignerEpoch.is_recoverable());
-        assert!(!ContractError::StaleEpoch.is_recoverable());
-    }
-
-    /// Regression: `ProposalAlreadyExecuted` is recoverable (idempotent) and
-    /// `Overflow` is fatal.
-    #[test]
-    fn test_is_recoverable_issue_examples() {
-        assert!(ContractError::ProposalAlreadyExecuted.is_recoverable());
-        assert!(!ContractError::Overflow.is_recoverable());
     }
 
     // ---------------------------------------------------------------------------
@@ -2565,6 +2306,7 @@ mod tests {
             ErrorCategory::Delegation,
             ErrorCategory::Treasury,
             ErrorCategory::Arithmetic,
+            ErrorCategory::Escrow,
         ];
         for e in all_variants() {
             let cat = e.category();

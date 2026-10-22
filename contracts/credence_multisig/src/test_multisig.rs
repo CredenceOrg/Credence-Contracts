@@ -658,13 +658,13 @@ fn test_execute_already_executed() {
 
 #[test]
 #[should_panic(expected = "Error(Contract, #604)")]
-fn test_execute_duplicate_operation() {
+fn identical_payload_cannot_execute_twice_with_same_salt() {
     let e = Env::default();
     let (client, admin, signers) = setup(&e);
     client.initialize(&admin, &signers, &2);
 
     let proposer = signers.get(0).unwrap();
-    let op_hash = BytesN::from_array(&e, &[99; 32]);
+    let salt = BytesN::from_array(&e, &[99; 32]);
 
     let id1 = client.submit_proposal(
         &proposer,
@@ -672,10 +672,10 @@ fn test_execute_duplicate_operation() {
         &None,
         &None,
         &None,
-        &String::from_str(&e, "Prop 1"),
+        &String::from_str(&e, "Identical proposal"),
         &0_u64,
         &None,
-        &op_hash,
+        &salt,
     );
 
     client.sign_proposal(&signers.get(0).unwrap(), &id1);
@@ -688,15 +688,186 @@ fn test_execute_duplicate_operation() {
         &None,
         &None,
         &None,
-        &String::from_str(&e, "Prop 2 identical"),
+        &String::from_str(&e, "Identical proposal"),
         &0_u64,
         &None,
-        &op_hash, // Identical operation hash
+        &salt,
     );
 
     client.sign_proposal(&signers.get(0).unwrap(), &id2);
     client.sign_proposal(&signers.get(1).unwrap(), &id2);
-    client.execute_proposal(&id2); // Should trigger duplicate execution panic
+    client.execute_proposal(&id2);
+}
+
+#[test]
+fn op_hash_is_derived_from_payload() {
+    let e = Env::default();
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    let proposer = signers.get(0).unwrap();
+    let target = Address::generate(&e);
+    let function_name = String::from_str(&e, "pay");
+    let arguments = soroban_sdk::Bytes::from_slice(&e, &[1, 2, 3]);
+    let salt = BytesN::from_array(&e, &[42; 32]);
+    let description = String::from_str(&e, "Pay recipient");
+
+    let id1 = client.submit_proposal(
+        &proposer,
+        &ActionType::Transfer,
+        &Some(target.clone()),
+        &Some(function_name.clone()),
+        &Some(arguments.clone()),
+        &description,
+        &0,
+        &None,
+        &salt,
+    );
+    let id2 = client.submit_proposal(
+        &proposer,
+        &ActionType::Transfer,
+        &Some(target.clone()),
+        &Some(function_name.clone()),
+        &Some(arguments.clone()),
+        &description,
+        &0,
+        &None,
+        &salt,
+    );
+
+    let expected = client.compute_op_hash(
+        &ActionType::Transfer,
+        &Some(target.clone()),
+        &Some(function_name.clone()),
+        &Some(arguments.clone()),
+        &salt,
+    );
+    assert_eq!(client.get_proposal(&id1).op_hash, expected);
+    assert_eq!(client.get_proposal(&id2).op_hash, expected);
+
+    assert_ne!(
+        expected,
+        client.compute_op_hash(
+            &ActionType::Transfer,
+            &Some(Address::generate(&e)),
+            &Some(function_name.clone()),
+            &Some(arguments.clone()),
+            &salt,
+        )
+    );
+    assert_ne!(
+        expected,
+        client.compute_op_hash(
+            &ActionType::Transfer,
+            &Some(target.clone()),
+            &Some(String::from_str(&e, "refund")),
+            &Some(arguments.clone()),
+            &salt,
+        )
+    );
+    assert_ne!(
+        expected,
+        client.compute_op_hash(
+            &ActionType::Transfer,
+            &Some(target.clone()),
+            &Some(function_name),
+            &Some(soroban_sdk::Bytes::from_slice(&e, &[3, 2, 1])),
+            &salt,
+        )
+    );
+    assert_ne!(
+        expected,
+        client.compute_op_hash(
+            &ActionType::ConfigChange,
+            &Some(target),
+            &Some(String::from_str(&e, "pay")),
+            &Some(arguments),
+            &salt,
+        )
+    );
+}
+
+#[test]
+fn different_payload_cannot_block_honest_proposal() {
+    let e = Env::default();
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    let signer_a = signers.get(0).unwrap();
+    let signer_b = signers.get(1).unwrap();
+    let signer_c = signers.get(2).unwrap();
+    let shared_salt = BytesN::from_array(&e, &[77; 32]);
+
+    let honest_id = client.submit_proposal(
+        &signer_b,
+        &ActionType::Transfer,
+        &Some(signer_c.clone()),
+        &Some(String::from_str(&e, "pay")),
+        &Some(soroban_sdk::Bytes::from_slice(&e, &[10])),
+        &String::from_str(&e, "Honest transfer"),
+        &0,
+        &None,
+        &shared_salt,
+    );
+    let unrelated_id = client.submit_proposal(
+        &signer_a,
+        &ActionType::ConfigChange,
+        &Some(signer_a.clone()),
+        &Some(String::from_str(&e, "change_config")),
+        &Some(soroban_sdk::Bytes::from_slice(&e, &[20])),
+        &String::from_str(&e, "Unrelated change"),
+        &0,
+        &None,
+        &shared_salt,
+    );
+
+    assert_ne!(
+        client.get_proposal(&honest_id).op_hash,
+        client.get_proposal(&unrelated_id).op_hash
+    );
+
+    client.sign_proposal(&signer_a, &unrelated_id);
+    client.sign_proposal(&signer_c, &unrelated_id);
+    client.execute_proposal(&unrelated_id);
+
+    client.sign_proposal(&signer_a, &honest_id);
+    client.sign_proposal(&signer_b, &honest_id);
+    client.execute_proposal(&honest_id);
+    assert_eq!(
+        client.get_proposal(&honest_id).status,
+        ProposalStatus::Executed
+    );
+}
+
+#[test]
+fn compute_op_hash_matches_stored() {
+    let e = Env::default();
+    let (client, admin, signers) = setup(&e);
+    client.initialize(&admin, &signers, &2);
+
+    let proposer = signers.get(0).unwrap();
+    let action_type = ActionType::ContractCall;
+    let target = Some(Address::generate(&e));
+    let function_name = Some(String::from_str(&e, "update"));
+    let arguments = Some(soroban_sdk::Bytes::from_slice(&e, &[5, 6]));
+    let salt = BytesN::from_array(&e, &[88; 32]);
+    let proposal_id = client.submit_proposal(
+        &proposer,
+        &action_type,
+        &target,
+        &function_name,
+        &arguments,
+        &String::from_str(&e, "Update"),
+        &0,
+        &None,
+        &salt,
+    );
+
+    let proposal = client.get_proposal(&proposal_id);
+    assert_eq!(
+        client.compute_op_hash(&action_type, &target, &function_name, &arguments, &salt,),
+        proposal.op_hash
+    );
 }
 
 #[test]
@@ -1215,10 +1386,7 @@ fn test_prune_expired_proposals_basic() {
     // Verify executed proposal 2 is NOT pruned and its executed op_hash is preserved
     let prop2 = client.get_proposal(&id2);
     assert_eq!(prop2.status, ProposalStatus::Executed);
-    assert_eq!(
-        client.is_operation_executed(&BytesN::from_array(&e, &[32; 32])),
-        true
-    );
+    assert!(client.is_operation_executed(&prop2.op_hash));
 
     // Verify event using snapshot-based diagnostics
     assert_eq!(pruned, 2, "expected 2 proposals pruned");
@@ -1305,65 +1473,50 @@ fn test_prune_expired_proposals_paused() {
 /// vector is the **deduplicated** set, but the raw multiset is what the
 /// strategy shrinks on — exercising the invariant that the output length
 /// never exceeds the input length and every unique element is preserved.
-fn deduped_signer_list_strategy() -> impl Strategy<Value = (Env, Vec<Address>, Vec<Address>)> {
-    (1_usize..20_usize)
-        .prop_flat_map(|pool_size| {
-            (1_usize..20_usize).prop_flat_map(move |pick_count| {
-                // Generate `pick_count` indices into a pool of `pool_size` addresses.
-                // Duplicates are possible when pick_count > pool_size or by random
-                // chance — this is what tests the dedup invariant.
-                proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
-                    .prop_map(move |indices| (pool_size, indices))
-            })
+fn signer_indices_strategy() -> impl Strategy<Value = (usize, std::vec::Vec<usize>)> {
+    (1_usize..20_usize).prop_flat_map(|pool_size| {
+        (1_usize..20_usize).prop_flat_map(move |pick_count| {
+            // Generate `pick_count` indices into a pool of `pool_size` addresses.
+            // Duplicates are possible when pick_count > pool_size or by random
+            // chance — this is what tests the dedup invariant.
+            proptest::collection::vec(0_usize..pool_size, pick_count..=pick_count)
+                .prop_map(move |indices| (pool_size, indices))
         })
-        .prop_map(|(pool_size, indices)| {
-            let e = Env::default();
-            e.mock_all_auths();
-
-            // Build a small pool of distinct addresses.
-            let mut pool = Vec::new(&e);
-            for _ in 0..pool_size {
-                pool.push_back(Address::generate(&e));
-            }
-
-            // Build the raw input list from the indices (may contain duplicates).
-            let raw_len = indices.len();
-            let mut raw = Vec::new(&e);
-            for &idx in &indices {
-                raw.push_back(pool.get(idx as u32).unwrap());
-            }
-
-            // Deduplicate: scan and keep first occurrence of each address.
-            let mut deduped = Vec::new(&e);
-            for i in 0..raw.len() {
-                let addr = raw.get(i).unwrap();
-                let mut already_seen = false;
-                for j in 0..deduped.len() {
-                    if deduped.get(j).unwrap() == addr {
-                        already_seen = true;
-                        break;
-                    }
-                }
-                if !already_seen {
-                    deduped.push_back(addr);
-                }
-            }
-
-            (e, raw, deduped)
-        })
+    })
 }
 
-/// Property: after initializing with a deduplicated signer list:
-///  1. `SignerList` length equals the number of unique signers (≤ raw input length)
-///  2. `SignerCount` == `SignerList` length
-///  3. Every unique element from the raw input is preserved exactly once in `SignerList`
+// Property: after initializing with a deduplicated signer list:
+//  1. SignerList length equals the number of unique signers (<= raw input length)
+//  2. SignerCount equals SignerList length
+//  3. Every unique element is preserved exactly once in SignerList
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
     #[test]
     fn prop_signer_list_length_le_input_length_every_unique_preserved_once(
-        (e, raw, deduped) in deduped_signer_list_strategy()
+        (pool_size, indices) in signer_indices_strategy()
     ) {
+        let e = Env::default();
+        e.mock_all_auths();
+
+        let mut pool = Vec::new(&e);
+        for _ in 0..pool_size {
+            pool.push_back(Address::generate(&e));
+        }
+
+        let mut raw = Vec::new(&e);
+        for idx in indices {
+            raw.push_back(pool.get(idx as u32).unwrap());
+        }
+
+        let mut deduped = Vec::new(&e);
+        for i in 0..raw.len() {
+            let addr = raw.get(i).unwrap();
+            if !(0..deduped.len()).any(|j| deduped.get(j).unwrap() == addr) {
+                deduped.push_back(addr);
+            }
+        }
+
         let contract_id = e.register(CredenceMultiSig, ());
         let client = CredenceMultiSigClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
@@ -1406,7 +1559,7 @@ proptest! {
         for i in 0..list.len() {
             let si = list.get(i).unwrap();
             let occurrences = (0..list.len())
-                .filter(|j| list.get(j).unwrap() == si)
+                .filter(|j| list.get(*j).unwrap() == si)
                 .count();
             assert_eq!(occurrences, 1, "SignerList must contain each signer at most once");
         }
@@ -1454,7 +1607,7 @@ proptest! {
         for i in 0..len {
             let si = list_after_remove.get(i).unwrap();
             let occurrences = (0..len)
-                .filter(|j| list_after_remove.get(j).unwrap() == si)
+                .filter(|j| list_after_remove.get(*j).unwrap() == si)
                 .count();
             assert_eq!(occurrences, 1, "SignerList must never contain duplicates after add/remove");
         }

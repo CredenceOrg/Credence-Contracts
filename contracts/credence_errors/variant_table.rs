@@ -236,9 +236,21 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "CorridorNotRegistered",
         ContractError::CorridorNotRegistered,
     ), // 611
+    (
+        "TokenChangeWithBalance",
+        ContractError::TokenChangeWithBalance,
+    ), // 612
     // --- Arithmetic (700-799) ---
     ("Overflow", ContractError::Overflow),             // 700
     ("Underflow", ContractError::Underflow),           // 701
     ("DivisionByZero", ContractError::DivisionByZero), // 702
     ("InvalidPercentSplit", ContractError::InvalidPercentSplit), // 703
+    // --- Escrow (800-899) ---
+    ("EscrowNotFound", ContractError::EscrowNotFound), // 800
+    ("EscrowNotReleasable", ContractError::EscrowNotReleasable), // 801
+    ("EscrowNotRefundable", ContractError::EscrowNotRefundable), // 802
+    ("EscrowNotExpired", ContractError::EscrowNotExpired), // 803
+    ("RefundExceedsRemaining", ContractError::RefundExceedsRemaining), // 804
+    ("InvalidEscrowExpiry", ContractError::InvalidEscrowExpiry), // 805
+    ("NotEscrowParty", ContractError::NotEscrowParty), // 806
 ];

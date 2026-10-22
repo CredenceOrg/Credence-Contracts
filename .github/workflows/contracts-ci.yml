@@ -1,0 +1,159 @@
+# contracts-ci.yml
+# Real build/test/lint gate for the crates listed in scripts/ci-gated-packages.txt.
+#
+# Jobs:
+#   fmt        — cargo fmt --all -- --check  (whole workspace)
+#   test       — cargo test -p <pkg> --locked  (for each gated package in the list)
+#   clippy     — cargo clippy -p <pkg> --all-targets --locked -- -D warnings (for each)
+#   wasm       — wasm32v1-none release build + size-budget check (contract crates only)
+#   no-bare-panic — python3 scripts/check_no_panic.py (ratchet: no new bare panic!())
+#
+# Adding a crate to the gate:
+#   Append its `[package] name` to scripts/ci-gated-packages.txt — nothing else changes.
+
+name: Contracts CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # fmt — whole-workspace formatting check
+  # ---------------------------------------------------------------------------
+  fmt:
+    name: Formatting (cargo fmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  # ---------------------------------------------------------------------------
+  # test — run `cargo test -p <pkg> --locked` for every gated package
+  # ---------------------------------------------------------------------------
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: fmt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: test
+
+      - name: Run tests for each gated package
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg; do
+            # Skip comment lines and blank lines
+            [[ "$pkg" =~ ^#.*$ || -z "$pkg" ]] && continue
+            echo "::group::cargo test -p $pkg"
+            cargo test -p "$pkg" --locked
+            echo "::endgroup::"
+          done < scripts/ci-gated-packages.txt
+
+  # ---------------------------------------------------------------------------
+  # clippy — run clippy for every gated package
+  # ---------------------------------------------------------------------------
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    needs: fmt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: clippy
+
+      - name: Run clippy for each gated package
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg; do
+            # Skip comment lines and blank lines
+            [[ "$pkg" =~ ^#.*$ || -z "$pkg" ]] && continue
+            echo "::group::clippy $pkg"
+            cargo clippy -p "$pkg" --all-targets --locked -- -D warnings
+            echo "::endgroup::"
+          done < scripts/ci-gated-packages.txt
+
+  # ---------------------------------------------------------------------------
+  # wasm — wasm32v1-none release build + size-budget check
+  #
+  # Only contract crates (no_std + cdylib) are built for WASM.  testutils is a
+  # test-only helper that links std and is excluded by name.  All other packages
+  # listed in ci-gated-packages.txt are treated as contract crates.
+  # ---------------------------------------------------------------------------
+  wasm:
+    name: WASM build + size check
+    runs-on: ubuntu-latest
+    needs: fmt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: wasm
+
+      - name: Add wasm32v1-none target
+        run: rustup target add wasm32v1-none
+
+      - name: Build WASM for gated contract crates
+        run: |
+          set -euo pipefail
+          while IFS= read -r pkg; do
+            # Skip comment lines and blank lines
+            [[ "$pkg" =~ ^#.*$ || -z "$pkg" ]] && continue
+            # testutils is a test-only std crate — not a WASM contract
+            [[ "$pkg" == "testutils" ]] && continue
+            echo "▶ Building $pkg for wasm32v1-none …"
+            cargo build -p "$pkg" --target wasm32v1-none --release --locked
+          done < scripts/ci-gated-packages.txt
+
+      - name: Check WASM size budgets
+        run: bash scripts/check_wasm_size.sh
+        env:
+          WASM_DIR: target/wasm32v1-none/release
+
+  # ---------------------------------------------------------------------------
+  # no-bare-panic — ratchet check: no new bare panic!() in contract release code
+  # ---------------------------------------------------------------------------
+  no-bare-panic:
+    name: No bare panic!() in release code
+    runs-on: ubuntu-latest
+    needs: fmt
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run bare-panic ratchet
+        run: python3 scripts/check_no_panic.py
