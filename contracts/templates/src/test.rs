@@ -1,6 +1,6 @@
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::Env;
+use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
+use soroban_sdk::{Env, TryFromVal};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,6 +27,11 @@ fn advance_time(e: &Env, secs: u64) {
     });
 }
 
+fn record_is_stored(e: &Env, contract_id: &Address, owner: &Address) -> bool {
+    e.as_contract(contract_id, || {
+        e.storage().instance().has(&DataKey::Record(owner.clone()))
+    })
+}
 // ---------------------------------------------------------------------------
 // initialize
 // ---------------------------------------------------------------------------
@@ -37,6 +42,19 @@ fn test_initialize_sets_admin() {
     e.mock_all_auths();
     let (admin, _, client) = setup(&e);
     assert_eq!(client.get_admin(), admin);
+}
+
+#[test]
+fn test_initialize_requires_proposed_admin_auth() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let admin = Address::generate(&e);
+    let contract_id = e.register(TemplateContract, ());
+    let client = TemplateContractClient::new(&e, &contract_id);
+
+    client.initialize(&admin);
+
+    assert!(e.auths().iter().any(|(address, _)| address == &admin));
 }
 
 #[test]
@@ -131,14 +149,17 @@ fn test_has_record_true_after_set() {
 }
 
 #[test]
-#[should_panic(expected = "record not found")]
-fn test_get_record_panics_when_missing() {
+fn test_get_record_returns_typed_error_when_missing() {
     let e = Env::default();
     e.mock_all_auths();
     let (_, _, client) = setup(&e);
 
     let owner = Address::generate(&e);
-    client.get_record(&owner); // must panic
+    let err = client.try_get_record(&owner).unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::BondNotFound as u32)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -176,13 +197,16 @@ fn test_remove_nonexistent_record_is_noop() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "not initialized")]
-fn test_get_admin_panics_before_init() {
+fn test_get_admin_returns_typed_error_before_init() {
     let e = Env::default();
     e.mock_all_auths();
     let contract_id = e.register(TemplateContract, ());
     let client = TemplateContractClient::new(&e, &contract_id);
-    client.get_admin(); // must panic
+    let err = client.try_get_admin().unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::NotInitialized as u32)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -255,7 +279,7 @@ fn test_multiple_owners_are_independent() {
 fn test_expiry_pattern() {
     let e = Env::default();
     e.mock_all_auths();
-    let (_, _, client) = setup(&e);
+    let (_, contract_id, client) = setup(&e);
 
     let owner = Address::generate(&e);
     let now = e.ledger().timestamp();
@@ -270,25 +294,33 @@ fn test_expiry_pattern() {
     advance_time(&e, 100);
 
     assert!(client.is_expired(&owner));
-    assert!(!client.has_record(&owner)); // has_record should purge and return false
+    assert!(!client.has_record(&owner)); // read-only; expired records are not active
+    assert!(record_is_stored(&e, &contract_id, &owner));
+
+    client.purge_expired(&owner);
 
     // Now it's truly gone
     assert!(!client.is_expired(&owner));
+    assert!(!record_is_stored(&e, &contract_id, &owner));
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #222)")]
-fn test_get_expired_record_panics() {
+fn test_get_expired_record_returns_typed_error_without_purging() {
     let e = Env::default();
     e.mock_all_auths();
-    let (_, _, client) = setup(&e);
+    let (_, contract_id, client) = setup(&e);
 
     let owner = Address::generate(&e);
     let now = e.ledger().timestamp();
     client.set_record(&owner, &100, &(now + 10));
 
     advance_time(&e, 10);
-    client.get_record(&owner); // panics and purges
+    let err = client.try_get_record(&owner).unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::SignatureExpired as u32)
+    );
+    assert!(record_is_stored(&e, &contract_id, &owner));
 }
 
 // ===========================================================================
@@ -369,51 +401,131 @@ fn test_record_not_expired_one_second_before_deadline() {
 }
 
 #[test]
-fn test_set_record_already_expired_at_write_time() {
+fn set_record_rejects_past_expiry() {
     let e = Env::default();
     e.mock_all_auths();
     let (_, _, client) = setup(&e);
 
     let owner = Address::generate(&e);
-    let now = e.ledger().timestamp();
-    // expires_at in the past relative to current ledger time
-    if now > 0 {
-        client.set_record(&owner, &3, &(now - 1));
-    } else {
-        // timestamp starts at 0 in default env; advance then set past expiry
-        advance_time(&e, 50);
-        let t = e.ledger().timestamp();
-        client.set_record(&owner, &3, &(t - 1));
-    }
+    advance_time(&e, 1_000);
+    let err = client
+        .try_set_record(&owner, &3, &999)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::ExpiryInPast as u32)
+    );
 
-    assert!(client.is_expired(&owner));
-    assert!(!client.has_record(&owner)); // purge on has_record
-        }
+    client.set_record(&owner, &3, &0);
+    assert!(client.has_record(&owner));
+}
+
+#[test]
+fn expired_get_record_has_no_side_effects() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, contract_id, client) = setup(&e);
+    let owner = Address::generate(&e);
+
+    client.set_record(&owner, &5, &100);
+    advance_time(&e, 100);
+
+    let err = client.try_get_record(&owner).unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::SignatureExpired as u32)
+    );
+    assert!(record_is_stored(&e, &contract_id, &owner));
+}
+
+#[test]
+fn purge_expired_removes_record_and_emits_event() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, contract_id, client) = setup(&e);
+    let owner = Address::generate(&e);
+
+    client.set_record(&owner, &5, &100);
+    advance_time(&e, 100);
+    let _ = e.events().all();
+
+    client.purge_expired(&owner);
+
+    let events = e.events().all();
+    assert!(
+        events.iter().any(|event| {
+            event.1.len() > 0
+                && Symbol::try_from_val(&e, &event.1.get(0).unwrap())
+                    .is_ok_and(|name| name == Symbol::new(&e, "record_purged"))
+        }),
+        "record_purged event missing from {events:?}"
+    );
+    assert!(!client.has_record(&owner));
+    assert!(!record_is_stored(&e, &contract_id, &owner));
+}
+
+#[test]
+fn purge_unexpired_rejected() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (_, contract_id, client) = setup(&e);
+    let owner = Address::generate(&e);
+
+    client.set_record(&owner, &5, &100);
+    advance_time(&e, 99);
+
+    let err = client.try_purge_expired(&owner).unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::LockupNotExpired as u32)
+    );
+    assert!(record_is_stored(&e, &contract_id, &owner));
+}
+
+#[test]
+fn uninitialized_calls_return_typed_error() {
+    let e = Env::default();
+    let contract_id = e.register(TemplateContract, ());
+    let client = TemplateContractClient::new(&e, &contract_id);
+
+    let err = client.try_get_admin().unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::NotInitialized as u32)
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Uninitialized / permission failure paths
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "not initialized")]
-fn test_set_record_panics_before_init() {
+fn test_set_record_returns_typed_error_before_init() {
     let e = Env::default();
     e.mock_all_auths();
     let contract_id = e.register(TemplateContract, ());
     let client = TemplateContractClient::new(&e, &contract_id);
     let owner = Address::generate(&e);
-    client.set_record(&owner, &1, &0);
+    let err = client.try_set_record(&owner, &1, &0).unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::NotInitialized as u32)
+    );
 }
 
 #[test]
-#[should_panic(expected = "not initialized")]
-fn test_remove_record_panics_before_init() {
+fn test_remove_record_returns_typed_error_before_init() {
     let e = Env::default();
     e.mock_all_auths();
     let contract_id = e.register(TemplateContract, ());
     let client = TemplateContractClient::new(&e, &contract_id);
     let owner = Address::generate(&e);
-    client.remove_record(&owner);
+    let err = client.try_remove_record(&owner).unwrap_err().unwrap();
+    assert_eq!(
+        err,
+        soroban_sdk::Error::from_contract_error(ContractError::NotInitialized as u32)
+    );
 }
 
 #[test]
@@ -529,7 +641,8 @@ fn test_recovery_set_record_after_expiry_purge() {
     client.set_record(&owner, &10, &(now + 5));
 
     advance_time(&e, 5);
-    // Purge via has_record
+    // Reads only report that the record is inactive; setting a fresh record
+    // overwrites the expired value.
     assert!(!client.has_record(&owner));
 
     // Recover: write a fresh non-expiring record
@@ -543,7 +656,7 @@ fn test_recovery_set_record_after_expiry_purge() {
 fn test_get_expired_purges_then_recovery_succeeds() {
     let e = Env::default();
     e.mock_all_auths();
-    let (_, _, client) = setup(&e);
+    let (_, contract_id, client) = setup(&e);
 
     let owner = Address::generate(&e);
     let now = e.ledger().timestamp();
@@ -551,10 +664,10 @@ fn test_get_expired_purges_then_recovery_succeeds() {
 
     advance_time(&e, 3);
 
-    // get_record panics and purges — exercise via try then recover
-    // We cannot catch panic in the client easily; purge via has_record instead,
-    // then prove storage is clean and writable again.
+    // A failed read leaves expired storage untouched; cleanup is explicit.
     assert!(!client.has_record(&owner));
+    assert!(record_is_stored(&e, &contract_id, &owner));
+    client.purge_expired(&owner);
     client.set_record(&owner, &20, &0);
     assert_eq!(client.get_record(&owner).value, 20);
 }
@@ -650,4 +763,18 @@ fn test_has_record_after_explicit_remove() {
     assert!(!client.has_record(&owner));
     assert!(!client.is_expired(&owner));
 }
-                               
+
+// Keep this file's test list self-contained.
+
+
+
+
+
+
+
+
+
+
+
+
+
