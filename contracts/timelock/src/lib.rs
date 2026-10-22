@@ -32,6 +32,13 @@ const SIGNATURE_DOMAIN: &str = "Timelock";
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 const CALL_BOUND_OPERATION_TTL: u32 = 3600;
 
+/// Persistent entries (operations, which carry their `(target, func, args)`
+/// call) must be kept alive for at least as long as the longest execution
+/// window. The limits are kept below the network's maximum entry TTL
+/// (`6_311_520` ledgers) so that `extend_ttl` is always valid.
+const PERSISTENT_TTL_THRESHOLD: u32 = 518_400; // ~30 days
+const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400; // ~180 days
+
 fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
@@ -63,6 +70,20 @@ pub enum OperationStatus {
     Cancelled = 2,
 }
 
+/// The concrete call a call-bound operation executes once its delay elapses.
+///
+/// `salt` is part of the `op_hash` pre-image and is derived on-chain from the
+/// operation id and ETA, so an observer can recompute [`TimelockContract::hash_call`]
+/// from what the queued operation publishes.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CallSpec {
+    pub target: Address,
+    pub func: Symbol,
+    pub args: Vec<Val>,
+    pub salt: BytesN<32>,
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueuedOperation {
@@ -88,8 +109,17 @@ pub struct CallBoundOperation {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingAdmin {
+    pub address: Address,
+    pub eta: u64,
+    pub expires_at: u64,
+}
+
+#[contracttype]
 pub enum DataKey {
     Admin,
+    PendingAdmin,
     OperationCounter,
     Operation(u64),
     ExecutedOp(BytesN<32>),
@@ -99,6 +129,54 @@ pub enum DataKey {
 
 #[contract]
 pub struct TimelockContract;
+
+/// Derive the per-operation salt from values that are only known once the
+/// operation id and its execution window have been assigned.
+fn derive_salt(e: &Env, op_id: u64, eta: u64) -> BytesN<32> {
+    let mut preimage = Bytes::new(e);
+    preimage.append(&op_id.to_xdr(e));
+    preimage.append(&eta.to_xdr(e));
+    e.crypto().sha256(&preimage).to_bytes()
+}
+
+/// `op_hash = sha256(xdr(network_id ‖ timelock_address ‖ target ‖ func ‖ args ‖ salt))`
+///
+/// Every field of the pre-image is length-delimited by its XDR encoding, so
+/// changing any byte of `target`, `func`, `args` or `salt` yields a different
+/// hash and therefore a different queued operation.
+fn compute_call_hash(
+    e: &Env,
+    target: &Address,
+    func: &Symbol,
+    args: &Vec<Val>,
+    salt: &BytesN<32>,
+) -> BytesN<32> {
+    let mut preimage = Bytes::new(e);
+    preimage.append(&e.ledger().network_id().to_xdr(e));
+    preimage.append(&e.current_contract_address().to_xdr(e));
+    preimage.append(&target.to_xdr(e));
+    preimage.append(&func.to_xdr(e));
+    preimage.append(&args.clone().to_xdr(e));
+    preimage.append(&salt.to_xdr(e));
+    e.crypto().sha256(&preimage).to_bytes()
+}
+
+fn load_operation(e: &Env, op_id: u64) -> QueuedOperation {
+    let key = DataKey::Operation(op_id);
+    let op: QueuedOperation = e
+        .storage()
+        .persistent()
+        .get(&key)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+    bump_persistent_ttl(e, &key);
+    op
+}
+
+fn store_operation(e: &Env, op: &QueuedOperation) {
+    let key = DataKey::Operation(op.id);
+    e.storage().persistent().set(&key, op);
+    bump_persistent_ttl(e, &key);
+}
 
 #[contractimpl]
 impl TimelockContract {
@@ -121,49 +199,15 @@ impl TimelockContract {
     /// stores only the hash and does not invoke any contract on execution.
     pub fn queue_operation(e: Env, proposer: Address, op_hash: BytesN<32>, delay: u64) -> u64 {
         bump_instance_ttl(&e);
-        proposer.require_auth();
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
-
-        if proposer != admin {
-            panic_with_error!(&e, ContractError::NotAdmin);
-        }
-
-        if delay < min_delay_seconds() {
-            panic_with_error!(&e, ContractError::TimelockNotReady);
-        }
+        Self::require_proposer_admin(&e, &proposer);
+        Self::require_valid_delay(&e, delay);
 
         // Replay guard: cannot queue an operation that was already executed
-        if e.storage()
-            .instance()
-            .get(&DataKey::ExecutedOp(op_hash.clone()))
-            .unwrap_or(false)
-        {
+        if Self::is_operation_executed(e.clone(), op_hash.clone()) {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        let op_id: u64 = e
-            .storage()
-            .instance()
-            .get(&DataKey::OperationCounter)
-            .unwrap_or(0);
-        let next_op_id = op_id
-            .checked_add(1)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        e.storage()
-            .instance()
-            .set(&DataKey::OperationCounter, &next_op_id);
-
-        let now = e.ledger().timestamp();
-        let eta = now
-            .checked_add(delay)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        let expires_at = eta
-            .checked_add(GRACE_PERIOD)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let (op_id, eta, expires_at) = Self::begin_queue(&e, delay);
 
         let op = QueuedOperation {
             id: op_id,
@@ -173,7 +217,7 @@ impl TimelockContract {
             status: OperationStatus::Pending,
         };
 
-        e.storage().instance().set(&DataKey::Operation(op_id), &op);
+        store_operation(&e, &op);
 
         e.events().publish(
             (Symbol::new(&e, "operation_queued"), op_id),
@@ -352,16 +396,27 @@ impl TimelockContract {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        // Mark executed
+        // Effects before the interaction: mark executed, then invoke.
         e.storage()
             .instance()
             .set(&DataKey::ExecutedOp(op.op_hash.clone()), &true);
 
         op.status = OperationStatus::Executed;
-        e.storage().instance().set(&DataKey::Operation(op_id), &op);
+        store_operation(&e, &op);
 
-        e.events()
-            .publish((Symbol::new(&e, "operation_executed"), op_id), op.op_hash);
+        match Self::get_call(e.clone(), op_id) {
+            Some(call) => {
+                e.invoke_contract::<Val>(&call.target, &call.func, call.args);
+                e.events().publish(
+                    (Symbol::new(&e, "operation_executed"), op_id),
+                    (op.op_hash, call.target, call.func),
+                );
+            }
+            None => {
+                e.events()
+                    .publish((Symbol::new(&e, "operation_executed"), op_id), op.op_hash);
+            }
+        }
     }
 
     /// Internal: execute a call-bound operation.
@@ -496,7 +551,56 @@ impl TimelockContract {
     /// Get details of a queued operation.
     pub fn get_operation(e: Env, op_id: u64) -> Option<QueuedOperation> {
         bump_instance_ttl(&e);
-        e.storage().instance().get(&DataKey::Operation(op_id))
+        let key = DataKey::Operation(op_id);
+        let op: Option<QueuedOperation> = e.storage().persistent().get(&key);
+        if op.is_some() {
+            bump_persistent_ttl(&e, &key);
+        }
+        op
+    }
+
+    fn require_proposer_admin(e: &Env, proposer: &Address) {
+        proposer.require_auth();
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+
+        if proposer != &admin {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+    }
+
+    fn require_valid_delay(e: &Env, delay: u64) {
+        if delay < min_delay_seconds() {
+            panic_with_error!(e, ContractError::TimelockNotReady);
+        }
+    }
+
+    /// Allocate the next operation id and compute its execution window.
+    fn begin_queue(e: &Env, delay: u64) -> (u64, u64, u64) {
+        let op_id: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::OperationCounter)
+            .unwrap_or(0);
+        let next_op_id = op_id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+        e.storage()
+            .instance()
+            .set(&DataKey::OperationCounter, &next_op_id);
+
+        let now = e.ledger().timestamp();
+        let eta = now
+            .checked_add(delay)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+
+        (op_id, eta, expires_at)
     }
 
     /// Check if an operation hash has already been executed.
@@ -517,22 +621,98 @@ impl TimelockContract {
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
     }
 
-    pub fn transfer_admin(e: Env, new_admin: Address) {
+    /// Propose a new admin. The current admin remains in control until the
+    /// proposed admin accepts after the minimum delay.
+    pub fn propose_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
         let current_admin = Self::get_admin(e.clone());
         current_admin.require_auth();
 
-        e.storage().instance().set(&DataKey::Admin, &new_admin);
+        if new_admin == current_admin {
+            panic_with_error!(&e, ContractError::AdminUnchanged);
+        }
+        if new_admin == e.current_contract_address() {
+            panic_with_error!(&e, ContractError::InvalidAdminAddress);
+        }
+
+        let now = e.ledger().timestamp();
+        let eta = now
+            .checked_add(min_delay_seconds())
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let pending = PendingAdmin {
+            address: new_admin.clone(),
+            eta,
+            expires_at,
+        };
+        e.storage().instance().set(&DataKey::PendingAdmin, &pending);
 
         e.events().publish(
-            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
-            (current_admin, new_admin),
+            (Symbol::new(&e, "admin_proposed"),),
+            (current_admin, new_admin, eta, expires_at),
         );
+    }
+
+    /// Accept a pending admin proposal once its delay has elapsed.
+    pub fn accept_admin(e: Env) {
+        bump_instance_ttl(&e);
+        let pending: PendingAdmin = e
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
+        pending.address.require_auth();
+
+        let now = e.ledger().timestamp();
+        if !is_ready(pending.eta, now) {
+            panic_with_error!(&e, ContractError::TimelockNotReady);
+        }
+        if now > pending.expires_at {
+            panic_with_error!(&e, ContractError::SignatureExpired);
+        }
+
+        let current_admin = Self::get_admin(e.clone());
+        e.storage()
+            .instance()
+            .set(&DataKey::Admin, &pending.address);
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+        e.events().publish(
+            (Symbol::new(&e, "admin_transferred"),),
+            (current_admin, pending.address),
+        );
+    }
+
+    /// Cancel the pending admin proposal. Only the current admin may cancel.
+    pub fn cancel_admin_proposal(e: Env) {
+        bump_instance_ttl(&e);
+        let current_admin = Self::get_admin(e.clone());
+        current_admin.require_auth();
+        let pending: PendingAdmin = e
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NoPendingAdmin));
+        e.storage().instance().remove(&DataKey::PendingAdmin);
+        e.events().publish(
+            (Symbol::new(&e, "admin_proposal_cancelled"),),
+            (current_admin, pending.address),
+        );
+    }
+
+    /// Get the pending admin proposal, if one exists.
+    pub fn get_pending_admin(e: Env) -> Option<PendingAdmin> {
+        bump_instance_ttl(&e);
+        e.storage().instance().get(&DataKey::PendingAdmin)
     }
 }
 
 #[cfg(test)]
 mod test_timelock;
+
+#[cfg(test)]
+mod test_call_binding;
 
 #[cfg(test)]
 mod test_events_schema;

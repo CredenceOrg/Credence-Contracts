@@ -82,6 +82,7 @@ fn test_valid_transition_voting_to_resolved() {
 fn test_valid_transition_voting_to_cancelled_by_creator() {
     let s = setup();
     let id = open_dispute(&s);
+    // Creator may cancel while no votes have been cast and voting is open.
     s.client.cancel_dispute(&s.creator, &id, &None);
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Cancelled);
@@ -91,6 +92,7 @@ fn test_valid_transition_voting_to_cancelled_by_creator() {
 fn test_valid_transition_voting_to_cancelled_by_admin() {
     let s = setup();
     let id = open_dispute(&s);
+    // Admin moderation override is unconditional before resolution.
     s.client.cancel_dispute(&s.admin, &id, &None);
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Cancelled);
@@ -188,6 +190,7 @@ fn test_invalid_resolve_cancelled_dispute() {
 fn test_invalid_cancel_already_resolved() {
     let s = setup();
     let id = open_dispute(&s);
+    // Resolved → Cancelled is not valid for any caller.
     advance(&s.env, 3601);
     s.client.resolve_dispute(&id);
     // Resolved → Cancelled is not valid
@@ -203,6 +206,7 @@ fn test_invalid_cancel_already_resolved() {
 fn test_invalid_cancel_already_cancelled() {
     let s = setup();
     let id = open_dispute(&s);
+    // Cancelled → Cancelled is not valid for any caller.
     s.client.cancel_dispute(&s.creator, &id, &None);
     // Cancelled → Cancelled is not valid
     let err = s
@@ -217,6 +221,7 @@ fn test_invalid_cancel_already_cancelled() {
 fn test_invalid_vote_on_cancelled_dispute() {
     let s = setup();
     let id = open_dispute(&s);
+    // Creator cancel with no votes is allowed; voting afterwards is not.
     s.client.cancel_dispute(&s.creator, &id, &None);
     let err = s.client.try_vote(&s.arb, &id, &1).unwrap_err().unwrap();
     assert_eq!(err, ArbitrationError::VotingInactive);
@@ -471,6 +476,7 @@ fn test_require_kept_promise_returns_ok_for_identical_boundary_values() {
 fn test_cancel_with_reason_and_role() {
     let s = setup();
     let id = open_dispute(&s);
+    // No votes cast yet, so the creator may cancel.
     let reason = Some(String::from_str(&s.env, "Dispute invalid"));
     s.client.cancel_dispute(&s.creator, &id, &reason);
 
@@ -502,6 +508,7 @@ fn test_cancel_admin_role() {
 fn test_cancel_reason_too_long() {
     let s = setup();
     let id = open_dispute(&s);
+    // No votes cast yet, so the creator reaches the reason-length check.
     // Create a string of length 257
     let arr = [b'A'; 257];
     let long_str = core::str::from_utf8(&arr).unwrap();
@@ -633,7 +640,7 @@ fn test_cant_cancel_tied_dispute() {
     let reason = Some(String::from_str(&s.env, "Cancelling tied dispute"));
     let err = s
         .client
-        .try_cancel_dispute(&s.creator, &id, &reason)
+        .try_cancel_dispute(&s.admin, &id, &reason)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
@@ -739,6 +746,7 @@ fn dispute_lease_guard_allows_operations_when_dispute_cancelled() {
     // Cancelled dispute → guard allows
     let s = setup();
     let id = open_dispute(&s);
+    // No votes cast yet, so the creator may cancel.
     s.client.cancel_dispute(&s.creator, &id, &None);
     let dispute = s.client.get_dispute(&id);
     assert_eq!(dispute.status, DisputeStatus::Cancelled);
@@ -791,6 +799,7 @@ fn test_invalid_resolve_preserves_state() {
 fn test_invalid_cancel_preserves_state() {
     let s = setup();
     let id = open_dispute(&s);
+    // Resolve first so the dispute is no longer cancellable.
     advance(&s.env, 3601);
     s.client.resolve_dispute(&id);
 
@@ -803,6 +812,87 @@ fn test_invalid_cancel_preserves_state() {
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, initial_dispute.status);
     assert_eq!(d.cancellation_reason, initial_dispute.cancellation_reason);
+}
+
+// ── creator cancellation / conflict-of-interest tests ────────────────────────
+
+#[test]
+fn creator_cancel_before_any_vote_ok() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.cancel_dispute(&s.creator, &id, &None);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Cancelled);
+}
+
+#[test]
+fn creator_cancel_after_vote_rejected() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &2);
+
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ArbitrationError::CancelNotAllowed);
+
+    // Status stays Voting and the ActiveDispute guard is still in place.
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Voting);
+    let description = String::from_str(&s.env, "second dispute");
+    let err = s
+        .client
+        .try_create_dispute(&s.creator, &description, &3600)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ArbitrationError::OngoingDispute);
+}
+
+#[test]
+fn creator_cancel_after_deadline_rejected() {
+    let s = setup();
+    let id = open_dispute(&s);
+    advance(&s.env, 3601);
+
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ArbitrationError::CancelNotAllowed);
+    assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Voting);
+}
+
+#[test]
+fn admin_cancel_after_votes_ok() {
+    let s = setup();
+    let id = open_dispute(&s);
+    s.client.vote(&s.arb, &id, &2);
+
+    s.client.cancel_dispute(&s.admin, &id, &None);
+    let d = s.client.get_dispute(&id);
+    assert_eq!(d.status, DisputeStatus::Cancelled);
+    assert_eq!(
+        d.cancelled_by_role,
+        Some(soroban_sdk::Symbol::short("admin"))
+    );
+}
+
+#[test]
+fn creator_cannot_vote_own_dispute() {
+    let s = setup();
+    s.client.register_arbitrator(&s.creator, &10);
+    let id = open_dispute(&s);
+
+    let err = s
+        .client
+        .try_vote(&s.creator, &id, &1)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, ArbitrationError::ConflictOfInterest);
+
+    assert!(!s.client.has_voted(&id, &s.creator));
+    assert_eq!(s.client.get_tally(&id, &1), 0);
 }
 
 #[test]

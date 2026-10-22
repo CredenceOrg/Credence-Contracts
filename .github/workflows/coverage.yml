@@ -1,15 +1,17 @@
-name: Coverage
-'on':
+# coverage.yml — coverage threshold gate (not yet fully wired).
+#
+# Coverage tooling (cargo-llvm-cov) will be wired up in a follow-up PR.
+# The old echo stubs have been removed.
+name: Coverage (placeholder)
+on:
   push:
-    branches:
-    - main
-    - master
-  pull_request: null
-  workflow_dispatch: null
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
 jobs:
-  coverage:
-    name: Per-crate coverage (llvm-cov)
+  placeholder:
+    name: Coverage placeholder (pending cargo-llvm-cov setup)
     runs-on: ubuntu-latest
     steps:
-    - name: "Per-crate coverage (llvm-cov) (paused \u2014 CI stabilization in progress)"
-      run: echo 'Per-crate coverage (llvm-cov) check intentionally stubbed while main-branch CI is being stabilized.'
+      - name: Nothing to do
+        run: echo "Coverage gate is pending setup — see docs/CI.md section 5"
