@@ -260,17 +260,20 @@ impl CredenceTreasury {
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
     }
 
-    /// Receive protocol fee or slashed funds report. Caller must be admin or an authorized depositor.
+    /// Receive protocol fee or slashed funds. Caller must be admin or an authorized depositor.
     ///
     /// # Important Design Notes
-    /// This function records fee amounts reported by other contracts (e.g., credence_bond).
-    /// The treasury itself does NOT hold tokens — it is purely an accounting system.  
-    /// Actual token transfers occur at the bond contract level, where fee-on-transfer tokens
-    /// are rejected via balance-delta verification.
+    /// This function transfers `amount` of the configured token from `from`
+    /// into the treasury and books the **treasury-side** balance delta
+    /// (contract balance after minus before), not the requested `amount`. For
+    /// a fee-on-transfer token the treasury receives less than `amount`; the
+    /// recorded `TotalBalance` therefore always reflects the tokens actually
+    /// held, preserving the `token.balance(contract) >= TotalBalance`
+    /// invariant.
     ///
     /// # Arguments
     /// * `from` - Caller (must be auth'd; typically admin or an authorized fee-collecting contract)
-    /// * `amount` - Amount to credit (must be > 0)
+    /// * `amount` - Requested amount to transfer in (must be > 0)
     /// * `source` - Fund source classification (Protocol fee or slashed funds)
     ///
     /// # Panics
@@ -300,26 +303,53 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::TotalBalance)
             .unwrap_or(0);
-        let new_total = total
-            .checked_add(amount)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let key_source = DataKey::BalanceBySource(source);
         let source_balance: i128 = e.storage().instance().get(&key_source).unwrap_or(0);
-        let new_source = source_balance
+
+        // Pre-transfer overflow guard on the requested amount so an obviously
+        // unbookable inflow is rejected with `Overflow` before any token moves.
+        // The post-transfer guard below remains authoritative because a token
+        // may deliver a different amount than requested.
+        total
             .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        source_balance
+            .checked_add(amount)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+
+        // Perform the actual token transfer into the treasury and book the
+        // treasury-side delta (contract balance after minus before), not the
+        // requested `amount`. For a fee-on-transfer token the treasury receives
+        // less than `amount`; booking the requested amount would overstate
+        // TotalBalance and break `token.balance(contract) >= TotalBalance`.
+        let token_addr = Self::get_token(e.clone());
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+        let contract_balance_before = token_client.balance(&contract_addr);
+        token_client.transfer(&from, &contract_addr, &amount);
+        let contract_balance_after = token_client.balance(&contract_addr);
+        let received = contract_balance_after
+            .checked_sub(contract_balance_before)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+
+        let new_total = total
+            .checked_add(received)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let new_source = source_balance
+            .checked_add(received)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let cumulative_total: CumulativeAmount = e
             .storage()
             .instance()
             .get(&DataKey::CumulativeReceived)
             .unwrap_or_else(zero_cumulative_amount);
-        let new_cumulative_total = add_to_cumulative(&e, &cumulative_total, amount);
+        let new_cumulative_total = add_to_cumulative(&e, &cumulative_total, received);
         let cumulative_source: CumulativeAmount = e
             .storage()
             .instance()
             .get(&DataKey::CumulativeReceivedBySource(source))
             .unwrap_or_else(zero_cumulative_amount);
-        let new_cumulative_source = add_to_cumulative(&e, &cumulative_source, amount);
+        let new_cumulative_source = add_to_cumulative(&e, &cumulative_source, received);
         e.storage()
             .instance()
             .set(&DataKey::TotalBalance, &new_total);
@@ -332,15 +362,9 @@ impl CredenceTreasury {
             &new_cumulative_source,
         );
 
-        // Perform actual token transfer into the treasury.
-        let token_addr = Self::get_token(e.clone());
-        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
-        let contract_addr = e.current_contract_address();
-        token_client.transfer(&from, &contract_addr, &amount);
-
         e.events().publish(
             (Symbol::new(&e, "treasury_deposit"), from),
-            (amount, source),
+            (received, source),
         );
     }
 
@@ -649,9 +673,11 @@ impl CredenceTreasury {
     ///   below `min_amount_out` (caller should retry with a looser bound).
     ///
     /// # Events
-    /// Emits `treasury_withdrawal_executed` with `(recipient, expected, actual)` so
-    /// off-chain observers can detect any discrepancy between the proposed and settled
-    /// amounts.
+    /// Emits `treasury_withdrawal_executed` with
+    /// `(recipient, expected, actual, treasury_debit)` so off-chain observers
+    /// can detect any discrepancy between the proposed and settled amounts,
+    /// and between the recipient's received amount and the treasury's debit
+    /// (which differ for fee-on-transfer tokens).
     pub fn execute_withdrawal(e: Env, proposal_id: u64, min_amount_out: i128) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -707,8 +733,10 @@ impl CredenceTreasury {
         let contract_addr = e.current_contract_address();
 
         let recipient_balance_before = token_client.balance(&proposal.recipient);
+        let contract_balance_before = token_client.balance(&contract_addr);
         token_client.transfer(&contract_addr, &proposal.recipient, &proposal.amount);
         let recipient_balance_after = token_client.balance(&proposal.recipient);
+        let contract_balance_after = token_client.balance(&contract_addr);
 
         let actual_amount = recipient_balance_after
             .checked_sub(recipient_balance_before)
@@ -723,8 +751,17 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::SlippageExceeded);
         }
 
+        // Book the *treasury-side* debit (contract balance before minus after),
+        // not the recipient's received delta. These differ for fee-on-transfer
+        // tokens: the treasury always sends `proposal.amount`, so that is what
+        // must leave TotalBalance, keeping
+        // `token.balance(contract) >= TotalBalance` intact.
+        let treasury_debit = contract_balance_before
+            .checked_sub(contract_balance_after)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+
         let new_total = total
-            .checked_sub(actual_amount)
+            .checked_sub(treasury_debit)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
         let protocol_balance: i128 = e
             .storage()
@@ -736,8 +773,8 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::BalanceBySource(FundSource::SlashedFunds))
             .unwrap_or(0);
-        let protocol_deduction = proportional_deduction(&e, protocol_balance, actual_amount, total);
-        let slashed_deduction = actual_amount
+        let protocol_deduction = proportional_deduction(&e, protocol_balance, treasury_debit, total);
+        let slashed_deduction = treasury_debit
             .checked_sub(protocol_deduction)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
         let new_protocol_balance = protocol_balance
@@ -761,10 +798,17 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
-        // Emit (recipient, min_amount_out, actual_amount) so observers can verify settlement.
+        // Emit (recipient, min_amount_out, actual_amount, treasury_debit) so
+        // observers can verify both the recipient settlement and the treasury
+        // debit (which differ for fee-on-transfer tokens).
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
-            (proposal.recipient.clone(), min_amount_out, actual_amount),
+            (
+                proposal.recipient.clone(),
+                min_amount_out,
+                actual_amount,
+                treasury_debit,
+            ),
         );
     }
 
@@ -892,14 +936,24 @@ impl CredenceTreasury {
         let contract_addr = e.current_contract_address();
 
         let destination_balance_before = token_client.balance(&destination);
+        let contract_balance_before = token_client.balance(&contract_addr);
         token_client.transfer(&contract_addr, &destination, &amount);
         let destination_balance_after = token_client.balance(&destination);
+        let contract_balance_after = token_client.balance(&contract_addr);
         let actual_amount = destination_balance_after
             .checked_sub(destination_balance_before)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
 
+        // Book the *treasury-side* debit (contract balance before minus after),
+        // not the destination's received delta. These differ for fee-on-transfer
+        // tokens: the treasury always sends `amount`, so that is what must leave
+        // TotalBalance, keeping `token.balance(contract) >= TotalBalance` intact.
+        let treasury_debit = contract_balance_before
+            .checked_sub(contract_balance_after)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+
         let new_total = total
-            .checked_sub(actual_amount)
+            .checked_sub(treasury_debit)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
         let protocol_balance: i128 = e
             .storage()
@@ -911,8 +965,8 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::BalanceBySource(FundSource::SlashedFunds))
             .unwrap_or(0);
-        let protocol_deduction = proportional_deduction(&e, protocol_balance, actual_amount, total);
-        let slashed_deduction = actual_amount
+        let protocol_deduction = proportional_deduction(&e, protocol_balance, treasury_debit, total);
+        let slashed_deduction = treasury_debit
             .checked_sub(protocol_deduction)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
         let new_protocol_balance = protocol_balance
@@ -952,6 +1006,11 @@ impl CredenceTreasury {
     }
 
     /// Update the token address. Only admin can call.
+    ///
+    /// Rejected with `TokenChangeWithBalance` while the treasury still holds a
+    /// non-zero `TotalBalance`: rotating the accounting token with funds
+    /// outstanding would orphan the recorded balances against the new token's
+    /// contract balance. Drain the treasury to zero first.
     pub fn set_token(e: Env, admin: Address, token: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -960,6 +1019,14 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
         admin.require_auth();
+        let total: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TotalBalance)
+            .unwrap_or(0);
+        if total != 0 {
+            panic_with_error!(&e, ContractError::TokenChangeWithBalance);
+        }
         e.storage().instance().set(&DataKey::Token, &token);
         e.events()
             .publish((Symbol::new(&e, "token_updated"),), token);
@@ -1240,7 +1307,7 @@ impl CredenceTreasury {
 
     pub fn transfer_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
-        Self::require_not_paused(&e);
+        pausable::require_not_paused(&e);
         let current_admin = Self::get_admin(e.clone());
         current_admin.require_auth();
 
@@ -1253,7 +1320,6 @@ impl CredenceTreasury {
     }
 }
 
-#[contractimpl]
 impl interfaces::governable::Governable for CredenceTreasury {
     fn get_admin(e: Env) -> Address {
         Self::get_admin(e)

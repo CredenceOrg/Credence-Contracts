@@ -47,7 +47,7 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
   - **Liquidity Floor**: Ensures remaining balance after withdrawal is ≥ `min_liquidity`. Reverts with "liquidity guard: withdrawal would breach minimum liquidity floor" if violated.
   - **Slippage Protection**: Requires proposal amount ≥ `min_amount_out`. Reverts with "slippage: received amount below minimum" if violated. Pass `0` to skip this check.
   
-  Emits `treasury_withdrawal_executed` with `(recipient, min_amount_out, actual_amount)`.
+  Emits `treasury_withdrawal_executed` with `(recipient, min_amount_out, actual_amount, treasury_debit)`.
 
 ## Queries
 
@@ -74,7 +74,7 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **threshold_updated** — (threshold)
 - **treasury_withdrawal_proposed** — (proposal_id, recipient, amount, proposer)
 - **treasury_withdrawal_approved** — (proposal_id, approver)
-- **treasury_withdrawal_executed** — (proposal_id, recipient, amount)
+- **treasury_withdrawal_executed** — (proposal_id, recipient, min_amount_out, actual_amount, treasury_debit)
 - **treasury_proposal_expired** — (proposal_id)
 - **proposal_ttl_updated** — (ttl)
 
