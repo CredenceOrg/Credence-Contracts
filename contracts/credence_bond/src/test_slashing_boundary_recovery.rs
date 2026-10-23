@@ -20,9 +20,10 @@
 use crate::same_ledger_liquidation_guard::SLASH_BLOCKED_REASON;
 use crate::test_helpers;
 use crate::{BondTier, CredenceBondClient};
-use soroban_sdk::testutils::{Address as _, Ledger};
+use credence_errors::ContractError;
+use soroban_sdk::testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke};
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, IntoVal, Val};
 
 /// Registers the contract, configures a slash treasury, and returns the client
 /// alongside the admin, identity and contract id.
@@ -744,4 +745,153 @@ fn blocked_reason_string_is_stable() {
         SLASH_BLOCKED_REASON,
         "slash blocked: collateral increased in this ledger"
     );
+}
+
+// ============================================================================
+// Issue #1613 — slash entry point must require the admin's signature
+// ============================================================================
+
+/// With no mocked auths, `try_slash(&admin, ...)` must fail with an auth error
+/// and leave the bond and treasury balance unchanged.
+#[test]
+fn slash_requires_admin_signature() {
+    let e = Env::default();
+    let (client, admin, identity, contract_id) = deploy_with_bond(&e, 1000_i128);
+    set_slash_treasury(&e, &client, &admin);
+
+    // Clear any mock auths so the slash call has no admin signature.
+    e.mock_auths(&[]);
+
+    let bond_before = client.get_identity_state(&identity);
+    let treasury_before = token_balance(&e, &contract_id, &client);
+
+    let err = client.try_slash(&admin, &identity, &100_i128);
+    assert!(err.is_err(), "slash without auth must fail");
+
+    // Bond state unchanged
+    let bond_after = client.get_identity_state(&identity);
+    assert_eq!(bond_after.slashed_amount, bond_before.slashed_amount);
+    assert_eq!(bond_after.bonded_amount, bond_before.bonded_amount);
+
+    // Treasury balance unchanged
+    let treasury_after = token_balance(&e, &contract_id, &client);
+    assert_eq!(treasury_after, treasury_before);
+}
+
+/// With mock_all_auths, `slash(&admin, ...)` succeeds and env.auths() contains
+/// exactly one entry, for admin on slash.
+#[test]
+fn slash_records_single_admin_auth() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (client, admin, identity, contract_id) = deploy_with_bond(&e, 1000_i128);
+    set_slash_treasury(&e, &client, &admin);
+
+    client.slash(&admin, &identity, &100_i128);
+
+    let auths = e.auths();
+    assert_eq!(auths.len(), 1, "expected exactly one auth entry");
+    let auth = &auths[0];
+    assert_eq!(
+        auth.address,
+        admin,
+        "auth entry address must be the admin"
+    );
+    assert_eq!(
+        auth.invoke.contract,
+        contract_id,
+        "auth entry contract must be this contract"
+    );
+    assert_eq!(
+        auth.invoke.fn_name,
+        soroban_sdk::Symbol::new(&e, "slash"),
+        "auth entry fn_name must be slash"
+    );
+}
+
+/// A non-admin caller must receive typed `ContractError::NotAdmin`.
+#[test]
+fn slash_non_admin_typed_error() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (client, admin, identity, _contract_id) = deploy_with_bond(&e, 1000_i128);
+    set_slash_treasury(&e, &client, &admin);
+
+    let mallory = Address::generate(&e);
+    let err = client.try_slash(&mallory, &identity, &100_i128);
+    assert!(err.is_err());
+
+    match err {
+        Err(soroban_sdk::Error::Contract(_, code)) => {
+            assert_eq!(
+                code,
+                ContractError::NotAdmin as u32,
+                "non-admin must get ContractError::NotAdmin"
+            );
+        }
+        other => panic!("expected Contract error, got {:?}", other),
+    }
+}
+
+/// `amount = 0` and `amount = available + 1` must return typed contract errors,
+/// not untyped panic strings.
+#[test]
+fn slash_zero_and_overflow_typed_errors() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (client, admin, identity, _contract_id) = deploy_with_bond(&e, 1000_i128);
+    set_slash_treasury(&e, &client, &admin);
+
+    // Zero amount -> AmountMustBePositive (600)
+    let err = client.try_slash(&admin, &identity, &0_i128);
+    assert!(err.is_err());
+    match err {
+        Err(soroban_sdk::Error::Contract(_, code)) => {
+            assert_eq!(
+                code,
+                ContractError::AmountMustBePositive as u32,
+                "zero amount must get ContractError::AmountMustBePositive"
+            );
+        }
+        other => panic!("expected Contract error, got {:?}", other),
+    }
+
+    // available + 1 -> SlashExceedsBond (203)
+    let err = client.try_slash(&admin, &identity, &1001_i128);
+    assert!(err.is_err());
+    match err {
+        Err(soroban_sdk::Error::Contract(_, code)) => {
+            assert_eq!(
+                code,
+                ContractError::SlashExceedsBond as u32,
+                "overflow amount must get ContractError::SlashExceedsBond"
+            );
+        }
+        other => panic!("expected Contract error, got {:?}", other),
+    }
+}
+
+/// Configure a slash treasury for tests that need it.
+fn set_slash_treasury(e: &Env, client: &CredenceBondClient, admin: &Address) {
+    let treasury = Address::generate(e);
+    client.set_slash_treasury(admin, &treasury);
+}
+
+/// Return the slash treasury's token balance via the contract's stored token.
+fn token_balance(e: &Env, contract_id: &Address, client: &CredenceBondClient) -> i128 {
+    use soroban_sdk::token::TokenClient as _;
+    e.as_contract(contract_id, || {
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&crate::DataKey::SlashTreasury)
+            .unwrap();
+        let bond_token: Address = e
+            .storage()
+            .instance()
+            .get(&crate::DataKey::BondToken)
+            .unwrap();
+        let token_client = TokenClient::new(e, &bond_token);
+        token_client.balance(&token)
+    })
 }

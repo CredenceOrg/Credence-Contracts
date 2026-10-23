@@ -35,9 +35,12 @@
 //! | `unpause`                | pause signer/admin | Via pausable module            |
 //! | `get_*` (read-only)      | anyone             | Permissionless views           |
 
+extern crate alloc;
+extern crate std;
+
 use crate::treasury::*;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
+use soroban_sdk::{Address, Env, IntoVal};
 
 use crate::CredenceTreasury;
 
@@ -48,7 +51,7 @@ fn setup(env: &Env) -> (CredenceTreasuryClient<'_>, Address, Address, Address) {
     let client = CredenceTreasuryClient::new(env, &contract_id);
 
     let admin = Address::generate(env);
-    let token = Address::generate(env);
+    let token = env.register_stellar_asset_contract_v2(admin.clone()).address();
     let attacker = Address::generate(env);
 
     client.initialize(&admin, &token);
@@ -76,11 +79,11 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "add_depositor",
-                        args: (caller, depositor.clone()).into_val(env),
+                        args: (depositor.clone(),).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.add_depositor(caller, &depositor);
+                client.add_depositor(&depositor);
             },
         },
         PrivilegedCase {
@@ -88,17 +91,17 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
             invoke: |env, client, caller| {
                 let depositor = Address::generate(env);
                 // First add depositor as admin
-                client.add_depositor(caller, &depositor);
+                client.add_depositor(&depositor);
                 env.mock_auths(&[soroban_sdk::testutils::MockAuth {
                     address: caller,
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "remove_depositor",
-                        args: (caller, depositor.clone()).into_val(env),
+                        args: (depositor.clone(),).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.remove_depositor(caller, &depositor);
+                client.remove_depositor(&depositor);
             },
         },
         PrivilegedCase {
@@ -110,28 +113,28 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "add_signer",
-                        args: (caller, signer.clone()).into_val(env),
+                        args: (signer.clone(),).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.add_signer(caller, &signer);
+                client.add_signer(&signer);
             },
         },
         PrivilegedCase {
             name: "remove_signer",
             invoke: |env, client, caller| {
                 let signer = Address::generate(env);
-                client.add_signer(caller, &signer);
+                client.add_signer(&signer);
                 env.mock_auths(&[soroban_sdk::testutils::MockAuth {
                     address: caller,
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "remove_signer",
-                        args: (caller, signer.clone()).into_val(env),
+                        args: (signer.clone(),).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.remove_signer(caller, &signer);
+                client.remove_signer(&signer);
             },
         },
         PrivilegedCase {
@@ -142,11 +145,11 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                     invoke: &soroban_sdk::testutils::MockAuthInvoke {
                         contract: &client.address,
                         fn_name: "set_threshold",
-                        args: (caller, 2_u32).into_val(env),
+                        args: (2_u32,).into_val(env),
                         sub_invokes: &[],
                     },
                 }]);
-                client.set_threshold(caller, &2_u32);
+                client.set_threshold(&2_u32);
             },
         },
         PrivilegedCase {
@@ -257,8 +260,7 @@ fn get_privileged_cases() -> alloc::vec::Vec<PrivilegedCase> {
                         sub_invokes: &[],
                     },
                 }]);
-                client.transfer_admin(&new_admin);
-            },
+                client.transfer_admin(&new_admin);            },
         },
         PrivilegedCase {
             name: "set_pause_signer",
@@ -368,11 +370,13 @@ fn test_propose_withdrawal_rejects_non_signer() {
 fn test_propose_withdrawal_succeeds_as_signer() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, admin, _token, _attacker) = setup(&env);
+    let (client, admin, token, _attacker) = setup(&env);
     let signer = Address::generate(&env);
     let recipient = Address::generate(&env);
 
-    client.add_signer(&admin, &signer);
+    client.add_signer(&signer);
+    soroban_sdk::token::StellarAssetClient::new(&env, &token).mint(&admin, &1_000_i128);
+    client.receive_fee(&admin, &1_000_i128, &FundSource::ProtocolFee);
     let proposal_id = client.propose_withdrawal(&signer, &recipient, &100_i128);
     let proposal = client.get_proposal(&proposal_id);
     assert_eq!(proposal.recipient, recipient);
@@ -407,10 +411,11 @@ fn test_receive_fee_rejects_non_depositor() {
 fn test_receive_fee_succeeds_as_depositor() {
     let env = Env::default();
     env.mock_all_auths();
-    let (client, admin, token, _attacker) = setup(&env);
+    let (client, _admin, token, _attacker) = setup(&env);
     let depositor = Address::generate(&env);
 
-    client.add_depositor(&admin, &depositor);
+    soroban_sdk::token::StellarAssetClient::new(&env, &token).mint(&depositor, &100_i128);
+    client.add_depositor(&depositor);
     client.receive_fee(&depositor, &100_i128, &FundSource::ProtocolFee);
 }
 
@@ -421,20 +426,23 @@ fn test_receive_fee_succeeds_as_depositor() {
 #[test]
 fn test_admin_success_on_privileged_entrypoints() {
     let env = Env::default();
-    let (client, admin, token, _attacker) = setup(&env);
+    let (client, admin, _token, _attacker) = setup(&env);
 
     // add_depositor
     let depositor = Address::generate(&env);
-    client.add_depositor(&admin, &depositor);
+    client.add_depositor(&depositor);
     assert!(client.is_depositor(&depositor));
 
-    // add_signer
+    // add_signer (needs two to satisfy a threshold of 2)
     let signer = Address::generate(&env);
-    client.add_signer(&admin, &signer);
+    client.add_signer(&signer);
     assert!(client.is_signer(&signer));
+    let signer2 = Address::generate(&env);
+    client.add_signer(&signer2);
+    assert!(client.is_signer(&signer2));
 
     // set_threshold
-    client.set_threshold(&admin, &2_u32);
+    client.set_threshold(&2_u32);
     assert_eq!(client.get_threshold(), 2);
 
     // set_token

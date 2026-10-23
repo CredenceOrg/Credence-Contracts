@@ -12,7 +12,7 @@ The **CredenceArbitration** contract enables a multi-party arbitration system. A
 
 Represents the state and parameters of an arbitration case.
 
-The `round` field is a monotonically increasing counter that identifies the current voting round for the dispute. It starts at `0 ` when the dispute is created and is incremented every time the dispute is reopened by an admin. All per-dispute vote state (voter flags, tallies, and voter counts) is keyed by `(dispute_id, round)`, so incrementing the round effectively voids all prior votes without having to enumerate voters.
+The `round` field is a monotonically increasing counter that identifies the current voting round for the dispute. It starts at `0` when the dispute is created and is incremented every time the dispute is reopened by an admin. All per-dispute vote state (voter flags, tallies, and voter counts) is keyed by `(dispute_id, round)`, so incrementing the round effectively voids all prior votes without having to enumerate voters.
 
 | Field | Type | Description |
 | :--- | :--- | :--- |
@@ -22,8 +22,22 @@ The `round` field is a monotonically increasing counter that identifies the curr
 | `voting_start` | `u64` | Ledger timestamp when voting opens. |
 | `voting_end` | `u64` | Ledger timestamp when voting closes. |
 | `resolved` | `bool` | Whether the dispute has been finalized. |
-| `outcome` | `u32` | The winning result (0 = tie/unresolved). |
+| `status` | `DisputeStatus` | Lifecycle state, including `NoQuorum` when configured quorum is missed. |
+| `outcome` | `u32` | The winning result (0 for `Tied` or `NoQuorum`). |
 | `round` | `u32` | Voting round counter. Incremented on every `reopen_dispute`; all vote state is scoped to the current round. |
+
+### Dispute status values
+
+| Status | Value | Meaning |
+| --- | ---: | --- |
+| `Open` | 0 | Initial state |
+| `Voting` | 1 | Voting is active |
+| `Resolving` | 2 | Votes are being tallied |
+| `Resolved` | 3 | A winning outcome was determined |
+| `Cancelled` | 4 | Cancelled by the creator or admin |
+| `Tied` | 5 | No unique highest-weight outcome |
+| `Archived` | 6 | Archived by an admin; may be reopened |
+| `NoQuorum` | 7 | Voting ended without reaching configured quorum |
 
 ---
 
@@ -76,6 +90,8 @@ Calculates the winner and closes the case.
 * **Resolution Logic**: The outcome with the highest total weight wins.
 * **Ties**: If two or more outcomes have the same maximum weight, the outcome is set to `0` (Unresolved).
 * **Prerequisite**: Must be called after the `voting_end` timestamp.
+* **Quorum miss**: When configured minimum total weight or voter count is not met, the contract transitions through `Resolving` to terminal `NoQuorum`, stores outcome `0`, preserves vote tallies, releases the creator's active-dispute guard, publishes `status_transition` and `quorum_not_met`, and returns `0` successfully. The event data is `(total_weight, min_total_weight, voter_count, min_voters)`. This is a successful call so its events are persisted on-ledger.
+* **Archive and reopen**: Admins may archive `NoQuorum` disputes and reopen them using the existing archived-dispute flow.
 
 ### `reopen_dispute(e: Env, admin: Address, dispute_id: u64, duration: u64)`
 

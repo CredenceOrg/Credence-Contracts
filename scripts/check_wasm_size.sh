@@ -9,7 +9,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUDGET_FILE="${WASM_BUDGET_FILE:-$SCRIPT_DIR/wasm-size-budget.toml}"
-WASM_DIR="$REPO_ROOT/target/wasm32-unknown-unknown/release"
+# Allow the caller to override the WASM output directory.  The default is the
+# legacy wasm32-unknown-unknown path; CI passes wasm32v1-none's path via the
+# WASM_DIR env variable when building with the current Soroban/Stellar tooling.
+WASM_DIR="${WASM_DIR:-$REPO_ROOT/target/wasm32-unknown-unknown/release}"
 GLOBAL_OVERRIDE_KB="${1:-}"
 
 read_default_kb() {
