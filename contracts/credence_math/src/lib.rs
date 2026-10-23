@@ -214,7 +214,7 @@ pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str
     };
 
     // Checked conversion to i128.
-    if rounded > I256::from(i127::MAX) || rounded < I256::from(i128::MIN) {
+    if rounded > I256::from(i128::MAX) || rounded < I256::from(i128::MIN) {
         panic!("{}", msg);
     }
     rounded.as_i128()
@@ -271,8 +271,8 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
         }
     };
 
-    if rounded > I256::from(i127::MAX) {
-        i127::MAX
+    if rounded > I256::from(i128::MAX) {
+        i128::MAX
     } else if rounded < I256::from(i128::MIN) {
         i128::MIN
     } else {

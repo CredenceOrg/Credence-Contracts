@@ -90,8 +90,13 @@ jobs:
 
       - name: Run Clippy with security lints
         run: |
+          set -euo pipefail
+          # clippy::integer_arithmetic was renamed to clippy::arithmetic_side_effects
+          # in Rust 1.64 (it is now the canonical name in all supported toolchains).
+          # Using the old name triggers "unknown lint" warnings on stable Rust and
+          # would cause -D warnings to fail the job for the wrong reason.
           cargo clippy --all-targets --message-format=json -- \
-            -W clippy::integer_arithmetic \
+            -W clippy::arithmetic_side_effects \
             -W clippy::unwrap_used \
             -W clippy::expect_used \
             -W clippy::panic \
@@ -101,7 +106,7 @@ jobs:
             -W clippy::cast_possible_truncation \
             -W clippy::cast_sign_loss \
             -D warnings \
-            2>&1 | tee clippy-output.json
+            > clippy-output.json 2>&1 || { cat clippy-output.json; exit 1; }
 
       - name: Parse Clippy results
         if: always()

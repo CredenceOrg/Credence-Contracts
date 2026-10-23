@@ -10,6 +10,7 @@
 
 #![allow(dead_code)]
 
+use crate::{normalization, token_integration};
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Bytes, Env, String, Vec};
 
@@ -273,6 +274,23 @@ pub fn validate_bond_amount(amount: i128) {
             "bond amount exceeds maximum allowed: {} (maximum: {})",
             amount, MAX_BOND_AMOUNT
         );
+    }
+}
+
+/// Validates a bond amount after normalizing it to 18 decimals.
+///
+/// When a bond token is configured, the raw token amount is scaled to the
+/// normalized 18-decimal format (see [`normalization::normalize`]) before the
+/// bounds check, so `MIN_BOND_AMOUNT` / `MAX_BOND_AMOUNT` mean the same
+/// economic value regardless of the token's decimals (e.g. 7-decimal USDC).
+/// In phantom-balance mode (no token configured) the raw amount is validated
+/// unchanged.
+pub fn validate_bond_amount_for_token(e: &Env, amount: i128) {
+    if token_integration::has_token(e) {
+        let token = token_integration::get_token(e);
+        validate_bond_amount(normalization::normalize(e, &token, amount));
+    } else {
+        validate_bond_amount(amount);
     }
 }
 

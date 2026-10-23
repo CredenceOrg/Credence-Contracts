@@ -87,50 +87,50 @@ fn setup_adversarial(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address) 
 }
 
 #[test]
+#[should_panic(expected = "Error(Contract, #609)")]
 fn test_withdrawal_fails_when_tax_causes_slippage() {
     let e = Env::default();
-    let (client, admin, token_id) = setup_adversarial(&e);
-    let token_client = TaxedTokenClient::new(&e, &token_id);
+    let (client, admin, _token_id) = setup_adversarial(&e);
 
+    // The treasury books only what it actually received: 1% is burned in
+    // flight, so a 10,000 request credits 9,900.
     let amount = 10_000_i128;
     client.receive_fee(&admin, &amount, &FundSource::ProtocolFee);
-    token_client.mint(&client.address, &amount);
+    assert_eq!(client.get_balance(), 9_900);
 
     let signer = Address::generate(&e);
     let recipient = Address::generate(&e);
     client.add_signer(&signer);
     client.set_threshold(&1);
 
-    let _id = client.propose_withdrawal(&signer, &recipient, &amount);
-    client.approve_withdrawal(&signer, &_id);
+    let id = client.propose_withdrawal(&signer, &recipient, &9_900);
+    client.approve_withdrawal(&signer, &id);
 
-    // 1% tax on 10,000 is 100. Actual amount will be 9,900.
-    // If we set min_amount_out to 9,901, it should revert.
-    // (This test is just a placeholder for the logic below)
+    // 1% tax on 9,900 is 99, so the recipient receives 9,801 while the
+    // treasury is debited the full 9,900. A 9,802 floor must revert.
+    client.execute_withdrawal(&id, &9_802);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #609)")]
 fn test_slippage_revert_with_taxed_token() {
     let e = Env::default();
-    let (client, admin, token_id) = setup_adversarial(&e);
-    let token_client = TaxedTokenClient::new(&e, &token_id);
+    let (client, admin, _token_id) = setup_adversarial(&e);
 
     let amount = 10_000_i128;
     client.receive_fee(&admin, &amount, &FundSource::ProtocolFee);
-    token_client.mint(&client.address, &amount);
 
     let signer = Address::generate(&e);
     let recipient = Address::generate(&e);
     client.add_signer(&signer);
     client.set_threshold(&1);
 
-    let id = client.propose_withdrawal(&signer, &recipient, &amount);
+    let id = client.propose_withdrawal(&signer, &recipient, &9_900);
     client.approve_withdrawal(&signer, &id);
 
-    // Tax is 1%. Requested 10,000. Delivered 9,900.
-    // Minimum 9,901 -> Revert.
-    client.execute_withdrawal(&id, &9_901);
+    // Tax is 1%. Requested 9,900. Delivered 9,801.
+    // Minimum 9,802 -> Revert.
+    client.execute_withdrawal(&id, &9_802);
 }
 
 #[test]
@@ -141,22 +141,23 @@ fn test_slippage_succeeds_at_threshold_with_taxed_token() {
 
     let amount = 10_000_i128;
     client.receive_fee(&admin, &amount, &FundSource::ProtocolFee);
-    token_client.mint(&client.address, &amount);
 
     let signer = Address::generate(&e);
     let recipient = Address::generate(&e);
     client.add_signer(&signer);
     client.set_threshold(&1);
 
-    let id = client.propose_withdrawal(&signer, &recipient, &amount);
+    let id = client.propose_withdrawal(&signer, &recipient, &9_900);
     client.approve_withdrawal(&signer, &id);
 
-    // Tax is 1%. Requested 10,000. Delivered 9,900.
-    // Minimum 9,900 -> Success.
-    client.execute_withdrawal(&id, &9_900);
+    // Tax is 1%. Requested 9,900. Delivered 9,801.
+    // Minimum 9,801 -> Success.
+    client.execute_withdrawal(&id, &9_801);
 
-    assert_eq!(client.get_balance(), 100); // 10,000 - 9,900
-    assert_eq!(token_client.balance(&recipient), 9_900);
+    // All 9,900 booked units left the treasury; the recipient got 9,801.
+    assert_eq!(client.get_balance(), 0);
+    assert_eq!(token_client.balance(&recipient), 9_801);
+    assert_eq!(token_client.balance(&client.address), 0);
 }
 
 #[test]
@@ -167,18 +168,19 @@ fn test_slippage_succeeds_well_below_threshold_with_taxed_token() {
 
     let amount = 10_000_i128;
     client.receive_fee(&admin, &amount, &FundSource::ProtocolFee);
-    token_client.mint(&client.address, &amount);
 
     let signer = Address::generate(&e);
     let recipient = Address::generate(&e);
     client.add_signer(&signer);
     client.set_threshold(&1);
 
-    let id = client.propose_withdrawal(&signer, &recipient, &amount);
+    let id = client.propose_withdrawal(&signer, &recipient, &9_900);
     client.approve_withdrawal(&signer, &id);
 
     // Minimum 5,000 -> Success.
     client.execute_withdrawal(&id, &5_000);
 
-    assert_eq!(client.get_balance(), 100);
+    // Treasury-side accounting: the full 9,900 debit is booked, leaving zero.
+    assert_eq!(client.get_balance(), 0);
+    assert_eq!(token_client.balance(&client.address), 0);
 }

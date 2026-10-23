@@ -1,4 +1,4 @@
-use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env, LedgerInfo};
+use soroban_sdk::{contracterror, contracttype, Address, Bytes, BytesN, Env};
 
 /// Storage key namespace for idempotent transactions.
 ///
@@ -83,11 +83,20 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::testutils::{Address as _, Ledger as _};
+    use soroban_sdk::Env;
 
     /// Build a fixed 32-byte tx_id from a single seed byte.
     fn tx_id(env: &Env, seed: u8) -> BytesN<32> {
         BytesN::from_array(env, &[seed; 32])
+    }
+
+    /// Register a contract so the handler can use contract storage.
+    ///
+    /// `Idempotency::handle` reads and writes instance storage, which the host
+    /// only exposes while a contract frame is active.
+    fn setup(env: &Env) -> Address {
+        env.register(crate::CredenceRegistry, ())
     }
 
     /// Build a short Bytes payload from a slice.
@@ -105,8 +114,11 @@ mod tests {
         let caller = Address::generate(&env);
         let id = tx_id(&env, 0x01);
         let expected = payload(&env, b"hello");
+        let contract_id = setup(&env);
 
-        let result = Idempotency::handle(&env, id, caller, || payload(&env, b"hello"));
+        let result = env.as_contract(&contract_id, || {
+            Idempotency::handle(&env, id, caller, || payload(&env, b"hello"))
+        });
 
         assert_eq!(result, Ok(expected));
     }
@@ -118,11 +130,14 @@ mod tests {
         let env = Env::default();
         let caller = Address::generate(&env);
         let id = tx_id(&env, 0x02);
+        let contract_id = setup(&env);
 
         let call_count = std::cell::Cell::new(0u32);
-        let _ = Idempotency::handle(&env, id, caller, || {
-            call_count.set(call_count.get() + 1);
-            payload(&env, b"once")
+        env.as_contract(&contract_id, || {
+            let _ = Idempotency::handle(&env, id, caller, || {
+                call_count.set(call_count.get() + 1);
+                payload(&env, b"once")
+            });
         });
 
         assert_eq!(call_count.get(), 1, "closure must be called exactly once");
@@ -137,16 +152,21 @@ mod tests {
         let env = Env::default();
         let caller = Address::generate(&env);
         let id = tx_id(&env, 0x10);
+        let contract_id = setup(&env);
 
         // First call — stores "original".
-        let first = Idempotency::handle(&env, id.clone(), caller.clone(), || {
-            payload(&env, b"original")
+        let first = env.as_contract(&contract_id, || {
+            Idempotency::handle(&env, id.clone(), caller.clone(), || {
+                payload(&env, b"original")
+            })
         });
         assert_eq!(first, Ok(payload(&env, b"original")));
 
         // Second call — must return "original" even though the closure would
         // produce "different".
-        let second = Idempotency::handle(&env, id, caller, || payload(&env, b"different"));
+        let second = env.as_contract(&contract_id, || {
+            Idempotency::handle(&env, id, caller, || payload(&env, b"different"))
+        });
         assert_eq!(
             second,
             Ok(payload(&env, b"original")),
@@ -160,16 +180,21 @@ mod tests {
         let env = Env::default();
         let caller = Address::generate(&env);
         let id = tx_id(&env, 0x11);
+        let contract_id = setup(&env);
 
         // Prime the cache.
-        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || {
-            payload(&env, b"primed")
+        env.as_contract(&contract_id, || {
+            let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || {
+                payload(&env, b"primed")
+            });
         });
 
         let call_count = std::cell::Cell::new(0u32);
-        let _ = Idempotency::handle(&env, id, caller, || {
-            call_count.set(call_count.get() + 1);
-            payload(&env, b"should_not_run")
+        env.as_contract(&contract_id, || {
+            let _ = Idempotency::handle(&env, id, caller, || {
+                call_count.set(call_count.get() + 1);
+                payload(&env, b"should_not_run")
+            });
         });
 
         assert_eq!(call_count.get(), 0, "closure must NOT be called on a match");
@@ -185,13 +210,18 @@ mod tests {
         let original_caller = Address::generate(&env);
         let intruder = Address::generate(&env);
         let id = tx_id(&env, 0x20);
+        let contract_id = setup(&env);
 
         // First call succeeds.
-        let _ = Idempotency::handle(&env, id.clone(), original_caller, || payload(&env, b"data"));
+        env.as_contract(&contract_id, || {
+            let _ =
+                Idempotency::handle(&env, id.clone(), original_caller, || payload(&env, b"data"));
+        });
 
         // Second call with a different caller must be rejected.
-        let result =
-            Idempotency::handle(&env, id, intruder, || payload(&env, b"should_not_matter"));
+        let result = env.as_contract(&contract_id, || {
+            Idempotency::handle(&env, id, intruder, || payload(&env, b"should_not_matter"))
+        });
 
         assert_eq!(
             result,
@@ -207,13 +237,18 @@ mod tests {
         let original_caller = Address::generate(&env);
         let intruder = Address::generate(&env);
         let id = tx_id(&env, 0x21);
+        let contract_id = setup(&env);
 
-        let _ = Idempotency::handle(&env, id.clone(), original_caller, || payload(&env, b"ok"));
+        env.as_contract(&contract_id, || {
+            let _ = Idempotency::handle(&env, id.clone(), original_caller, || payload(&env, b"ok"));
+        });
 
         let call_count = std::cell::Cell::new(0u32);
-        let _ = Idempotency::handle(&env, id, intruder, || {
-            call_count.set(call_count.get() + 1);
-            payload(&env, b"nope")
+        env.as_contract(&contract_id, || {
+            let _ = Idempotency::handle(&env, id, intruder, || {
+                call_count.set(call_count.get() + 1);
+                payload(&env, b"nope")
+            });
         });
 
         assert_eq!(
@@ -233,43 +268,39 @@ mod tests {
 
         let id_a = tx_id(&env, 0xAA);
         let id_b = tx_id(&env, 0xBB);
+        let contract_id = setup(&env);
 
-        let a = Idempotency::handle(&env, id_a, caller.clone(), || payload(&env, b"alpha"));
-        let b = Idempotency::handle(&env, id_b, caller, || payload(&env, b"beta"));
+        let a = env.as_contract(&contract_id, || {
+            Idempotency::handle(&env, id_a, caller.clone(), || payload(&env, b"alpha"))
+        });
+        let b = env.as_contract(&contract_id, || {
+            Idempotency::handle(&env, id_b, caller, || payload(&env, b"beta"))
+        });
 
         assert_eq!(a, Ok(payload(&env, b"alpha")));
         assert_eq!(b, Ok(payload(&env, b"beta")));
         assert_eq!(a, Ok(payload(&env, b"alpha")));
         assert_eq!(b, Ok(payload(&env, b"beta")));
     }
-    
+
     /// Verify that timestamp is recorded and matches ledger timestamp.
     #[test]
     fn timestamp_is_recorded_correctly() {
         let env = Env::default();
         // Set a known ledger timestamp
-        env.ledger().set(LedgerInfo {
-            timestamp: 12345,
-            protocol_version: 0,
-            sequence_number: 0,
-            base_reserve: 0,
-            min_temp_entry_ttl: 0,
-            min_persistent_entry_ttl: 0,
-            max_entry_ttl: 0,
-            base_fee: 0,
-            base_reserve: 0,
-            tx_fee: 0,
-            network_passphrase: Bytes::from_slice(&env, b"test"),
-        });
+        env.ledger().set_timestamp(12345);
         let caller = Address::generate(&env);
         let id = tx_id(&env, 0x55);
         let payload_res = payload(&env, b"data");
-        let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || payload_res.clone());
-        // Retrieve stored result
-        let key = StorageKey::Idempotent(id);
-        let stored: StorageResult = env.storage().instance().get(&key).unwrap();
-        assert_eq!(stored.timestamp, 12345);
-        assert_eq!(stored.caller, caller);
-        assert_eq!(stored.result, payload_res);
+        let contract_id = setup(&env);
+        env.as_contract(&contract_id, || {
+            let _ = Idempotency::handle(&env, id.clone(), caller.clone(), || payload_res.clone());
+            // Retrieve stored result
+            let key = StorageKey::Idempotent(id.clone());
+            let stored: StorageResult = env.storage().instance().get(&key).unwrap();
+            assert_eq!(stored.timestamp, 12345);
+            assert_eq!(stored.caller, caller);
+            assert_eq!(stored.result, payload_res);
+        });
     }
 }

@@ -205,6 +205,9 @@ mod test_verify_stringified_bytes;
 #[cfg(test)]
 mod test_lib_boundary_recovery;
 
+#[cfg(test)]
+mod test_attestation_dedup_cap;
+
 /// Boundary and edge-case tests for event emissions (#1324).
 /// Validates numeric boundaries, invalid inputs, empty values, and large collections.
 // [pre-broken on main] #[cfg(test)]
@@ -1053,6 +1056,13 @@ impl CredenceBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
+
+        // Validate inputs on the normalized 18-decimal amount before any token
+        // transfer, so a rejected bond never makes the token call.
+        validation::validate_bond_amount_for_token(&e, amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage_for_token(&e, amount, max_leverage);
+
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &identity, amount);
         }
@@ -1062,11 +1072,6 @@ impl CredenceBond {
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
-
-        // Validate inputs
-        validation::validate_bond_amount(amount);
-        let max_leverage = parameters::get_max_leverage(&e);
-        leverage::validate_leverage(&e, amount, max_leverage);
 
         let bond = IdentityBond {
             identity: identity.clone(),
@@ -1268,6 +1273,12 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::DuplicateAttestation);
         }
 
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        if count >= parameters::MAX_ATTESTATIONS {
+            panic_with_error!(e, ContractError::StorageCapReached);
+        }
+
         let counter_key = DataKey::AttestationCounter;
         let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
         let next_id = id
@@ -1296,6 +1307,7 @@ impl CredenceBond {
         e.storage()
             .instance()
             .set(&DataKey::Attestation(id), &attestation);
+        e.storage().instance().set(&dedup_key, &true);
 
         let subject_key = DataKey::SubjectAttestations(subject.clone());
         let mut attestations: Vec<u64> = e
@@ -1307,11 +1319,7 @@ impl CredenceBond {
         e.storage().instance().set(&subject_key, &attestations);
         bump_instance_ttl(&e);
 
-        let count_key = DataKey::SubjectAttestationCount(subject.clone());
-        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage()
-            .instance()
-            .set(&count_key, &count.saturating_add(1));
+        e.storage().instance().set(&count_key, &(count + 1));
         bump_instance_ttl(&e);
 
         e.events().publish(
@@ -1381,6 +1389,15 @@ impl CredenceBond {
             if e.storage().instance().has(&dedup_key) {
                 panic_with_error!(e, ContractError::DuplicateAttestation);
             }
+        }
+
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        let updated_count = count
+            .checked_add(n)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::StorageCapReached));
+        if updated_count > parameters::MAX_ATTESTATIONS {
+            panic_with_error!(e, ContractError::StorageCapReached);
         }
 
         // Get weight configuration
@@ -1462,11 +1479,7 @@ impl CredenceBond {
             .set(&subject_key, &subject_attestations);
 
         // Update SubjectAttestationCount
-        let count_key = DataKey::SubjectAttestationCount(subject.clone());
-        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage()
-            .instance()
-            .set(&count_key, &count.saturating_add(n));
+        e.storage().instance().set(&count_key, &updated_count);
 
         bump_instance_ttl(&e);
 
@@ -2014,6 +2027,12 @@ impl CredenceBond {
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
+        // The admin address is public, so require_auth is mandatory to prevent
+        // an unauthenticated caller from passing a known admin address and
+        // slashing any bond. validate_admin in slashing.rs remains a pure
+        // address comparison; it does not call require_auth to avoid a
+        // second auth entry for the same address (which the host rejects).
+        admin.require_auth();
         slashing::slash_bond(&e, &admin, &identity, amount)
     }
 
@@ -2076,10 +2095,10 @@ impl CredenceBond {
         let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
         let old_tier = tiered_bond::get_tier_for_amount(&e, old_available);
 
-        // Validate the new total amount
-        validation::validate_bond_amount(new_bonded_amount);
+        // Validate the new total amount on the normalized 18-decimal value.
+        validation::validate_bond_amount_for_token(&e, new_bonded_amount);
         let max_leverage = parameters::get_max_leverage(&e);
-        leverage::validate_leverage(&e, new_bonded_amount, max_leverage);
+        leverage::validate_leverage_for_token(&e, new_bonded_amount, max_leverage);
 
         bond.bonded_amount = new_bonded_amount;
 
@@ -2269,7 +2288,6 @@ impl CredenceBond {
     /// - [`ContractError::ContractPaused`] if the contract is paused.
     pub fn set_cooldown_period(e: Env, admin: Address, period: u64) {
         Self::require_not_paused(&e);
-        admin.require_auth();
         guards::require_admin(&e, &admin);
         let old = cooldown::get_cooldown_period(&e);
         cooldown::set_cooldown_period(&e, period);
@@ -2296,7 +2314,11 @@ impl CredenceBond {
     /// - If `amount` is not positive.
     /// - If `amount` exceeds available balance.
     /// - If a cooldown request is already pending.
-    pub fn request_cooldown_withdrawal(e: Env, identity: Address, amount: i128) {
+    pub fn request_cooldown_withdrawal(
+        e: Env,
+        identity: Address,
+        amount: i128,
+    ) -> cooldown::CooldownRequest {
         Self::require_not_paused(&e);
         identity.require_auth();
         let bond: IdentityBond = guards::load_bond(&e, &identity);
@@ -2326,6 +2348,7 @@ impl CredenceBond {
         cooldown::set_cooldown_request(&e, &identity, &request);
         cooldown::record_cooldown_request(&e);
         cooldown::emit_cooldown_requested(&e, &identity, amount);
+        request
     }
 
     /// Execute a previously requested cooldown withdrawal.
@@ -2342,38 +2365,97 @@ impl CredenceBond {
     pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         identity.require_auth();
-        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
-        // #1273: lifecycle invariant — a closed bond must not be mutated.
-        lifecycle::require_bond_active(&e, &bond);
+
+        Self::acquire_lock(&e);
+
+        let mut bond: IdentityBond = match e
+            .storage()
+            .instance()
+            .get(&DataKey::Bond(identity.clone()))
+        {
+            Some(b) => b,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::BondNotFound);
+            }
+        };
+
+        if !bond.active {
+            Self::release_lock(&e);
+            panic_with_error!(e, ContractError::BondNotActive);
+        }
+
         if bond.identity != identity {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotFound);
         }
-        let request = cooldown::get_cooldown_request(&e, &identity)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
+
+        let request = match cooldown::get_cooldown_request(&e, &identity) {
+            Some(r) => r,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::CooldownRequestNotFound);
+            }
+        };
+
         if request.requester != identity {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotBondOwner);
         }
-        same_ledger_liquidation_guard::require_cooldown_allowed_after_collateral_increase(&e);
+
+        let current_seq = e.ledger().sequence();
+        if let Some(last) = e
+            .storage()
+            .instance()
+            .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
+        {
+            if last == current_seq {
+                Self::release_lock(&e);
+                panic!("{}", same_ledger_liquidation_guard::COOLDOWN_BLOCKED_REASON);
+            }
+        }
+
         let now = e.ledger().timestamp();
         let cooldown_period = cooldown::get_cooldown_period(&e);
         if !cooldown::can_withdraw(now, request.requested_at, cooldown_period) {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
         }
+
         let available = bond.bonded_amount - bond.slashed_amount;
         if request.amount > available {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::InsufficientBalance);
         }
+
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
-        bond.bonded_amount = bond
-            .bonded_amount
-            .checked_sub(request.amount)
-            .ok_or(ContractError::Underflow)
-            .unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
+        bond.bonded_amount = match bond.bonded_amount.checked_sub(request.amount) {
+            Some(amt) => amt,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::Underflow);
+            }
+        };
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
+
+        // Effects: persist reduced bond state and clear cooldown request
+        let bond_key = DataKey::Bond(identity.clone());
+        e.storage().instance().set(&bond_key, &bond);
         cooldown::clear_cooldown_request(&e, &identity);
         bump_instance_ttl(&e);
+
+        // Interactions: custody transfer gated by has_token()
+        if token_integration::has_token(&e) {
+            token_integration::transfer_from_contract(&e, &identity, request.amount);
+        }
+
+        // Release reentrancy lock before event emission and invariant checking
+        Self::release_lock(&e);
+
         cooldown::emit_cooldown_executed(&e, &identity, request.amount);
+        invariants::assert_self_consistent(&e);
+
         bond
     }
 

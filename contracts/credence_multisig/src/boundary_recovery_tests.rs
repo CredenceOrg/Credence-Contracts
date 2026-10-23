@@ -301,10 +301,12 @@ fn approve_on_nonexistent_proposal_fails_with_proposal_not_found() {
 
     let res = client.try_approve_pause_proposal(&Address::generate(&client.env), &bogus_id);
     assert!(res.is_err());
-    // Error code 603 = ContractError::ProposalNotFound
+    // `require_pause_signer` runs before the proposal-existence check, so a
+    // random address that is not a registered pause signer yields NotSigner
+    // (error code 104) rather than ProposalNotFound.
     assert_eq!(
         res.unwrap_err().unwrap(),
-        soroban_sdk::Error::from_contract_error(603)
+        soroban_sdk::Error::from_contract_error(104)
     );
 }
 

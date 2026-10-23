@@ -72,6 +72,8 @@ pub enum ErrorCategory {
     Treasury,
     /// Safe-math errors (codes 700-799).
     Arithmetic,
+    /// Bounty escrow lifecycle errors (codes 800-899).
+    Escrow,
 }
 
 /// @title  ContractError
@@ -89,6 +91,7 @@ pub enum ErrorCategory {
 ///   500 - 599 : Delegation
 ///   600 - 699 : Treasury
 ///   700 - 799 : Arithmetic
+///   800 - 899 : Escrow
 // Keep conversions generated, but do not export this utility enum as contract
 // spec metadata. The shared enum has more variants than Soroban's current
 // exported error-enum case vector limit supports, and this crate is not a
@@ -771,6 +774,16 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     CorridorNotRegistered = 611,
 
+    /// `set_token` was called while the treasury still holds booked balances.
+    /// Changing the accounting token with a non-zero `TotalBalance` would
+    /// orphan the existing balances: the new token's contract balance could
+    /// not back the recorded `TotalBalance`, silently breaking the
+    /// `token.balance(contract) >= TotalBalance` invariant. The admin must
+    /// drain the treasury to zero before rotating the token.
+    /// Contracts: treasury
+    /// Wire-stable: do not renumber this error code.
+    TokenChangeWithBalance = 612,
+
     // --- Arithmetic (700-799) ---
     /// Integer overflow detected during a checked arithmetic operation.
     /// Replaces: .expect("... overflow")
@@ -794,6 +807,42 @@ pub enum ContractError {
     /// Contracts: math
     /// Wire-stable: do not renumber this error code.
     InvalidPercentSplit = 703,
+
+    // --- Escrow (800-899) ---
+    /// No escrow exists for the given id.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    EscrowNotFound = 800,
+
+    /// Escrow is already released or fully refunded and cannot be released.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    EscrowNotReleasable = 801,
+
+    /// Escrow is already released or fully refunded and cannot be refunded.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    EscrowNotRefundable = 802,
+
+    /// Escrow cannot be refunded before its expiry time.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    EscrowNotExpired = 803,
+
+    /// Refund amount exceeds the escrow's remaining balance.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    RefundExceedsRemaining = 804,
+
+    /// Escrow expiry must be in the future.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    InvalidEscrowExpiry = 805,
+
+    /// Caller is neither the escrow depositor nor the contract admin.
+    /// Contracts: bounty-escrow
+    /// Wire-stable: do not renumber this error code.
+    NotEscrowParty = 806,
 }
 
 /// @title  ErrorExt
@@ -975,12 +1024,21 @@ impl ErrorExt for ContractError {
             | ContractError::ProposalExpired
             | ContractError::SlippageExceeded
             | ContractError::TreasuryBeneficiaryMismatch
-            | ContractError::CorridorNotRegistered => ErrorCategory::Treasury,
+            | ContractError::CorridorNotRegistered
+            | ContractError::TokenChangeWithBalance => ErrorCategory::Treasury,
 
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero
             | ContractError::InvalidPercentSplit => ErrorCategory::Arithmetic,
+
+            ContractError::EscrowNotFound
+            | ContractError::EscrowNotReleasable
+            | ContractError::EscrowNotRefundable
+            | ContractError::EscrowNotExpired
+            | ContractError::RefundExceedsRemaining
+            | ContractError::InvalidEscrowExpiry
+            | ContractError::NotEscrowParty => ErrorCategory::Escrow,
         }
     }
 
@@ -1236,6 +1294,9 @@ impl ErrorExt for ContractError {
             ContractError::CorridorNotRegistered => {
                 "Settlement destination is not a registered corridor"
             }
+            ContractError::TokenChangeWithBalance => {
+                "Cannot change accounting token while treasury holds a non-zero balance"
+            }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
             ContractError::NoPendingAdmin => "No pending admin transfer exists",
             ContractError::DomainMismatch => "Payload domain tag does not match expected",
@@ -1267,6 +1328,13 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPercentSplit => {
                 "Percentage splits do not sum to exactly 10,000 basis points"
             }
+            ContractError::EscrowNotFound => "No escrow exists for the given id",
+            ContractError::EscrowNotReleasable => "Escrow is already released or fully refunded and cannot be released",
+            ContractError::EscrowNotRefundable => "Escrow is already released or fully refunded and cannot be refunded",
+            ContractError::EscrowNotExpired => "Escrow cannot be refunded before its expiry time",
+            ContractError::RefundExceedsRemaining => "Refund amount exceeds the escrow's remaining balance",
+            ContractError::InvalidEscrowExpiry => "Escrow expiry must be in the future",
+            ContractError::NotEscrowParty => "Caller is neither the escrow depositor nor the contract admin",
         }
     }
 
@@ -1433,6 +1501,7 @@ impl ErrorExt for ContractError {
             | ContractError::SlippageExceeded           // retry with looser min_amount_out
             | ContractError::TreasuryBeneficiaryMismatch // call with correct treasury address
             | ContractError::CorridorNotRegistered => true, // admin registers corridor, then retry
+            ContractError::TokenChangeWithBalance => true, // drain treasury to zero, then retry
 
             // FATAL Treasury: protocol-level failures.
             ContractError::InvalidFlashLoanCallback => false, // bad magic; same call will fail
@@ -1441,6 +1510,15 @@ impl ErrorExt for ContractError {
 
 
             ContractError::InvalidPercentSplit => true, // caller can provide valid splits
+
+            // --- Escrow (800-899) ---
+            ContractError::EscrowNotFound => true, // caller supplies a valid id
+            ContractError::EscrowNotReleasable => false, // terminal state; same call always fails
+            ContractError::EscrowNotRefundable => false, // terminal state; same call always fails
+            ContractError::EscrowNotExpired => true, // wait for expiry
+            ContractError::RefundExceedsRemaining => true, // caller requests a smaller amount
+            ContractError::InvalidEscrowExpiry => true, // caller supplies a later expiry
+            ContractError::NotEscrowParty => true, // sign as depositor or admin
 
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
