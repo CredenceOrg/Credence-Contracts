@@ -9,8 +9,8 @@
 //! ## Invariants pinned by this module
 //!
 //! 1. **No partial writes.** Every rejected mutation leaves storage exactly as
-//!    it was: no half-written forward/reverse mapping, no phantom entry in
-//!    `RegisteredIdentities`, no orphan `AllowNonInterface`/`BondCodeHash`
+//!    it was: no half-written forward/reverse mapping, no phantom entry in the
+//!    identity index, no orphan `AllowNonInterface`/`BondCodeHash`
 //!    value. Rejected calls are therefore safe to retry.
 //! 2. **Deterministic error precedence.** `register` performs the interface
 //!    check before the duplicate checks, so the same inputs always surface the
@@ -178,10 +178,7 @@ fn empty_registry_reads_are_safe_and_stable() {
 
     assert_eq!(client.get_identities_page(&0, &PAGE_CAP).len(), 0);
     assert_eq!(client.get_identities_page(&u32::MAX, &u32::MAX).len(), 0);
-
-    #[allow(deprecated)]
-    let all = client.get_all_identities();
-    assert_eq!(all.len(), 0);
+    assert_eq!(client.get_identity_count(), 0);
 
     assert_eq!(client.get_admin(), admin);
     assert!(!client.is_paused());

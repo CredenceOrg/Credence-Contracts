@@ -1,24 +1,7 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
+// Disallow bare format!/write!/println! macros in release/WASM builds; test
+// code is excluded so diagnostics remain unrestricted.
 #![cfg_attr(not(any(test, feature = "testutils")), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
@@ -52,7 +35,7 @@ pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_dispute_resolved, require_transition, ArbitrationError, DisputeStatus};
+use status::{require_transition, ArbitrationError, DisputeStatus};
 
 use interfaces::governable::Governable;
 
@@ -66,7 +49,7 @@ pub struct Dispute {
     pub voting_end: u64,
     /// Canonical status — replaces the old `resolved: bool`.
     pub status: DisputeStatus,
-    /// Winning outcome (0 only when status == Tied, >0 = specific outcome).
+    /// Winning outcome (0 for Tied or NoQuorum, >0 = specific outcome).
     /// The outcome field must never be 0 if status == Resolved, as vote() rejects outcome 0 as InvalidOutcome.
     pub outcome: u32,
     pub cancellation_reason: Option<String>,
@@ -345,6 +328,20 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         };
 
+        // Creator may only cancel before any votes are cast and within the voting window.
+        // Admin retains a moderation override to cancel a Voting dispute at any time.
+        if role == Symbol::short("creator") {
+            let voter_count: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::VoterCounter(dispute_id))
+                .unwrap_or(0);
+            let now = e.ledger().timestamp();
+            if voter_count != 0 || now > dispute.voting_end {
+                return Err(ArbitrationError::CancelNotAllowed);
+            }
+        }
+
         let from = dispute.status.clone();
         require_transition(from, DisputeStatus::Cancelled)?;
 
@@ -394,6 +391,10 @@ impl CredenceArbitration {
             .instance()
             .get(&DataKey::Dispute(dispute_id))
             .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        if voter == dispute.creator {
+            return Err(ArbitrationError::ConflictOfInterest);
+        }
 
         // Must be in Voting status
         if dispute.status != DisputeStatus::Voting {
@@ -464,7 +465,7 @@ impl CredenceArbitration {
             return Err(ArbitrationError::VotingNotEnded);
         }
 
-        // --- Quorum check (before Resolving transition) ---
+        // --- Quorum check ---
         let min_total_weight: i128 = e
             .storage()
             .instance()
@@ -496,11 +497,36 @@ impl CredenceArbitration {
             let voters_met = voter_count >= min_voters;
 
             if !weight_met || !voters_met {
+                require_transition(DisputeStatus::Voting, DisputeStatus::Resolving)?;
+                dispute.status = DisputeStatus::Resolving;
+                e.events().publish(
+                    (Symbol::new(&e, "status_transition"), dispute_id),
+                    (
+                        DisputeStatus::Voting as u32,
+                        DisputeStatus::Resolving as u32,
+                    ),
+                );
+
+                require_transition(DisputeStatus::Resolving, DisputeStatus::NoQuorum)?;
+                dispute.status = DisputeStatus::NoQuorum;
+                dispute.outcome = 0;
+                e.storage()
+                    .instance()
+                    .set(&DataKey::Dispute(dispute_id), &dispute);
+                clear_active_dispute(&e, &dispute.creator);
+
+                e.events().publish(
+                    (Symbol::new(&e, "status_transition"), dispute_id),
+                    (
+                        DisputeStatus::Resolving as u32,
+                        DisputeStatus::NoQuorum as u32,
+                    ),
+                );
                 e.events().publish(
                     (Symbol::new(&e, "quorum_not_met"), dispute_id),
                     (total_weight, min_total_weight, voter_count, min_voters),
                 );
-                return Err(ArbitrationError::QuorumNotMet);
+                return Ok(0);
             }
         }
         // --- End quorum check ---
@@ -588,7 +614,7 @@ impl CredenceArbitration {
 
     /// Set quorum requirements for dispute resolution.
     ///
-    /// Once set, `resolve_dispute` will reject with `QuorumNotMet` unless:
+    /// Once set, `resolve_dispute` will finalize as `NoQuorum` unless:
     /// - The sum of all vote weights cast ≥ `min_total_weight`
     /// - The number of distinct voters ≥ `min_voters`
     ///
@@ -780,7 +806,7 @@ impl CredenceArbitration {
     }
 
     /// Archive a finalized dispute. Only callable by admin.
-    /// Dispute must be in Resolved, Tied, or Cancelled status.
+    /// Dispute must be in Resolved, Tied, NoQuorum, or Cancelled status.
     pub fn archive_dispute(
         e: Env,
         admin: Address,
@@ -954,3 +980,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_archive_reopen;
+
+#[cfg(test)]
+mod test_events_schema;

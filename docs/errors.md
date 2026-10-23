@@ -21,6 +21,7 @@ error code instead of an opaque transaction failure.
 | 500–599 | Delegation     | credence\_delegation                              |
 | 600–699 | Treasury       | credence\_treasury                                |
 | 700–799 | Arithmetic     | bond, treasury, and others                        |
+| 800–899 | Escrow         | bounty-escrow                                     |
 
 > **Stability Guarantee** — Error codes are wire-stable and must **never** be renumbered
 > after deployment. Append new variants at the end of their category block only.
@@ -188,6 +189,18 @@ error code instead of an opaque transaction failure.
 | 701 | `Underflow` | ✗ | Integer underflow in checked arithmetic |
 | 702 | `DivisionByZero` | ✗ | Division by a zero denominator |
 | 703 | `InvalidPercentSplit` | ✓ | Percentage splits do not sum to exactly 10 000 basis points |
+
+### Escrow (800–899)
+
+| Code | Variant | Recoverable | Description |
+|------|---------|:-----------:|-------------|
+| 800 | `EscrowNotFound` | ✓ | No escrow exists for the given id |
+| 801 | `EscrowNotReleasable` | ✗ | Escrow is already released or fully refunded and cannot be released |
+| 802 | `EscrowNotRefundable` | ✗ | Escrow is already released or fully refunded and cannot be refunded |
+| 803 | `EscrowNotExpired` | ✓ | Escrow cannot be refunded before its expiry time |
+| 804 | `RefundExceedsRemaining` | ✓ | Refund amount exceeds the escrow's remaining balance |
+| 805 | `InvalidEscrowExpiry` | ✓ | Escrow expiry must be in the future |
+| 806 | `NotEscrowParty` | ✓ | Caller is neither the escrow depositor nor the contract admin |
 
 ---
 
