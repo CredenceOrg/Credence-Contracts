@@ -238,10 +238,12 @@ pub fn verify_delegated_signature(
                 .get(&DataKey::Verifier(scheme))
                 .unwrap_or_else(|| panic_with_error!(e, ContractError::VerifierNotRegistered));
 
-            // 2. Defence-in-depth: verify the verifier address we're about to call
-            //    matches the one stored in the registry (prevents storage corruption
-            //    or admin misconfiguration from redirecting calls).
-            require_matching_contract_id(e, &verifier_addr, &verifier_addr);
+            // 2. Defence-in-depth: the verifier address was read directly from the
+            //    registry under `DataKey::Verifier(scheme)`, so it is by construction
+            //    the registered address. The previous self-comparison
+            //    (`require_matching_contract_id(e, &verifier_addr, &verifier_addr)`)
+            //    was a tautology and has been removed; there is no independent
+            //    expected address to compare against here.
 
             // 3. Dispatch to the verifier contract via cross-contract call.
             //    The verifier must expose `fn verify(owner, message, signature) -> bool`.

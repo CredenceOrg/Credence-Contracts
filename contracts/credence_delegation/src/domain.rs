@@ -140,6 +140,8 @@ pub struct DelegatedActionPayload {
 /// - Target mismatch => `TargetMismatch` (506)
 /// - Contract ID mismatch => `ContractIdMismatch` (507)
 /// - Signature domain mismatch => `DomainMismatch` (504)
+///
+/// The signature domain is compared against [`SIGNATURE_DOMAIN`].
 pub fn verify_payload(
     e: &Env,
     payload: &DelegatedActionPayload,
@@ -158,6 +160,10 @@ pub fn verify_payload(
     }
     if payload.contract_id != e.current_contract_address() {
         panic_with_error!(e, ContractError::ContractIdMismatch);
+    }
+    let expected_signature_domain = String::from_str(e, SIGNATURE_DOMAIN);
+    if payload.signature_domain != expected_signature_domain {
+        panic_with_error!(e, ContractError::DomainMismatch);
     }
 }
 
@@ -185,6 +191,20 @@ pub fn verify_scheme_supported(e: &Env, scheme: u32) {
     if !SchemeTag::is_known(scheme) {
         panic_with_error!(e, ContractError::UnknownScheme);
     }
+}
+
+/// Build the canonical message pre-image for a delegated action payload.
+///
+/// The pre-image is `sha256(xdr(payload))`.  This binds every field of the
+/// payload — including `domain`, `owner`, `target`, `contract_id`, `nonce`,
+/// `scheme`, `ledger_number` and `signature_domain` — into the bytes that the
+/// signature scheme verifier is asked to verify.
+///
+/// Relayers must sign exactly these bytes with the owner's key for the
+/// selected `scheme`.
+pub fn payload_message(e: &Env, payload: &DelegatedActionPayload) -> soroban_sdk::Bytes {
+    let encoded = soroban_sdk::Bytes::from_slice(e, &payload.clone().to_xdr(e));
+    e.crypto().sha256(&encoded).to_bytes()
 }
 
 // ---------------------------------------------------------------------------
