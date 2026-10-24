@@ -84,7 +84,10 @@ fn test_is_paused_reflects_each_state_transition() {
     client.unpause(&admin);
     assert!(!client.is_paused(), "must be unpaused after unpause()");
     client.pause(&admin);
-    assert!(client.is_paused(), "must be paused again after second pause()");
+    assert!(
+        client.is_paused(),
+        "must be paused again after second pause()"
+    );
 }
 
 // ---------------------------------------------------------------------------

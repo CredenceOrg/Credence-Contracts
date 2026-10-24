@@ -166,21 +166,21 @@ pub fn hash_delegated_action(
 /// Stable u32 discriminant for [`crate::DelegationType`].
 ///
 /// Documented so the hash encoding is stable and reproducible off-chain.
-fn delegation_type_as_u32(dt: DelegationType) -> u32 {
+fn delegation_type_as_u32(dt: crate::DelegationType) -> u32 {
     match dt {
-        DelegationType::Attestation => 0,
-        DelegationType::Management => 1,
+        crate::DelegationType::Attestation => 0,
+        crate::DelegationType::Management => 1,
     }
 }
 
 /// Stable u32 discriminant for [`crate::domain::DomainTag`].
 ///
 /// Documented so the hash encoding is stable and reproducible off-chain.
-fn domain_tag_as_u32(d: DomainTag) -> u32 {
+fn domain_tag_as_u32(d: crate::domain::DomainTag) -> u32 {
     match d {
-        DomainTag::Delegate => 0,
-        DomainTag::RevokeDelegation => 1,
-        DomainTag::RevokeAttestation => 2,
+        crate::domain::DomainTag::Delegate => 0,
+        crate::domain::DomainTag::RevokeDelegation => 1,
+        crate::domain::DomainTag::RevokeAttestation => 2,
     }
 }
 

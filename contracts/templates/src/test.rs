@@ -388,7 +388,7 @@ fn test_set_record_already_expired_at_write_time() {
 
     assert!(client.is_expired(&owner));
     assert!(!client.has_record(&owner)); // purge on has_record
-        }
+}
 
 // ---------------------------------------------------------------------------
 // Uninitialized / permission failure paths

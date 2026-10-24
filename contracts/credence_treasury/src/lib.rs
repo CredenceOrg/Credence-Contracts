@@ -1,4 +1,4 @@
-#`!no_std]
+#![no_std]
 #![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,

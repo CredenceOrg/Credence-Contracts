@@ -102,10 +102,8 @@ impl DisputeResolutionContract {
         env.storage().persistent().set(&dispute_key, &dispute);
         bump_persistent_ttl(&env, dispute_key);
 
-        env.events().publish(
-            (symbol_short!("created"), id),
-            (creator, resolver),
-        );
+        env.events()
+            .publish((symbol_short!("created"), id), (creator, resolver));
 
         id
     }
@@ -190,8 +188,10 @@ impl DisputeResolutionContract {
         env.storage().persistent().set(&key, &dispute);
         bump_persistent_ttl(&env, key);
 
-        env.events()
-            .publish((symbol_short!("closed"), id), (dispute.creator.clone(), caller));
+        env.events().publish(
+            (symbol_short!("closed"), id),
+            (dispute.creator.clone(), caller),
+        );
 
         Ok(())
     }

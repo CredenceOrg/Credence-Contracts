@@ -999,7 +999,7 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
 
-// Revalidate the pending owner's effective SuperAdmin status at
+        // Revalidate the pending owner's effective SuperAdmin status at
         // acceptance time. The candidate's role, activation, or suspension
         // state may have changed during the timelock window; a stale proposal
         // must never grant durable ownership to an admin who is no longer an
