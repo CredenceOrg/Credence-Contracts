@@ -160,11 +160,7 @@ pub fn validate_authorization(is_admin: bool) -> Result<(), &'static str> {
 /// The order of checks is deterministic: authorization first, then key,
 /// then value. This ensures an unauthorized caller cannot probe key or value
 /// bounds through error codes.
-pub fn validate_write(
-    is_admin: bool,
-    key: &str,
-    value: &str,
-) -> Result<(), &'static str> {
+pub fn validate_write(is_admin: bool, key: &str, value: &str) -> Result<(), &'static str> {
     validate_authorization(is_admin)?;
     validate_key(key)?;
     validate_value(value)?;
@@ -292,22 +288,13 @@ mod tests {
     #[test]
     fn validate_write_checks_authorization_first() {
         // Unauthorized callers must not learn key/value bounds.
-        assert_eq!(
-            validate_write(false, "", ""),
-            Err(ERR_UNAUTHORIZED)
-        );
-        assert_eq!(
-            validate_write(false, "a", "a"),
-            Err(ERR_UNAUTHORIZED)
-        );
+        assert_eq!(validate_write(false, "", ""), Err(ERR_UNAUTHORIZED));
+        assert_eq!(validate_write(false, "a", "a"), Err(ERR_UNAUTHORIZED));
     }
 
     #[test]
     fn validate_write_rejects_invalid_key_and_value() {
-        assert_eq!(
-            validate_write(true, "", "value"),
-            Err(ERR_KEY_TOO_SHORT)
-        );
+        assert_eq!(validate_write(true, "", "value"), Err(ERR_KEY_TOO_SHORT));
         let long_key = "a".repeat(MAX_KEY_LEN + 1);
         assert_eq!(
             validate_write(true, &long_key, "value"),

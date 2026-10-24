@@ -1438,15 +1438,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidFlashLoanCallback => false, // bad magic; same call will fail
             ContractError::FlashLoanRepaymentFailed => false,  // bad repayment; same call will fail
 
-
-
-            ContractError::InvalidPercentSplit => true, // caller can provide valid splits
-
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
-            ContractError::InvalidFlashLoanCallback => false,
-            ContractError::FlashLoanRepaymentFailed => false,
         }
     }
 }
