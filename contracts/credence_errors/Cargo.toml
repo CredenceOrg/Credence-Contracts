@@ -4,9 +4,6 @@ version = "0.1.0"
 edition = "2021"
 description = "Shared error types for all Credence smart contracts"
 
-[lib]
-crate-type = ["lib"]
-
 [dependencies]
 soroban-sdk = { version = "22.0" }
 
