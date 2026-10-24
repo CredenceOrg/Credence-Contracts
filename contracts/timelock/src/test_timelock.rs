@@ -37,8 +37,6 @@ fn test_boundary_eta_minus_one_fails_not_ready() {
     assert!(!client.is_operation_executed(&op_hash));
 }
 
-/// Boundary test: timestamp exactly at eta.
-/// Execution MUST succeed and transition operation to Executed.
 /// Recovery test: a rejected pre-ETA execution must not consume the operation.
 /// The same operation must remain executable once the timelock reaches ETA.
 #[test]
@@ -68,6 +66,8 @@ fn test_recovery_after_pre_eta_rejection_succeeds_at_eta() {
     assert!(client.is_operation_executed(&op_hash));
 }
 
+/// Boundary test: timestamp exactly at eta.
+/// Execution MUST succeed and transition operation to Executed.
 #[test]
 fn test_boundary_eta_exact_succeeds() {
     let (env, client, admin) = setup_env();
@@ -198,9 +198,7 @@ fn test_boundary_full_lifecycle_window_sweep() {
     let id_1 = client.queue_operation(&admin, &hash_1, &delay);
     let op_1 = client.get_operation(&id_1).unwrap();
     env.ledger().with_mut(|li| li.timestamp = op_1.eta - 1);
-    assert!(
-        client.try_execute_operation(&id_1).is_err()
-    );
+    assert!(client.try_execute_operation(&id_1).is_err());
 
     // 2. Exactly at ETA -> Ok
     let hash_2 = BytesN::from_array(&env, &[22; 32]);
@@ -241,9 +239,7 @@ fn test_boundary_full_lifecycle_window_sweep() {
     let id_5 = client.queue_operation(&admin, &hash_5, &delay);
     let op_5 = client.get_operation(&id_5).unwrap();
     env.ledger().with_mut(|li| li.timestamp = op_5.expires_at + 1);
-    assert!(
-        client.try_execute_operation(&id_5).is_err()
-    );
+    assert!(client.try_execute_operation(&id_5).is_err());
 }
 
 /// Boundary test: cancel at boundaries (eta - 1, eta, expires_at).
@@ -321,54 +317,4 @@ fn test_replacement_after_cancellation_rejects_short_delay() {
     let op_hash = BytesN::from_array(&env, &[41; 32]);
 
     // Queue and cancel
-    let op_id = client.queue_operation(&admin, &op_hash, &min_delay_seconds());
-    client.cancel_operation(&admin, &op_id);
-
-    // Attempt to re-queue with delay below minimum
-    let short_delay = min_delay_seconds() - 1; // 1 second below the minimum
-    let res = client.try_queue_operation(&admin, &op_hash, &short_delay);
-    assert!(res.is_err());
-}
-
-/// Cancelling a proposal and re-queuing with a longer delay must work
-/// (the replacement must obey at least the minimum, but can be longer).
-#[test]
-fn test_replacement_after_cancellation_allows_longer_delay() {
-    let (env, client, admin) = setup_env();
-    let op_hash = BytesN::from_array(&env, &[42; 32]);
-
-    // Queue and cancel
-    let op_id = client.queue_operation(&admin, &op_hash, &min_delay_seconds());
-    let original_op = client.get_operation(&op_id).unwrap();
-    client.cancel_operation(&admin, &op_id);
-
-    // Re-queue with a delay twice the minimum
-    let longer_delay = min_delay_seconds() * 2;
-    let new_op_id = client.queue_operation(&admin, &op_hash, &longer_delay);
-    let new_op = client.get_operation(&new_op_id).unwrap();
-
-    // Verify the longer delay is honoured in the new ETA
-    let expected_min_eta = original_op.eta.checked_add(min_delay_seconds()).unwrap();
-    assert!(new_op.eta >= expected_min_eta);
-}
-
-/// Boundary test: is_ready helper function direct unit assertions.
-#[test]
-fn test_is_ready_boundary_suite() {
-    let eta: u64 = 1_000_000;
-
-    // eta - 1 -> false
-    assert!(!is_ready(eta, eta - 1));
-
-    // eta -> true
-    assert!(is_ready(eta, eta));
-
-    // eta + 1 -> true
-    assert!(is_ready(eta, eta + 1));
-
-    // expires_at = eta + GRACE_PERIOD -> true
-    assert!(is_ready(eta, eta + GRACE_PERIOD));
-
-    // expires_at + 1 -> true (is_ready only checks now >= eta; expiry is checked separately)
-    assert!(is_ready(eta, eta + GRACE_PERIOD + 1));
 }

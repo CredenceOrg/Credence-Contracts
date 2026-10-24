@@ -1445,8 +1445,6 @@ impl ErrorExt for ContractError {
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
-            ContractError::InvalidFlashLoanCallback => false,
-            ContractError::FlashLoanRepaymentFailed => false,
         }
     }
 }
