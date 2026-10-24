@@ -46,8 +46,8 @@ Defined as `PROPOSAL_EPOCH_SIZE = 100` in
 ///
 /// **Tradeoff:** a wider bucket (larger N) gives operators a longer window in
 /// which concurrent submissions of the same action converge to one ID, but also
-/// means a new `(action, target_ledger)` pair cannot be re-proposed until the
-/// next epoch begins — even after the previous proposal is executed.  A narrow
+/// means a new `(action, target_ledger)` pair reuses the same ID within the
+/// epoch — even after the previous proposal is executed.  A narrow
 /// bucket (smaller N) reduces the convergence window and increases the chance
 /// that two operators straddle an epoch boundary.
 ///
@@ -61,14 +61,14 @@ pub const PROPOSAL_EPOCH_SIZE: u32 = 100;
 | `PROPOSAL_EPOCH_SIZE` | Convergence Window (≈5s/ledger) | Re-proposal Delay |
 |------------------------|--------------------------------|-------------------|
 | 10                     | ~50 seconds                    | ~50 seconds       |
-| 100 (default)          | ~8 minutes                     | ~8 minutes        |
+| 100 (default)          | ~8 minutes                     | none (same epoch) |
 | 1000                   | ~1.4 hours                     | ~1.4 hours        |
 | 7200                   | ~10 hours                      | ~10 hours         |
 
 Choose a value that is safely larger than the expected wall-clock time
 for a multisig signing round-trip, but small enough that a stale or
-abandoned proposal can be re-proposed in the next epoch without an
-unreasonable wait.
+abandoned proposal can be re-proposed without an unreasonable wait.
+Re-proposal within the same epoch is supported (see below).
 
 ---
 
@@ -78,8 +78,8 @@ When `propose_action` is called, it:
 
 1. Derives `proposal_id = derive_proposal_id(e, action)`.
 2. Checks whether a proposal with that ID already exists in storage.
-3. **If absent:** writes the proposal record and initialises the
-   approval count to 0.
+3. **If absent:** writes the proposal record, resets the approval count
+   to 0, and clears the per-proposal approver list.
 4. **If present:** skips the write — the existing record is preserved
    unchanged.
 5. Records the caller's approval on the (existing or newly created)
@@ -89,12 +89,18 @@ When `propose_action` is called, it:
 same epoch converge on one shared proposal. Votes accumulate correctly
 regardless of submission order or count.
 
+Because IDs are reused within an epoch, a fresh proposal under an ID
+with no live `PauseProposal` payload always starts from a clean
+approval set — earlier approvals for that ID neither block nor count
+towards the new round.
+
 ### Limits
 
 - **Different epochs:** the same action submitted in epoch *k* and
   epoch *k+1* produces two different IDs and two independent proposals.
   This is intentional — it allows re-proposing a stale action once a
-  new epoch begins.
+  new epoch begins, and it bounds how long stale approval state can
+  linger for an ID.
 - **Different actions:** Pause and Unpause produce different IDs even
   within the same epoch because the action value is part of the hash
   preimage.
@@ -135,11 +141,22 @@ those proposals post-migration.
 |-----|---------|-------|
 | `PauseProposalCounter` | `u64` | **Retained** for backward-compat `executed` detection in `get_pause_proposal_state`, but never incremented. |
 | `PauseProposal(id)` | `u32` | Action value (`1` = Pause, `2` = Unpause). |
-| `PauseApprovalCount(id)` | `u32` | Running vote tally. |
-| `PauseApproval(id, Address)` | `bool` | Per-signer approval flag (survives execution — used to detect executed hash-derived proposals). |
+| `PauseApprovalCount(id)` | `u32` | Cached vote tally; revalidated at execution. |
+| `PauseApproval(id, Address)` | `bool` | Per-signer approval flag. |
+| `PauseApprovers(id)` | `Vec<Address>` | Bounded list of approvers for the current round (capped by `get_max_pause_signers`); reset on new payload, cleared on execution. |
 
-When a proposal is executed, `PauseProposal(id)` and
-`PauseApprovalCount(id)` are removed. `PauseApproval(id, Address)`
-entries are **not** removed — they serve as the signal for
-`get_pause_proposal_state` to set `executed = true` on hash-derived
-proposals.
+When a proposal is executed, `PauseProposal(id)`, `PauseApprovalCount(id)`,
+`PauseApprovers(id)`, and every `PauseApproval(id, Address)` flag for that
+proposal are removed. Because IDs are reused within an epoch, leftover
+approval flags must not survive execution — otherwise a re-proposal in the
+same epoch would see stale approvals.
+
+### Execution-Time Revalidation
+
+`execute_pause_proposal` does not trust the cached `PauseApprovalCount(id)`.
+It recounts approvals against the *current* pause-signer set
+(`PauseSigner(addr)`), so approvals from signers removed after they voted
+no longer count. When the cached and effective counts differ, the contract
+emits `pause_approvals_revalidated(proposal_id, cached, effective)`.
+The epoch guard (`StaleSignerEpoch`, `#515`) is unaffected by this
+revalidation.

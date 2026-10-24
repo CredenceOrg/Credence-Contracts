@@ -88,11 +88,8 @@ mod tests {
     }
 
     impl ReferenceGovernable {
-        const ADMIN_KEY: &'static str = "admin";
-
-        pub fn init(env: &Env, admin: Address) {
-            assert!(admin != Address::generate(env), "admin must not be the zero address");
-            env.storage().persistent().set(&ADDIN_KEY, &admin);
+        fn new(admin: AdminId) -> Self {
+            ReferenceGovernable { admin }
         }
 
         fn get_admin(&self) -> AdminId {

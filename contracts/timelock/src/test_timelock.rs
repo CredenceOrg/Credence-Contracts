@@ -164,8 +164,6 @@ fn test_boundary_eta_minus_one_fails_not_ready() {
     assert!(!client.is_operation_executed(&op_hash));
 }
 
-/// Boundary test: timestamp exactly at eta.
-/// Execution MUST succeed and transition operation to Executed.
 /// Recovery test: a rejected pre-ETA execution must not consume the operation.
 /// The same operation must remain executable once the timelock reaches ETA.
 #[test]
@@ -703,4 +701,3 @@ fn test_cancelled_call_never_runs() {
     // Target should be unchanged
     assert_eq!(target_client.get_admin(), original_admin);
 }
-
