@@ -6,7 +6,7 @@ use crate::test_helpers;
 use crate::CredenceBondClient;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{Address, Env};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address, Address) {
