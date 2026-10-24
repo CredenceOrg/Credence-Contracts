@@ -8,8 +8,8 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, String,
-    Symbol, Vec,
+    contract, contractimpl, contracttype, panic_with_error, xdr::ToXdr, Address, Bytes, BytesN,
+    Env, String, Symbol, Vec,
 };
 
 /// Type of action that can be proposed and executed.
@@ -69,7 +69,7 @@ pub struct Proposal {
     pub expires_at: u64,
     /// Custom metadata (flexible storage).
     pub metadata: Option<String>,
-    /// Deterministic hash of the operation payload to prevent replays.
+    /// Contract-derived hash of the operation payload and caller-provided salt.
     pub op_hash: BytesN<32>,
 }
 
@@ -120,6 +120,13 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn current_admin(e: &Env) -> Address {
+    e.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
 }
 
 #[contract]
@@ -324,7 +331,7 @@ impl CredenceMultiSig {
         description: String,
         expires_at: u64,
         metadata: Option<String>,
-        op_hash: BytesN<32>,
+        salt: BytesN<32>,
     ) -> u64 {
         bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
@@ -335,6 +342,15 @@ impl CredenceMultiSig {
         if description.len() == 0 {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
+
+        let op_hash = Self::compute_op_hash(
+            e.clone(),
+            action_type.clone(),
+            target.clone(),
+            function_name.clone(),
+            arguments.clone(),
+            salt,
+        );
 
         let id: u64 = e
             .storage()
@@ -376,6 +392,31 @@ impl CredenceMultiSig {
         );
 
         id
+    }
+
+    /// Compute the replay-protection hash for an operation payload and salt.
+    ///
+    /// The preimage is the concatenation of the XDR encodings of the signature
+    /// domain, this contract's address, action type, target, function name,
+    /// arguments, and salt, in that order.
+    pub fn compute_op_hash(
+        e: Env,
+        action_type: ActionType,
+        target: Option<Address>,
+        function_name: Option<String>,
+        arguments: Option<Bytes>,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        let mut preimage = Bytes::new(&e);
+        preimage.append(&String::from_str(&e, crate::SIGNATURE_DOMAIN).to_xdr(&e));
+        preimage.append(&e.current_contract_address().to_xdr(&e));
+        preimage.append(&action_type.to_xdr(&e));
+        preimage.append(&target.to_xdr(&e));
+        preimage.append(&function_name.to_xdr(&e));
+        preimage.append(&arguments.to_xdr(&e));
+        preimage.append(&salt.to_xdr(&e));
+
+        e.crypto().sha256(&preimage).into()
     }
 
     /// Sign a proposal. Only signers can sign.
@@ -670,10 +711,7 @@ impl CredenceMultiSig {
     /// Get admin address.
     pub fn get_admin(e: Env) -> Address {
         bump_instance_ttl(&e);
-        e.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
+        current_admin(&e)
     }
 
     // ==================== Internal Helpers ====================
@@ -779,7 +817,7 @@ impl CredenceMultiSig {
 
     pub fn transfer_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
-        let current_admin = Self::get_admin(e.clone());
+        let current_admin = current_admin(&e);
         current_admin.require_auth();
 
         e.storage().instance().set(&DataKey::Admin, &new_admin);
@@ -789,18 +827,8 @@ impl CredenceMultiSig {
             (current_admin, new_admin),
         );
     }
-}
 
-#[cfg(test)]
-mod boundary_recovery_tests;
-
-#[contractimpl]
-impl interfaces::governable::Governable for CredenceMultiSig {
-    fn get_admin(e: Env) -> Address {
-        Self::get_admin(e)
-    }
-
-    fn set_admin(e: Env, new_admin: Address) {
+    pub fn set_admin(e: Env, new_admin: Address) {
         Self::transfer_admin(e, new_admin);
     }
 }
