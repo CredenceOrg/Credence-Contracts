@@ -24,7 +24,11 @@ impl MockTarget {
     }
 
     pub fn set_value(e: Env, value: u32) {
-        let admin: Address = e.storage().instance().get(&Symbol::new(&e, "admin")).unwrap();
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, "admin"))
+            .unwrap();
         admin.require_auth();
         e.storage().instance().set(&Symbol::new(&e, "value"), &value);
         let calls: u32 = e.storage().instance().get(&Symbol::new(&e, "calls")).unwrap_or(0);
@@ -92,7 +96,10 @@ fn call_bound_op_invokes_target() {
     assert_eq!(call.target, target.address);
     assert_eq!(call.func, func);
     assert_eq!(call.args, args);
-    assert_eq!(client.hash_call(&call.target, &call.func, &call.args, &call.salt), op.op_hash);
+    assert_eq!(
+        client.hash_call(&call.target, &call.func, &call.args, &call.salt),
+        op.op_hash
+    );
 
     env.ledger().with_mut(|li| li.timestamp = op.eta);
     client.execute_operation(&op_id);
@@ -203,10 +210,7 @@ fn hash_binds_all_fields() {
         client.hash_call(&target.address, &func, &args, &other_salt)
     );
     // Same inputs hash identically.
-    assert_eq!(
-        base,
-        client.hash_call(&target.address, &func, &args, &salt)
-    );
+    assert_eq!(base, client.hash_call(&target.address, &func, &args, &salt));
 }
 
 #[test]
@@ -238,7 +242,13 @@ fn queue_call_requires_admin() {
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
 
-    let res = client.try_queue_call(&stranger, &target.address, &func, &args, &min_delay_seconds());
+    let res = client.try_queue_call(
+        &stranger,
+        &target.address,
+        &func,
+        &args,
+        &min_delay_seconds(),
+    );
     assert!(res.is_err(), "only the admin may queue calls");
 }
 

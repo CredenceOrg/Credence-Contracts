@@ -8,7 +8,6 @@ description = "Shared error types for all Credence smart contracts"
 crate-type = ["lib"]
 
 [dependencies]
-soroban-sdk = { version = "22.0" }
+soroban-sdk = { version = "22.0", features = ["testutils"] }
 
 [dev-dependencies]
-soroban-sdk = { version = "22.0", features = ["testutils"] }

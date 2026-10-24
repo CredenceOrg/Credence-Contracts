@@ -99,7 +99,10 @@ fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), Arbitrat
         return Ok(());
     };
 
-    let Some(dispute) = e.storage().instance().get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
+    let Some(dispute) = e
+        .storage()
+        .instance()
+        .get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
     else {
         e.storage().instance().remove(&key);
         return Ok(());
@@ -890,9 +893,7 @@ impl CredenceArbitration {
         // creator free to open a second concurrent dispute, defeating the
         // one-active-dispute-per-creator invariant enforced by create_dispute.
         e.storage().instance().set(
-            &DataKey::ActiveDispute(dispute.creator.clone()),
-            &dispute_id,
-        );
+            &DataKey::ActiveDispute(dispute.creator.clone()), &dispute_id);
 
         // Clear vote tracking data for the reopened dispute
         let voter_counter_key = DataKey::VoterCounter(dispute_id);
