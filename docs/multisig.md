@@ -142,6 +142,7 @@ Submit a new proposal for multi-sig approval.
 - `description: String` - Human-readable description
 - `expires_at: u64` - Expiration timestamp (0 = no expiration)
 - `metadata: Option<String>` - Custom metadata (optional)
+- `salt: BytesN<32>` - Caller-provided salt; use a new salt for an intentional repeat
 
 **Returns:**
 - `u64` - Unique proposal ID
@@ -150,6 +151,8 @@ Submit a new proposal for multi-sig approval.
 - Proposal ids are auto-incremented and scoped per proposal.
 - Approval state and counts are recorded by proposal id to prevent cross-contamination between concurrent proposals.
 - Executed proposals clear proposal state and approval counters for the allocated id.
+- The contract derives the replay key from the operation payload and salt; callers cannot supply an arbitrary operation hash.
+- Identical action type, target, function name, arguments, and salt produce the same hash. Choose a different salt to intentionally propose the same operation again.
 
 **Panics:**
 - If caller is not a signer
@@ -169,6 +172,26 @@ let proposal_id = client.submit_proposal(
     &String::from_str(&e, "Update protocol fee to 1%"),
     &0_u64, // no expiration
     &None,
+    &BytesN::from_array(&e, &[1; 32]), // unique salt for this operation
+);
+```
+
+#### `compute_op_hash(action_type, target, function_name, arguments, salt)`
+Return the replay-protection hash that `submit_proposal` stores for the same
+operation fields and salt.
+
+The contract hashes SHA-256 over the concatenated XDR encodings, in order:
+`SIGNATURE_DOMAIN` (`"CredenceMultisig"`), the current contract address,
+`action_type`, `target`, `function_name`, `arguments`, and `salt`. The
+`proposal_submitted` event includes this computed hash.
+
+```rust
+let op_hash = client.compute_op_hash(
+    &ActionType::Transfer,
+    &Some(recipient),
+    &None,
+    &None,
+    &BytesN::from_array(&e, &[1; 32]),
 );
 ```
 
@@ -302,6 +325,7 @@ let proposal_id = client.submit_proposal(
     &String::from_str(&e, "Transfer 1000 tokens to treasury"),
     &0_u64,
     &None,
+    &BytesN::from_array(&e, &[2; 32]),
 );
 
 // Sign with 2 signers
@@ -327,6 +351,7 @@ let proposal_id = client.submit_proposal(
     &String::from_str(&e, "Update configuration parameters"),
     &0_u64,
     &None,
+    &BytesN::from_array(&e, &[3; 32]),
 );
 ```
 
@@ -345,6 +370,7 @@ let proposal_id = client.submit_proposal(
     &String::from_str(&e, "Time-sensitive configuration update"),
     &expires_at,
     &None,
+    &BytesN::from_array(&e, &[4; 32]),
 );
 ```
 
@@ -403,7 +429,7 @@ client.remove_signer(&admin, &compromised_signer);
 | `signer_removed` | signer | Signer removed |
 | `threshold_updated` | threshold | Threshold changed |
 | `threshold_auto_adjusted` | threshold | Threshold auto-adjusted after signer removal |
-| `proposal_submitted` | (proposal_id, proposer, action_type, description) | New proposal created |
+| `proposal_submitted` | (proposal_id, proposer, action_type, description, op_hash) | New proposal created with contract-derived replay key |
 | `proposal_signed` | (proposal_id, signer, signature_count) | Proposal signed |
 | `proposal_executed` | (proposal_id, action_type, signatures) | Proposal executed |
 | `proposal_rejected` | (proposal_id, admin) | Proposal rejected |
@@ -500,6 +526,7 @@ let proposal_id = multisig.submit_proposal(
     &String::from_str(&e, "Withdraw 1000 from treasury"),
     &0_u64,
     &None,
+    &BytesN::from_array(&e, &[5; 32]),
 );
 
 // After signatures and execution
@@ -520,6 +547,7 @@ let proposal_id = multisig.submit_proposal(
     &String::from_str(&e, "Slash bond due to violation"),
     &expiry,
     &Some(String::from_str(&e, "{\"violation_id\": \"123\"}")),
+    &BytesN::from_array(&e, &[6; 32]),
 );
 ```
 

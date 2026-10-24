@@ -25,6 +25,9 @@
 //! | `register_trustless`    | bond contract (self)| Code-hash verification         |
 //! | `get_*` (read-only)     | anyone              | Permissionless views           |
 
+extern crate alloc;
+extern crate std;
+
 use crate::*;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, IntoVal, Val, Vec};

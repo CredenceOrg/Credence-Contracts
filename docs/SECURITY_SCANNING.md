@@ -76,7 +76,7 @@ Run static analysis with security-focused lints:
 ```bash
 # Run the same checks as CI
 cargo clippy --all-targets -- \
-  -W clippy::integer_arithmetic \
+  -W clippy::arithmetic_side_effects \
   -W clippy::unwrap_used \
   -W clippy::expect_used \
   -W clippy::panic \
@@ -169,7 +169,7 @@ warning: used `unwrap()` on a `Result` value
 ```
 
 **Common security lints:**
-- `integer_arithmetic` - Potential overflow/underflow
+- `arithmetic_side_effects` - Potential overflow/underflow (renamed from `integer_arithmetic` in Rust 1.64)
 - `unwrap_used` - Can panic on None/Err
 - `indexing_slicing` - Can panic on out-of-bounds
 - `cast_possible_truncation` - Data loss in type conversion
