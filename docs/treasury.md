@@ -12,6 +12,7 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 ## Initialization
 
 - `initialize(admin)` — Sets the admin. Must be called once. Admin can add/remove depositors and signers and set the approval threshold.
+  The threshold is initialized to `1` so that a withdrawal can never be executed with zero approvals.
 
 ## Deposits
 
@@ -25,9 +26,9 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 
 ## Multi-sig withdrawals
 
-- **add_signer(signer)** — Admin only. Adds a signer.
-- **remove_signer(signer)** — Admin only. Threshold is reduced if it exceeded the new signer count.
-- **set_threshold(threshold)** — Admin only. Threshold must be ≤ number of signers.
+- **add_signer(signer)** — Admin only. Adds a signer. The threshold is not changed.
+- **remove_signer(signer)** — Admin only. See the threshold policy below.
+- **set_threshold(threshold)** — Admin only. Threshold must be ≥ 1 and ≤ number of signers.
 
 - **propose_withdrawal(proposer, recipient, amount)**  
   Creates a withdrawal proposal. Only a signer can propose. Amount must be positive and ≤ treasury balance.  
@@ -35,19 +36,33 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
   Emits `treasury_withdrawal_proposed`.
 
 - **approve_withdrawal(approver, proposal_id)**  
-  Adds the signer’s approval. Double approval by the same signer is a no-op.  
+  Adds the signer's approval. Double approval by the same signer is a no-op.  
   Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.  
   Emits `treasury_withdrawal_approved`.
 
 - **execute_withdrawal(proposal_id, min_amount_out)**  
-  Callable by anyone once approval count ≥ threshold. Deducts from treasury and marks the proposal executed.  
+  Callable by anyone once the number of **currently valid** approvals ≥ threshold. Deducts from treasury and marks the proposal executed.  
   Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.  
-  
+  Rejects with `InsufficientApprovals` if the threshold is zero, or if fewer than threshold approvals come from addresses that are currently signers.
+
+  **Approval revalidation:** At execution time the contract recounts approvals against the current signer set. Approvals cast by signers that have since been removed do not count. If the cached count differs from the effective count, `treasury_approvals_revalidated(id, cached, effective)` is emitted.
+
   **Withdrawal Guardrails:**
   - **Liquidity Floor**: Ensures remaining balance after withdrawal is ≥ `min_liquidity`. Reverts with "liquidity guard: withdrawal would breach minimum liquidity floor" if violated.
   - **Slippage Protection**: Requires proposal amount ≥ `min_amount_out`. Reverts with "slippage: received amount below minimum" if violated. Pass `0` to skip this check.
   
   Emits `treasury_withdrawal_executed` with `(recipient, min_amount_out, actual_amount, treasury_debit)`.
+
+## Threshold policy
+
+The threshold invariant is `1 <= threshold <= signer_count` whenever signers exist.
+
+- `add_signer` increments the signer count and leaves the threshold unchanged.
+- `set_threshold(0)` is rejected with `ThresholdExceedsSigners` whenever signers exist.
+- `set_threshold(threshold)` with `threshold > signer_count` is rejected with `ThresholdExceedsSigners`.
+- `remove_signer` is **rejected** if removing the signer would leave `count < threshold` with `count >= 1`. The admin must lower the threshold first via `set_threshold`. This prevents the threshold from being silently driven to zero by signer removals.
+- Removing the last signer is allowed only when the threshold is already at most 1 and the resulting count is 0; the threshold is then capped to 1 (and execution remains impossible because no signers remain).
+- `execute_withdrawal` rejects with `InsufficientApprovals` when the threshold is 0, even if the cached approval count is also 0.
 
 ## Queries
 
@@ -62,7 +77,7 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **is_signer(address)** — Whether the address can propose and approve withdrawals.
 - **get_threshold()** — Required number of approvals to execute.
 - **get_proposal(proposal_id)** — Proposal details (recipient, amount, proposer, proposed_at, expires_at, executed).
-- **get_approval_count(proposal_id)** — Current number of approvals.
+- **get_approval_count(proposal_id)** — Current number of approvals (cached).
 - **has_approved(proposal_id, signer)** — Whether the signer has approved the proposal.
 
 ## Events
@@ -75,6 +90,7 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **treasury_withdrawal_proposed** — (proposal_id, recipient, amount, proposer)
 - **treasury_withdrawal_approved** — (proposal_id, approver)
 - **treasury_withdrawal_executed** — (proposal_id, recipient, min_amount_out, actual_amount, treasury_debit)
+- **treasury_approvals_revalidated** — (proposal_id, cached, effective)
 - **treasury_proposal_expired** — (proposal_id)
 - **proposal_ttl_updated** — (ttl)
 
@@ -111,8 +127,9 @@ across random deposit/withdrawal sequences (50 proptest cases with up to 20 acti
 ## Security
 
 - Only admin or authorized depositors can credit the treasury.
-- Withdrawals require a proposal and at least `threshold` signer approvals.
-- Threshold cannot exceed signer count; removing signers auto-caps threshold.
+- Withdrawals require a proposal and at least `threshold` approvals from current signers.
+- The threshold is always at least 1 while signers exist, and cannot exceed the signer count; removing a signer that would violate this is rejected.
+- Approvals are re-validated at execution against the current signer set; approvals from removed signers do not count. Re-adding a signer does not restore their old approvals.
 - Amounts use checked arithmetic to avoid overflow/underflow.
 - Proposal execution is idempotent (executed flag prevents double spend).
 - Proposals expire after the configured TTL (default 7 days); approvals and execution are rejected once expired.

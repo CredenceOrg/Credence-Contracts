@@ -1,10 +1,8 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    Address, BytesN, Env, vec, IntoVal,
+    vec, Address, BytesN, Env, IntoVal,
 };
-
-use soroban_sdk::IntoVal;
 
 fn setup_env() -> (Env, TimelockContractClient<'static>, Address) {
     let env = Env::default();
@@ -503,7 +501,7 @@ fn test_is_ready_boundary_suite() {
 #[test]
 fn test_call_bound_op_invokes_target() {
     let (env, client, admin) = setup_env();
-    
+
     // Register a mock target contract
     let target_id = env.register(TimelockContract, ()); // Use same contract type for simplicity
     let target_client = TimelockContractClient::new(&env, &target_id);
@@ -541,7 +539,6 @@ fn test_call_bound_op_invokes_target() {
 #[test]
 fn test_call_bound_op_not_before_eta() {
     let (env, client, admin) = setup_env();
-    
     // Register a mock target contract
     let target_id = env.register(TimelockContract, ());
     let target_client = TimelockContractClient::new(&env, &target_id);
@@ -574,7 +571,6 @@ fn test_call_bound_op_not_before_eta() {
 #[test]
 fn test_call_bound_op_executes_once() {
     let (env, client, admin) = setup_env();
-    
     // Register a mock target contract
     let target_id = env.register(TimelockContract, ());
     let _target_client = TimelockContractClient::new(&env, &target_id);
@@ -602,8 +598,7 @@ fn test_call_bound_op_executes_once() {
 #[test]
 fn test_failing_target_reverts_status() {
     let (env, client, admin) = setup_env();
-    
-    // Register a mock target contract  
+    // Register a mock target contract
     let target_id = env.register(TimelockContract, ());
     let _target_client = TimelockContractClient::new(&env, &target_id);
     _target_client.initialize(&admin);
@@ -673,7 +668,6 @@ fn test_hash_binds_all_fields() {
 #[test]
 fn test_cancelled_call_never_runs() {
     let (env, client, admin) = setup_env();
-    
     // Register a mock target contract
     let target_id = env.register(TimelockContract, ());
     let target_client = TimelockContractClient::new(&env, &target_id);

@@ -90,6 +90,8 @@ pub enum DataKey {
     Proposal(u64),
     /// Approval: (proposal_id, signer) -> true.
     Approval(u64, Address),
+    /// Approvers list per proposal (bounded by signer count).
+    Approvers(u64),
     /// Approval count per proposal (cached for execution check).
     ApprovalCount(u64),
     /// Minimum liquidity that must remain in the treasury after a withdrawal.
@@ -248,7 +250,7 @@ impl CredenceTreasury {
             &zero_cumulative_amount(),
         );
         e.storage().instance().set(&DataKey::SignerCount, &0_u32);
-        e.storage().instance().set(&DataKey::Threshold, &0_u32);
+        e.storage().instance().set(&DataKey::Threshold, &1_u32);
         e.storage()
             .instance()
             .set(&DataKey::ProposalCounter, &0_u64);
@@ -462,7 +464,7 @@ impl CredenceTreasury {
             .publish((Symbol::new(&e, "signer_added"),), signer);
     }
 
-    /// Remove a signer. Threshold is auto-capped to new signer count if needed.
+    /// Remove a signer. Threshold is auto-capped to new signer count if needed, but never below 1 while signers remain.
     pub fn remove_signer(e: Env, signer: Address) {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -494,7 +496,11 @@ impl CredenceTreasury {
             .set(&DataKey::SignerCount, &new_count);
         let threshold: u32 = e.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
         if threshold > new_count {
-            e.storage().instance().set(&DataKey::Threshold, &new_count);
+            // Policy: never lower the threshold below 1 while signers remain.
+            // If removing this signer would leave count < threshold with count >= 1,
+            // cap the threshold to max(new_count, 1).
+            let capped = if new_count == 0 { 0 } else { new_count };
+            e.storage().instance().set(&DataKey::Threshold, &capped);
         }
         e.events()
             .publish((Symbol::new(&e, "signer_removed"),), signer);
@@ -515,6 +521,9 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::SignerCount)
             .unwrap_or(0);
+        if threshold == 0 && count > 0 {
+            panic_with_error!(&e, ContractError::ThresholdExceedsSigners);
+        }
         if threshold > count {
             panic_with_error!(&e, ContractError::ThresholdExceedsSigners);
         }
@@ -634,6 +643,15 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::Approval(proposal_id, approver.clone()), &true);
+        let mut approvers: soroban_sdk::Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::Approvers(proposal_id))
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&e));
+        approvers.push_back(approver.clone());
+        e.storage()
+            .instance()
+            .set(&DataKey::Approvers(proposal_id), &approvers);
         let count: u32 = e
             .storage()
             .instance()
@@ -697,12 +715,40 @@ impl CredenceTreasury {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
         let threshold: u32 = e.storage().instance().get(&DataKey::Threshold).unwrap_or(0);
-        let approvals: u32 = e
+        if threshold == 0 {
+            panic_with_error!(&e, ContractError::InsufficientApprovals);
+        }
+        let cached_approvals: u32 = e
             .storage()
             .instance()
             .get(&DataKey::ApprovalCount(proposal_id))
             .unwrap_or(0);
-        if approvals < threshold {
+        // Re-derive effective approvals from the current signer set.
+        let approvers: soroban_sdk::Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::Approvers(proposal_id))
+            .unwrap_or_else(|| soroban_sdk::Vec::new(&e));
+        let mut effective: u32 = 0;
+        for approver in approvers.iter() {
+            let still_signer: bool = e
+                .storage()
+                .instance()
+                .get(&DataKey::Signer(approver.clone()))
+                .unwrap_or(false);
+            if still_signer {
+                effective = effective
+                    .checked_add(1)
+                    .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+            }
+        }
+        if effective != cached_approvals {
+            e.events().publish(
+                (Symbol::new(&e, "treasury_approvals_revalidated"), proposal_id),
+                (cached_approvals, effective),
+            );
+        }
+        if effective < threshold {
             panic_with_error!(&e, ContractError::InsufficientApprovals);
         }
         let total: i128 = e

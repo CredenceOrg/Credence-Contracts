@@ -89,7 +89,10 @@ fn admin_direct_unpause_transitions_to_unpaused() {
 fn admin_direct_pause_returns_none_proposal_id() {
     let (_, admin, client) = setup();
     let id = client.pause(&admin);
-    assert!(id.is_none(), "direct-admin pause must not create a proposal");
+    assert!(
+        id.is_none(),
+        "direct-admin pause must not create a proposal"
+    );
 }
 
 #[test]
