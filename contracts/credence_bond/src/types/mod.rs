@@ -2,20 +2,20 @@
 ///
 /// Includes Attestation (with weight), validation, and deduplication key types.
 
-pubmod attestation;
+pub mod attestation;
 
-pubseattestation::{
+pub use attestation::{
     Attestation, AttestationDedupKey, DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT,
 };
 
-///## Boundary and recovery test coverage
-
+/// ## Boundary and recovery test coverage
+///
 /// This module exposes the canonical boundary and recovery semantics for the
 /// attestation types re-exported above. The goal is to make determinism explicit
 /// for valid, invalid, duplicate, and boundary-case inputs without changing the
 /// public interface of the attestation module.
 ///
-///## Invariants
+/// ## Invariants
 ///
 /// 1. An attestation weight must always be in the inclusive range
 ///    `[0, MAX_ATTESTATION_WEIGHT]`. Values above the maximum are rejected
@@ -36,9 +36,9 @@ pubseattestation::{
 mod tests {
     use super::*;
 
-    ///--------------------------------------------------------------------------
-    /// Success cases: default and explicit weights within bounds.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Success cases: default and explicit weights within bounds.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn default_weight_is_within_bounds() {
@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn attestation_constructor_accepts_default_weight() {
-        // The constuctor must accept the default weight without panicking.
+        // The constructor must accept the default weight without panicking.
         let att = Attestation::new(DEFAULT_ATTESTATION_WEIGHT);
         assert_eq!(att.weight(), DEFAULT_ATTESTATION_WEIGHT);
     }
@@ -59,9 +59,9 @@ mod tests {
         assert_eq!(att.weight(), MAX_ATTESTATION_WEIGHT);
     }
 
-    ///--------------------------------------------------------------------------
-    /// Boundary cases: zero weight and one above the maximum.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Boundary cases: zero weight and one above the maximum.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn attestation_accepts_zero_weight() {
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn attestation_rejects_weight_one_above_max() {
-        // The upper bound is exclusive on the outside: max + 1 must reject.
+        // The upper bound is inclusive: max + 1 must reject.
         let result = Attestation::try_new(MAX_ATTESTATION_WEIGHT + 1);
         assert!(result.is_err(), "weight above max must be rejected");
     }
@@ -80,14 +80,14 @@ mod tests {
     #[test]
     fn attestation_rejects_weight_far_above_max() {
         // Large out-of-range values must also be rejected deterministically.
-        let result = Attestation::try_new(ui64::MAX);
+        let result = Attestation::try_new(u64::MAX);
         assert!(result.is_err(), "weight far above max must be rejected");
     }
 
-    ///--------------------------------------------------------------------------
-    /// Rejection cases: invalid inputs must not mutate state and must be
-/// retry-safe.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Rejection cases: invalid inputs must not mutate state and must be
+    // retry-safe.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn rejection_is_deterministic_across_retries() {
@@ -107,9 +107,9 @@ mod tests {
         assert_eq!(att_a.weight(), att_b.weight());
     }
 
-    ///--------------------------------------------------------------------------
-    /// Deduplication key invariants.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Deduplication key invariants.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn dedup_key_is_equal_for_equal_attestations() {
@@ -125,9 +125,9 @@ mod tests {
         assert_ne!(AttestationDedupKey::from(&att_a), AttestationDedupKey::from(&att_b));
     }
 
-    ///--------------------------------------------------------------------------
-    /// Regression: the module must keep re-exporting the canonical symbols.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Regression: the module must keep re-exporting the canonical symbols.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn module_reexports_canonical_symbols() {

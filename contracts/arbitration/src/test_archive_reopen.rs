@@ -1,12 +1,12 @@
-#`![cfg(test)]
+#![cfg(test)]
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk:{Address, Env, String};
+use soroban_sdk::{Address, Env, String};
 use status::{ArbitrationError, DisputeStatus};
 
 fn advance(e: &Env, secs: u64) {
-    e.ledger().set(soroban_sdkz:testutils::LedgerInfo {
+    e.ledger().set(soroban_sdk::testutils::LedgerInfo {
         timestamp: e.ledger().timestamp() + secs,
         protocol_version: 22,
         sequence_number: 1,
@@ -47,7 +47,7 @@ fn setup() -> Setup<'static> {
 
 fn create_and_resolve(s: &Setup) -> u64 {
     let desc = String::from_str(&s.env, "test dispute");
-    let id = s.client.create_dispute(&ts.creator, &desc, &3600);
+    let id = s.client.create_dispute(&s.creator, &desc, &3600);
     s.client.vote(&s.arb, &id, &1);
     advance(&s.env, 3601);
     s.client.resolve_dispute(&id);
@@ -69,7 +69,7 @@ fn create_and_tie(s: &Setup) -> u64 {
 fn create_and_cancel(s: &Setup) -> u64 {
     let desc = String::from_str(&s.env, "cancel dispute");
     let id = s.client.create_dispute(&s.creator, &desc, &3600);
-    s.client.cancel_dispute(&ts.creator, &id, &None);
+    s.client.cancel_dispute(&s.creator, &id, &None);
     id
 }
 
@@ -87,7 +87,7 @@ fn test_archive_tied_dispute() {
     let s = setup();
     let id = create_and_tie(&s);
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Tied);
-    s.client.try_archive_dispute(&ts.admin, &id).unwrap();
+    s.client.try_archive_dispute(&s.admin, &id).unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
 }
 
@@ -105,10 +105,10 @@ fn test_archive_rejects_voting_dispute() {
     let s = setup();
     let id = s
         .client
-        .create_dispute(&ts.creator, &String::from_str(&s.env, "d"), &3600);
+        .create_dispute(&s.creator, &String::from_str(&s.env, "d"), &3600);
     let err = s
         .client
-        .try_archive_dispute(&ts.admin, &id)
+        .try_archive_dispute(&s.admin, &id)
         .unwrap_err()
         .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
@@ -131,7 +131,7 @@ fn test_archive_rejects_non_admin() {
 fn test_reopen_archived_dispute() {
     let s = setup();
     let id = create_and_resolve(&s);
-    s.client.try_archive_dispute(&ts.admin, &id).unwrap();
+    s.client.try_archive_dispute(&s.admin, &id).unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
     s.client.try_reopen_dispute(&s.admin, &id, &3600).unwrap();
     let d = s.client.get_dispute(&id);
@@ -184,7 +184,7 @@ fn test_reopen_allows_new_votes() {
     let id = create_and_resolve(&s);
     s.client.try_archive_dispute(&s.admin, &id).unwrap();
     s.client.try_reopen_dispute(&s.admin, &id, &3600).unwrap();
-    s.client.vote(&ts.arb, &id, &2);
+    s.client.vote(&s.arb, &id, &2);
     advance(&s.env, 3601);
     let winner = s.client.resolve_dispute(&id);
     assert_eq!(winner, 2);
@@ -219,6 +219,6 @@ fn test_invalid_transition_require_transition() {
     );
     assert_eq!(
         require_transition(DisputeStatus::Voting, DisputeStatus::Archived),
-        Err((ArbitrationError::InvalidTransition))
+        Err(ArbitrationError::InvalidTransition)
     );
 }

@@ -464,4 +464,39 @@ mod tests {
             );
         }
     }
+
+    // ── Wide-intermediate and rounding coverage (issue fix) ─────────────────
+
+    /// The intermediate product must be 256-bit, not 128-bit.
+    #[test]
+    fn mul_div_uses_wide_intermediate() {
+        // 1000 WAD * 1000 WAD = 1_000_000 WAD; the raw product (~1e42) exceeds u128.
+        assert_eq!(mul_wad(1000 * WAD, 1000 * WAD, "wide"), 1_000_000 * WAD);
+        // MAX * WAD / WAD = MAX; the raw product exceeds u128.
+        assert_eq!(mul_wad(i128::MAX, WAD, "wide_max"), i128::MAX);
+    }
+
+    /// Final conversion to i128 must be checked and forward the caller's message.
+    #[test]
+    #[should_panic(expected = "boom")]
+    fn mul_div_final_overflow_panics_with_msg() {
+        let _ = mul_div_i128(i128::MAX, 2, 1, Rounding::Down, "boom");
+    }
+
+    /// Nearest is half-up on the absolute value: `2*rem >= |d|`.
+    #[test]
+    fn nearest_rounding_table() {
+        assert_eq!(mul_div_i128(5, 1, 1, Rounding::Nearest, "n"), 5);
+        assert_eq!(mul_div_i128(4, 1, 3, Rounding::Nearest, "n"), 1);
+        assert_eq!(mul_div_i128(5, 1, 3, Rounding::Nearest, "n"), 2);
+        assert_eq!(mul_div_i128(3, 1, 2, Rounding::Nearest, "n"), 2);
+        assert_eq!(mul_div_i128(-3, 1, 2, Rounding::Nearest, "n"), -2);
+    }
+
+    /// Negative denominators preserve sign; saturating divide returns 0 on zero.
+    #[test]
+    fn negative_denominator() {
+        assert_eq!(div_wad(WAD, -WAD, "m"), -WAD);
+        assert_eq!(sat_div_wad(5, 0), 0);
+    }
 }

@@ -1,4 +1,4 @@
-#![no_std]
+#no_std
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 #[allow(
@@ -23,7 +23,7 @@
 
 
 use credence_errors::ContractError;
-use ethnum::U256;
+use ethnum::I256;
 use soroban_sdk;
 
 pub mod fixed_point;
@@ -33,7 +33,6 @@ pub mod timestamp;
 
 pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
 pub use time::{
-    
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };
 pub use timestamp::Timestamp;
@@ -156,87 +155,129 @@ pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
     assert!(b > 0, "denominator must be positive");
-    (a + b - 1) / b
+    a.checked_add(b - 1).expect(message) / b
 }
 
-/// Wrapping multiply-divide: `(a * b) / denom` with full i128 intermediate.
-/// Rounds according to `rounding`. Panics with `msg` on overflow.
+/// Compute `(a * b) / denom` with a 256-bit intermediate, applying `rounding`.
+///
+/// Panics with `msg` only when `denom == 0` or when the rounded result does
+/// not fit in `i128`. Signs follow normal arithmetic for any sign of `a`, `b`
+/// and `denom`.
 #[inline]
 #[must_use]
 pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
-    assert!(denom > 0, "denominator must be positive");
-    // Use u128 for intermediate to avoid i128 overflow
-    let a_abs = a.unsigned_abs();
-    let b_abs = b.unsigned_abs();
-    let denom_abs = denom.unsigned_abs();
-    
-    let num = match a_abs.checked_mul(b_abs) {
-        Some(v) => v,
-        None => panic!("{}", msg),
-    };
-    
-    let mut result = (num / denom_abs) as i128;
-    let rem = num % denom_abs;
-    
-    match rounding {
-        Rounding::Down => {}
+    if denom == 0 {
+        panic!("{}", msg);
+    }
+
+    let a256 = I256::from(a);
+    let b256 = I256::from(b);
+    let d256 = I256::from(denom);
+
+    let num = a256 * b256;
+    let q = num / d256;
+    let rem = num % d256;
+
+    // Rounding is applied on the magnitude of the remainder relative to |d|.
+    let rounded = match rounding {
+        Rounding::Down => q,
         Rounding::Up => {
-            if rem != 0 {
-                result = result.saturating_add(1);
+            if rem != I256::ZERO {
+                // Round away from zero.
+                if num >= I256::ZERO {
+                    q + I256::ONE
+                } else {
+                    q - I256::ONE
+                }
+            } else {
+                q
             }
         }
         Rounding::Nearest => {
-            let half = denom_abs / 2;
-            if rem >= half {
-                result = result.saturating_add(1);
+            if rem == I256::ZERO {
+                q
+            } else {
+                // Compare 2*|rem} >= |d|.
+                let two_rem_abs = (rem.abs()) * I256::from(2u8);
+                let d_abs = d256.abs();
+                if two_rem_abs >= d_abs {
+                    if num >= I256::ZERO {
+                        q + I256::ONE
+                    } else {
+                        q - I256::ONE
+                    }
+                } else {
+                    q
+                }
             }
         }
+    };
+
+    // Checked conversion to i128.
+    if rounded > I256::from(i128::MAX) || rounded < I256::from(i128::MIN) {
+        panic!("{}", msg);
     }
-    
-    // Apply sign
-    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) { -1 } else { 1 };
-    result.saturating_mul(sign)
+    rounded.as_i128()
 }
 
 /// Saturating multiply-divide: `(a * b) / denom` with saturation on overflow.
-/// Rounds according to `rounding`. Returns clamped value on overflow.
+///
+/// Returns `0` when `denom == 0`. Clamps to `i128::MIN`/`i128::MAX` when the
+/// rounded result does not fit in `i128`.
 #[inline]
 #[must_use]
 pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i128 {
-    assert!(denom > 0, "denominator must be positive");
-    // Use i128 checked operations with manual overflow handling
-    let a_abs = a.unsigned_abs();
-    let b_abs = b.unsigned_abs();
-    let denom_abs = denom.unsigned_abs();
-    
-    // Compute (a * b) / denom using u256 intermediate via u128::checked_mul
-    let num = match a_abs.checked_mul(b_abs) {
-        Some(v) => v,
-        None => return if (a < 0) ^ (b < 0) { i128::MIN } else { i128::MAX },
-    };
-    
-    let mut result = (num / denom_abs) as i128;
-    let rem = num % denom_abs;
-    let mut result = result as i128;
-    
-    match rounding {
-        Rounding::Down => {}
+    if denom == 0 {
+        return 0;
+    }
+
+    let a256 = I256::from(a);
+    let b256 = I256::from(b);
+    let d256 = I256::from(denom);
+
+    let num = a256 * b256;
+    let q = num / d256;
+    let rem = num % d256;
+
+    let rounded = match rounding {
+        Rounding::Down => q,
         Rounding::Up => {
-            if rem != 0 {
-                result = result.saturating_add(1);
+            if rem != I256::ZERO {
+                if num >= I256::ZERO {
+                    q + I256::ONE
+                } else {
+                    q - I256::ONE
+                }
+            } else {
+                q
             }
         }
         Rounding::Nearest => {
-            let half = denom_abs / 2;
-            if rem >= half {
-                result = result.saturating_add(1);
+            if rem == I256::ZERO {
+                q
+            } else {
+                let two_rem_abs = rem.abs() * I256::from(2u8);
+                let d_abs = d256.abs();
+                if two_rem_abs >= d_abs {
+                    if num >= I256::ZERO {
+                        q + I256::ONE
+                    } else {
+                        q - I256::ONE
+                    }
+                } else {
+                    q
+                }
             }
         }
+    };
+
+    if rounded > I256::from(i128::MAX) {
+        i128::MAX
+    } else if rounded < I256::from(i128::MIN) {
+        i128::MIN
+    } else {
+        rounded.as_i128()
     }
-    
-    // Apply sign
-    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) { -1 } else { 1 };
-    result.saturating_mul(sign)
 }
 
 /// Fixed-point multiplication with checked overflow.

@@ -3719,6 +3719,10 @@ mod test_create_bond;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_lifecycle_invariants;
 
+/// Lifecycle state-transition invariant regression tests (issue #1273).
+#[cfg(test)]
+mod test_lifecycle_invariants;
+
 /// Emergency pause gating tests (issue #1042).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_pausable;
