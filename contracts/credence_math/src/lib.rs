@@ -155,7 +155,7 @@ pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
     assert!(b > 0, "denominator must be positive");
-    (a + b - 1) / b
+    a.checked_add(b - 1).expect(message) / b
 }
 
 /// Compute `(a * b) / denom` with a 256-bit intermediate, applying `rounding`.

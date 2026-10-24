@@ -31,6 +31,7 @@
 //! that were actually passed to the entry point).
 
 use credence_errors::ContractError;
+use crate::{domain::DomainTag, DelegationType};
 use soroban_sdk::{panic_with_error, xdr::ToXdr, Bytes, Env, IntoVal};
 
 /// Assert that a promised action hash matches the actual execution hash.
