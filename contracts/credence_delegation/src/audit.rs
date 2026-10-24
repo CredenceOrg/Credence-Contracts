@@ -30,6 +30,7 @@
 //! `domain`, `nonce`, `scheme`, `ledger_number`, `signature_domain` fields
 //! that were actually passed to the entry point).
 
+use crate::{domain::DomainTag, DelegationType};
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, xdr::ToXdr, Bytes, Env, IntoVal};
 

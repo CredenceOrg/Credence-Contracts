@@ -2,9 +2,9 @@
 ///
 /// Includes Attestation (with weight), validation, and deduplication key types.
 
-pubmod attestation;
+pub mod attestation;
 
-pubseattestation::{
+pub use attestation::{
     Attestation, AttestationDedupKey, DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT,
 };
 
@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn attestation_constructor_accepts_default_weight() {
-        // The constuctor must accept the default weight without panicking.
+        // The constructor must accept the default weight without panicking.
         let att = Attestation::new(DEFAULT_ATTESTATION_WEIGHT);
         assert_eq!(att.weight(), DEFAULT_ATTESTATION_WEIGHT);
     }
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn attestation_rejects_weight_far_above_max() {
         // Large out-of-range values must also be rejected deterministically.
-        let result = Attestation::try_new(ui64::MAX);
+        let result = Attestation::try_new(u64::MAX);
         assert!(result.is_err(), "weight far above max must be rejected");
     }
 
