@@ -88,10 +88,13 @@ mod test_corridor_settlement;
 mod test_accounting_reconciliation;
 
 #[cfg(test)]
-mod test_withdrawal_recovery_guardrails;
+mod test_treasury_token_delta;
 
 #[cfg(test)]
 mod test_treasury_boundary_recovery;
 
 #[cfg(test)]
 mod test_threshold_invariants;
+
+#[cfg(test)]
+mod test_withdrawal_recovery_guardrails;

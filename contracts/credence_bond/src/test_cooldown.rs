@@ -440,6 +440,11 @@ fn execute_at_exact_deadline_succeeds() {
         bond.bonded_amount, 750,
         "bonded_amount must decrease by the withdrawal amount at the exact boundary"
     );
+    assert_eq!(
+        client.get_identity_state(&identity).bonded_amount,
+        750,
+        "stored bonded_amount must be persisted at the exact boundary"
+    );
 }
 
 #[test]
@@ -453,6 +458,11 @@ fn execute_one_second_after_deadline_succeeds() {
     e.ledger().with_mut(|li| li.timestamp = 1101);
     let bond = client.execute_cooldown_withdrawal(&identity);
     assert_eq!(bond.bonded_amount, 600);
+    assert_eq!(
+        client.get_identity_state(&identity).bonded_amount,
+        600,
+        "stored bonded_amount must be persisted after deadline"
+    );
 }
 
 #[test]
@@ -468,6 +478,11 @@ fn execute_well_after_deadline_succeeds() {
     e.ledger().with_mut(|li| li.timestamp = 1_000_000);
     let bond = client.execute_cooldown_withdrawal(&identity);
     assert_eq!(bond.bonded_amount, 700);
+    assert_eq!(
+        client.get_identity_state(&identity).bonded_amount,
+        700,
+        "stored bonded_amount must be persisted well after deadline"
+    );
 }
 
 // ── D.2  Zero-period (instant) ────────────────────────────────────────────
@@ -1073,4 +1088,245 @@ fn execute_period_set_to_zero_after_request_allows_immediate_execution() {
     // Execute at the same timestamp — must succeed because period is now 0.
     let bond = client.execute_cooldown_withdrawal(&identity);
     assert_eq!(bond.bonded_amount, 600);
+}
+
+// ============================================================================
+// Acceptance criteria tests for issue #1616
+// ============================================================================
+
+#[test]
+fn set_cooldown_period_admin_succeeds() {
+    let e = Env::default();
+    e.mock_all_auths();
+    let (client, admin, _identity) = setup_with_bond(&e, 1000);
+
+    // Under mock_all_auths, set_cooldown_period(admin, 100) succeeds
+    client.set_cooldown_period(&admin, &100);
+    assert_eq!(client.get_cooldown_period(), 100);
+
+    // A non-admin caller fails with NotAdmin
+    let stranger = Address::generate(&e);
+    let res = client.try_set_cooldown_period(&stranger, &200);
+    assert_eq!(
+        res.err().unwrap().unwrap(),
+        credence_errors::ContractError::NotAdmin.into()
+    );
+}
+
+#[test]
+fn cooldown_execute_persists_and_pays() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+        li.sequence_number = 10;
+    });
+
+    let (client, admin, identity, token_addr, contract_id) = test_helpers::setup_with_token(&e);
+    client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
+
+    // Advance sequence by 1 to satisfy same-ledger guard
+    test_helpers::advance_ledger_sequence(&e);
+
+    client.set_cooldown_period(&admin, &100);
+    client.request_cooldown_withdrawal(&identity, &250);
+
+    let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+    let id_bal_before = token_client.balance(&identity);
+    let contract_bal_before = token_client.balance(&contract_id);
+
+    // Advance to requested_at + 100 = 1100
+    e.ledger().with_mut(|li| li.timestamp = 1100);
+
+    let bond = client.execute_cooldown_withdrawal(&identity);
+    assert_eq!(bond.bonded_amount, 750);
+
+    // Stored bonded_amount == 750
+    assert_eq!(client.get_identity_state(&identity).bonded_amount, 750);
+
+    // Identity token balance +250
+    assert_eq!(token_client.balance(&identity), id_bal_before + 250);
+
+    // Contract token balance -250
+    assert_eq!(token_client.balance(&contract_id), contract_bal_before - 250);
+}
+
+#[test]
+fn cooldown_execute_twice_rejected() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+        li.sequence_number = 10;
+    });
+
+    let (client, admin, identity, token_addr, contract_id) = test_helpers::setup_with_token(&e);
+    client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    client.set_cooldown_period(&admin, &100);
+    client.request_cooldown_withdrawal(&identity, &250);
+
+    e.ledger().with_mut(|li| li.timestamp = 1100);
+    client.execute_cooldown_withdrawal(&identity);
+
+    let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+    let id_bal = token_client.balance(&identity);
+    let contract_bal = token_client.balance(&contract_id);
+
+    let res = client.try_execute_cooldown_withdrawal(&identity);
+    assert_eq!(
+        res.err().unwrap().unwrap(),
+        credence_errors::ContractError::CooldownRequestNotFound.into()
+    );
+
+    // Balances do not change
+    assert_eq!(token_client.balance(&identity), id_bal);
+    assert_eq!(token_client.balance(&contract_id), contract_bal);
+}
+
+#[test]
+fn cooldown_execute_after_slash_respects_available() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+        li.sequence_number = 10;
+    });
+
+    let (client, admin, identity, token_addr, contract_id) = test_helpers::setup_with_token(&e);
+    client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    client.set_cooldown_period(&admin, &100);
+    client.request_cooldown_withdrawal(&identity, &250);
+
+    // Slash 900 -> available balance becomes 1000 - 900 = 100 (< 250)
+    test_helpers::advance_ledger_sequence(&e);
+    client.slash(&admin, &identity, &900);
+
+    let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+    let id_bal = token_client.balance(&identity);
+    let contract_bal = token_client.balance(&contract_id);
+
+    e.ledger().with_mut(|li| li.timestamp = 1100);
+    let res = client.try_execute_cooldown_withdrawal(&identity);
+    assert_eq!(
+        res.err().unwrap().unwrap(),
+        credence_errors::ContractError::InsufficientBalance.into()
+    );
+
+    // Stored state and request are unchanged
+    assert_eq!(client.get_identity_state(&identity).bonded_amount, 1000);
+    assert_eq!(client.get_identity_state(&identity).slashed_amount, 900);
+    let req = client.get_cooldown_request(&identity).unwrap();
+    assert_eq!(req.amount, 250);
+    assert_eq!(token_client.balance(&identity), id_bal);
+    assert_eq!(token_client.balance(&contract_id), contract_bal);
+}
+
+#[soroban_sdk::contract]
+pub struct HostileCooldownToken;
+
+#[soroban_sdk::contractimpl]
+impl HostileCooldownToken {
+    pub fn initialize(e: Env, contract: Address, initial_bal: i128) {
+        e.storage()
+            .instance()
+            .set(&soroban_sdk::Symbol::new(&e, "target"), &contract);
+        e.storage()
+            .instance()
+            .set(&soroban_sdk::Symbol::new(&e, "bal"), &initial_bal);
+    }
+
+    pub fn balance(e: Env, id: Address) -> i128 {
+        let contract: Address = e
+            .storage()
+            .instance()
+            .get(&soroban_sdk::Symbol::new(&e, "target"))
+            .unwrap();
+        if id == contract {
+            e.storage()
+                .instance()
+                .get(&soroban_sdk::Symbol::new(&e, "bal"))
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    pub fn transfer(e: Env, _from: Address, to: Address, amount: i128) {
+        let target: Address = e
+            .storage()
+            .instance()
+            .get(&soroban_sdk::Symbol::new(&e, "target"))
+            .unwrap();
+        let cur_bal: i128 = e
+            .storage()
+            .instance()
+            .get(&soroban_sdk::Symbol::new(&e, "bal"))
+            .unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&soroban_sdk::Symbol::new(&e, "bal"), &(cur_bal - amount));
+
+        let client = CredenceBondClient::new(&e, &target);
+        // Attempt reentrant call to execute_cooldown_withdrawal
+        let res = client.try_execute_cooldown_withdrawal(&to);
+        let is_reentrancy = match res {
+            Err(Ok(err)) => {
+                err == soroban_sdk::Error::from_contract_error(
+                    credence_errors::ContractError::ReentrancyDetected as u32,
+                )
+            }
+            _ => false,
+        };
+        e.storage()
+            .instance()
+            .set(&soroban_sdk::Symbol::new(&e, "reentrancy_caught"), &is_reentrancy);
+    }
+
+    pub fn is_reentrancy_caught(e: Env) -> bool {
+        e.storage()
+            .instance()
+            .get(&soroban_sdk::Symbol::new(&e, "reentrancy_caught"))
+            .unwrap_or(false)
+    }
+}
+
+#[test]
+fn cooldown_execute_reentrancy_guarded() {
+    let e = Env::default();
+    e.mock_all_auths();
+    e.ledger().with_mut(|li| {
+        li.timestamp = 1000;
+        li.sequence_number = 10;
+    });
+
+    let (client, admin, identity, _orig_token, contract_id) = test_helpers::setup_with_token(&e);
+    client.create_bond(&identity, &1000_i128, &3600_u64, &false, &0_u64);
+    test_helpers::advance_ledger_sequence(&e);
+
+    client.set_cooldown_period(&admin, &100);
+    client.request_cooldown_withdrawal(&identity, &250);
+
+    // Install HostileCooldownToken
+    let hostile_token_id = e.register(HostileCooldownToken, ());
+    let hostile_client = HostileCooldownTokenClient::new(&e, &hostile_token_id);
+    hostile_client.initialize(&contract_id, &10_000_i128);
+
+    let mut accepted = soroban_sdk::Vec::new(&e);
+    accepted.push_back(hostile_token_id.clone());
+    client.set_accepted_tokens(&admin, &accepted);
+    client.set_token(&admin, &hostile_token_id);
+
+    // Execute at requested_at + 100 = 1100
+    e.ledger().with_mut(|li| li.timestamp = 1100);
+    client.execute_cooldown_withdrawal(&identity);
+
+    // Verify the inner reentrant call was caught with ReentrancyDetected
+    assert!(
+        hostile_client.is_reentrancy_caught(),
+        "inner reentrant execute_cooldown_withdrawal call must be rejected with ReentrancyDetected"
+    );
 }

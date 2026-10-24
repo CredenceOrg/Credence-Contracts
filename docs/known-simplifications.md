@@ -242,17 +242,15 @@ This document consolidates known simplifications, stubs, and limitations across 
 
 ## 7. Documentation Notes & Future Work
 
-### 7.1 Registry `get_all_identities()` Has No Pagination
+### 7.1 Registry Enumeration (resolved)
 
 **Location**: `contracts/credence_registry/src/lib.rs`
 
-**Current behavior**: `get_all_identities()` returns the full list of registered identity addresses in a single call.
+**Previous behavior**: `get_all_identities()` returned the full list of registered identity addresses in a single call, and the whole registry lived in instance storage.
 
-**Production behavior**: Should support `get_identities_page(offset: u32, limit: u32)` with deprecation of the unbounded variant.
+**Current behavior**: the unbounded variant is gone. Per-identity mappings and an insertion index live in persistent storage, `register`/`remove` are O(1), and enumeration goes through `get_identities_page(offset, limit)` (capped at `MAX_IDENTITIES_PAGE_SIZE`) plus `get_identity_count()`.
 
-**Impact**: As the registry grows, this call consumes increasing ledger-read budget and may exceed per-transaction limits.
-
-**Tracking**: Issue #1093 (hypothetical); off-chain indexers should use event-based discovery instead.
+**Tracking**: Issue #1629.
 
 ---
 

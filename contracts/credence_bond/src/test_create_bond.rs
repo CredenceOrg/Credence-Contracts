@@ -460,3 +460,20 @@ fn test_create_bond_one_above_max_amount_rejected() {
         &0_u64,
     );
 }
+
+/// Phantom-balance mode (no token configured) keeps validating the raw amount
+/// against the test bounds: a minimum-size bond still succeeds unchanged
+/// (regression guard for issue #1612).
+#[test]
+fn phantom_mode_bounds_unchanged() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+
+    let alice = Address::generate(&e);
+    let amount = validation::MIN_BOND_AMOUNT;
+
+    let bond = client.create_bond(&alice, &amount, &86_400_u64, &false, &0_u64);
+
+    assert!(bond.active);
+    assert_eq!(bond.bonded_amount, amount);
+}
