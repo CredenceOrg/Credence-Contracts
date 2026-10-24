@@ -1,4 +1,4 @@
-﻿//! Regression tests enforcing that every `credence_errors::ContractError`
+//! Regression tests enforcing that every `credence_errors::ContractError`
 //! variant maps to a unique `#[repr(u32)]` discriminant.
 //!
 //! Wire-stability is documented in [`docs/error-codes-wire.md`] and the

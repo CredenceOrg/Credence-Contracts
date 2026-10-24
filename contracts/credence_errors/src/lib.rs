@@ -419,6 +419,12 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     SignatureExpired = 222,
 
+    /// Empty or whitespace-only currency symbol.
+    /// Replaces: panic!("invalid currency")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidCurrency = 234,
+
     /// Slash treasury address has not been configured.
     /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
     /// Contracts: bond
@@ -916,21 +922,12 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
             | ContractError::LeaseSignerMismatch
-            | ContractError::OutsideBusinessHours
-            | ContractError::NoPendingAdmin
-            | ContractError::InvalidAdminAddress
-            | ContractError::AdminUnchanged
-            | ContractError::TimelockNotReady
-            | ContractError::EmergencyDrainNotPermitted
             | ContractError::StaleAdminEpoch
             | ContractError::StaleSignerEpoch
             | ContractError::CrossContractCallerMismatch
             | ContractError::MigrationInProgress
             | ContractError::MaxPauseSignersExceeded
-            | ContractError::LeaseSignerMismatch
-            | ContractError::RoleRequired
-            | ContractError::StaleAdminEpoch
-            | ContractError::StaleSignerEpoch => ErrorCategory::Authorization,
+            | ContractError::RoleRequired => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -971,16 +968,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::StorageCapReached
-            | ContractError::TreasuryNotConfigured
-            | ContractError::CursorOutOfRange
-            | ContractError::BatchTooLarge
-            | ContractError::EmptyBatch
-            | ContractError::BytesTooLarge
-            | ContractError::OwnerMismatch
-            | ContractError::TargetMismatch
-            | ContractError::ContractIdMismatch
-            | ContractError::DomainMismatch => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1026,6 +1014,8 @@ impl ErrorExt for ContractError {
             | ContractError::TreasuryBeneficiaryMismatch
             | ContractError::CorridorNotRegistered
             | ContractError::TokenChangeWithBalance => ErrorCategory::Treasury,
+
+            ContractError::TimestampInFuture => ErrorCategory::Authorization,
 
             ContractError::Overflow
             | ContractError::Underflow
@@ -1182,30 +1172,6 @@ impl ErrorExt for ContractError {
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
             }
-            ContractError::DuplicateAttestation => {
-                "Attestation already exists from this attester"
-            }
-            ContractError::InvalidBondDuration => "Bond duration must be strictly positive (> 0)",
-            ContractError::InvalidNoticePeriod => "Rolling-bond notice_period_duration must be > 0 and <= duration",
-            ContractError::BondAlreadyExists => "Bond already exists for this identity",
-            ContractError::UnauthorizedToken => "Token address is not in the set of accepted tokens",
-            ContractError::InvalidCurrency => "Empty or whitespace-only currency symbol",
-            ContractError::InvalidStringifiedBytes => {
-                "Hex/base64 stringified bytes input is malformed or too long"
-            }
-            ContractError::SnapshotGenerationMismatch => {
-                "Snapshot generation does not match the current state"
-            }
-            ContractError::StorageCapReached => "Storage cap for attestations or slash history reached",
-            ContractError::TreasuryNotConfigured => "Slash treasury address has not been configured",
-            ContractError::CursorOutOfRange => "Pagination cursor is out of range (cursor >= registry_slots)",
-            ContractError::BatchTooLarge => "Batch input exceeds the maximum allowed size",
-            ContractError::EmptyBatch => "Batch input must contain at least one item",
-            ContractError::BytesTooLarge => "User-supplied Bytes input exceeds the maximum accepted length",
-            ContractError::TimestampInFuture => "Timestamp is in the future",
-            ContractError::InvariantViolation => {
-                "Bond storage drift detected; bonded/slashed or attestation counters inconsistent"
-            }
             ContractError::DuplicateAttestation => "Attestation already exists from this attester",
             ContractError::AttestationNotFound => "No attestation found for the given key",
             ContractError::AttestationAlreadyRevoked => "Attestation has already been revoked",
@@ -1298,31 +1264,6 @@ impl ErrorExt for ContractError {
                 "Cannot change accounting token while treasury holds a non-zero balance"
             }
             ContractError::Overflow => "Integer overflow in checked arithmetic",
-            ContractError::NoPendingAdmin => "No pending admin transfer exists",
-            ContractError::DomainMismatch => "Payload domain tag does not match expected",
-            ContractError::OwnerMismatch => "Payload owner does not match expected caller",
-            ContractError::TargetMismatch => "Payload target does not match expected action",
-            ContractError::ContractIdMismatch => "Payload contract_id does not match current contract",
-            ContractError::InvalidAdminAddress => "Proposed admin is the zero or identity address",
-            ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
-            ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
-            ContractError::ZeroBytes32 => "Input BytesN<32> argument is all-zero",
-            ContractError::CrossContractCallerMismatch => {
-                "Cross-contract caller does not match the configured partner address"
-            }
-            ContractError::InvalidMaxPauseSigners => {
-                "Max-pause-signers value must be greater than zero and within the hard cap"
-            }
-            ContractError::MaxPauseSignersExceeded => {
-                "Registering another pause signer would exceed the configured cap"
-            }
-            ContractError::StaleAdminEpoch => {
-                "Admin pause proposal carries a stale epoch reference"
-            }
-            ContractError::StaleSignerEpoch => {
-                "Signer pause proposal carries a stale epoch reference"
-            }
-            ContractError::EmergencyDrainNotPermitted => "Emergency drain requires contract to be paused and timelock window to have elapsed",
             ContractError::Underflow => "Integer underflow in checked arithmetic",
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {
@@ -1378,9 +1319,7 @@ impl ErrorExt for ContractError {
             | ContractError::NoPendingAdmin           // call begin_admin_transfer first
             | ContractError::RoleNotHeldAtLedger      // re-sign with a valid ledger timestamp
             | ContractError::EmergencyDrainNotPermitted
-            | ContractError::RoleNotHeldAtLedger
             | ContractError::RoleRequired
-            | ContractError::ZeroBytes32
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
@@ -1436,9 +1375,6 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
-            | ContractError::CooldownRequestAlreadyPending // wait for the existing request
-            | ContractError::CooldownRequestNotFound
-            | ContractError::CooldownPeriodNotElapsed     // wait for the cooldown to elapse
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
@@ -1523,8 +1459,6 @@ impl ErrorExt for ContractError {
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
-            ContractError::InvalidFlashLoanCallback => false,
-            ContractError::FlashLoanRepaymentFailed => false,
         }
     }
 }

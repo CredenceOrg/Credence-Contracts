@@ -131,6 +131,27 @@ pub fn record_fee(e: &Env, identity: &Address, amount: i128, fee: i128, treasury
     emit_fee_event(e, identity, amount, fee, treasury);
 }
 
+/// Read the accrued (uncollected) fee balance held by the contract.
+#[must_use]
+pub fn get_accrued_fees(e: &Env) -> i128 {
+    let key = Symbol::new(e, "fees");
+    e.storage().instance().get(&key).unwrap_or(0)
+}
+
+/// Zero the accrued fee balance and return the amount that was accrued.
+///
+/// Uses CEI ordering: the storage slot is cleared *before* the caller
+/// performs the outbound token transfer, so a re-entrant call observes a
+/// zero accrual and cannot double-collect.
+pub fn take_accrued_fees(e: &Env) -> i128 {
+    let key = Symbol::new(e, "fees");
+    let accrued: i128 = e.storage().instance().get(&key).unwrap_or(0);
+    if accrued > 0 {
+        e.storage().instance().set(&key, &0i128);
+    }
+    accrued
+}
+
 /// Emit fee collection event.
 pub fn emit_fee_event(
     e: &Env,

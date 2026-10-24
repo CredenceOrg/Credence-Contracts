@@ -480,7 +480,8 @@ impl TimelockContract {
         e.invoke_contract::<soroban_sdk::Val>(&op.target, &op.func, op.args.clone());
 
         // Emit post-execution event
-        e.events().publish(("call_executed", op_id), (op.target, op.func));
+        e.events()
+            .publish(("call_executed", op_id), (op.target, op.func));
     }
 
     /// Cancel a pending operation in the queue. Only callable by admin.

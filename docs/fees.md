@@ -2,7 +2,7 @@
 
 ## Overview
 
-A configurable fee is charged when creating a bond, as a percentage of the bonded amount. The fee is accumulated in the contract and can be collected to the protocol treasury. Fee waiver is supported when fee is 0 or amount is 0.
+A configurable fee is charged when creating a bond, as a percentage of the bonded amount. The fee is accrued in the contract and can be collected to the protocol treasury. Fee waiver is supported when fee is 0 or amount is 0.
 
 ## Configuration
 
@@ -27,9 +27,14 @@ fee rails share one consistent ceiling.
 
 ## Behavior
 
-- On `create_bond(identity, amount, ...)`: fee = `amount * fee_bps / 10_000`, net = `amount - fee`. The bond is created with `bonded_amount = net`. The fee is added to the contract’s fee pool and a `bond_creation_fee` event is emitted.
+- On `create_bond(identity, amount, ...)`: the contract pulls the full `amount` from the identity, computes fee = `amount * fee_bps / 10_000` (rounded down) and net = `amount - fee`. The bond is created with `bonded_amount = net`, the fee is accrued in the contract as protocol fees, and a `bond_creation_fee` event is emitted.
 - If `fee_bps` is 0 or no treasury is set, no fee is applied (net = amount).
-- Admin can withdraw accumulated fees via `collect_fees(admin)` (existing API).
+- Admin can withdraw accrued fees via `collect_fees(admin, salt)`. The admin-only call reads the accrued fee amount, zeros the accrual **before** the transfer, then transfers the accrued amount to the configured fee treasury via `token_integration::transfer_from_contract_with_source(…, FundSource::ProtocolFee)`, and returns the amount. If no treasury is configured the call fails with a typed error. When the accrual is 0 the call returns 0 and transfers nothing.
+- `collect_fees` is idempotent per salt: when a non-empty `salt` is supplied, a repeated call with the same salt fails with `DuplicateIdempotencyKey`.
+
+## Depositing fees
+
+The legacy public, unauthenticated `deposit_fees` entry point has been **removed**. Fees are now accrued only as a side effect of `create_bond`, so protocol fee accounting cannot be inflated by arbitrary callers. Any additional fees must flow through a real token transfer and admin authorization.
 
 ## Events
 
@@ -45,12 +50,25 @@ fee rails share one consistent ceiling.
 ## Edge Cases
 
 - **Zero fee**: fee_bps = 0 or amount ≤ 0 → fee = 0, net = amount.
+- **Rounding**: fee is computed with integer division and rounds down. With `fee_bps = 1`, an amount of 9,999 yields fee 0 and bond 9,999; an amount of 10,000 yields fee 1.
 - **Max fee**: fee_bps = `MAX_FEE_BPS` (1_000 = 10%) → fee = `amount / 10`, net = `9 × amount / 10`. The legacy `fee_bps = 10_000` is no longer reachable — the contract caps at `MAX_FEE_BPS`.
-- **Overflow**: Fee and net use checked arithmetic.
+- **Overflow**: Fee and net use checked arithmetic. Accrual uses `checked_add`. cmath::split_bps` is tested at `amount = i128::MAX / 10_000` to ensure no silent clamp happens.
+
+## Custody invariant
+
+The contract token balance must always satisfy:
+
+```
+contract_balance ≥ Σ(bonded − slashed) + accrued_fees + pending_claims
+```
+
+This is asserted in the test suite after the sequence create, create, slash, `collect_fees`, withdraw.
 
 ## Security
 
 - Only admin can set fee config.
+- Only admin can collect fees, and collection transfers real tokens to the configured treasury.
+- The unauthenticated `deposit_fees` write path has been removed; fees can no longer be forged.
 - fee_bps is bounded to `[MIN_FEE_BPS, MAX_FEE_BPS] = [0, 1_000]`; out-of-range
   values are rejected with `"fee_bps out of bounds"` and storage is unchanged.
 - Every successful fee-config change emits a `fee_config_updated` event with

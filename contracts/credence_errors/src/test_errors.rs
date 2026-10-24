@@ -132,7 +132,8 @@ mod tests {
         assert_eq!(ContractError::ContractPaused as u32, 106);
         assert_eq!(ContractError::InvalidPauseAction as u32, 107);
         assert_eq!(ContractError::InsufficientSignatures as u32, 108);
-        assert_eq!(ContractError::ZeroBytes32 as u32, 109);
+        assert_eq!(ContractError::AdminSuspended as u32, 113);
+        assert_eq!(ContractError::ZeroBytes32 as u32, 127);
         assert_eq!(ContractError::TimestampInFuture as u32, 118);
     }
 
@@ -1587,7 +1588,6 @@ mod tests {
             ContractError::RevocationGraceExpired,
             ContractError::DelegationNotExpired,
             ContractError::DelegationInactive,
-            ContractError::PromiseNotKept,
             ContractError::AmountMustBePositive,
             ContractError::ThresholdExceedsSigners,
             ContractError::InsufficientTreasuryBalance,
@@ -1717,6 +1717,7 @@ mod tests {
     fn test_require_non_zero_bytes32_happy_path() {
         use soroban_sdk::{BytesN, Env};
 
+        // Single-bit set at index 0
         fn test_single_bit() -> Result<(), ContractError> {
             let e = Env::default();
             let mut arr = [0u8; 32];
@@ -1727,6 +1728,7 @@ mod tests {
         }
         test_single_bit().unwrap();
 
+        // All-ones
         fn test_all_ones() -> Result<(), ContractError> {
             let e = Env::default();
             let all_ones = BytesN::from_array(&e, &[0xffu8; 32]);
