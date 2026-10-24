@@ -1,17 +1,12 @@
 // Test that emitted events match expected schemas
 // This prevents breaking changes to event payloads without version bumps
 //
-// NOTE: These tests were originally written for an older Soroban SDK version
-// that provided `e.events().get_all()` and `ContractEvent`. The current SDK
-// (22.0) does not expose those APIs, so the event-structure assertions are
-// replaced by publish + basic smoke checks to keep the module compilable.
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::status::DisputeStatus;
-    use soroban_sdk::testutils::Address as _;
-    use soroban_sdk::{Env, Symbol};
+    use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+    use soroban_sdk::{Env, Symbol, TryFromVal};
 
     #[test]
     fn arbitrator_registered_event_publishes() {
@@ -74,15 +69,43 @@ mod tests {
     #[test]
     fn quorum_not_met_event_publishes() {
         let e = Env::default();
-        let dispute_id = 1u64;
-        let total_weight = 150u32;
-        let min_total_weight = 200u32;
-        let voter_count = 2u32;
-        let min_voters = 3u32;
-        e.events().publish(
-            (Symbol::new(&e, "quorum_not_met"), dispute_id),
-            (total_weight, min_total_weight, voter_count, min_voters),
+        e.mock_all_auths();
+        let admin = soroban_sdk::Address::generate(&e);
+        let arbitrator = soroban_sdk::Address::generate(&e);
+        let creator = soroban_sdk::Address::generate(&e);
+        let contract_id = e.register(crate::CredenceArbitration, ());
+        let client = crate::CredenceArbitrationClient::new(&e, &contract_id);
+        client.initialize(&admin);
+        client.register_arbitrator(&arbitrator, &10_i128);
+        client.set_quorum(&admin, &100_i128, &1_u32);
+        let dispute_id = client.create_dispute(
+            &creator,
+            &soroban_sdk::String::from_str(&e, "quorum event schema"),
+            &3600_u64,
         );
+        client.vote(&arbitrator, &dispute_id, &1_u32);
+        e.ledger()
+            .set_timestamp(e.ledger().timestamp() + 3601);
+
+        assert_eq!(client.resolve_dispute(&dispute_id), 0);
+
+        let events = e.events().all();
+        let mut found = false;
+        for event in events.iter() {
+            let topics = event.1;
+            if topics.len() != 2 {
+                continue;
+            }
+            let name = Symbol::try_from_val(&e, &topics.get(0).unwrap()).unwrap();
+            let id = u64::try_from_val(&e, &topics.get(1).unwrap()).unwrap();
+            if name == Symbol::new(&e, "quorum_not_met") && id == dispute_id {
+                let data: (i128, i128, u32, u32) =
+                    TryFromVal::try_from_val(&e, &event.2).unwrap();
+                assert_eq!(data, (10_i128, 100_i128, 1_u32, 1_u32));
+                found = true;
+            }
+        }
+        assert!(found, "successful resolution should publish quorum_not_met");
     }
 
     #[test]

@@ -25,7 +25,7 @@ use soroban_sdk::{contract, Address, Env, IntoVal, Symbol, TryFromVal, Val};
 
 /// Every declared variant, in wire order. Adding a variant means adding it
 /// here, which is what forces the closed-world cases below to classify it too.
-const ALL_STATUSES: [DisputeStatus; 7] = [
+const ALL_STATUSES: [DisputeStatus; 8] = [
     DisputeStatus::Open,
     DisputeStatus::Voting,
     DisputeStatus::Resolving,
@@ -33,6 +33,7 @@ const ALL_STATUSES: [DisputeStatus; 7] = [
     DisputeStatus::Cancelled,
     DisputeStatus::Tied,
     DisputeStatus::Archived,
+    DisputeStatus::NoQuorum,
 ];
 
 /// The states that block lease-modifying operations.
@@ -43,10 +44,11 @@ const ACTIVE_STATUSES: [DisputeStatus; 3] = [
 ];
 
 /// The states in which a dispute has reached a definite, consumer-visible end.
-const TERMINAL_STATUSES: [DisputeStatus; 3] = [
+const TERMINAL_STATUSES: [DisputeStatus; 4] = [
     DisputeStatus::Resolved,
     DisputeStatus::Cancelled,
     DisputeStatus::Tied,
+    DisputeStatus::NoQuorum,
 ];
 
 /// Storage frame for the persistence cases. Deliberately empty: these tests
@@ -223,6 +225,7 @@ fn discriminants_match_the_deployed_layout() {
     assert_eq!(DisputeStatus::Cancelled as u32, 4);
     assert_eq!(DisputeStatus::Tied as u32, 5);
     assert_eq!(DisputeStatus::Archived as u32, 6);
+    assert_eq!(DisputeStatus::NoQuorum as u32, 7);
 }
 
 #[test]
@@ -322,10 +325,10 @@ fn a_status_shares_the_ledger_encoding_of_its_discriminant() {
 fn an_out_of_range_status_code_does_not_deserialize_into_a_verdict() {
     // The guards are handed a `DisputeStatus`, never a raw code. A truncated,
     // stale, or hostile u32 has to fail conversion rather than collapse onto a
-    // variant: silently mapping 7 to `Resolved` would admit lease work on a
-    // dispute that is still being voted on.
+    // variant. `NoQuorum` is the newest valid status, so only codes above 7 are
+    // invalid for this enum.
     let (env, _id) = fixture();
-    for bogus in [7_u32, 8, 42, u32::MAX] {
+    for bogus in [8_u32, 42, u32::MAX] {
         let val: Val = bogus.into_val(&env);
         assert!(
             DisputeStatus::try_from_val(&env, &val).is_err(),

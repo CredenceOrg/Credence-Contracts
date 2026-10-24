@@ -779,10 +779,9 @@ fn overlong_cancel_reason_is_rejected_then_recovers_with_a_valid_retry() {
     assert_eq!(client.get_dispute(&id).status, DisputeStatus::Cancelled);
 }
 
-/// A failed quorum resolution must preserve the votes and the creator's active
-/// dispute slot: no tally is lost and the guard is not silently released.
+/// A quorum miss finalizes the dispute while preserving its tally.
 #[test]
-fn quorum_failure_keeps_votes_and_active_dispute_guard_intact() {
+fn quorum_miss_ends_in_no_quorum() {
     let s = setup();
     let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
     client.set_quorum(&s.admin, &100_i128, &1_u32);
@@ -790,19 +789,69 @@ fn quorum_failure_keeps_votes_and_active_dispute_guard_intact() {
     client.vote(&s.arb, &id, &1_u32);
     advance(&s.env, 3601);
 
-    assert_eq!(
-        client.try_resolve_dispute(&id).unwrap_err().unwrap(),
-        ArbitrationError::QuorumNotMet
-    );
-    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Voting);
+    assert_eq!(client.resolve_dispute(&id), 0);
+    let dispute = client.get_dispute(&id);
+    assert_eq!(dispute.status, DisputeStatus::NoQuorum);
+    assert_eq!(dispute.outcome, 0);
     assert_eq!(client.get_tally(&id, &1_u32), 10_i128);
+}
+
+#[test]
+fn no_quorum_frees_creator() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    client.set_quorum(&s.admin, &100_i128, &1_u32);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+    client.vote(&s.arb, &id, &1_u32);
+    advance(&s.env, 3601);
+    assert_eq!(client.resolve_dispute(&id), 0);
 
     let other = String::from_str(&s.env, "second dispute");
+    assert_ne!(client.create_dispute(&s.creator, &other, &3600_u64), id);
+}
+
+#[test]
+fn no_quorum_is_terminal() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    client.set_quorum(&s.admin, &100_i128, &1_u32);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+    client.vote(&s.arb, &id, &1_u32);
+    advance(&s.env, 3601);
+    assert_eq!(client.resolve_dispute(&id), 0);
+
+    assert_eq!(
+        client.try_resolve_dispute(&id).unwrap_err().unwrap(),
+        ArbitrationError::InvalidTransition
+    );
     assert_eq!(
         client
-            .try_create_dispute(&s.creator, &other, &3600_u64)
+            .try_vote(&s.arb, &id, &1_u32)
             .unwrap_err()
             .unwrap(),
-        ArbitrationError::OngoingDispute
+        ArbitrationError::VotingInactive
     );
+    assert_eq!(
+        client
+            .try_cancel_dispute(&s.creator, &id, &None)
+            .unwrap_err()
+            .unwrap(),
+        ArbitrationError::InvalidTransition
+    );
+}
+
+#[test]
+fn no_quorum_can_be_archived_and_reopened() {
+    let s = setup();
+    let client = CredenceArbitrationClient::new(&s.env, &s.contract_id);
+    client.set_quorum(&s.admin, &100_i128, &1_u32);
+    let id = open_dispute(&s.env, &s.contract_id, &s.creator);
+    client.vote(&s.arb, &id, &1_u32);
+    advance(&s.env, 3601);
+    assert_eq!(client.resolve_dispute(&id), 0);
+
+    client.archive_dispute(&s.admin, &id);
+    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Archived);
+    client.reopen_dispute(&s.admin, &id, &3600_u64);
+    assert_eq!(client.get_dispute(&id).status, DisputeStatus::Voting);
 }
