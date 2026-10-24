@@ -8,6 +8,7 @@ description = "Bounty escrow — risk-monitoring analytics views for escrowed bo
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+credence_errors = { path = "../credence_errors" }
 soroban-sdk = "22.0"
 
 [dev-dependencies]

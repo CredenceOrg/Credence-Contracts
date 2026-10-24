@@ -249,21 +249,37 @@ TTL: standard `31_536_000` / half-life pattern.
 
 ### credence_registry
 
-Two enums, both **instance** storage: `storage::DataKey` (the production
-key set) and `idempotency::StorageKey` (currently unused by any production
-entry point — see note).
+Two enums: `storage::DataKey` (the production key set) and
+`idempotency::StorageKey` (currently unused by any production entry point —
+see note).
 
 **`storage::DataKey`** (`contracts/credence_registry/src/storage.rs`):
+
+Instance storage (fixed-size config and counters — never grows with the
+registry):
 
 | Variant | Used for |
 |---|---|
 | `Admin` | Admin address |
 | `Paused`, `PauseSigner(Address)`, `PauseSignerCount`, `PauseThreshold`, `PauseProposalCounter`, `PauseProposal(u32)`, `PauseApproval(u32, Address)`, `PauseApprovalCount(u32)` | Pause multisig — proposal ids are `u32`; `PauseProposal` stores the action as the `Symbol` `pause` or `unpause` |
-| `IdentityToBond(Address)` | Forward mapping: identity → registry entry |
-| `BondToIdentity(Address)` | Reverse mapping: bond contract → identity |
-| `RegisteredIdentities` | Insertion-ordered `Vec<Address>` of all registered identities |
-| `AllowNonInterface(Address)` | Audit flag when a bond opted out of the interface check |
 | `BondCodeHash` | Admin-pinned WASM code hash for trustless bond self-registration |
+| `IdentityCount` | Number of identities in the insertion index (`u32`) |
+
+Persistent storage (one entry per identity; read/written with a TTL bump):
+
+| Variant | Used for |
+|---|---|
+| `IdentityToBond(Address)` | Forward mapping: identity → `RegistryEntry` |
+| `BondToIdentity(Address)` | Reverse mapping: bond contract → identity |
+| `AllowNonInterface(Address)` | Audit flag when a bond opted out of the interface check |
+| `IdentityAt(u32)` | Identity at a position in the insertion index |
+| `IdentityIndex(Address)` | Position of an identity in the insertion index |
+| `RegisteredIdentities` | **Legacy.** The old unbounded `Vec<Address>` in instance storage. No longer read or written; the variant is retained so existing discriminants do not shift |
+
+`register` appends with `IdentityAt(IdentityCount)` / `IdentityIndex(identity)`
+and bumps `IdentityCount`; `remove` is swap-and-pop (the tail entry moves into
+the freed slot). Both are O(1) in storage operations. Persistent TTL: threshold
+`1_555_200`, target `3_110_400` ledgers.
 
 **`idempotency::StorageKey`** (`contracts/credence_registry/src/idempotency.rs`):
 `Idempotent(BytesN<32>)` — maps a dedup key to a cached result. No
@@ -273,7 +289,8 @@ overlap with any `storage::DataKey` variant, so it introduces no collision
 risk if wired in later — flagged here only so it isn't mistaken for dead
 code to delete.
 
-TTL: standard `31_536_000` / half-life pattern.
+TTL: instance entries use the standard `31_536_000` / half-life pattern;
+persistent entries use `3_110_400` / half.
 
 ### credence_treasury
 
@@ -335,17 +352,23 @@ TTL: no `extend_ttl` calls.
 
 ### timelock
 
-Single enum `DataKey` (`contracts/timelock/src/lib.rs`), all **instance**
-storage.
+Single enum `DataKey` (`contracts/timelock/src/lib.rs`). Operations live in
+**persistent** storage because their `args` vector is unbounded; the rest is
+**instance** storage.
 
-| Variant | Used for |
-|---|---|
-| `Admin` | Admin address |
-| `OperationCounter` | Next operation id |
-| `Operation(u64)` | Queued operation (op hash, eta, expiry, status) |
-| `ExecutedOp(BytesN<32>)` | Replay guard keyed by op hash |
+| Variant | Tier | Used for |
+|---|---|---|
+| `Admin` | instance | Admin address |
+| `OperationCounter` | instance | Next operation id |
+| `ExecutedOp(BytesN<32>)` | instance | Replay guard keyed by op hash |
+| `Operation(u64)` | persistent | Queued operation (op hash, eta, expiry, status) |
+| `Call(u64)` | persistent | Call bound to an operation (`target`, `func`, `args`, `salt`) |
 
-TTL: standard `31_536_000` / half-life pattern via `bump_instance_ttl()`.
+TTL: instance uses the standard `31_536_000` / half-life pattern via
+`bump_instance_ttl()`; persistent operation and call entries use
+`PERSISTENT_TTL_THRESHOLD = 518_400` and `PERSISTENT_TTL_EXTEND_TO = 3_110_400`
+(both below the network maximum entry TTL) via `bump_persistent_ttl()`, on every
+write and read.
 Separately, `min_delay_seconds() = 86_400` and `GRACE_PERIOD = 86_400` are
 business-logic timers (minimum queue delay, post-ETA execution window) —
 not ledger-entry TTLs — and shouldn't be confused with the storage bump

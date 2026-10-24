@@ -8,9 +8,11 @@ use soroban_sdk::contracterror;
 ///   Voting    → Cancelled   (cancel_dispute called by creator or admin)
 ///   Resolving → Resolved    (outcome tallied and stored, outcome != 0)
 ///   Resolving → Tied        (votes tallied with tie, outcome = 0 is reserved)
+///   Resolving → NoQuorum    (quorum requirements were not met, outcome = 0)
 ///   Open      → Cancelled   (cancel before voting starts)
 ///   Resolved  → Archived    (admin archives a finalized dispute)
 ///   Tied      → Archived    (admin archives a tied dispute)
+///   NoQuorum  → Archived    (admin archives a dispute that missed quorum)
 ///   Cancelled → Archived    (admin archives a cancelled dispute)
 ///   Archived  → Voting      (admin reopens an archived dispute for new voting)
 ///
@@ -33,6 +35,8 @@ pub enum DisputeStatus {
     /// Dispute has been finalized and archived by an admin.
     /// Archived disputes can be reopened by an admin via reopen_dispute().
     Archived = 6,
+    /// Voting ended without meeting the configured quorum; outcome is 0.
+    NoQuorum = 7,
 }
 
 #[contracterror]
@@ -79,8 +83,10 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
             | (DisputeStatus::Voting, DisputeStatus::Cancelled)
             | (DisputeStatus::Resolving, DisputeStatus::Resolved)
             | (DisputeStatus::Resolving, DisputeStatus::Tied)
+            | (DisputeStatus::Resolving, DisputeStatus::NoQuorum)
             | (DisputeStatus::Resolved, DisputeStatus::Archived)
             | (DisputeStatus::Tied, DisputeStatus::Archived)
+            | (DisputeStatus::NoQuorum, DisputeStatus::Archived)
             | (DisputeStatus::Cancelled, DisputeStatus::Archived)
             | (DisputeStatus::Archived, DisputeStatus::Voting)
     );
@@ -99,7 +105,8 @@ pub fn is_dispute_active(status: DisputeStatus) -> bool {
     )
 }
 
-/// Require that a dispute's status is inactive (Resolved, Cancelled, or Tied).
+/// Require that a dispute's status is inactive (Resolved, Cancelled, Tied,
+/// NoQuorum, or Archived).
 ///
 /// Active disputes (Open, Voting, Resolving) block lease-modifying operations;
 /// resolved disputes allow them to proceed.
@@ -126,7 +133,8 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
 /// Assert that a dispute is in a resolved (terminal) state.
 ///
 /// Active dispute states (`Open`, `Voting`, `Resolving`) indicate the dispute
-/// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`) mean
+/// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`, and
+/// `NoQuorum`) mean
 /// the dispute has concluded and downstream operations (e.g. lease/bond
 /// actions) may proceed.
 ///
@@ -136,7 +144,10 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
 /// - `Err(ArbitrationError::DisputeActive)` when the dispute is still active.
 pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), ArbitrationError> {
     match status {
-        DisputeStatus::Resolved | DisputeStatus::Cancelled | DisputeStatus::Tied => Ok(()),
+        DisputeStatus::Resolved
+        | DisputeStatus::Cancelled
+        | DisputeStatus::Tied
+        | DisputeStatus::NoQuorum => Ok(()),
         DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving => {
             Err(ArbitrationError::DisputeActive)
         }
@@ -214,6 +225,14 @@ mod tests {
         }
 
         #[test]
+        fn valid_resolving_to_no_quorum() {
+            assert_eq!(
+                require_transition(DisputeStatus::Resolving, DisputeStatus::NoQuorum),
+                Ok(())
+            );
+        }
+
+        #[test]
         fn valid_resolved_to_archived() {
             assert_eq!(
                 require_transition(DisputeStatus::Resolved, DisputeStatus::Archived),
@@ -225,6 +244,14 @@ mod tests {
         fn valid_tied_to_archived() {
             assert_eq!(
                 require_transition(DisputeStatus::Tied, DisputeStatus::Archived),
+                Ok(())
+            );
+        }
+
+        #[test]
+        fn valid_no_quorum_to_archived() {
+            assert_eq!(
+                require_transition(DisputeStatus::NoQuorum, DisputeStatus::Archived),
                 Ok(())
             );
         }
@@ -299,6 +326,14 @@ mod tests {
         fn invalid_archived_to_archived() {
             assert_eq!(
                 require_transition(DisputeStatus::Archived, DisputeStatus::Archived),
+                Err(ArbitrationError::InvalidTransition)
+            );
+        }
+
+        #[test]
+        fn invalid_no_quorum_to_no_quorum() {
+            assert_eq!(
+                require_transition(DisputeStatus::NoQuorum, DisputeStatus::NoQuorum),
                 Err(ArbitrationError::InvalidTransition)
             );
         }
@@ -447,6 +482,11 @@ mod tests {
         #[test]
         fn allows_tied() {
             assert_eq!(require_dispute_inactive(DisputeStatus::Tied), Ok(()));
+        }
+
+        #[test]
+        fn allows_no_quorum() {
+            assert_eq!(require_dispute_inactive(DisputeStatus::NoQuorum), Ok(()));
         }
 
         #[test]
@@ -663,6 +703,14 @@ mod tests {
             assert_eq!(require_dispute_resolved(&DisputeStatus::Tied), Ok(()));
         }
 
+        #[test]
+        fn allows_no_quorum_state() {
+            assert_eq!(
+                require_dispute_resolved(&DisputeStatus::NoQuorum),
+                Ok(())
+            );
+        }
+
         // --- Active States (Should Fail) ---
 
         #[test]
@@ -739,6 +787,7 @@ mod tests {
                 DisputeStatus::Resolved,
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
+                DisputeStatus::NoQuorum,
             ];
 
             for state in terminal_states {
@@ -1086,7 +1135,7 @@ mod tests {
 
         #[test]
         fn all_status_values_covered() {
-            // Ensure all 7 states are defined
+            // Ensure all 8 states are defined
             let states = vec![
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
@@ -1095,9 +1144,10 @@ mod tests {
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
                 DisputeStatus::Archived,
+                DisputeStatus::NoQuorum,
             ];
 
-            assert_eq!(states.len(), 7, "All 7 dispute states should be tested");
+            assert_eq!(states.len(), 8, "All 8 dispute states should be tested");
         }
 
         #[test]
@@ -1110,9 +1160,10 @@ mod tests {
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
                 DisputeStatus::Archived,
+                DisputeStatus::NoQuorum,
             ];
 
-            // Test all 49 possible transitions (7x7)
+            // Test all 64 possible transitions (8x8)
             for from in &states {
                 for to in &states {
                     let result = require_transition(*from, *to);
