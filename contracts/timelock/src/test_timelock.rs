@@ -703,4 +703,3 @@ fn test_cancelled_call_never_runs() {
     // Target should be unchanged
     assert_eq!(target_client.get_admin(), original_admin);
 }
-
