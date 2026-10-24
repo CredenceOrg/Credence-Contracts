@@ -701,16 +701,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     StaleSignerEpoch = 515,
 
-    /// Supplied timestamp or ledger number is ahead of the current ledger.
-    ///
-    /// Raised by `verify_no_future_ledger` when the caller-supplied
-    /// timestamp exceeds the on-chain ledger timestamp, indicating the
-    /// value could not have been produced by the network.
-    ///
-    /// Contracts: general-purpose
-    /// Wire-stable: do not renumber this error code.
-    TimestampInFuture = 118,
-
     // --- Treasury (600-699) ---
     /// Amount argument must be strictly positive (> 0).
     /// Replaces: panic!("amount must be positive")
@@ -1024,6 +1014,8 @@ impl ErrorExt for ContractError {
             | ContractError::TreasuryBeneficiaryMismatch
             | ContractError::CorridorNotRegistered
             | ContractError::TokenChangeWithBalance => ErrorCategory::Treasury,
+
+            ContractError::TimestampInFuture => ErrorCategory::Authorization,
 
             ContractError::Overflow
             | ContractError::Underflow
@@ -1467,8 +1459,6 @@ impl ErrorExt for ContractError {
             // --- Arithmetic (700-799): code-level impossibility. ---
             ContractError::Overflow | ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
-            ContractError::InvalidFlashLoanCallback => false,
-            ContractError::FlashLoanRepaymentFailed => false,
         }
     }
 }
