@@ -151,13 +151,13 @@ fn require_matching_admin_epoch_with_logging(e: &Env, action: PauseAction, ep: u
 }
 
 fn require_admin_auth(e: &Env, admin: &Address, args: Vec<Val>) {
-    // In admin contract, we need to check if the caller is a SuperAdmin
+    // In admin contract, we need to check if the caller is an effective
+    // (active, not suspended) SuperAdmin. Using the status-aware helper
+    // prevents deactivated or suspended SuperAdmins from exercising
+    // pause authority.
     use crate::{AdminContract, AdminRole};
 
-    let caller_role = AdminContract::get_role(e.clone(), admin.clone());
-    if caller_role != AdminRole::SuperAdmin {
-        panic_with_error!(e, ContractError::NotAdmin);
-    }
+    AdminContract::require_effective_role(e, admin, AdminRole::SuperAdmin);
     admin.require_auth_for_args(args);
 }
 

@@ -440,11 +440,9 @@ impl AdminContract {
             .get(&DataKey::AdminInfo(admin_to_remove.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
-        // Verify caller authorization
-        let caller_role = Self::get_role(e.clone(), caller.clone());
-        if caller_role <= admin_info.role {
-            panic_with_error!(&e, ContractError::NotAdmin);
-        }
+        // Verify caller authorization: caller must be an effective admin and
+        // strictly outrank the target's current role (owner may always act).
+        Self::require_can_act_on(&e, &caller, &admin_info);
 
         // Check minimum admin requirements
         let role_admins: Vec<Address> = e
@@ -547,9 +545,10 @@ impl AdminContract {
             .get(&DataKey::AdminInfo(admin_address.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
-        // Verify caller authorization
-        Self::require_role_at_least(&e, &caller, Self::get_required_role_to_assign(new_role))
-            .unwrap_or_else(|_| panic_with_error!(&e, ContractError::NotAdmin));
+        // Verify caller authorization: must be an effective admin that may
+        // assign `new_role` AND strictly outrank the target's current role.
+        Self::require_effective_role(&e, &caller, Self::get_required_role_to_assign(new_role));
+        Self::require_can_act_on(&e, &caller, &admin_info);
 
         // Prevent self-assignment of equal or higher role
         if caller == admin_address && Self::get_role(e.clone(), caller.clone()) >= new_role {
@@ -689,11 +688,9 @@ impl AdminContract {
             .get(&DataKey::AdminInfo(admin_address.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
-        // Verify caller authorization: caller must strictly outrank the target.
-        let caller_role = Self::get_role(e.clone(), caller.clone());
-        if caller_role <= admin_info.role {
-            panic_with_error!(&e, ContractError::NotAdmin);
-        }
+        // Verify caller authorization: caller must be an effective admin and
+        // strictly outrank the target's current role (owner may always act).
+        Self::require_can_act_on(&e, &caller, &admin_info);
 
         if !admin_info.active {
             panic_with_error!(&e, ContractError::AlreadyDeactivated);
@@ -740,12 +737,15 @@ impl AdminContract {
             .get(&DataKey::AdminInfo(admin_address.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
 
-        // Verify caller authorization
-        let caller_role = Self::get_role(e.clone(), caller.clone());
-        // Allow reactivation when caller has the same role as the target.
-        if caller_role < admin_info.role {
+        // Self-reactivation is rejected: a deactivated admin must not be able
+        // to restore their own authority.
+        if caller == admin_address {
             panic_with_error!(&e, ContractError::NotAdmin);
         }
+
+        // Verify caller authorization: must be an effective admin that
+        // strictly outranks the target's current role (owner may always act).
+        Self::require_can_act_on(&e, &caller, &admin_info);
 
         if admin_info.active {
             panic_with_error!(&e, ContractError::AlreadyActive);
@@ -835,15 +835,10 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::AdminSuspended);
         }
 
-        // Caller must have a role >= target's role (same rule as deactivate_admin)
-        let caller_info: AdminInfo = e
-            .storage()
-            .instance()
-            .get(&DataKey::AdminInfo(caller.clone()))
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotAdmin));
-        if caller_info.role < admin_info.role {
-            panic_with_error!(&e, ContractError::NotAdmin);
-        }
+        // Caller must be an effective admin and strictly outrank the target's
+        // current role (same rule as deactivate_admin; owner may always act).
+        // This rejects peer SuperAdmins suspending one another.
+        Self::require_can_act_on(&e, &caller, &admin_info);
 
         // MinAdmins guard: count currently-effective active admins
         let min_admins: u32 = e.storage().instance().get(&DataKey::MinAdmins).unwrap_or(1);
@@ -1730,6 +1725,50 @@ impl AdminContract {
         }
     }
 
+    /// Require that `caller` is an effective admin with at least `min_role`.
+    ///
+    /// This is the single status-aware authority check used by every
+    /// privileged entry point. It rejects callers that are not registered
+    /// admins (`NotAdmin`), that are deactivated (`AlreadyDeactivated`), or
+    /// that are currently suspended (`AdminSuspended`), and it rejects
+    /// callers whose effective role is below `min_role` (`NotAdmin`).
+    ///
+    /// Returns the caller's [`AdminInfo`] on success.
+    fn require_effective_role(e: &Env, caller: &Address, min_role: AdminRole) -> AdminInfo {
+        let admin_info: AdminInfo = e
+            .storage()
+            .instance()
+            .get(&DataKey::AdminInfo(caller.clone()))
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotAdmin));
+        if !admin_info.active {
+            panic_with_error!(e, ContractError::AlreadyDeactivated);
+        }
+        if e.ledger().timestamp() < admin_info.suspended_until {
+            panic_with_error!(e, ContractError::AdminSuspended);
+        }
+        if admin_info.role < min_role {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        admin_info
+    }
+
+    /// Require that `caller` may act on `target`.
+    ///
+    /// The caller must be an effective admin (see [`Self::require_effective_role`])
+    /// whose effective role is **strictly greater** than the target's current
+    /// stored role. The contract owner is exempt from the strict-rank rule and
+    /// may always act on any admin, including SuperAdmins, as documented in
+    /// `docs/admin-roles.md`.
+    fn require_can_act_on(e: &Env, caller: &Address, target: &AdminInfo) {
+        let caller_info = Self::require_effective_role(e, caller, AdminRole::Operator);
+        if caller_info.role <= target.role {
+            let owner: Option<Address> = e.storage().instance().get(&DataKey::Owner);
+            if owner.as_ref() != Some(caller) {
+                panic_with_error!(e, ContractError::NotAdmin);
+            }
+        }
+    }
+
     /// Require an owner candidate to be an effective SuperAdmin now.
     ///
     /// Ownership proposals are intentionally revalidated at acceptance, not
@@ -1784,6 +1823,7 @@ impl AdminContract {
     /// # Panics
     /// Panics via [`panic_with_error!`] — compatible with Soroban's error
     /// propagation model.
+    #[allow(clippy::needless_pass_by_value)]
     pub fn require_role_at_ledger(e: Env, role: AdminRole, actor: Address, at_ledger: u64) {
         let admin_info: AdminInfo = e
             .storage()

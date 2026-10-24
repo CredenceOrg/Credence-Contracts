@@ -82,7 +82,7 @@ pub fn is_cache_fresh(age_secs: u64) -> bool {
 
 /// Returns the number of retries remaining after `attempts` have been made.
 ///
-/// Saturates at zero so a caller can never observan a wrap-around or
+/// Saturates at zero so a caller can never observe a wrap-around or
 /// underflow when the attempt count exceeds the budget.
 pub fn remaining_retries(attempts: u32) -> u32 {
     MAX_RETRIES.saturating_sub(attempts)
