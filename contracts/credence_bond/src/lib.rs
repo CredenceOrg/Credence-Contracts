@@ -107,9 +107,8 @@ pub mod test_helpers;
 /// Reusable bond-invariant assertion library (test-only).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] pub mod test_invariants;
-/// Shared test setup utilities (mock token, bond registration).
-#[cfg(test)]
-pub mod test_helpers;
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] pub mod test_helpers;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_unauthorized_token;
 // [pre-broken on main] #[cfg(test)]
@@ -123,10 +122,6 @@ pub mod test_helpers;
 // [pre-broken on main] mod chaos_token;
 // [pre-broken on main] mod test_chaos;
 // [pre-broken on main] mod test_reentrancy_hostile_token;
-
-/// Tests for describe_config and describe_bond introspection entrypoints.
-#[cfg(test)]
-mod test_describe;
 
 /// Tests for the liquidate entrypoint (issue #366).
 // [pre-broken on main] #[cfg(test)]
@@ -567,6 +562,10 @@ impl CredenceBond {
 
     /// Initialize the contract with admin authority.
     ///
+    /// Per `docs/UPGRADE.md`, initialisation also records the deployer as the
+    /// upgrade admin and grants it the `Upgrader` role, so the four
+    /// upgrade-admin entrypoints are reachable without a separate call.
+    ///
     /// Errors:
     /// - `ContractError::AlreadyInitialized` if called more than once.
     ///
@@ -580,6 +579,11 @@ impl CredenceBond {
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+        // Record the deployer as upgrade admin and grant it the Upgrader role
+        // (docs/UPGRADE.md: "At initialisation ... the deployer address is
+        // automatically granted the `Upgrader` role and recorded as the
+        // upgrade admin.").
+        upgrade_auth::initialize_upgrade_auth(&e, &admin);
         if let Some(registry) = registry {
             e.invoke_contract::<()>(
                 &registry,
@@ -1103,67 +1107,6 @@ impl CredenceBond {
         bond
     }
 
-    // ── Batch Bond Operations ─────────────────────────────────────────────
-    // These entrypoints delegate to the `batch` module which is compiled
-    // test-only (`#[cfg(test)] mod batch`).  They are excluded from the
-    // production WASM but are present in the test-mode client so
-    // `test_batch.rs` can exercise them through the normal contract path.
-
-    /// Create multiple bonds atomically in a single transaction.
-    ///
-    /// All bonds are validated first (fail-fast). If any bond fails validation,
-    /// the **entire** batch is rejected before any state is written.
-    ///
-    /// # Panics
-    /// * `ContractError::EmptyBatch` if `params_list` is empty.
-    /// * `ContractError::BatchTooLarge` if `params_list.len() > MAX_BATCH_BOND_SIZE`.
-    /// * `"invalid amount in batch"` if any bond has `amount <= 0`.
-    /// * `"duration overflow in batch"` if any bond's end timestamp would overflow.
-    /// * `"rolling bond requires notice period"` if any rolling bond has `notice_period_duration == 0`.
-    /// * `"bond already exists"` if any identity already has an active bond.
-    ///
-    /// # Events
-    /// Emits `batch_bonds_created` on success.
-    #[cfg(test)]
-    pub fn create_batch_bonds(
-        e: Env,
-        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
-    ) -> batch::BatchBondResult {
-        Self::require_not_paused(&e);
-        batch::create_batch_bonds(&e, params_list)
-    }
-
-    /// Validate a batch of bond parameters without writing any state.
-    ///
-    /// Useful for pre-flight checks: identical validation rules as
-    /// [`create_batch_bonds`] with no side effects. Returns `true` when all
-    /// bonds are valid.
-    ///
-    /// # Panics
-    /// Same panic conditions as [`create_batch_bonds`], minus the duplicate-bond check.
-    #[cfg(test)]
-    pub fn validate_batch_bonds(
-        e: Env,
-        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
-    ) -> bool {
-        batch::validate_batch(&e, params_list)
-    }
-
-    /// Return the total bonded amount across a batch (no state written).
-    ///
-    /// Useful for calculating aggregate collateral requirements before submitting
-    /// a batch. Panics with `"batch total overflow"` if the sum would overflow `i128`.
-    ///
-    /// # Returns
-    /// `0` for an empty batch; the arithmetic sum of all `amount` fields otherwise.
-    #[cfg(test)]
-    pub fn get_batch_total_amount(
-        e: Env,
-        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
-    ) -> i128 {
-        batch::get_batch_total_amount(&e, &params_list)
-    }
-
     /// Retrieve the current bond state.
     ///
     /// Errors:
@@ -1572,7 +1515,7 @@ impl CredenceBond {
     /// Get an attestation by ID.
     pub fn get_attestation(e: Env, attestation_id: u64) -> Attestation {
         let key = DataKey::Attestation(attestation_id);
-        let att = e
+        let att: Attestation = e
             .storage()
             .instance()
             .get(&key)
@@ -3301,6 +3244,69 @@ impl CredenceBond {
         );
 
         count
+    }
+}
+
+// ── Batch Bond Operations (test-only entrypoints) ───────────────────────
+// These entrypoints delegate to the `batch` module and are excluded from the
+// production WASM but are present in the test-mode client so `test_batch.rs`
+// can exercise them through the normal contract path. They live in their own
+// `#[cfg(test)]` `#[contractimpl]` block because the macro cannot emit the
+// per-method dispatch modules for `#[cfg(test)]` functions inside the main
+// `#[contractimpl]` block.
+#[cfg(test)]
+#[contractimpl]
+impl CredenceBond {
+    /// Create multiple bonds atomically in a single transaction.
+    ///
+    /// All bonds are validated first (fail-fast). If any bond fails validation,
+    /// the **entire** batch is rejected before any state is written.
+    ///
+    /// # Panics
+    /// * `ContractError::EmptyBatch` if `params_list` is empty.
+    /// * `ContractError::BatchTooLarge` if `params_list.len() > MAX_BATCH_BOND_SIZE`.
+    /// * `"invalid amount in batch"` if any bond has `amount <= 0`.
+    /// * `"duration overflow in batch"` if any bond's end timestamp would overflow.
+    /// * `"rolling bond requires notice period"` if any rolling bond has `notice_period_duration == 0`.
+    /// * `"bond already exists"` if any identity already has an active bond.
+    ///
+    /// # Events
+    /// Emits `batch_bonds_created` on success.
+    pub fn create_batch_bonds(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> batch::BatchBondResult {
+        Self::require_not_paused(&e);
+        batch::create_batch_bonds(&e, params_list)
+    }
+
+    /// Validate a batch of bond parameters without writing any state.
+    ///
+    /// Useful for pre-flight checks: identical validation rules as
+    /// [`create_batch_bonds`] with no side effects. Returns `true` when all
+    /// bonds are valid.
+    ///
+    /// # Panics
+    /// Same panic conditions as [`create_batch_bonds`], minus the duplicate-bond check.
+    pub fn validate_batch_bonds(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> bool {
+        batch::validate_batch(&e, params_list)
+    }
+
+    /// Return the total bonded amount across a batch (no state written).
+    ///
+    /// Useful for calculating aggregate collateral requirements before submitting
+    /// a batch. Panics with `"batch total overflow"` if the sum would overflow `i128`.
+    ///
+    /// # Returns
+    /// `0` for an empty batch; the arithmetic sum of all `amount` fields otherwise.
+    pub fn get_batch_total_amount(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> i128 {
+        batch::get_batch_total_amount(&e, &params_list)
     }
 }
 

@@ -4,9 +4,13 @@ use soroban_sdk::{panic_with_error, Address, Bytes, Env, IntoVal, String, Symbol
 use crate::bump_config_epoch;
 use crate::DataKey;
 
-/// Observability and diagnostic event types for pause proposal execution.
-/// 
-/// These events provide comprehensive visibility into execution flow while
+/// Debug diagnostics for pause proposal execution.
+///
+/// Keep execution tracing out of the frozen governance-event schema. SDK logs
+/// accept descriptive messages without the 32-byte Symbol limit and are
+/// disabled in release builds, preserving the deployable WASM size budget.
+///
+/// These diagnostics provide comprehensive visibility into execution flow while
 /// carefully avoiding exposure of sensitive information like addresses or
 /// internal state details that could be used maliciously.
 pub struct PauseObservability;
@@ -14,57 +18,56 @@ pub struct PauseObservability;
 impl PauseObservability {
     /// Log a proposal execution attempt with context for diagnostics.
     pub fn log_execution_attempt(e: &Env, proposal_id: u64, action: PauseAction) {
-        e.events().publish(
-            (Symbol::new(e, "pause_execution_attempt"), proposal_id),
-            action as u32,
-        );
+        soroban_sdk::log!(e, "pause_execution_attempt", proposal_id, action as u32);
     }
 
     /// Log successful validation of pre-execution conditions.
     pub fn log_validation_success(e: &Env, proposal_id: u64, threshold: u32, approvals: u32) {
-        e.events().publish(
-            (Symbol::new(e, "pause_validation_success"),),
-            (proposal_id, threshold, approvals),
+        soroban_sdk::log!(
+            e,
+            "pause_validation_success",
+            (proposal_id, threshold, approvals)
         );
     }
 
     /// Log configuration inconsistency detection.
     pub fn log_config_inconsistency(e: &Env, threshold: u32, signer_count: u32, context: &str) {
-        e.events().publish(
-            (Symbol::new(e, "pause_config_inconsistency"),),
-            (threshold, signer_count, String::from_str(e, context)),
+        soroban_sdk::log!(
+            e,
+            "pause_config_inconsistency",
+            (threshold, signer_count, String::from_str(e, context))
         );
     }
 
     /// Log retry/idempotent execution scenarios.
     pub fn log_idempotent_execution(e: &Env, proposal_id: u64, reason: &str) {
-        e.events().publish(
-            (Symbol::new(e, "pause_idempotent_execution"),),
-            (proposal_id, String::from_str(e, reason)),
+        soroban_sdk::log!(
+            e,
+            "pause_idempotent_execution",
+            (proposal_id, String::from_str(e, reason))
         );
     }
 
     /// Log state transition completion.
     pub fn log_state_transition(e: &Env, proposal_id: u64, from_state: bool, to_state: bool) {
-        e.events().publish(
-            (Symbol::new(e, "pause_state_transition"),),
-            (proposal_id, from_state, to_state),
+        soroban_sdk::log!(
+            e,
+            "pause_state_transition",
+            (proposal_id, from_state, to_state)
         );
     }
 
     /// Log execution timing and performance metrics.
     pub fn log_execution_metrics(e: &Env, proposal_id: u64, ledger_sequence: u32) {
-        e.events().publish(
-            (Symbol::new(e, "pause_execution_metrics"),),
-            (proposal_id, ledger_sequence),
-        );
+        soroban_sdk::log!(e, "pause_execution_metrics", (proposal_id, ledger_sequence));
     }
 
     /// Log error conditions with diagnostic context (no sensitive data).
     pub fn log_error_context(e: &Env, error_type: &str, proposal_id: u64, context_code: u32) {
-        e.events().publish(
-            (Symbol::new(e, "pause_error_context"),),
-            (String::from_str(e, error_type), proposal_id, context_code),
+        soroban_sdk::log!(
+            e,
+            "pause_error_context",
+            (String::from_str(e, error_type), proposal_id, context_code)
         );
     }
 }
@@ -134,19 +137,17 @@ fn require_matching_admin_epoch_with_logging(e: &Env, action: PauseAction, ep: u
     
     if ep != expected_id {
         // Log detailed mismatch information for diagnostics
-        e.events().publish(
-            (Symbol::new(e, "pause_epoch_mismatch_detailed"),),
-            (ep, expected_id, current_epoch, action as u32),
+        soroban_sdk::log!(
+            e,
+            "pause_epoch_mismatch_detailed",
+            (ep, expected_id, current_epoch, action as u32)
         );
         return Err(());
     }
     
     // Log successful epoch validation
-    e.events().publish(
-        (Symbol::new(e, "pause_epoch_validation_passed"),),
-        (ep, current_epoch),
-    );
-    
+    soroban_sdk::log!(e, "pause_epoch_validation_passed", (ep, current_epoch));
+
     Ok(())
 }
 
@@ -454,10 +455,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     // Ensure proposal is from current epoch (prevents stale execution)
     match require_matching_admin_epoch_with_logging(e, pause_action, proposal_id) {
         Ok(()) => {
-            e.events().publish(
-                (Symbol::new(e, "pause_epoch_validation_success"),),
-                proposal_id,
-            );
+            soroban_sdk::log!(e, "pause_epoch_validation_success", proposal_id);
         }
         Err(_) => {
             PauseObservability::log_error_context(
@@ -558,17 +556,11 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         let pre_state = current_pause_state;
         let result = match action {
             1 => {
-                e.events().publish(
-                    (Symbol::new(e, "pause_state_transition_start"),),
-                    (proposal_id, "pause"),
-                );
+                soroban_sdk::log!(e, "pause_state_transition_start", (proposal_id, "pause"));
                 do_pause(e, Some(proposal_id), &String::from_str(e, ""))
             }
             2 => {
-                e.events().publish(
-                    (Symbol::new(e, "pause_state_transition_start"),),
-                    (proposal_id, "unpause"),
-                );
+                soroban_sdk::log!(e, "pause_state_transition_start", (proposal_id, "unpause"));
                 do_unpause(e, Some(proposal_id))
             }
             _ => {
@@ -607,10 +599,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     // This maintains consistency with the retry contract documented in lib.rs
     if !state_changed {
         bump_config_epoch(e);
-        e.events().publish(
-            (Symbol::new(e, "pause_epoch_advanced_cleanup"),),
-            proposal_id,
-        );
+        soroban_sdk::log!(e, "pause_epoch_advanced_cleanup", proposal_id);
     }
 
     // ── Final Execution Metrics ─────────────────────────────────────────────
@@ -618,10 +607,11 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     let execution_duration = end_ledger.saturating_sub(start_ledger);
     
     // ── Execution Success Event ─────────────────────────────────────────────
-    // Emit successful execution event for observability
-    e.events().publish(
-        (Symbol::new(e, "pause_proposal_executed_successfully"),),
-        (proposal_id, action, state_changed, execution_duration),
+    // Record successful execution in the debug diagnostic stream
+    soroban_sdk::log!(
+        e,
+        "pause_proposal_executed",
+        (proposal_id, action, state_changed, execution_duration)
     );
 }
 
@@ -730,15 +720,17 @@ fn cleanup_proposal_approvals(e: &Env, proposal_id: u64, max_signers: u32) {
     // once the proposal is removed.
     
     // Log comprehensive cleanup metrics for observability
-    e.events().publish(
-        (Symbol::new(e, "pause_proposal_cleanup_completed"),),
-        (proposal_id, approvals_before_cleanup, max_signers),
+    soroban_sdk::log!(
+        e,
+        "pause_proposal_cleanup_completed",
+        (proposal_id, approvals_before_cleanup, max_signers)
     );
-    
+
     // Additional diagnostic event for storage management
-    e.events().publish(
-        (Symbol::new(e, "pause_storage_cleanup_metrics"),),
-        (proposal_id, e.ledger().sequence()),
+    soroban_sdk::log!(
+        e,
+        "pause_storage_cleanup_metrics",
+        (proposal_id, e.ledger().sequence())
     );
 }
 
@@ -766,9 +758,10 @@ fn require_no_concurrent_modification(e: &Env, expected_epoch: u64) -> u64 {
         
     if current_epoch != expected_epoch {
         // Concurrent modification detected - another operation advanced the epoch
-        e.events().publish(
-            (Symbol::new(e, "concurrent_modification_detected"),),
-            (expected_epoch, current_epoch),
+        soroban_sdk::log!(
+            e,
+            "concurrent_modification_detected",
+            (expected_epoch, current_epoch)
         );
         panic_with_error!(e, ContractError::StaleAdminEpoch);
     }
@@ -814,19 +807,17 @@ fn require_coherent_pause_state(e: &Env, proposal_id: u64) {
     // Validation: approvals should not exceed signer count (defensive)
     if approvals > signer_count {
         // Log the anomaly for investigation but don't panic - clamp the value
-        e.events().publish(
-            (Symbol::new(e, "pause_approval_count_anomaly"),),
-            (proposal_id, approvals, signer_count),
+        soroban_sdk::log!(
+            e,
+            "pause_approval_count_anomaly",
+            (proposal_id, approvals, signer_count)
         );
     }
 
     // Validation: if threshold is 0, we should not have signer-dependent proposals
     if threshold == 0 && signer_count > 0 {
         // This is a valid state but worth logging for operational awareness
-        e.events().publish(
-            (Symbol::new(e, "pause_admin_mode_execution"),),
-            proposal_id,
-        );
+        soroban_sdk::log!(e, "pause_admin_mode_execution", proposal_id);
     }
 
     // Additional concurrent execution protection: verify configuration consistency
@@ -863,8 +854,9 @@ fn validate_proposal_timing(e: &Env, proposal_id: u64, action: PauseAction) {
     
     // For non-matching IDs, we've already validated via require_matching_admin_epoch
     // This function provides additional context for monitoring and diagnostics
-    e.events().publish(
-        (Symbol::new(e, "pause_proposal_epoch_mismatch_details"),),
-        (proposal_id, current_expected_id),
+    soroban_sdk::log!(
+        e,
+        "pause_epoch_mismatch_details",
+        (proposal_id, current_expected_id)
     );
 }

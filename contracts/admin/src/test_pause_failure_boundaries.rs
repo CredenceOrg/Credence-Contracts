@@ -600,13 +600,13 @@ fn set_pause_threshold_emits_event_on_change_only() {
 
     // Real change: 0 → 1. One event, one epoch bump.
     client.set_pause_threshold(&super_admin, &1u32);
+    assert_eq!(e.events().all().len(), 1);
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert_eq!(e.events().all().len(), events_before + 1);
 
     // No-op re-set: 1 → 1. No event, no epoch bump.
     let epoch_after = client.get_config_epoch();
     let events_after = e.events().all().len();
     client.set_pause_threshold(&super_admin, &1u32);
+    assert!(e.events().all().is_empty());
     assert_eq!(client.get_config_epoch(), epoch_after);
-    assert_eq!(e.events().all().len(), events_after);
 }

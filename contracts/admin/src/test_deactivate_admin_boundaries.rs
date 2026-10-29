@@ -18,6 +18,7 @@
 #![cfg(test)]
 
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use credence_errors::Role;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env, String};
@@ -169,9 +170,10 @@ fn deactivate_bumps_epoch_and_emits_event() {
     let events_before = e.events().all().len();
 
     client.deactivate_admin(&super_admin, &admin);
+    let events = e.events().all();
 
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert!(e.events().all().len() > events_before);
+    assert!(!events.is_empty());
     assert!(!is_active(&client, &admin));
 }
 

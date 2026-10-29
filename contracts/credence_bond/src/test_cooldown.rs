@@ -273,7 +273,8 @@ fn request_basic_fields_are_recorded() {
     let (client, admin, identity) = setup_with_bond(&e, 1000);
     client.set_cooldown_period(&admin, &3600);
 
-    let req = client.request_cooldown_withdrawal(&identity, &500);
+    client.request_cooldown_withdrawal(&identity, &500);
+    let req = client.get_cooldown_request(&identity).unwrap();
 
     assert_eq!(req.requester, identity, "requester must match identity");
     assert_eq!(req.amount, 500, "amount must match requested amount");
@@ -287,7 +288,8 @@ fn request_full_bonded_amount_succeeds() {
     let (client, admin, identity) = setup_with_bond(&e, 1000);
     client.set_cooldown_period(&admin, &100);
 
-    let req = client.request_cooldown_withdrawal(&identity, &1000);
+    client.request_cooldown_withdrawal(&identity, &1000);
+    let req = client.get_cooldown_request(&identity).unwrap();
     assert_eq!(req.amount, 1000);
 }
 
@@ -299,7 +301,8 @@ fn request_with_zero_period_also_stored_correctly() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity) = setup_with_bond(&e, 500);
 
-    let req = client.request_cooldown_withdrawal(&identity, &300);
+    client.request_cooldown_withdrawal(&identity, &300);
+    let req = client.get_cooldown_request(&identity).unwrap();
     assert_eq!(req.amount, 300);
     assert_eq!(req.requested_at, 1000);
 }
@@ -313,7 +316,8 @@ fn request_ceiling_is_bonded_minus_slashed() {
     client.slash(&admin, &identity, &300);
     test_helpers::advance_ledger_sequence(&e);
 
-    let req = client.request_cooldown_withdrawal(&identity, &700);
+    client.request_cooldown_withdrawal(&identity, &700);
+    let req = client.get_cooldown_request(&identity).unwrap();
     assert_eq!(req.amount, 700);
 }
 
@@ -522,7 +526,8 @@ fn execute_clears_request_enabling_subsequent_request() {
 
     // A new request for the remaining balance must succeed.
     e.ledger().with_mut(|li| li.timestamp = 2000);
-    let new_req = client.request_cooldown_withdrawal(&identity, &200);
+    client.request_cooldown_withdrawal(&identity, &200);
+    let new_req = client.get_cooldown_request(&identity).unwrap();
     assert_eq!(new_req.requested_at, 2000, "new request must use current timestamp");
     assert_eq!(new_req.amount, 200);
 }
@@ -712,7 +717,8 @@ fn cancel_enables_new_request_with_updated_timestamp() {
 
     // Re-request at a later time with a different amount.
     e.ledger().with_mut(|li| li.timestamp = 2000);
-    let req = client.request_cooldown_withdrawal(&identity, &500);
+    client.request_cooldown_withdrawal(&identity, &500);
+    let req = client.get_cooldown_request(&identity).unwrap();
     assert_eq!(req.requested_at, 2000, "re-request must record the new timestamp");
     assert_eq!(req.amount, 500, "re-request must record the new amount");
 }
@@ -948,7 +954,8 @@ fn unpause_re_enables_cooldown_operations() {
 
     client.unpause(&admin);
     assert!(!client.is_paused(), "contract must be unpaused");
-    let req = client.request_cooldown_withdrawal(&identity, &500);
+    client.request_cooldown_withdrawal(&identity, &500);
+    let req = client.get_cooldown_request(&identity).unwrap();
     assert_eq!(req.amount, 500, "request must succeed after unpause");
 }
 

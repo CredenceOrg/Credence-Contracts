@@ -26,6 +26,7 @@
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Env};
 
@@ -74,13 +75,13 @@ fn configure_signers(
 #[test]
 fn unpause_direct_requires_super_admin_role() {
     let (e, client, super_admin) = setup();
-    client.pause(&super_admin);
-    assert!(client.is_paused());
 
     let operator = Address::generate(&e);
     client.add_admin(&super_admin, &operator, &AdminRole::Operator);
     let mid = Address::generate(&e);
     client.add_admin(&super_admin, &mid, &AdminRole::Admin);
+    client.pause(&super_admin);
+    assert!(client.is_paused());
 
     let epoch_before = client.get_config_epoch();
     let events_before = e.events().all().len();

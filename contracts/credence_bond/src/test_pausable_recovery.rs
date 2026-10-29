@@ -78,8 +78,8 @@ fn failed_execution_leaves_proposal_executable() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 3);
 
-    let pid = client.pause(&signers[0]).unwrap(); // 1 approval
-    client.approve_pause_proposal(&signers[1], &pid); // 2 approvals
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap(); // 1 approval
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid); // 2 approvals
 
     // Execute with only 2 of 3 approvals must fail
     expect_panic_with("insufficient approvals to execute", || {
@@ -90,7 +90,7 @@ fn failed_execution_leaves_proposal_executable() {
     assert!(!client.is_paused());
 
     // Add third approval and retry
-    client.approve_pause_proposal(&signers[2], &pid);
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid);
     client.execute_pause_proposal(&pid);
 
     assert!(client.is_paused());
@@ -102,15 +102,15 @@ fn failed_unpause_execution_leaves_proposal_executable() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 3);
 
-    let pid = client.pause(&signers[0]).unwrap();
-    client.approve_pause_proposal(&signers[1], &pid);
-    client.approve_pause_proposal(&signers[2], &pid);
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid);
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 
     // Try unpause with insufficient approvals
-    let pid2 = client.unpause(&signers[0]).unwrap(); // 1 approval
-    client.approve_pause_proposal(&signers[1], &pid2); // 2 approvals
+    let pid2 = client.unpause(&signers.get(0).unwrap()).unwrap(); // 1 approval
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid2); // 2 approvals
 
     expect_panic_with("insufficient approvals to execute", || {
         client.execute_pause_proposal(&pid2);
@@ -119,7 +119,7 @@ fn failed_unpause_execution_leaves_proposal_executable() {
     assert!(client.is_paused());
 
     // Add third approval and retry
-    client.approve_pause_proposal(&signers[2], &pid2);
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid2);
     client.execute_pause_proposal(&pid2);
 
     assert!(!client.is_paused());
@@ -136,13 +136,13 @@ fn admin_unpause_cannot_be_blocked_by_stale_proposal() {
     let (client, admin, signers) = setup_with_signers(&e, 2);
 
     // Create a pause proposal
-    let pid = client.pause(&signers[0]).unwrap();
-    client.approve_pause_proposal(&signers[1], &pid);
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 
     // Now create an unpause proposal that will never reach threshold
-    let pid2 = client.unpause(&signers[0]).unwrap(); // 1 of 2 approvals
+    let pid2 = client.unpause(&signers.get(0).unwrap()).unwrap(); // 1 of 2 approvals
                                                      // Don't get second approval
 
     // Admin can still unpause directly (bypass proposal)
@@ -168,13 +168,13 @@ fn approvals_do_not_leak_across_proposals() {
     let (client, admin, signers) = setup_with_signers(&e, 2);
 
     // Proposal 1: pause
-    let pid1 = client.pause(&signers[0]).unwrap();
-    client.approve_pause_proposal(&signers[1], &pid1);
+    let pid1 = client.pause(&signers.get(0).unwrap()).unwrap();
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid1);
     client.execute_pause_proposal(&pid1);
     assert!(client.is_paused());
 
     // Proposal 2: unpause (different ID)
-    let pid2 = client.unpause(&signers[0]).unwrap();
+    let pid2 = client.unpause(&signers.get(0).unwrap()).unwrap();
     // Only 1 approval so far (proposer)
 
     // Proposal 1's approvals must not count for Proposal 2
@@ -183,7 +183,7 @@ fn approvals_do_not_leak_across_proposals() {
     });
 
     // Get second approval for proposal 2
-    client.approve_pause_proposal(&signers[1], &pid2);
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid2);
     client.execute_pause_proposal(&pid2);
     assert!(!client.is_paused());
 }
@@ -199,7 +199,7 @@ fn proposal_removed_after_execution() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 1);
 
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     client.execute_pause_proposal(&pid);
 
     // Proposal key should be removed
@@ -326,6 +326,7 @@ fn pause_survives_ledger_advance() {
     assert!(!client.is_paused());
 
     // Advance again
+    let mut info = e.ledger().get();
     info.sequence_number = info.sequence_number.saturating_add(1000);
     e.ledger().set(info);
 
@@ -344,14 +345,14 @@ fn interleaved_pause_unpause_proposals() {
     let (client, admin, signers) = setup_with_signers(&e, 3);
 
     // Start pause proposal
-    let pid1 = client.pause(&signers[0]).unwrap(); // 1
+    let pid1 = client.pause(&signers.get(0).unwrap()).unwrap(); // 1
 
     // Before completing, start unpause proposal
-    let pid2 = client.unpause(&signers[1]).unwrap(); // 1 (different proposal)
+    let pid2 = client.unpause(&signers.get(1).unwrap()).unwrap(); // 1 (different proposal)
 
     // Complete pause proposal
-    client.approve_pause_proposal(&signers[2], &pid1); // 2 of 3 for pause
-    client.approve_pause_proposal(&signers[1], &pid1); // 3 of 3 for pause
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid1); // 2 of 3 for pause
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid1); // 3 of 3 for pause
     client.execute_pause_proposal(&pid1);
     assert!(client.is_paused());
 
@@ -360,8 +361,8 @@ fn interleaved_pause_unpause_proposals() {
         client.execute_pause_proposal(&pid2);
     });
 
-    client.approve_pause_proposal(&signers[0], &pid2); // 2
-    client.approve_pause_proposal(&signers[2], &pid2); // 3
+    client.approve_pause_proposal(&signers.get(0).unwrap(), &pid2); // 2
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid2); // 3
     client.execute_pause_proposal(&pid2);
     assert!(!client.is_paused());
 }

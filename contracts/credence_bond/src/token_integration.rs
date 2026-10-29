@@ -6,7 +6,7 @@ use crate::safe_token;
 use crate::{storage, DataKey};
 use credence_errors::ContractError;
 use soroban_sdk::token::TokenClient;
-use soroban_sdk:{contracttype, panic_with_error, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String, Symbol};
 
 /// Source classification for funds leaving the bond contract.
 ///
@@ -30,7 +30,7 @@ pub enum FundSource {
 pub const STELLAR_MAINNET: &str = "mainnet";
 
 /// Stellar network passphrase label used for USDC testnet references.
-#[allot(dead_code)]
+#[allow(dead_code)]
 pub const STELLAR_TESTNET: &str = "testnet";
 
 fn network_key(e: &Env) -> Symbol {
@@ -216,23 +216,45 @@ pub fn transfer_from_contract_with_source(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_utils::{
-        advance_ledger, assets_as, setup_contract, setup_contract_with_token,
-        setup_token_with_balance, setup_token_with_balance_and_approval,
-    };
+    use crate::CredenceBond;
     use credence_errors::ContractError;
-    use soroban_sdk::token::TokenClient;
+    use soroban_sdk::testutils::Address as _;
+    use soroban_sdk::testutils::Ledger as _;
+    use soroban_sdk::token::{StellarAssetClient, TokenClient};
     use soroban_sdk::{Address, Env, String, Symbol};
 
     // ------------------------------------------------------------------------
     // Helpers
+    //
+    // The setup helpers register the real `CredenceBond` contract and a real
+    // Stellar Asset Contract (SEP-41) token, so the token paths exercised here
+    // run against genuine allowance/balance semantics rather than a mock.
     // ------------------------------------------------------------------------
 
     fn setup() -> (Env, Address, Address) {
         let e: Env = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
         let admin = Address::generate(&e);
-        let contract_id = setup_contract(&e, &admin);
+        e.as_contract(&contract_id, || {
+            e.storage().instance().set(&crate::DataKey::Admin, &admin);
+        });
         (e, admin, contract_id)
+    }
+
+    /// Register the bond contract plus a real Stellar Asset token, and add the
+    /// token to the accepted-tokens set. Returns `(contract_id, token_id)`.
+    fn setup_contract_with_token(e: &Env, _admin: &Address) -> (Address, Address) {
+        e.mock_all_auths();
+        let contract_id = e.register(CredenceBond, ());
+        let token_id = e.register_stellar_asset_contract_v2(Address::generate(e)).address();
+
+        let mut accepted = soroban_sdk::Vec::new(e);
+        accepted.push_back(token_id.clone());
+        e.as_contract(&contract_id, || {
+            crate::storage::set_accepted_tokens(e, &accepted);
+        });
+        (contract_id, token_id)
     }
 
     fn setup_with_token() -> (Env, Address, Address, Address) {
@@ -240,6 +262,44 @@ mod tests {
         let admin = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
         (e, admin, contract_id, token_id)
+    }
+
+    fn setup_token_with_balance(e: &Env, token_id: &Address, owner: &Address, balance: i128) {
+        StellarAssetClient::new(e, token_id).mint(owner, &balance);
+    }
+
+    /// Mint `balance` to `owner` (as the bond contract's account) and approve
+    /// `allowance` for the bond contract. Returns nothing; the caller already
+    /// holds the contract id when it needs to drive `transfer_into_contract`.
+    fn setup_token_with_balance_and_approval(
+        e: &Env,
+        token_id: &Address,
+        owner: &Address,
+        balance: i128,
+        allowance: i128,
+    ) {
+        let token = StellarAssetClient::new(e, token_id);
+        token.mint(owner, &balance);
+        let spender = e.current_contract_address();
+        let expiration = e.ledger().sequence().saturating_add(100_000);
+        TokenClient::new(e, token_id).approve(owner, &spender, &allowance, &expiration);
+    }
+
+    /// Advance the ledger sequence by `n` (used to expire allowances).
+    fn advance_ledger(e: &Env, n: u32) {
+        let mut info = e.ledger().get();
+        info.sequence_number = info.sequence_number.saturating_add(n);
+        e.ledger().set(info);
+    }
+
+    /// Add a token to the accepted-tokens set for `contract_id`.
+    fn add_accepted_token(e: &Env, _admin: &Address, token: &Address) {
+        let contract_id = e.current_contract_address();
+        e.as_contract(&contract_id, || {
+            let mut accepted = crate::storage::get_accepted_tokens(e);
+            accepted.push_back(token.clone());
+            crate::storage::set_accepted_tokens(e, &accepted);
+        });
     }
 
     // ------------------------------------------------------------------------
@@ -250,39 +310,33 @@ mod tests {
     #[test]
     fn test_get_token_before_config_panics() {
         let (e, _admin, _contract_id) = setup();
-        assert(!has_token(&e));
-        let result = e.try_catch(|| get_token(&e));
+        assert!(!has_token(&e));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_token(&e)));
         assert!(result.is_err());
     }
 
     // Boundary: set_token rejects a token not in the accepted set and
-//    preserves the previous token (recovery safety).
+    // preserves the previous token (recovery safety).
     #[test]
     fn test_set_token_rejects_unaccepted_preserves_state() {
         let (e, admin, contract_id) = setup();
         let good_token = Address::generate(&e);
         let bad_token = Address::generate(&e);
-        add_accepted_token(&e, &admin, &good_token);
+        e.as_contract(&contract_id, || {
+            add_accepted_token(&e, &admin, &good_token);
 
-        // Set a valid token first.
-        e.as_contract().mock_all(
-            &contract_id,
-            &Symbol::news(&e, "set_token"),
-            &(admin.clone(), good_token.clone()),
-        );
-        assert_eq!(get_token(&e), good_token);
+            // Set a valid token first.
+            set_token(&e, &admin, &good_token);
+            assert_eq!(get_token(&e), good_token);
 
-        // Attempt to set an unaccepted token.
-        let result = e.try_catch(|| {
-            e.as_contract().mock_all(
-                &contract_id,
-                &Symbol::new(&e, "set_token"),
-                &(admin.clone(), bad_token.clone()),
-            );
+            // Attempt to set an unaccepted token.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                set_token(&e, &admin, &bad_token);
+            }));
+            assert!(result.is_err());
+            // Previous token must still be set.
+            assert_eq!(get_token(&e), good_token);
         });
-        assert!(result.is_error());
-        // Previous token must still be set.
-        assert_eq!(get_token(&e), good_token);
     }
 
     // Boundary: set_token requires the admin auth.
@@ -290,40 +344,36 @@ mod tests {
     fn test_set_token_requires_admin_auth() {
         let (e, admin, contract_id) = setup();
         let token = Address::generate(&e);
-        add_accepted_token(&e, &admin, &token);
         let attacker = Address::generate(&e);
+        e.as_contract(&contract_id, || {
+            add_accepted_token(&e, &admin, &token);
 
-        // Attacker attempts to set the token.
-        let result = e.try_catch((), |_| {
-            e.as_contract().mock_all(
-                &contract_id,
-                &Symbol::new(&e, "set_token"),
-                &(attacker.clone(), token.clone()),
-            );
+            // Attacker attempts to set the token.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                set_token(&e, &attacker, &token);
+            }));
+            assert!(result.is_err());
+            assert!(!has_token(&e));
         });
-        assert!(result.is_error());
-        assert!(!has_token(&e));
     }
 
     // Boundary: set_usdc_token rejects an unsupported network before any
-//    state mutation.
+    // state mutation.
     #[test]
     fn test_set_usdc_token_rejects_bad_network() {
         let (e, admin, contract_id) = setup();
         let token = Address::generate(&e);
-        add_accepted_token(&e, &admin, &token);
         let bad_network = String::from_str(&e, "devnet");
+        e.as_contract(&contract_id, || {
+            add_accepted_token(&e, &admin, &token);
 
-        let result = e.try_catch((), |_| {
-            e.as_contract().mock_all(
-                &contract_id,
-                &Symbol::new(&e, "set_usdc_token"),
-                &(admin.clone(), token.clone(), bad_network.clone()),
-            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                set_usdc_token(&e, &admin, &token, &bad_network);
+            }));
+            assert!(result.is_err());
+            assert!(!has_token(&e));
+            assert_eq!(get_usdc_network(&e), None);
         });
-        assert!(result.is_error());
-        assert!(!has_token(&e));
-        assert_eq!(get_usdc_network(&e), None);
     }
 
     // Success: set_usdc_token with a supported network stores token and network.
@@ -331,16 +381,14 @@ mod tests {
     fn test_set_usdc_token_stores_network() {
         let (e, admin, contract_id) = setup();
         let token = Address::generate(&e);
-        add_accepted_token(&e, &admin, &token);
         let network = String::from_str(&e, "testnet");
+        e.as_contract(&contract_id, || {
+            add_accepted_token(&e, &admin, &token);
 
-        e.as_contract().mock_all(
-            &contract_id,
-            &Symbol::new(&e, "set_usdc_token"),
-            &(admin.clone(), token.clone(), network.clone()),
-        );
-        assert_eq!(get_token(&e), token);
-        assert_eq!(get_usdc_network(&e), Some(network));
+            set_usdc_token(&e, &admin, &token, &network);
+            assert_eq!(get_token(&e), token);
+            assert_eq!(get_usdc_network(&e), Some(network));
+        });
     }
 
     // ------------------------------------------------------------------------
@@ -352,7 +400,8 @@ mod tests {
     fn test_require_allowance_negative_panics() {
         let (e, _admin, _contract_id) = setup();
         let owner = Address::generate(&e);
-        let result = e.try_catch((), |_| require_allowance(&e, &owner, -1));
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| require_allowance(&e, &owner, -1)));
         assert!(result.is_err());
     }
 
@@ -371,8 +420,9 @@ mod tests {
         let (e, _admin, _contract_id, token_id) = setup_with_token();
         let owner = Address::generate(&e);
         // No approval -> allowance is 0.
-        let result = e.try_catch((), |_| require_allowance(&e, &owner, 1));
-        assert!(result.is_error());
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| require_allowance(&e, &owner, 1)));
+        assert!(result.is_err());
         // Sanity: token is configured.
         assert!(has_token(&e));
         let _ = token_id;
@@ -385,10 +435,11 @@ mod tests {
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        let _ = contract_id;
-        // Fund and approve exactly 100.
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
-        require_allowance(&e, &owner, 100);
+        // Fund and approve exactly 100 from the contract's perspective.
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+            require_allowance(&e, &owner, 100);
+        });
     }
 
     // ------------------------------------------------------------------------
@@ -409,44 +460,52 @@ mod tests {
     fn test_transfer_into_contract_negative_panics() {
         let (e, _admin, _contract_id) = setup();
         let owner = Address::generate(&e);
-        let result = e.try_catch((), |_| transfer_into_contract(&e, &owner, -1));
-        assert!(result.is_error());
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            transfer_into_contract(&e, &owner, -1)
+        }));
+        assert!(result.is_err());
     }
 
     // Rejection: transfer into contract without approval fails and leaves
-//   the owner balance unchanged (recovery safety).
+    // the owner balance unchanged (recovery safety).
     #[test]
     fn test_transfer_into_contract_without_approval_fails_cleanly() {
         let e: Env = Env::default();
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
-        let (_contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        // Fund owner but do not approve.
-        setup_token_with_balance(&e, &token_id, &owner, 100);
-        let before = TokenClient::new(&e, &token_id).balance(&owner);
+        let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
+        e.as_contract(&contract_id, || {
+            // Fund owner but do not approve.
+            setup_token_with_balance(&e, &token_id, &owner, 100);
+            let before = TokenClient::new(&e, &token_id).balance(&owner);
 
-        let result = e.try_catch((), |_| transfer_into_contract(&e, &owner, 50));
-        assert!(result.is_error());
-        let after = TokenClient::new(&e, &token_id).balance(&owner);
-        assert_eq!(before, after);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_into_contract(&e, &owner, 50)
+            }));
+            assert!(result.is_err());
+            let after = TokenClient::new(&e, &token_id).balance(&owner);
+            assert_eq!(before, after);
+        });
     }
 
     // Success: transfer into contract moves funds and leaves allowance
-//   consistent.
+    // consistent.
     #[test]
     fn test_transfer_into_contract_success() {
         let e: Env = Env::default();
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
 
-        transfer_into_contract(&e, &owner, 40);
+            transfer_into_contract(&e, &owner, 40);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 60);
-        assert_eq!(token.balance(&contract_id), 40);
-        assert_eq!(token.allowance(&owner, &contract_id), 60);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 60);
+            assert_eq!(token.balance(&contract_id), 40);
+            assert_eq!(token.allowance(&owner, &contract_id), 60);
+        });
     }
 
     // Boundary: transfer into contract at exact approved amount succeeds.
@@ -456,52 +515,60 @@ mod tests {
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
 
-        transfer_into_contract(&e, &owner, 100);
+            transfer_into_contract(&e, &owner, 100);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 0);
-        assert_eq!(token.balance(&contract_id), 100);
-        assert_eq!(token.allowance(&owner, &contract_id), 0);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 0);
+            assert_eq!(token.balance(&contract_id), 100);
+            assert_eq!(token.allowance(&owner, &contract_id), 0);
+        });
     }
 
     // Rejection: transfer into contract above approved amount fails and
-//   leaves balances unchanged.
+    // leaves balances unchanged.
     #[test]
     fn test_transfer_into_contract_above_allowance_fails_cleanly() {
         let e: Env = Env::default();
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 50);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 50);
 
-        let result = e.try_catch((), |_| transfer_into_contract(&e, &owner, 60));
-        assert!(result.is_err());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_into_contract(&e, &owner, 60)
+            }));
+            assert!(result.is_err());
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 100);
-        assert_eq!(token.balance(&contract_id), 0);
-        assert_eq!(token.allowance(&owner, &contract_id), 50);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 100);
+            assert_eq!(token.balance(&contract_id), 0);
+            assert_eq!(token.allowance(&owner, &contract_id), 50);
+        });
     }
 
     // Regression: two sequential transfers into the contract accumulate
-//   correctly and do not double-spend allowance.
+    // correctly and do not double-spend allowance.
     #[test]
     fn test_transfer_into_contract_two_sequential_transfers() {
         let e: Env = Env::default();
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
 
-        transfer_into_contract(&e, &owner, 30);
-        transfer_into_contract(&e, &owner, 20);
+            transfer_into_contract(&e, &owner, 30);
+            transfer_into_contract(&e, &owner, 20);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 50);
-        assert_eq!(token.balance(&contract_id), 50);
-        assert_eq!(token.allowance(&owner, &contract_id), 50);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 50);
+            assert_eq!(token.balance(&contract_id), 50);
+            assert_eq!(token.allowance(&owner, &contract_id), 50);
+        });
     }
 
     // ------------------------------------------------------------------------
@@ -521,12 +588,14 @@ mod tests {
     fn test_transfer_from_contract_negative_panics() {
         let (e, _admin, _contract_id) = setup();
         let recipient = Address::generate(&e);
-        let result = e.try_catch((), |_| transfer_from_contract(&e, &recipient, -1));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            transfer_from_contract(&e, &recipient, -1)
+        }));
         assert!(result.is_err());
     }
 
     // Success: transfer from contract moves funds out and leaves the
-//   remaining balance correct.
+    // remaining balance correct.
     #[test]
     fn test_transfer_from_contract_success() {
         let e: Env = Env::default();
@@ -534,18 +603,20 @@ mod tests {
         let owner = Address::generate(&e);
         let recipient = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
-        transfer_into_contract(&e, &owner, 100);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+            transfer_into_contract(&e, &owner, 100);
 
-        transfer_from_contract(&e, &recipient, 40);
+            transfer_from_contract(&e, &recipient, 40);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&contract_id), 60);
-        assert_eq!(token.balance(&recipient), 40);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&contract_id), 60);
+            assert_eq!(token.balance(&recipient), 40);
+        });
     }
 
     // Rejection: transfer from contract above balance fails and leaves
-//   balances unchanged.
+    // balances unchanged.
     #[test]
     fn test_transfer_from_contract_over_balance_fails_cleanly() {
         let e: Env = Env::default();
@@ -553,20 +624,24 @@ mod tests {
         let owner = Address::generate(&e);
         let recipient = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
-        transfer_into_contract(&e, &owner, 50);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+            transfer_into_contract(&e, &owner, 50);
 
-        let result = e.try_catch((), |_| transfer_from_contract(&e, &recipient, 100));
-        assert!(result.is_err());
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_from_contract(&e, &recipient, 100)
+            }));
+            assert!(result.is_err());
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&contract_id), 50);
-        assert_eq!(token.balance(&recipient), 0);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&contract_id), 50);
+            assert_eq!(token.balance(&recipient), 0);
+        });
     }
 
     // ------------------------------------------------------------------------
-// transfer_from_contract_with_source
-// ------------------------------------------------------------------------
+    // transfer_from_contract_with_source
+    // ------------------------------------------------------------------------
 
     // Boundary: zero amount with source is a no-op and emits no event.
     #[test]
@@ -581,14 +656,14 @@ mod tests {
     fn test_transfer_with_source_negative_panics() {
         let (e, _admin, _contract_id) = setup();
         let recipient = Address::generate(&e);
-        let result = e.try_catch((), |_| {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             transfer_from_contract_with_source(&e, &recipient, -1, FundSource::SlashedFunds);
-        });
+        }));
         assert!(result.is_err());
     }
 
     // Success: transfer with source moves funds and preserves source
-//   attribution in the event layer.
+    // attribution in the event layer.
     #[test]
     fn test_transfer_with_source_success() {
         let e: Env = Env::default();
@@ -596,18 +671,20 @@ mod tests {
         let owner = Address::generate(&e);
         let recipient = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
-        transfer_into_contract(&e, &owner, 100);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+            transfer_into_contract(&e, &owner, 100);
 
-        transfer_from_contract_with_source(&e, &recipient, 30, FundSource::SlashedFunds);
+            transfer_from_contract_with_source(&e, &recipient, 30, FundSource::SlashedFunds);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&contract_id), 70);
-        assert_eq!(token.balance(&recipient), 30);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&contract_id), 70);
+            assert_eq!(token.balance(&recipient), 30);
+        });
     }
 
     // Regression: failed source transfer must not emit a stale event and
-//   must leave balances unchanged.
+    // must leave balances unchanged.
     #[test]
     fn test_transfer_with_source_failure_no_stale_event() {
         let e: Env = Env::default();
@@ -615,50 +692,57 @@ mod tests {
         let owner = Address::generate(&e);
         let recipient = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
-        transfer_into_contract(&e, &owner, 20);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+            transfer_into_contract(&e, &owner, 20);
 
-        // Attempt to transfer more than the contract holds.
-        let result = e.try_catch((), |_| {
-            transfer_from_contract_with_source(&e, &recipient, 100, FundSource::ProtocolFee);
+            // Attempt to transfer more than the contract holds.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_from_contract_with_source(&e, &recipient, 100, FundSource::ProtocolFee);
+            }));
+            assert!(result.is_err());
+
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&contract_id), 20);
+            assert_eq!(token.balance(&recipient), 0);
         });
-        assert!(result.is_err());
-
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&contract_id), 20);
-        assert_eq!(token.balance(&recipient), 0);
     }
 
     // ------------------------------------------------------------------------
-// Recovery / concurrency / timing boundaries
-// ------------------------------------------------------------------------
+    // Recovery / concurrency / timing boundaries
+    // ------------------------------------------------------------------------
 
     // Recovery: a failed transfer into the contract leaves the owner able
-//   to retry successfully after granting approval.
+    // to retry successfully after granting approval.
     #[test]
     fn test_recovery_retry_after_failed_transfer_into() {
         let e: Env = Env::default();
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        // Fund but no approval yet.
-        setup_token_with_balance(&e, &token_id, &owner, 100);
+        e.as_contract(&contract_id, || {
+            // Fund but no approval yet.
+            setup_token_with_balance(&e, &token_id, &owner, 100);
 
-        // First attempt fails.
-        let first = e.try_catch((), |_| transfer_into_contract(&e, &owner, 50));
-        assert!(first.is_err());
+            // First attempt fails.
+            let first = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_into_contract(&e, &owner, 50)
+            }));
+            assert!(first.is_err());
 
-        // Grant approval and retry.
-        TokenClient::new(&e, &token_id).approve(&owner, &contract_id, 50, 200);
-        transfer_into_contract(&e, &owner, 50);
+            // Grant approval and retry.
+            let expiration = e.ledger().sequence().saturating_add(100_000);
+            TokenClient::new(&e, &token_id).approve(&owner, &contract_id, &50, &expiration);
+            transfer_into_contract(&e, &owner, 50);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 50);
-        assert_eq!(token.balance(&contract_id), 50);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 50);
+            assert_eq!(token.balance(&contract_id), 50);
+        });
     }
 
     // Recovery: a failed transfer from the contract leaves the contract
-//   balance intact and a subsequent smaller transfer succeeds.
+    // balance intact and a subsequent smaller transfer succeeds.
     #[test]
     fn test_recovery_retry_after_failed_transfer_from() {
         let e: Env = Env::default();
@@ -666,19 +750,23 @@ mod tests {
         let owner = Address::generate(&e);
         let recipient = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
-        transfer_into_contract(&e, &owner, 40);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 100);
+            transfer_into_contract(&e, &owner, 40);
 
-        // Over-transfer fails.
-        let failed = e.try_catch((), |_| transfer_from_contract(&e, &recipient, 100));
-        assert!(failed.is_err());
+            // Over-transfer fails.
+            let failed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_from_contract(&e, &recipient, 100)
+            }));
+            assert!(failed.is_err());
 
-        // Retry with a valid amount.
-        transfer_from_contract(&e, &recipient, 40);
+            // Retry with a valid amount.
+            transfer_from_contract(&e, &recipient, 40);
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&contract_id), 0);
-        assert_eq!(token.balance(&recipient), 40);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&contract_id), 0);
+            assert_eq!(token.balance(&recipient), 40);
+        });
     }
 
     // Timing boundary: an approval that expires between two attempts
@@ -689,104 +777,94 @@ mod tests {
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance(&e, &token_id, &owner, 100);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance(&e, &token_id, &owner, 100);
 
-        // Approve with a short expiration.
-        TokenClient::new(&e, &token_id).approve(&owner, &contract_id, 50, 1);
-        advance_ledger(&e, 2);
+            // Approve with a short expiration.
+            TokenClient::new(&e, &token_id).approve(&owner, &contract_id, &50, &1);
+            advance_ledger(&e, 2);
 
-        // Approval expired -> transfer must fail.
-        let result = e.try_catch((), |_| transfer_into_contract(&e, &owner, 50));
-        assert!(result.is_err());
+            // Approval expired -> transfer must fail.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_into_contract(&e, &owner, 50)
+            }));
+            assert!(result.is_err());
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 100);
-        assert_eq!(token.balance(&contract_id), 0);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 100);
+            assert_eq!(token.balance(&contract_id), 0);
+        });
     }
 
-    // Concurrency/regission: two attempts that together exceed the
-//   allowance cannot both succeed; the second must fail cleanly.
+    // Concurrency/regression: two attempts that together exceed the
+    // allowance cannot both succeed; the second must fail cleanly.
     #[test]
     fn test_concurrent_over_allowance_second_fails_cleanly() {
         let e: Env = Env::default();
         let admin = Address::generate(&e);
         let owner = Address::generate(&e);
         let (contract_id, token_id) = setup_contract_with_token(&e, &admin);
-        setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 60);
+        e.as_contract(&contract_id, || {
+            setup_token_with_balance_and_approval(&e, &token_id, &owner, 100, 60);
 
-        // First attempt consumes 50 of the 60 allowed.
-        transfer_into_contract(&e, &owner, 50);
+            // First attempt consumes 50 of the 60 allowed.
+            transfer_into_contract(&e, &owner, 50);
 
-        // Second attempt for 50 exceeds the remaining 10 and must fail.
-        let result = e.try_catch((), |_| transfer_into_contract(&e, &owner, 50));
-        assert!(result.is_err());
+            // Second attempt for 50 exceeds the remaining 10 and must fail.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                transfer_into_contract(&e, &owner, 50)
+            }));
+            assert!(result.is_err());
 
-        let token = TokenClient::new(&e, &token_id);
-        assert_eq!(token.balance(&owner), 50);
-        assert_eq!(token.balance(&contract_id), 50);
-        assert_eq!(token.allowance(&owner, &contract_id), 10);
+            let token = TokenClient::new(&e, &token_id);
+            assert_eq!(token.balance(&owner), 50);
+            assert_eq!(token.balance(&contract_id), 50);
+            assert_eq!(token.allowance(&owner, &contract_id), 10);
+        });
     }
 
     // Permission/recovery: after an admin change the new admin can
-//   rotate the token and the old admin cannot.
+    // rotate the token and the old admin cannot.
     #[test]
     fn test_admin_rotation_controls_token_setting() {
-        let e: Env = Env::default();
-        let admin = Address::generate(&e);
-        let contract_id = setup_contract(&e, &admin);
+        let (e, admin, contract_id) = setup();
         let token_a = Address::generate(&e);
         let token_b = Address::generate(&e);
-        add_accepted_token(&e, &admin, &token_a);
-        add_accepted_token(&e, &admin, &token_b);
+        e.as_contract(&contract_id, || {
+            add_accepted_token(&e, &admin, &token_a);
+            add_accepted_token(&e, &admin, &token_b);
 
-        // Admin sets token A.
-        e.as_contract().mock_all(
-            &contract_id,
-            &Symbol::news(&e, "set_token"),
-            &(admin.clone(), token_a.clone()),
-        );
-        assert_eq!(get_token(&e), token_a);
+            // Admin sets token A.
+            set_token(&e, &admin, &token_a);
+            assert_eq!(get_token(&e), token_a);
+            // Rotate admin.
+            let new_admin = Address::generate(&e);
+            e.storage().instance().set(&crate::DataKey::Admin, &new_admin);
 
-        // Rotate admin.
-        let new_admin = Address::generate(&e);
-        e.storage().instance().set(&crate::DataKey::Admin, &new_admin);
+            // Old admin cannot set token B.
+            let old_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                set_token(&e, &admin, &token_b);
+            }));
+            assert!(old_result.is_err());
+            assert_eq!(get_token(&e), token_a);
 
-        // Old admin cannot set token B.
-        let old_result = e.try_catch((), |_| {
-            e.as_contract().mock_all(
-                &contract_id,
-                &Symbol::new(&e, "set_token"),
-                &(admin.clone(), token_b.clone()),
-            );
+            // New admin can set token B.
+            set_token(&e, &new_admin, &token_b);
+            assert_eq!(get_token(&e), token_b);
         });
-        assert!(old_result.is_error());
-        assert_eq!(get_token(&e), token_a);
-
-        // New admin can set token B.
-        e.as_contract().mock_all(
-            &contract_id,
-            &Symbol::news(&e, "set_token"),
-            &(new_admin.clone(), token_b.clone()),
-        );
-        assert_eq!(get_token(&e), token_b);
     }
 
-    // ------------------------------------------------------------------------
-    // Test helpers used by this module
-// ------------------------------------------------------------------------
-
-    // Adds a token to the accepted tokens set using the contract's admin
-//   path. This is a thin wrapper around the contract's public entry
-    // point so the tests exercise the real code path.
-    fn add_accepted_token(e: &Env, admin: &Address, token: &Address) {
-        // The contract exposes an admin-guarded accepted-token addition
-        // entry point; we invoke it through the contract context so the
-        // auth checks and storage writes run exactly as in production.
-        let contract_id = e.current_contract_address();
-        e.as_contract().mock_all(
-            &contract_id,
-            &Symbol::new(e, "add_accepted_token"),
-            &(admin.clone(), token.clone()),
-        );
+    // Called out by the issue text: exercise the `ContractError::UnauthorizedToken`
+    // path directly so the error code is covered rather than only the panic shape.
+    #[test]
+    fn test_set_token_unaccepted_reports_unauthorized_token() {
+        let (e, admin, contract_id) = setup();
+        let bad_token = Address::generate(&e);
+        e.as_contract(&contract_id, || {
+            crate::test_helpers::expect_contract_error_panic(
+                ContractError::UnauthorizedToken as u32,
+                || set_token(&e, &admin, &bad_token),
+            );
+        });
     }
 }

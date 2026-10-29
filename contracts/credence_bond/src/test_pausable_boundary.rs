@@ -89,7 +89,7 @@ fn proposal_counter_overflow_panics() {
 
     // Next proposal should panic on overflow
     expect_panic_with("pause proposal counter overflow", || {
-        client.pause(&signers[0]);
+        client.pause(&signers.get(0).unwrap());
     });
 }
 
@@ -105,7 +105,7 @@ fn approval_counter_overflow_panics() {
     let (client, admin, signers) = setup_with_signers(&e, 2);
 
     // Create a proposal
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
 
     // Manually set approval count to max
     e.as_contract(&client.address, || {
@@ -116,7 +116,7 @@ fn approval_counter_overflow_panics() {
 
     // Next approval should panic
     expect_panic_with("pause approval count overflow", || {
-        client.approve_pause_proposal(&signers[1], &pid);
+        client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
     });
 }
 
@@ -130,13 +130,13 @@ fn threshold_boundary_inclusive() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 3);
 
-    let pid = client.pause(&signers[0]).unwrap(); // 1 approval
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap(); // 1 approval
     assert!(client.try_execute_pause_proposal(&pid).is_err());
 
-    client.approve_pause_proposal(&signers[1], &pid); // 2 approvals
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid); // 2 approvals
     assert!(client.try_execute_pause_proposal(&pid).is_err());
 
-    client.approve_pause_proposal(&signers[2], &pid); // 3 approvals = threshold
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid); // 3 approvals = threshold
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 }
@@ -147,7 +147,7 @@ fn threshold_one_is_immediate() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 1);
 
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     // Proposer already counted as 1 approval
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
@@ -163,12 +163,12 @@ fn duplicate_approval_is_idempotent() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 2);
 
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
 
-    client.approve_pause_proposal(&signers[1], &pid); // 2 approvals total
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid); // 2 approvals total
 
     // Duplicate approval from same signer must not change count
-    client.approve_pause_proposal(&signers[1], &pid);
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
 
     // Execution must still work
     client.execute_pause_proposal(&pid);
@@ -233,12 +233,12 @@ fn threshold_exceeds_signer_count_rejected() {
 #[test]
 fn threshold_equal_to_signer_count_accepted() {
     let e = Env::default();
-    let (client, admin, _signers) = setup_with_signers(&e, 2);
+    let (client, admin, signers) = setup_with_signers(&e, 2);
 
     client.set_pause_threshold(&admin, &2u32); // must not panic
                                                // Verify by proposing
-    let pid = client.pause(&signers[0]).unwrap();
-    client.approve_pause_proposal(&signers[1], &pid);
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 }
@@ -255,7 +255,7 @@ fn proposal_execution_uses_empty_reason() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 1);
 
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     client.execute_pause_proposal(&pid);
 
     // Verify paused event was emitted with empty reason by checking state
@@ -273,9 +273,9 @@ fn admin_unpause_bypasses_threshold() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 3);
 
-    let pid = client.pause(&signers[0]).unwrap();
-    client.approve_pause_proposal(&signers[1], &pid);
-    client.approve_pause_proposal(&signers[2], &pid);
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid);
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 
@@ -392,7 +392,7 @@ fn non_signer_cannot_approve() {
     let (client, admin, signers) = setup_with_signers(&e, 2);
     let stranger = Address::generate(&e);
 
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
 
     expect_panic_with("not pause signer", || {
         client.approve_pause_proposal(&stranger, &pid);
@@ -424,11 +424,11 @@ fn approval_count_equals_unique_signers() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 3);
 
-    let pid = client.pause(&signers[0]).unwrap(); // count = 1
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap(); // count = 1
 
-    client.approve_pause_proposal(&signers[1], &pid); // count = 2
-    client.approve_pause_proposal(&signers[1], &pid); // duplicate, count still 2
-    client.approve_pause_proposal(&signers[2], &pid); // count = 3
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid); // count = 2
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid); // duplicate, count still 2
+    client.approve_pause_proposal(&signers.get(2).unwrap(), &pid); // count = 3
 
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
@@ -444,17 +444,17 @@ fn non_admin_unpause_creates_proposal() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 2);
 
-    let pid = client.pause(&signers[0]).unwrap();
-    client.approve_pause_proposal(&signers[1], &pid);
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
     client.execute_pause_proposal(&pid);
     assert!(client.is_paused());
 
     // Non-admin signer unpauses -> proposal
-    let pid2 = client.unpause(&signers[0]);
+    let pid2 = client.unpause(&signers.get(0).unwrap());
     assert!(pid2.is_some());
     assert!(client.is_paused()); // still paused until executed
 
-    client.approve_pause_proposal(&signers[1], &pid2.unwrap());
+    client.approve_pause_proposal(&signers.get(1).unwrap(), &pid2.unwrap());
     client.execute_pause_proposal(&pid2.unwrap());
     assert!(!client.is_paused());
 }
@@ -542,7 +542,7 @@ fn pause_unpause_events_emitted() {
     let e = Env::default();
     let (client, admin, signers) = setup_with_signers(&e, 1);
 
-    let pid = client.pause(&signers[0]).unwrap();
+    let pid = client.pause(&signers.get(0).unwrap()).unwrap();
 
     // Check event was emitted by executing and verifying state
     client.execute_pause_proposal(&pid);

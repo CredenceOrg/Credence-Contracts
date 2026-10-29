@@ -19,6 +19,10 @@ pub const MAX_BOND_DURATION: u64 = credence_math::SECONDS_PER_YEAR;
 /// Fixed-point denominator for basis-point calculations.
 const BPS_DENOMINATOR: i128 = 10_000;
 
+/// Soroban's maximum entry TTL in ledgers (~1 year at the usual 5s cadence).
+const STORAGE_TTL_EXTEND_TO: u32 = 6_312_000;
+const STORAGE_TTL_THRESHOLD: u32 = STORAGE_TTL_EXTEND_TO / 2;
+
 // ─── Storage Key ────────────────────────────────────────────────────────────
 
 #[contracttype]
@@ -105,13 +109,38 @@ fn require_positive_amount(e: &Env, amount: i128) {
 }
 
 fn require_no_active_bond(e: &Env, owner: &Address) {
-    let key = DataKey::Bond(owner.clone());
-    if e.storage().instance().has(&key) {
-        let bond: FixedBond = e.storage().instance().get(&key).unwrap();
-        if bond.active {
-            panic_with_error!(e, ContractError::BondAlreadyExists);
-        }
+    if load_bond(e, owner).map(|bond| bond.active).unwrap_or(false) {
+        panic_with_error!(e, ContractError::BondAlreadyExists);
     }
+}
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_THRESHOLD, STORAGE_TTL_EXTEND_TO);
+}
+
+fn load_bond(e: &Env, owner: &Address) -> Option<FixedBond> {
+    let key = DataKey::Bond(owner.clone());
+    let bond = e.storage().persistent().get(&key);
+    if bond.is_some() {
+        e.storage()
+            .persistent()
+            .extend_ttl(&key, STORAGE_TTL_THRESHOLD, STORAGE_TTL_EXTEND_TO);
+    }
+    bond
+}
+
+fn save_bond(e: &Env, bond: &FixedBond) {
+    let key = DataKey::Bond(bond.owner.clone());
+    e.storage().persistent().set(&key, bond);
+    e.storage()
+        .persistent()
+        .extend_ttl(&key, STORAGE_TTL_THRESHOLD, STORAGE_TTL_EXTEND_TO);
+}
+
+fn remove_bond(e: &Env, owner: &Address) {
+    e.storage().persistent().remove(&DataKey::Bond(owner.clone()));
 }
 
 fn require_valid_penalty_bps(e: &Env, bps: u32) {
@@ -155,6 +184,7 @@ pub struct FixedDurationBond;
 impl FixedDurationBond {
     /// One-time setup. Stores admin and token. Panics if called again.
     pub fn initialize(e: Env, admin: Address, token: Address) {
+        bump_instance_ttl(&e);
         if e.storage().instance().has(&DataKey::Admin) {
             panic_with_error!(e, ContractError::AlreadyInitialized);
         }
@@ -167,6 +197,8 @@ impl FixedDurationBond {
 
     /// Set an optional bond-creation fee. 0 = disabled.
     pub fn set_fee_config(e: Env, admin: Address, treasury: Address, fee_bps: u32) {
+        bump_instance_ttl(&e);
+        admin.require_auth();
         require_admin(&e, &admin);
         require_valid_penalty_bps(&e, fee_bps);
         e.storage()
@@ -180,6 +212,8 @@ impl FixedDurationBond {
     /// `base_penalty_bps` = 0 disables early exit.
     /// `treasury` receives the penalty on early exit.
     pub fn set_penalty_config(e: Env, admin: Address, treasury: Address, base_penalty_bps: u32) {
+        bump_instance_ttl(&e);
+        admin.require_auth();
         require_admin(&e, &admin);
         require_valid_penalty_bps(&e, base_penalty_bps);
         e.storage().instance().set(
@@ -195,6 +229,8 @@ impl FixedDurationBond {
 
     /// Transfer all accrued creation fees to `recipient`. Panics if no fees.
     pub fn collect_fees(e: Env, admin: Address, recipient: Address) -> i128 {
+        bump_instance_ttl(&e);
+        admin.require_auth();
         require_admin(&e, &admin);
 
         let fees: i128 = e
@@ -230,6 +266,7 @@ impl FixedDurationBond {
     /// State changes happen before external calls so a re-entrant token cannot
     /// observe inconsistent state.
     pub fn create_bond(e: Env, owner: Address, amount: i128, duration_secs: u64) -> FixedBond {
+        bump_instance_ttl(&e);
         owner.require_auth();
         require_positive_amount(&e, amount);
         require_no_active_bond(&e, &owner);
@@ -285,9 +322,7 @@ impl FixedDurationBond {
             penalty_bps,
             active: true,
         };
-        e.storage()
-            .instance()
-            .set(&DataKey::Bond(owner.clone()), &bond);
+        save_bond(&e, &bond);
 
         e.events().publish(
             (Symbol::new(&e, "bond_created"), owner.clone()),
@@ -300,14 +335,11 @@ impl FixedDurationBond {
         bond
     }
 
-    /// Withdraw full principal after lock period. Deactivates bond.
+    /// Withdraw full principal after lock period and remove the bond record.
     pub fn withdraw(e: Env, owner: Address) -> FixedBond {
+        bump_instance_ttl(&e);
         owner.require_auth();
-        let key = DataKey::Bond(owner.clone());
-        let mut bond: FixedBond = e
-            .storage()
-            .instance()
-            .get(&key)
+        let mut bond: FixedBond = load_bond(&e, &owner)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
 
         if !bond.active {
@@ -321,7 +353,7 @@ impl FixedDurationBond {
 
         // CEI: deactivate bond before external transfer.
         bond.active = false;
-        e.storage().instance().set(&key, &bond);
+        remove_bond(&e, &owner);
 
         let amount = bond.amount;
         transfer_out(&e, &owner, amount);
@@ -332,14 +364,11 @@ impl FixedDurationBond {
         bond
     }
 
-    /// Withdraw before lock period with penalty deducted.
+    /// Withdraw before lock period with penalty deducted and remove the bond record.
     pub fn withdraw_early(e: Env, owner: Address) -> FixedBond {
+        bump_instance_ttl(&e);
         owner.require_auth();
-        let key = DataKey::Bond(owner.clone());
-        let mut bond: FixedBond = e
-            .storage()
-            .instance()
-            .get(&key)
+        let mut bond: FixedBond = load_bond(&e, &owner)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound));
 
         if !bond.active {
@@ -376,7 +405,7 @@ impl FixedDurationBond {
 
         // CEI: deactivate bond before external transfers.
         bond.active = false;
-        e.storage().instance().set(&key, &bond);
+        remove_bond(&e, &owner);
 
         e.events().publish(
             (Symbol::new(&e, "bond_early_exit"), owner.clone()),
@@ -399,17 +428,15 @@ impl FixedDurationBond {
 
     /// Return the bond state for `owner`. Panics if none exists.
     pub fn get_bond(e: Env, owner: Address) -> FixedBond {
-        let key = DataKey::Bond(owner);
-        e.storage()
-            .instance()
-            .get(&key)
+        bump_instance_ttl(&e);
+        load_bond(&e, &owner)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound))
     }
 
     /// True if the lock period has elapsed.
     pub fn is_matured(e: Env, owner: Address) -> bool {
-        let key = DataKey::Bond(owner);
-        let bond: Option<FixedBond> = e.storage().instance().get(&key);
+        bump_instance_ttl(&e);
+        let bond = load_bond(&e, &owner);
         match bond {
             Some(b) => e.ledger().timestamp() >= b.bond_expiry,
             None => false,
@@ -420,8 +447,8 @@ impl FixedDurationBond {
     ///
     /// Uses `saturating_sub` — always safe even when `now > bond_expiry`.
     pub fn get_time_remaining(e: Env, owner: Address) -> u64 {
-        let key = DataKey::Bond(owner);
-        let bond: Option<FixedBond> = e.storage().instance().get(&key);
+        bump_instance_ttl(&e);
+        let bond = load_bond(&e, &owner);
         match bond {
             Some(b) => {
                 let now = e.ledger().timestamp();
@@ -432,6 +459,7 @@ impl FixedDurationBond {
     }
 
     pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
         let admin: Address = e
             .storage()
             .instance()
@@ -451,6 +479,7 @@ impl FixedDurationBond {
 #[contractimpl]
 impl interfaces::governable::Governable for FixedDurationBond {
     fn get_admin(e: Env) -> Address {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Admin)
@@ -458,6 +487,7 @@ impl interfaces::governable::Governable for FixedDurationBond {
     }
 
     fn set_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
         Self::transfer_admin(e, new_admin);
     }
 }
@@ -512,6 +542,8 @@ mod tests {
     use super::*;
     use soroban_sdk::testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke};
     use soroban_sdk::{token::StellarAssetClient, IntoVal};
+
+    const BOND_TTL_THRESHOLD: u32 = STORAGE_TTL_THRESHOLD;
 
     /// Helper: set the ledger timestamp to an absolute value.
     fn set_timestamp(e: &Env, ts: u64) {
@@ -979,6 +1011,82 @@ mod tests {
         assert!(retrieved.active);
     }
 
+    #[test]
+    fn bond_stored_in_persistent() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+        let key = DataKey::Bond(owner);
+        let contract_id = client.address.clone();
+        e.as_contract(&contract_id, || {
+            assert!(e.storage().persistent().has(&key));
+            assert!(!e.storage().instance().has(&key));
+        });
+    }
+
+    #[test]
+    fn bond_ttl_extended_on_access() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &86_400_u64);
+        let key = DataKey::Bond(owner.clone());
+        let contract_id = client.address.clone();
+        e.ledger()
+            .with_mut(|li| li.sequence_number = STORAGE_TTL_EXTEND_TO - 1);
+        client.get_bond(&owner);
+        let ttl = e.as_contract(&contract_id, || e.storage().persistent().get_ttl(&key));
+        assert!(ttl >= BOND_TTL_THRESHOLD);
+    }
+
+    #[test]
+    fn instance_ttl_extended() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        let contract_id = client.address.clone();
+        e.ledger()
+            .with_mut(|li| li.sequence_number = STORAGE_TTL_EXTEND_TO - 1);
+        client.get_time_remaining(&owner);
+        let ttl = e.as_contract(&contract_id, || e.storage().instance().get_ttl());
+        assert!(ttl >= STORAGE_TTL_THRESHOLD);
+    }
+
+    #[test]
+    fn get_bond_cost_independent_of_bond_count() {
+        fn measured_cost(owner_count: u32) -> u64 {
+            let (e, _admin, _token, client) = setup();
+            let mut first_owner = None;
+            for _ in 0..owner_count {
+                let owner = Address::generate(&e);
+                if first_owner.is_none() {
+                    first_owner = Some(owner.clone());
+                }
+                client.create_bond(&owner, &1_i128, &MIN_BOND_DURATION);
+            }
+            e.cost_estimate().budget().reset_default();
+            client.get_bond(&first_owner.unwrap());
+            e.cost_estimate().budget().cpu_instruction_cost()
+        }
+
+        let one_bond_cost = measured_cost(1);
+        let many_bonds_cost = measured_cost(300);
+        assert!(
+            many_bonds_cost <= one_bond_cost + one_bond_cost / 20,
+            "get_bond CPU cost grew from {one_bond_cost} to {many_bonds_cost}"
+        );
+    }
+
+    #[test]
+    fn withdrawn_bond_record_is_removed() {
+        let (e, _admin, _token, client) = setup();
+        let owner = Address::generate(&e);
+        client.create_bond(&owner, &1000_i128, &MIN_BOND_DURATION);
+        set_timestamp(&e, MIN_BOND_DURATION);
+        client.withdraw(&owner);
+        let key = DataKey::Bond(owner);
+        let contract_id = client.address.clone();
+        e.as_contract(&contract_id, || assert!(!e.storage().persistent().has(&key)));
+    }
+
     // ═══════════════════════════════════════════════════════════════════════════
     // Collect Fees Tests
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1101,7 +1209,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Contract, #201)")]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
     fn test_double_withdraw_rejected() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1114,7 +1222,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "HostError: Error(Contract, #201)")]
+    #[should_panic(expected = "Error(ContractError::BondNotFound)")]
     fn test_withdraw_early_after_withdraw_rejected() {
         let e = Env::default();
         e.mock_all_auths();
