@@ -1,5 +1,6 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
+#![allow(clippy::disallowed_macros)]
 #![allow(
     deprecated,
     unused_imports,
@@ -8,6 +9,7 @@
     unused_assignments,
     unused_mut,
     mismatched_lifetime_syntaxes,
+    unreachable_patterns,
     clippy::all,
     clippy::pedantic,
     clippy::nursery,

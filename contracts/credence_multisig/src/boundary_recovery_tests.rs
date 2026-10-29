@@ -100,7 +100,10 @@ fn admin_direct_unpause_returns_none_proposal_id() {
     let (_, admin, client) = setup();
     client.pause(&admin);
     let id = client.unpause(&admin);
-    assert!(id.is_none(), "direct-admin unpause must not create a proposal");
+    assert!(
+        id.is_none(),
+        "direct-admin unpause must not create a proposal"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +161,9 @@ fn quorum_unpause_succeeds_when_threshold_met() {
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-    let id = client.unpause(&s1).expect("unpause must return a proposal id");
+    let id = client
+        .unpause(&s1)
+        .expect("unpause must return a proposal id");
     client.approve_pause_proposal(&s2, &id);
     client.execute_pause_proposal(&id);
 
@@ -237,9 +242,9 @@ fn execute_succeeds_exactly_at_threshold_boundary() {
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-    let id = client.pause(&s1).unwrap();     // count = 1
+    let id = client.pause(&s1).unwrap(); // count = 1
     client.approve_pause_proposal(&s2, &id); // count = 2 == threshold
-    client.execute_pause_proposal(&id);      // must succeed
+    client.execute_pause_proposal(&id); // must succeed
     assert!(client.is_paused());
 }
 

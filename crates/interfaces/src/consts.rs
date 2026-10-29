@@ -19,7 +19,7 @@ pub const MAX_RETRIES: u32 = 3;
 pub const MAX_BATCH_SIZE: usize = 128;
 
 /// Maximum age (in seconds) before a cached entry is considered stale.
-pub const MAX_CACHE_AGP_SECS: u64 = 86400;
+pub const MAX_CACHE_AGE_SECS: u64 = 86400;
 
 /// Default number of attempts for a transient operation.
 pub const DEFAULT_RETRY_ATTEMPTS: u32 = 1;
@@ -54,7 +54,7 @@ pub const ERR_INVALID_INPUT: &str = "invalid_input";
 /// long keys before they touch persistent state. It is deterministic
 /// and has no side effects.
 pub fn is_valid_key_len(len: usize) -> bool {
-    len >= MIN_KEY_LEN && len <= MAX_KEY_LEN
+    (MIN_KEY_LEN..=MAX_KEY_LEN).contains(&len)
 }
 
 /// Returns true if the provided value length is within the accepted bounds.
@@ -77,7 +77,7 @@ pub fn is_valid_batch_size(size: usize) -> bool {
 /// An entry exactly at the age limit is considered fresh; only ages
 /// strictly greater than `MAX_CACHE_AGP_SECS` are stale.
 pub fn is_cache_fresh(age_secs: u64) -> bool {
-    age_secs <= MAX_CACHE_AGP_SECS
+    age_secs <= MAX_CACHE_AGE_SECS
 }
 
 /// Returns the number of retries remaining after `attempts` have been made.
@@ -136,7 +136,7 @@ pub fn validate_batch_size(size: usize) -> Result<usize, &'static str> {
 /// Validates that a cache entry is fresh and returns a deterministic
 /// error code when it is stale.
 pub fn validate_cache_age(age_secs: u64) -> Result<u64, &'static str> {
-    if age_secs > MAX_CACHE_AGP_SECS {
+    if age_secs > MAX_CACHE_AGE_SECS {
         return Err(ERR_STALE_ENTRY);
     }
     Ok(age_secs)
@@ -239,19 +239,19 @@ mod tests {
     #[test]
     fn cache_freshness_boundaries_are_inclusive() {
         assert!(is_cache_fresh(0));
-        assert!(is_cache_fresh(MAX_CACHE_AGP_SECS));
-        assert!(!is_cache_fresh(MAX_CACHE_AGP_SECS + 1));
+        assert!(is_cache_fresh(MAX_CACHE_AGE_SECS));
+        assert!(!is_cache_fresh(MAX_CACHE_AGE_SECS + 1));
     }
 
     #[test]
     fn validate_cache_age_rejects_stale() {
         assert_eq!(validate_cache_age(0), Ok(0));
         assert_eq!(
-            validate_cache_age(MAX_CACHE_AGP_SECS),
-            Ok(MAX_CACHE_AGP_SECS)
+            validate_cache_age(MAX_CACHE_AGE_SECS),
+            Ok(MAX_CACHE_AGE_SECS)
         );
         assert_eq!(
-            validate_cache_age(MAX_CACHE_AGP_SECS + 1),
+            validate_cache_age(MAX_CACHE_AGE_SECS + 1),
             Err(ERR_STALE_ENTRY)
         );
     }

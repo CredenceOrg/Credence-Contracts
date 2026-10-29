@@ -20,11 +20,8 @@
 // a later allow would re-silence it. cargo build --release / WASM build
 // is the only mode where this deny fires (tests
 // stay free to use format!/write! for diagnostics).
-
-
 use credence_errors::ContractError;
 use ethnum::U256;
-use soroban_sdk;
 
 pub mod fixed_point;
 pub mod rate;
@@ -33,7 +30,6 @@ pub mod timestamp;
 
 pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
 pub use time::{
-    
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };
 pub use timestamp::Timestamp;
@@ -70,7 +66,13 @@ pub fn sat_mul_bps(value: i128, bps: u32) -> i128 {
 /// Returns (fee, net) where fee = (value * bps) / BPS_DENOMINATOR and net = value - fee.
 /// The operation names (mul_op, div_op, sub_op) are for panic messages only.
 #[inline]
-pub fn split_bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str, _sub_op: &str) -> (i128, i128) {
+pub fn split_bps(
+    value: i128,
+    bps: u32,
+    _mul_op: &str,
+    _div_op: &str,
+    _sub_op: &str,
+) -> (i128, i128) {
     let fee = (value as i128).saturating_mul(bps as i128) / BPS_DENOMINATOR;
     let net = value.saturating_sub(fee);
     (fee, net)
@@ -156,7 +158,10 @@ pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
     assert!(b > 0, "denominator must be positive");
-    (a + b - 1) / b
+    let _ = message;
+    a.checked_add(b - 1)
+        .and_then(|v| v.checked_div(b))
+        .expect(message)
 }
 
 /// Wrapping multiply-divide: `(a * b) / denom` with full i128 intermediate.
@@ -169,15 +174,15 @@ pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str
     let a_abs = a.unsigned_abs();
     let b_abs = b.unsigned_abs();
     let denom_abs = denom.unsigned_abs();
-    
+
     let num = match a_abs.checked_mul(b_abs) {
         Some(v) => v,
         None => panic!("{}", msg),
     };
-    
+
     let mut result = (num / denom_abs) as i128;
     let rem = num % denom_abs;
-    
+
     match rounding {
         Rounding::Down => {}
         Rounding::Up => {
@@ -192,9 +197,13 @@ pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str
             }
         }
     }
-    
+
     // Apply sign
-    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) { -1 } else { 1 };
+    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) {
+        -1
+    } else {
+        1
+    };
     result.saturating_mul(sign)
 }
 
@@ -208,17 +217,22 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
     let a_abs = a.unsigned_abs();
     let b_abs = b.unsigned_abs();
     let denom_abs = denom.unsigned_abs();
-    
+
     // Compute (a * b) / denom using u256 intermediate via u128::checked_mul
     let num = match a_abs.checked_mul(b_abs) {
         Some(v) => v,
-        None => return if (a < 0) ^ (b < 0) { i128::MIN } else { i128::MAX },
+        None => {
+            return if (a < 0) ^ (b < 0) {
+                i128::MIN
+            } else {
+                i128::MAX
+            }
+        }
     };
-    
+
     let mut result = (num / denom_abs) as i128;
     let rem = num % denom_abs;
-    let mut result = result as i128;
-    
+
     match rounding {
         Rounding::Down => {}
         Rounding::Up => {
@@ -233,9 +247,13 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
             }
         }
     }
-    
+
     // Apply sign
-    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) { -1 } else { 1 };
+    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) {
+        -1
+    } else {
+        1
+    };
     result.saturating_mul(sign)
 }
 
