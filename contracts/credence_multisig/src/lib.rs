@@ -1,4 +1,4 @@
-#`!no_std]
+#![no_std]
 #![deny(clippy::float_arithmetic)]
 #![allow(
     deprecated,
@@ -53,8 +53,6 @@ pub use multisig::*;
 #[cfg(test)]
 extern crate std;
 
-#[cfg(test)]
-mod boundary_recovery_tests;
 #[cfg(test)]
 mod boundary_recovery_tests;
 #[cfg(test)]

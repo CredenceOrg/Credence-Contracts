@@ -140,10 +140,18 @@ fn save_bond(e: &Env, bond: &FixedBond) {
 }
 
 fn remove_bond(e: &Env, owner: &Address) {
-    e.storage().persistent().remove(&DataKey::Bond(owner.clone()));
+    e.storage()
+        .persistent()
+        .remove(&DataKey::Bond(owner.clone()));
 }
 
 fn require_valid_penalty_bps(e: &Env, bps: u32) {
+    if bps > BPS_DENOMINATOR as u32 {
+        panic_with_error!(e, ContractError::InvalidPenaltyBps);
+    }
+}
+
+fn require_valid_fee_bps(e: &Env, bps: u32) {
     if bps > BPS_DENOMINATOR as u32 {
         panic_with_error!(e, ContractError::InvalidPenaltyBps);
     }
@@ -200,7 +208,7 @@ impl FixedDurationBond {
         bump_instance_ttl(&e);
         admin.require_auth();
         require_admin(&e, &admin);
-        require_valid_penalty_bps(&e, fee_bps);
+        require_valid_fee_bps(&e, fee_bps);
         e.storage()
             .instance()
             .set(&DataKey::FeeConfig, &FeeConfig { treasury, fee_bps });

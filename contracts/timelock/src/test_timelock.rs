@@ -1,7 +1,7 @@
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
-    Address, BytesN, Env, vec, IntoVal,
+    vec, Address, BytesN, Env, IntoVal,
 };
 
 fn setup_env() -> (Env, TimelockContractClient<'static>, Address) {
@@ -499,7 +499,6 @@ fn test_is_ready_boundary_suite() {
 #[test]
 fn test_call_bound_op_invokes_target() {
     let (env, client, admin) = setup_env();
-    
     // Register a mock target contract
     let target_id = env.register(TimelockContract, ()); // Use same contract type for simplicity
     let target_client = TimelockContractClient::new(&env, &target_id);
