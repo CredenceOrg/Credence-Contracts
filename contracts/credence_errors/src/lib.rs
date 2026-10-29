@@ -423,13 +423,6 @@ pub enum ContractError {
     /// Replaces: panic!("invalid currency")
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
-    InvalidCurrency = 234,
-
-    /// Slash treasury address has not been configured.
-    /// Triggered by: `slash_bond` when `DataKey::SlashTreasury` is absent.
-    /// Contracts: bond
-    /// Wire-stable: do not renumber this error code.
-    TreasuryNotConfigured = 223,
 
     /// Storage cap for attestations or slash history reached.
     /// Replaces: panic!("storage cap reached")
@@ -513,6 +506,11 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
+
+    /// Slash treasury address has not been configured.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TreasuryNotConfigured = 240,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -1278,6 +1276,7 @@ impl ErrorExt for ContractError {
             ContractError::NotEscrowParty => "Caller is neither the escrow depositor nor the contract admin",
         }
     }
+
 
     fn is_recoverable(&self) -> bool {
         // Classification rule (informs every arm below):

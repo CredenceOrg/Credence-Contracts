@@ -21,11 +21,8 @@ mod pausable_tests {
 
         let state = client.get_pause_state();
 
-        // After initialization the contract should not be paused
         assert!(!state.is_paused);
-        // No signers configured yet
         assert_eq!(state.signer_count, 0);
-        // Threshold defaults to 0 (admin-direct pause)
         assert_eq!(state.threshold, 0);
     }
 
@@ -36,19 +33,17 @@ mod pausable_tests {
         let s1 = Address::generate(&_e);
         let s2 = Address::generate(&_e);
 
-        // Add two pause signers
         client.set_pause_signer(&admin, &s1, &true);
         let state = client.get_pause_state();
         assert!(!state.is_paused);
         assert_eq!(state.signer_count, 1);
-        assert_eq!(state.threshold, 1); // auto-adjusted from 0 to 1
+        assert_eq!(state.threshold, 1);
 
         client.set_pause_signer(&admin, &s2, &true);
         let state = client.get_pause_state();
         assert_eq!(state.signer_count, 2);
-        assert_eq!(state.threshold, 1); // unchanged
+        assert_eq!(state.threshold, 1);
 
-        // Raise the threshold
         client.set_pause_threshold(&admin, &2u32);
         let state = client.get_pause_state();
         assert_eq!(state.signer_count, 2);
@@ -59,7 +54,6 @@ mod pausable_tests {
     fn test_get_pause_state_reflects_pause_and_unpause() {
         let (_e, client, admin) = setup();
 
-        // Direct admin pause (threshold = 0)
         client.pause(&admin);
         let state = client.get_pause_state();
         assert!(state.is_paused);
@@ -76,7 +70,6 @@ mod pausable_tests {
         let s1 = Address::generate(&e);
         let s2 = Address::generate(&e);
 
-        // Configure multisig pause
         client.set_pause_signer(&admin, &s1, &true);
         client.set_pause_signer(&admin, &s2, &true);
         client.set_pause_threshold(&admin, &2u32);
@@ -86,7 +79,6 @@ mod pausable_tests {
         assert_eq!(state.signer_count, 2);
         assert_eq!(state.threshold, 2);
 
-        // Propose pause — not yet executed, so contract is still not paused
         let pid = client.pause(&s1).unwrap();
         let stored_action: Symbol = e.as_contract(&client.address, || {
             e.storage()
@@ -101,13 +93,11 @@ mod pausable_tests {
             "contract should not be paused before threshold met"
         );
 
-        // Second signer approves, then execute — now the contract pauses
         client.approve_pause_proposal(&s2, &pid);
         client.execute_pause_proposal(&pid);
         let state = client.get_pause_state();
         assert!(state.is_paused, "contract should be paused after execution");
 
-        // Unpause via multisig
         let pid2 = client.unpause(&s1).unwrap();
         let state_after_proposed = client.get_pause_state();
         assert!(
@@ -166,7 +156,10 @@ mod pausable_tests {
         client.set_pause_signer(&admin, &signer, &true);
 
         let result = client.try_set_pause_threshold(&admin, &0_u32);
-        assert!(result.is_err(), "threshold must remain non-zero while signers exist");
+        assert!(
+            result.is_err(),
+            "threshold must remain non-zero while signers exist"
+        );
         assert_eq!(client.get_pause_state().threshold, 1);
     }
 
@@ -230,12 +223,10 @@ mod pausable_tests {
     fn test_state_changes_blocked_when_paused() {
         let (_e, client, admin) = setup();
 
-        // Pause the contract
         client.pause(&admin);
         let state = client.get_pause_state();
         assert!(state.is_paused);
 
-        // State-changing operations should fail when paused
         let identity = Address::generate(&_e);
         let bond_contract = Address::generate(&_e);
         assert!(
@@ -249,7 +240,6 @@ mod pausable_tests {
             "deactivate should fail when paused"
         );
 
-        // Read-only operations should still succeed
         assert!(!client.is_registered(&identity));
     }
 }

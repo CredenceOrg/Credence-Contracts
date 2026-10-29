@@ -22,7 +22,14 @@ use crate::{CredenceTreasury, CredenceTreasuryClient, FundSource};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{token, Address, Env};
 
-fn setup_taxed(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address, TaxedTokenClient<'_>) {
+fn setup_taxed(
+    e: &Env,
+) -> (
+    CredenceTreasuryClient<'_>,
+    Address,
+    Address,
+    TaxedTokenClient<'_>,
+) {
     e.mock_all_auths();
     let contract_id = e.register(CredenceTreasury, ());
     let client = CredenceTreasuryClient::new(e, &contract_id);
@@ -38,7 +45,14 @@ fn setup_taxed(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address, TaxedT
     (client, admin, token_id, token_client)
 }
 
-fn setup_standard(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address, token::Client<'_>) {
+fn setup_standard(
+    e: &Env,
+) -> (
+    CredenceTreasuryClient<'_>,
+    Address,
+    Address,
+    token::Client<'_>,
+) {
     e.mock_all_auths();
     let contract_id = e.register(CredenceTreasury, ());
     let client = CredenceTreasuryClient::new(e, &contract_id);
@@ -53,12 +67,18 @@ fn setup_standard(e: &Env) -> (CredenceTreasuryClient<'_>, Address, Address, tok
     (client, admin, token_id.address(), token_client)
 }
 
-fn assert_balance_invariants(client: &CredenceTreasuryClient<'_>, token_client: &TaxedTokenClient<'_>) {
+fn assert_balance_invariants(
+    client: &CredenceTreasuryClient<'_>,
+    token_client: &TaxedTokenClient<'_>,
+) {
     let contract_balance = token_client.balance(&client.address);
     let total = client.get_balance();
     let sum = client.get_balance_by_source(&FundSource::ProtocolFee)
         + client.get_balance_by_source(&FundSource::SlashedFunds);
-    assert_eq!(contract_balance, total, "token balance must equal booked total");
+    assert_eq!(
+        contract_balance, total,
+        "token balance must equal booked total"
+    );
     assert_eq!(sum, total, "per-source sum must equal booked total");
 }
 

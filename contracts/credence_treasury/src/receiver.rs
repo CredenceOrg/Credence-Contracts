@@ -1,5 +1,5 @@
 //! Interface for flashloan receivers.
-/// Contracts that wish to receive flashloans from the Credence Treasury must implement this trait.
+//! Contracts that wish to receive flashloans from the Credence Treasury must implement this trait.
 
 use soroban_sdk::{contractclient, Address, Bytes, Env, Symbol};
 

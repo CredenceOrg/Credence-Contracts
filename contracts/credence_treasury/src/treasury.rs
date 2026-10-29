@@ -773,7 +773,8 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::BalanceBySource(FundSource::SlashedFunds))
             .unwrap_or(0);
-        let protocol_deduction = proportional_deduction(&e, protocol_balance, treasury_debit, total);
+        let protocol_deduction =
+            proportional_deduction(&e, protocol_balance, treasury_debit, total);
         let slashed_deduction = treasury_debit
             .checked_sub(protocol_deduction)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
@@ -965,7 +966,8 @@ impl CredenceTreasury {
             .instance()
             .get(&DataKey::BalanceBySource(FundSource::SlashedFunds))
             .unwrap_or(0);
-        let protocol_deduction = proportional_deduction(&e, protocol_balance, treasury_debit, total);
+        let protocol_deduction =
+            proportional_deduction(&e, protocol_balance, treasury_debit, total);
         let slashed_deduction = treasury_debit
             .checked_sub(protocol_deduction)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));

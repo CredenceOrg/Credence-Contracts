@@ -122,7 +122,6 @@ fn require_matching_admin_epoch(e: &Env, action: PauseAction, ep: u64) {
 }
 
 /// Enhanced epoch validation with detailed logging for diagnostics.
-/// 
 /// # Deterministic validation with observability
 /// * Validates proposal ID was derived from current epoch
 /// * Provides detailed diagnostic information on mismatch
@@ -131,10 +130,13 @@ fn require_matching_admin_epoch(e: &Env, action: PauseAction, ep: u64) {
 /// # Returns
 /// * `Ok(())` if epoch validation passes
 /// * `Err(())` if validation fails (caller should panic with appropriate error)
-fn require_matching_admin_epoch_with_logging(e: &Env, action: PauseAction, ep: u64) -> Result<(), ()> {
+fn require_matching_admin_epoch_with_logging(
+    e: &Env,
+    action: PauseAction,
+    ep: u64,
+) -> Result<(), ()> {
     let expected_id = derive_proposal_id(e, action);
     let current_epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
-    
     if ep != expected_id {
         // Log detailed mismatch information for diagnostics
         soroban_sdk::log!(
@@ -458,7 +460,12 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
             soroban_sdk::log!(e, "pause_epoch_validation_success", proposal_id);
         }
         Err(_) => {
-            PauseObservability::log_error_context(e, "stale_admin_epoch", proposal_id, current_epoch as u32);
+            PauseObservability::log_error_context(
+                e,
+                "stale_admin_epoch",
+                proposal_id,
+                current_epoch as u32,
+            );
             panic_with_error!(e, ContractError::StaleAdminEpoch);
         }
     }
