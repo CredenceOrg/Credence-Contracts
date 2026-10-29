@@ -18,21 +18,42 @@ impl MockTarget {
     /// The timelock contract address is this contract's admin, so the target
     /// authorizes the timelock (the caller) exactly like a real integration.
     pub fn initialize(e: Env, admin: Address) {
-        e.storage().instance().set(&Symbol::new(&e, "admin"), &admin);
-        e.storage().instance().set(&Symbol::new(&e, "value"), &0_u32);
-        e.storage().instance().set(&Symbol::new(&e, "calls"), &0_u32);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "admin"), &admin);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "value"), &0_u32);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "calls"), &0_u32);
     }
 
     pub fn set_value(e: Env, value: u32) {
-        let admin: Address = e.storage().instance().get(&Symbol::new(&e, "admin")).unwrap();
+        let admin: Address = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, "admin"))
+            .unwrap();
         admin.require_auth();
-        e.storage().instance().set(&Symbol::new(&e, "value"), &value);
-        let calls: u32 = e.storage().instance().get(&Symbol::new(&e, "calls")).unwrap_or(0);
-        e.storage().instance().set(&Symbol::new(&e, "calls"), &(calls + 1));
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "value"), &value);
+        let calls: u32 = e
+            .storage()
+            .instance()
+            .get(&Symbol::new(&e, "calls"))
+            .unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&Symbol::new(&e, "calls"), &(calls + 1));
     }
 
     pub fn get_value(e: Env) -> u32 {
-        e.storage().instance().get(&Symbol::new(&e, "value")).unwrap()
+        e.storage()
+            .instance()
+            .get(&Symbol::new(&e, "value"))
+            .unwrap()
     }
 
     pub fn call_count(e: Env) -> u32 {

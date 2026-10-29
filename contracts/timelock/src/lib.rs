@@ -46,9 +46,11 @@ fn bump_instance_ttl(e: &Env) {
 }
 
 fn bump_persistent_ttl(e: &Env, key: DataKey) {
-    e.storage()
-        .persistent()
-        .extend_ttl(&key, CALL_BOUND_OPERATION_TTL / 2, CALL_BOUND_OPERATION_TTL);
+    e.storage().persistent().extend_ttl(
+        &key,
+        CALL_BOUND_OPERATION_TTL / 2,
+        CALL_BOUND_OPERATION_TTL,
+    );
 }
 
 pub const fn min_delay_seconds() -> u64 {

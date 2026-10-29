@@ -22,6 +22,7 @@
 // stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
+
 //! # Serialization and retry contract
 //!
 //! Soroban executes every invocation against a consistent ledger snapshot and
@@ -322,7 +323,7 @@ impl AdminContract {
     /// # Returns
     /// The created `AdminInfo`
     ///
-    /// # Panics
+/// # Panics
     /// * If caller is not authorized to assign this role
     /// * If new_admin is already an admin
     /// * If maximum admin limit would be exceeded

@@ -54,7 +54,7 @@ pub const ERR_INVALID_INPUT: &str = "invalid_input";
 /// long keys before they touch persistent state. It is deterministic
 /// and has no side effects.
 pub fn is_valid_key_len(len: usize) -> bool {
-    len >= MIN_KEY_LEN && len <= MAX_KEY_LEN
+    (MIN_KEY_LEN..=MAX_KEY_LEN).contains(&len)
 }
 
 /// Returns true if the provided value length is within the accepted bounds.
@@ -82,7 +82,7 @@ pub fn is_cache_fresh(age_secs: u64) -> bool {
 
 /// Returns the number of retries remaining after `attempts` have been made.
 ///
-/// Saturates at zero so a caller can never observan a wrap-around or
+/// Saturates at zero so a caller can never observe a wrap-around or
 /// underflow when the attempt count exceeds the budget.
 pub fn remaining_retries(attempts: u32) -> u32 {
     MAX_RETRIES.saturating_sub(attempts)

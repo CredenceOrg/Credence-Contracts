@@ -18,9 +18,9 @@
 #![cfg(test)]
 
 use crate::*;
-use soroban_sdk::testutils::Events as _;
 use credence_errors::Role;
 use soroban_sdk::testutils::Address as _;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::{Address, Env, String};
 
 // Wire-stable discriminants (`credence_errors::ContractError`).
@@ -167,7 +167,6 @@ fn deactivate_bumps_epoch_and_emits_event() {
     let (e, client, super_admin, admin, _) = setup();
 
     let epoch_before = client.get_config_epoch();
-    let events_before = e.events().all().len();
 
     client.deactivate_admin(&super_admin, &admin);
     let events = e.events().all();
