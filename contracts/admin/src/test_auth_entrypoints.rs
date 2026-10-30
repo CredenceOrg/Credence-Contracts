@@ -1108,3 +1108,234 @@ fn suspend_admin_expiry_boundary_is_inclusive() {
         "admin must be active at exactly suspended_until (>= boundary)"
     );
 }
+
+ 
+// ---------------------------------------------------------------------------
+// Regression coverage for issue #1634: effective authority and strict rank.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn deactivated_admin_cannot_self_reactivate() {
+    let (env, contract, owner) = setup_env();
+    let admin = test_admin(&env);
+    add_admin(&env, &contract, &owner, &admin, AdminRole::Operator);
+    env.as_contract(&contract, || {
+        AdminContract::deactivate_admin(env.clone(), owner.clone(), admin.clone());
+    });
+
+    let client = AdminContractClient::new(&env, &contract);
+    assert!(client.try_reactivate_admin(&admin, &admin).is_err());
+    let info = env.as_contract(&contract, || {
+        AdminContract::get_admin_info(env.clone(), admin.clone())
+    });
+    assert!(
+        !info.active,
+        "a rejected self-reactivation must leave the admin inactive"
+    );
+}
+
+#[test]
+fn suspended_admin_cannot_remove_or_deactivate() {
+    let (env, contract, owner) = setup_env();
+    let peer = test_admin(&env);
+    let operator = user(&env);
+    add_admin(&env, &contract, &owner, &peer, AdminRole::SuperAdmin);
+    add_admin(&env, &contract, &owner, &operator, AdminRole::Operator);
+    let until_ts = env.ledger().timestamp() + 3_600;
+    env.as_contract(&contract, || {
+        AdminContract::suspend_admin(env.clone(), owner.clone(), peer.clone(), until_ts);
+    });
+
+    let client = AdminContractClient::new(&env, &contract);
+    assert!(client.try_remove_admin(&peer, &operator).is_err());
+    assert!(client.try_deactivate_admin(&peer, &operator).is_err());
+    let info = env.as_contract(&contract, || {
+        AdminContract::get_admin_info(env.clone(), operator.clone())
+    });
+    assert!(info.active);
+    assert_eq!(info.role, AdminRole::Operator);
+}
+
+#[test]
+fn deactivated_superadmin_cannot_pause() {
+    let (env, contract, owner) = setup_env();
+    let peer = test_admin(&env);
+    add_admin(&env, &contract, &owner, &peer, AdminRole::SuperAdmin);
+    env.as_contract(&contract, || {
+        AdminContract::deactivate_admin(env.clone(), owner.clone(), peer.clone());
+    });
+
+    let client = AdminContractClient::new(&env, &contract);
+    assert!(client.try_pause(&peer).is_err());
+}
+
+#[test]
+fn admin_cannot_demote_superadmin() {
+    let (env, contract, owner) = setup_env();
+    let admin = test_admin(&env);
+    let peer = test_admin(&env);
+    add_admin(&env, &contract, &owner, &admin, AdminRole::Admin);
+    add_admin(&env, &contract, &owner, &peer, AdminRole::SuperAdmin);
+
+    let client = AdminContractClient::new(&env, &contract);
+    assert!(client
+        .try_update_admin_role(&admin, &peer, &AdminRole::Operator)
+        .is_err());
+    let info = env.as_contract(&contract, || {
+        AdminContract::get_admin_info(env.clone(), peer.clone())
+    });
+    assert_eq!(info.role, AdminRole::SuperAdmin);
+}
+
+#[test]
+fn peer_superadmin_cannot_suspend_owner() {
+    let (env, contract, owner) = setup_env();
+    let peer = test_admin(&env);
+    add_admin(&env, &contract, &owner, &peer, AdminRole::SuperAdmin);
+    let until_ts = env.ledger().timestamp() + 3_600;
+
+    let client = AdminContractClient::new(&env, &contract);
+    assert!(client.try_suspend_admin(&peer, &owner, &until_ts).is_err());
+    let info = env.as_contract(&contract, || {
+        AdminContract::get_admin_info(env.clone(), owner.clone())
+    });
+    assert_eq!(info.suspended_until, 0);
+}
+
+#[test]
+fn owner_can_manage_superadmins() {
+    let (env, contract, owner) = setup_env();
+    let peer = test_admin(&env);
+    add_admin(&env, &contract, &owner, &peer, AdminRole::SuperAdmin);
+
+    let until_ts = env.ledger().timestamp() + 3_600;
+    env.as_contract(&contract, || {
+        AdminContract::suspend_admin(env.clone(), owner.clone(), peer.clone(), until_ts);
+    });
+    assert_eq!(
+        env.as_contract(&contract, || {
+            AdminContract::get_admin_info(env.clone(), peer.clone()).suspended_until
+        }),
+        until_ts
+    );
+    advance(&env, 3_600);
+
+    env.as_contract(&contract, || {
+        AdminContract::deactivate_admin(env.clone(), owner.clone(), peer.clone());
+    });
+    env.as_contract(&contract, || {
+        AdminContract::reactivate_admin(env.clone(), owner.clone(), peer.clone());
+    });
+    let info = env.as_contract(&contract, || {
+        AdminContract::get_admin_info(env.clone(), peer.clone())
+    });
+    assert!(info.active);
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MatrixStatus {
+    Active,
+    Deactivated,
+    Suspended,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum MatrixAction {
+    Remove,
+    Deactivate,
+    Reactivate,
+    Suspend,
+    UpdateRole,
+}
+
+fn authority_matrix_case(
+    caller_role: AdminRole,
+    target_role: AdminRole,
+    caller_status: MatrixStatus,
+    action: MatrixAction,
+) {
+    let (env, contract, owner) = setup_env();
+    let caller = test_admin(&env);
+    let target = test_admin(&env);
+    add_admin(&env, &contract, &owner, &caller, caller_role);
+    add_admin(&env, &contract, &owner, &target, target_role);
+
+    match caller_status {
+        MatrixStatus::Active => {}
+        MatrixStatus::Deactivated => {
+            env.as_contract(&contract, || {
+                AdminContract::deactivate_admin(env.clone(), owner.clone(), caller.clone());
+            });
+        }
+        MatrixStatus::Suspended => {
+            let until_ts = env.ledger().timestamp() + 3_600;
+            env.as_contract(&contract, || {
+                AdminContract::suspend_admin(env.clone(), owner.clone(), caller.clone(), until_ts);
+            });
+        }
+    }
+
+    if matches!(action, MatrixAction::Reactivate) {
+        env.as_contract(&contract, || {
+            AdminContract::deactivate_admin(env.clone(), owner.clone(), target.clone());
+        });
+    }
+
+    let client = AdminContractClient::new(&env, &contract);
+    let until_ts = env.ledger().timestamp() + 3_600;
+    let actual_allowed = match action {
+        MatrixAction::Remove => client.try_remove_admin(&caller, &target).is_ok(),
+        MatrixAction::Deactivate => client.try_deactivate_admin(&caller, &target).is_ok(),
+        MatrixAction::Reactivate => client.try_reactivate_admin(&caller, &target).is_ok(),
+        MatrixAction::Suspend => client
+            .try_suspend_admin(&caller, &target, &until_ts)
+            .is_ok(),
+        MatrixAction::UpdateRole => client
+            .try_update_admin_role(&caller, &target, &AdminRole::Operator)
+            .is_ok(),
+    };
+
+    let role_rank = |role| match role {
+        AdminRole::Operator => 0_u8,
+        AdminRole::Admin => 1_u8,
+        AdminRole::SuperAdmin => 2_u8,
+    };
+    let caller_is_effective = matches!(caller_status, MatrixStatus::Active);
+    let caller_can_assign_operator =
+        !matches!(action, MatrixAction::UpdateRole) || role_rank(caller_role) >= 1;
+    let expected_allowed = caller_is_effective
+        && role_rank(caller_role) > role_rank(target_role)
+        && caller_can_assign_operator;
+
+    assert_eq!(
+        actual_allowed, expected_allowed,
+        "action={action:?}, caller={caller_role:?}/{caller_status:?}, target={target_role:?}"
+    );
+}
+
+#[test]
+fn authority_matrix() {
+    let roles = [AdminRole::Operator, AdminRole::Admin, AdminRole::SuperAdmin];
+    let statuses = [
+        MatrixStatus::Active,
+        MatrixStatus::Deactivated,
+        MatrixStatus::Suspended,
+    ];
+    let actions = [
+        MatrixAction::Remove,
+        MatrixAction::Deactivate,
+        MatrixAction::Reactivate,
+        MatrixAction::Suspend,
+        MatrixAction::UpdateRole,
+    ];
+
+    for caller_role in roles {
+        for target_role in roles {
+            for caller_status in statuses {
+                for action in actions {
+                    authority_matrix_case(caller_role, target_role, caller_status, action);
+                }
+            }
+        }
+    }
+}

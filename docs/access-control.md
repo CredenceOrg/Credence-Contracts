@@ -1,5 +1,9 @@
 # Access Control System
 
+> **Authority model:** All privileged admin entrypoints resolve the caller's
+> **effective role** through a single status-aware helper. Raw stored roles are
+> never used for authorization. See the [Admin Authority Matrix](#admin-authority-matrix).
+
 ## Overview
 
 The Credence access control module provides reusable, composable role-based access control modifiers for smart contracts. It implements three primary roles (Admin, Verifier, Identity Owner) with support for role composition and comprehensive security event logging.
@@ -48,6 +52,95 @@ require_admin_or_verifier(e: &Env, caller: &Address)
 This modifier allows either admin OR verifier to proceed, enabling shared responsibilities while maintaining clear audit trails.
 
 ## API Reference
+
+## Admin Authority Matrix
+
+The admin contract exposes a single internal helper,
+`require_effective_role(e, caller, min_role) -> AdminInfo`, which is the **only**
+authority primitive used by privileged entrypoints and by
+`pausable::require_admin_auth`. It enforces:
+
+1. The caller has a stored admin record (`NotAdmin` otherwise).
+2. The caller is **active** (`NotAdmin` if deactivated).
+3. The caller is **not suspended** at the current ledger time
+   (`AdminSuspended` if `now < suspended_until`).
+4. The caller's role is `>= min_role` (`NotAdmin` otherwise).
+
+`get_role` remains a public, read-only view that returns the raw stored role
+and **must not** be used for authorization.
+
+### Rank rule for acting on another admin
+
+For every entrypoint that mutates another admin's record, the caller's
+**effective** role must be **strictly greater** than the target's current
+stored role. The single exception is the **owner**, who may always act on any
+admin (including SuperAdmins), as documented in `docs/admin-roles.md`.
+
+`update_admin_role` additionally keeps its existing check that the caller may
+assign `new_role` (i.e. `require_effective_role(caller, required_to_assign(new_role))`).
+
+`reactivate_admin` rejects `caller == target`; a deactivated admin cannot
+restore themselves.
+
+### Matrix
+
+Legend: `O` = Operator, `A` = Admin, `S` = SuperAdmin, `—` = no admin record.
+Caller status is one of **active**, **deactivated**, **suspended**.
+
+| Entrypoint | Caller status | Caller role | Target role | Result |
+|---|---|---|---|---|
+| `remove_admin` | active | O | — | deny (`NotAdmin`) |
+| `remove_admin` | active | O | O | deny (`NotAdmin`) |
+| `remove_admin` | active | O | A | deny (`NotAdmin`) |
+| `remove_admin` | active | O | S | deny (`NotAdmin`) |
+| `remove_admin` | active | A | O | allow |
+| `remove_admin` | active | A | A | deny (`NotAdmin`) |
+| `remove_admin` | active | A | S | deny (`NotAdmin`) |
+| `remove_admin` | active | S | O | allow |
+| `remove_admin` | active | S | A | allow |
+| `remove_admin` | active | S | S | deny (`NotAdmin`) |
+| `remove_admin` | deactivated | any | any | deny (`NotAdmin`) |
+| `remove_admin` | suspended | any | any | deny (`AdminSuspended`) |
+| `remove_admin` | active | owner | any | allow |
+| `deactivate_admin` | active | A | O | allow |
+| `deactivate_admin` | active | A | A | deny (`NotAdmin`) |
+| `deactivate_admin` | active | A | S | deny (`NotAdmin`) |
+| `deactivate_admin` | active | S | A | allow |
+| `deactivate_admin` | active | S | S | deny (`NotAdmin`) |
+| `deactivate_admin` | deactivated | any | any | deny (`NotAdmin`) |
+| `deactivate_admin` | suspended | any | any | deny (`AdminSuspended`) |
+| `deactivate_admin` | active | owner | any | allow |
+| `reactivate_admin` | active | A | O | allow |
+| `reactivate_admin` | active | A | A | deny (`NotAdmin`) |
+| `reactivate_admin` | active | S | A | allow |
+| `reactivate_admin` | active | S | S | deny (`NotAdmin`) |
+| `reactivate_admin` | any | caller == target | caller | deny (`NotAdmin`) |
+| `reactivate_admin` | deactivated | any | any | deny (`NotAdmin`) |
+| `reactivate_admin` | suspended | any | any | deny (`AdminSuspended`) |
+| `reactivate_admin` | active | owner | any | allow |
+| `suspend_admin` | active | A | O | allow |
+| `suspend_admin` | active | A | A | deny (`NotAdmin`) |
+| `suspend_admin` | active | A | S | deny (`NotAdmin`) |
+| `suspend_admin` | active | S | A | allow |
+| `suspend_admin` | active | S | S | deny (`NotAdmin`) |
+| `suspend_admin` | deactivated | any | any | deny (`NotAdmin`) |
+| `suspend_admin` | suspended | any | any | deny (`AdminSuspended`) |
+| `suspend_admin` | active | owner | any | allow |
+| `update_admin_role` | active | A | O | allow (if `new_role` assignable by A) |
+| `update_admin_role` | active | A | A | deny (`NotAdmin`) |
+| `update_admin_role` | active | A | S | deny (`NotAdmin`) |
+| `update_admin_role` | active | S | A | allow (if `new_role` assignable by S) |
+| `update_admin_role` | active | S | S | deny (`NotAdmin`) |
+| `update_admin_role` | deactivated | any | any | deny (`NotAdmin`) |
+| `update_admin_role` | suspended | any | any | deny (`AdminSuspended`) |
+| `update_admin_role` | active | owner | any | allow |
+| `pausable::require_admin_auth` | active | S | — | allow |
+| `pausable::require_admin_auth` | active | O/A | — | deny (`NotAdmin`) |
+| `pausable::require_admin_auth` | deactivated | any | — | deny (`NotAdmin`) |
+| `pausable::require_admin_auth` | suspended | any | — | deny (`AdminSuspended`) |
+
+The `authority_matrix` table-driven test in `contracts/admin/src/lib.rs`
+asserts every row above.
 
 ## Bond Entrypoint Authority Matrix
 
@@ -321,6 +414,14 @@ The system prevents privilege escalation:
 - Identity owners cannot grant themselves verifier status
 - Only admin can modify the verifier set
 
+### 6. Status-Aware Admin Authority
+- Deactivated and suspended admins lose **all** authority immediately, including
+  self-reactivation, peer management, and pause control.
+- Rank comparisons always use the caller's **effective** role against the
+  target's **current stored** role, and require strict outranking.
+- Only the owner may act on SuperAdmins; no SuperAdmin can demote, suspend, or
+  remove a peer SuperAdmin.
+
 ## Testing
 
 The module includes comprehensive tests covering:
@@ -335,6 +436,7 @@ The module includes comprehensive tests covering:
 ✅ Verifier addition/removal  
 ✅ Edge cases (re-adding verifiers, uninitialized state)  
 ✅ Event verification for all operations  
+✅ Admin authority matrix (status-aware, rank-strict, owner override)  
 
 **Coverage Note**: Access-control paths are covered by dedicated unit tests, including unauthorized and event-emission scenarios.  
 Project-wide numeric coverage requires an external coverage tool (for example `cargo-llvm-cov`), which is not bundled in this repository.
