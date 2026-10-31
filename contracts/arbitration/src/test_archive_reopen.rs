@@ -226,12 +226,13 @@ fn test_invalid_transition_require_transition() {
     );
 }
 
-
 #[test]
 fn reopen_rejected_when_creator_has_other_active_dispute() {
     let s = setup();
     let archived_id = create_and_resolve(&s);
-    s.client.try_archive_dispute(&s.admin, &archived_id).unwrap();
+    s.client
+        .try_archive_dispute(&s.admin, &archived_id)
+        .unwrap();
 
     let active_id = s.client.create_dispute(
         &s.creator,
