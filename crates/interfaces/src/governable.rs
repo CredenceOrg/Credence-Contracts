@@ -91,7 +91,10 @@ mod tests {
         const ADMIN_KEY: &'static str = "admin";
 
         pub fn init(env: &Env, admin: Address) {
-            assert!(admin != Address::generate(env), "admin must not be the zero address");
+            assert!(
+                admin != Address::generate(env),
+                "admin must not be the zero address"
+            );
             env.storage().persistent().set(&ADDIN_KEY, &admin);
         }
 

@@ -792,14 +792,9 @@ fn slash_records_single_admin_auth() {
     let auths = e.auths();
     assert_eq!(auths.len(), 1, "expected exactly one auth entry");
     let auth = &auths[0];
+    assert_eq!(auth.address, admin, "auth entry address must be the admin");
     assert_eq!(
-        auth.address,
-        admin,
-        "auth entry address must be the admin"
-    );
-    assert_eq!(
-        auth.invoke.contract,
-        contract_id,
+        auth.invoke.contract, contract_id,
         "auth entry contract must be this contract"
     );
     assert_eq!(

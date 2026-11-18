@@ -122,19 +122,23 @@ fn require_matching_admin_epoch(e: &Env, action: PauseAction, ep: u64) {
 }
 
 /// Enhanced epoch validation with detailed logging for diagnostics.
-/// 
+///
 /// # Deterministic validation with observability
 /// * Validates proposal ID was derived from current epoch
 /// * Provides detailed diagnostic information on mismatch
 /// * Logs context for operational monitoring
-/// 
+///
 /// # Returns
 /// * `Ok(())` if epoch validation passes
 /// * `Err(())` if validation fails (caller should panic with appropriate error)
-fn require_matching_admin_epoch_with_logging(e: &Env, action: PauseAction, ep: u64) -> Result<(), ()> {
+fn require_matching_admin_epoch_with_logging(
+    e: &Env,
+    action: PauseAction,
+    ep: u64,
+) -> Result<(), ()> {
     let expected_id = derive_proposal_id(e, action);
     let current_epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
-    
+
     if ep != expected_id {
         // Log detailed mismatch information for diagnostics
         soroban_sdk::log!(
@@ -144,7 +148,7 @@ fn require_matching_admin_epoch_with_logging(e: &Env, action: PauseAction, ep: u
         );
         return Err(());
     }
-    
+
     // Log successful epoch validation
     soroban_sdk::log!(e, "pause_epoch_validation_passed", (ep, current_epoch));
 
@@ -458,7 +462,12 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
             soroban_sdk::log!(e, "pause_epoch_validation_success", proposal_id);
         }
         Err(_) => {
-            PauseObservability::log_error_context(e, "stale_admin_epoch", proposal_id, current_epoch as u32);
+            PauseObservability::log_error_context(
+                e,
+                "stale_admin_epoch",
+                proposal_id,
+                current_epoch as u32,
+            );
             panic_with_error!(e, ContractError::StaleAdminEpoch);
         }
     }
@@ -476,17 +485,13 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     let state_change_needed = current_pause_state != desired_pause_state;
 
     if !state_change_needed {
-        PauseObservability::log_idempotent_execution(
-            e, 
-            proposal_id, 
-            "state_already_desired"
-        );
+        PauseObservability::log_idempotent_execution(e, proposal_id, "state_already_desired");
     }
 
     // ── Configuration Consistency Verification ──────────────────────────────
     // Verify pause configuration integrity and state coherence
     require_coherent_pause_state(e, proposal_id);
-    
+
     let threshold: u32 = e
         .storage()
         .instance()
@@ -501,10 +506,10 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     // Defensive check: ensure threshold configuration is still valid
     if threshold > signer_count {
         PauseObservability::log_config_inconsistency(
-            e, 
-            threshold, 
-            signer_count, 
-            "threshold_exceeds_signers"
+            e,
+            threshold,
+            signer_count,
+            "threshold_exceeds_signers",
         );
         panic_with_error!(e, ContractError::ThresholdExceedsSigners);
     }
@@ -520,10 +525,10 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     if approvals < threshold {
         // Log insufficient approvals for diagnostics (non-sensitive data)
         PauseObservability::log_error_context(
-            e, 
-            "insufficient_approvals", 
-            proposal_id, 
-            ((approvals as u64) << 16 | threshold as u64) as u32
+            e,
+            "insufficient_approvals",
+            proposal_id,
+            ((approvals as u64) << 16 | threshold as u64) as u32,
         );
         panic_with_error!(e, ContractError::InsufficientApprovals);
     }
@@ -537,10 +542,10 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     if valid_approvals < threshold {
         // Some approvals may have become invalid due to concurrent signer changes
         PauseObservability::log_error_context(
-            e, 
-            "stale_approvals_detected", 
+            e,
+            "stale_approvals_detected",
             proposal_id,
-            ((valid_approvals as u64) << 16 | approvals as u64) as u32
+            ((valid_approvals as u64) << 16 | approvals as u64) as u32,
         );
         panic_with_error!(e, ContractError::InsufficientApprovals);
     }
@@ -559,24 +564,30 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
                 do_unpause(e, Some(proposal_id))
             }
             _ => {
-                PauseObservability::log_error_context(e, "invalid_action_in_transition", proposal_id, action);
+                PauseObservability::log_error_context(
+                    e,
+                    "invalid_action_in_transition",
+                    proposal_id,
+                    action,
+                );
                 panic_with_error!(e, ContractError::InvalidPauseAction)
             }
         };
-        
+
         // Log state transition
         if result {
-            PauseObservability::log_state_transition(e, proposal_id, pre_state, desired_pause_state);
+            PauseObservability::log_state_transition(
+                e,
+                proposal_id,
+                pre_state,
+                desired_pause_state,
+            );
         }
-        
+
         result
     } else {
         // State is already as desired - log idempotent execution
-        PauseObservability::log_idempotent_execution(
-            e, 
-            proposal_id, 
-            "no_state_change_needed"
-        );
+        PauseObservability::log_idempotent_execution(e, proposal_id, "no_state_change_needed");
         false
     };
 
@@ -600,7 +611,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     // ── Final Execution Metrics ─────────────────────────────────────────────
     let end_ledger = e.ledger().sequence();
     let execution_duration = end_ledger.saturating_sub(start_ledger);
-    
+
     // ── Execution Success Event ─────────────────────────────────────────────
     // Record successful execution in the debug diagnostic stream
     soroban_sdk::log!(
@@ -655,14 +666,14 @@ fn do_unpause(e: &Env, proposal_id: Option<u64>) -> bool {
 /// approvals - it returns the count of valid approvals for caller decision-making
 fn count_valid_approvals(e: &Env, proposal_id: u64, _required_count: u32) -> u32 {
     let mut valid_approvals = 0u32;
-    
+
     // Get current signer count for iteration bounds
     let signer_count: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseSignerCount)
         .unwrap_or(0);
-        
+
     // Note: In the current implementation, we trust the approval count stored
     // in PauseApprovalCount since approvals can only be added by valid signers
     // and signer revocation would have updated the threshold accordingly.
@@ -673,10 +684,10 @@ fn count_valid_approvals(e: &Env, proposal_id: u64, _required_count: u32) -> u32
         .instance()
         .get(&DataKey::PauseApprovalCount(proposal_id))
         .unwrap_or(0);
-        
+
     // Clamp approvals to not exceed possible signer count
     valid_approvals = stored_approvals.min(signer_count);
-    
+
     valid_approvals
 }
 
@@ -713,7 +724,7 @@ fn cleanup_proposal_approvals(e: &Env, proposal_id: u64, max_signers: u32) {
     // The storage will clean these up naturally through TTL expiration.
     // This is acceptable since they consume minimal space and become unreachable
     // once the proposal is removed.
-    
+
     // Log comprehensive cleanup metrics for observability
     soroban_sdk::log!(
         e,
@@ -750,7 +761,7 @@ fn require_no_concurrent_modification(e: &Env, expected_epoch: u64) -> u64 {
         .instance()
         .get(&DataKey::ConfigEpoch)
         .unwrap_or(0);
-        
+
     if current_epoch != expected_epoch {
         // Concurrent modification detected - another operation advanced the epoch
         soroban_sdk::log!(
@@ -760,7 +771,7 @@ fn require_no_concurrent_modification(e: &Env, expected_epoch: u64) -> u64 {
         );
         panic_with_error!(e, ContractError::StaleAdminEpoch);
     }
-    
+
     current_epoch
 }
 
@@ -841,12 +852,12 @@ fn require_coherent_pause_state(e: &Env, proposal_id: u64) {
 fn validate_proposal_timing(e: &Env, proposal_id: u64, action: PauseAction) {
     // Derive the expected proposal ID for the current epoch
     let current_expected_id = derive_proposal_id(e, action);
-    
+
     // If the proposal ID matches current epoch, it's definitely valid
     if proposal_id == current_expected_id {
         return;
     }
-    
+
     // For non-matching IDs, we've already validated via require_matching_admin_epoch
     // This function provides additional context for monitoring and diagnostics
     soroban_sdk::log!(

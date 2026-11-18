@@ -166,7 +166,14 @@ fn cap_enforced_at_1000() {
     assert_eq!(client.get_nonce(&attester), nonce);
 
     revoke(&client, &e, &contract_id, &attester, &first_id);
-    add(&client, &e, &contract_id, &attester, &subject, "claim-after-revoke");
+    add(
+        &client,
+        &e,
+        &contract_id,
+        &attester,
+        &subject,
+        "claim-after-revoke",
+    );
     assert_eq!(
         client.get_subject_attestation_count(&subject),
         parameters::MAX_ATTESTATIONS

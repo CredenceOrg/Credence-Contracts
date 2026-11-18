@@ -166,7 +166,10 @@ mod pausable_tests {
         client.set_pause_signer(&admin, &signer, &true);
 
         let result = client.try_set_pause_threshold(&admin, &0_u32);
-        assert!(result.is_err(), "threshold must remain non-zero while signers exist");
+        assert!(
+            result.is_err(),
+            "threshold must remain non-zero while signers exist"
+        );
         assert_eq!(client.get_pause_state().threshold, 1);
     }
 

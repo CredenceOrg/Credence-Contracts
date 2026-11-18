@@ -26,7 +26,6 @@
 /// Do not refresh the baseline to silence a CI failure you did not expect — an
 /// unexpected jump is the signal the gate exists to catch. See
 /// `docs/gas-regression.md` for triage steps.
-
 mod harness;
 
 use std::path::path::PathBuf;

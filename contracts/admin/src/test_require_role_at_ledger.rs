@@ -1,4 +1,3 @@
-
 //! Tests for `require_role_at_ledger` / `check_role_at_ledger` (issue #762).
 //!
 //! # Threat being mitigated
@@ -26,7 +25,10 @@
 //! - `duplicate_add_admin_preserves_earliest_assignment` — **regression**: re-add keeps original ts
 
 use crate::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers

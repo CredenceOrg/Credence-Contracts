@@ -133,10 +133,7 @@ fn remove_admin_rejects_zero_address_and_preserves_state() {
     let epoch_before = client.get_config_epoch();
     let zero = zero_address(&env);
 
-    let err = client
-        .try_remove_admin(&admin, &zero)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_remove_admin(&admin, &zero).unwrap_err().unwrap();
 
     assert_eq!(err, invalid_admin_address_err());
     assert_eq!(client.get_config_epoch(), epoch_before);

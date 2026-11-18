@@ -143,7 +143,7 @@ fn admin_unpause_cannot_be_blocked_by_stale_proposal() {
 
     // Now create an unpause proposal that will never reach threshold
     let pid2 = client.unpause(&signers.get(0).unwrap()).unwrap(); // 1 of 2 approvals
-                                                     // Don't get second approval
+                                                                  // Don't get second approval
 
     // Admin can still unpause directly (bypass proposal)
     assert_eq!(client.unpause(&admin), None);

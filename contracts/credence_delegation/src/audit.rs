@@ -1,12 +1,12 @@
 //! Audit helper to verify that an off-chain promise matches on-chain execution.
-///
+//!
 //! # Threat being mitigated
-///
+//!
 //! Without this check, an off-chain actor (e.g. a relayer, a frontend, or a
 //! compromised signing key) could submit a delegated action payload that *claims*
 //! to perform one action (e.g. `delegate` to address A) but actually executes a
 //! different action on-chain (e.g. `delegate` to address B, or `revoke_delegation`).
-///
+//!
 //! By hashing the intended action off-chain and passing that hash to
 //! `require_kept_promise`, an auditor (or an automated monitoring system) can
 //! verify after the fact that the on-chain execution matches the off-chain
@@ -14,9 +14,9 @@
 //! domain-separated payload verification in [`domain::verify_payload`], but
 //! this helper allows external verification without needing to replay the
 //! signature verification logic.
-///
+//!
 //! # Usage
-///
+//!
 //! ```ignore
 //! // Off-chain: compute hash of the intended action
 //! let promised_hash = hash_delegated_action(&DelegatedActionPayload { ... });
@@ -24,7 +24,7 @@
 //! // On-chain: after execution, call the audit helper
 //! audit::require_kept_promise(&env, &promised_hash, &actual_hash)?;
 //! ```
-///
+//!
 //! The `actual_hash` should be computed from the actual parameters used in the
 //! on-chain call (e.g. the `owner`, `target`, `delegation_type`, `expires_at`,
 //! `domain`, `nonce`, `scheme`, `ledger_number`, `signature_domain` fields

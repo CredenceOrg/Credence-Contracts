@@ -170,10 +170,7 @@ fn main() -> ExitCode {
     let (outcome, exit_code) = evaluate_cost_gate(&baseline, &current);
     match outcome {
         CostGateOutcome::Pass { tolerance_pct, .. } => {
-            println!(
-                "\n✓ no gas regressions (tolerance {:.1}%)",
-                tolerance_pct
-            );
+            println!("\n✓ no gas regressions (tolerance {:.1}%)", tolerance_pct);
         }
         CostGateOutcome::Regression {
             tolerance_pct,
@@ -197,10 +194,7 @@ fn main() -> ExitCode {
 }
 
 /// Print a per-entrypoint baseline-vs-current table for the headline metrics.
-fn print_table(
-    baseline: &harness::Baseline,
-    current: &BTreeMap<String, harness::EntryCost>,
-) {
+fn print_table(baseline: &harness::Baseline, current: &BTreeMap<String, harness::EntryCost>) {
     println!(
         "{:<16} {:>14} {:>14} {:>10}",
         "entrypoint", "cpu_insns", "Δ cpu", "rw(r/w)"

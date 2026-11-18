@@ -37,7 +37,7 @@
 use dispute_resolution::{DisputeError, DisputeResolutionContract, DisputeStatus};
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, Events, storage::Instance, storage::Persistent},
+    testutils::{storage::Instance, storage::Persistent, Address as _, Events},
     vec, Address, Env, IntoVal,
 };
 
@@ -660,10 +660,16 @@ fn test_ttl_extended_on_access() {
         let key = dispute_resolution::DataKey::Dispute(id);
         let persistent_ttl = env.storage().persistent().get_ttl(&key);
         // TTL should be at least half of STORAGE_TTL_EXTEND_TO (1800)
-        assert!(persistent_ttl >= 1800, "persistent TTL should be extended, got {persistent_ttl}");
+        assert!(
+            persistent_ttl >= 1800,
+            "persistent TTL should be extended, got {persistent_ttl}"
+        );
 
         // Check instance TTL is also extended
         let instance_ttl = env.storage().instance().get_ttl();
-        assert!(instance_ttl >= 1800, "instance TTL should be extended, got {instance_ttl}");
+        assert!(
+            instance_ttl >= 1800,
+            "instance TTL should be extended, got {instance_ttl}"
+        );
     });
 }

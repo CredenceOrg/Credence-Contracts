@@ -140,7 +140,9 @@ fn save_bond(e: &Env, bond: &FixedBond) {
 }
 
 fn remove_bond(e: &Env, owner: &Address) {
-    e.storage().persistent().remove(&DataKey::Bond(owner.clone()));
+    e.storage()
+        .persistent()
+        .remove(&DataKey::Bond(owner.clone()));
 }
 
 fn require_valid_penalty_bps(e: &Env, bps: u32) {
@@ -429,8 +431,7 @@ impl FixedDurationBond {
     /// Return the bond state for `owner`. Panics if none exists.
     pub fn get_bond(e: Env, owner: Address) -> FixedBond {
         bump_instance_ttl(&e);
-        load_bond(&e, &owner)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound))
+        load_bond(&e, &owner).unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound))
     }
 
     /// True if the lock period has elapsed.
@@ -1084,7 +1085,9 @@ mod tests {
         client.withdraw(&owner);
         let key = DataKey::Bond(owner);
         let contract_id = client.address.clone();
-        e.as_contract(&contract_id, || assert!(!e.storage().persistent().has(&key)));
+        e.as_contract(&contract_id, || {
+            assert!(!e.storage().persistent().has(&key))
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════════════

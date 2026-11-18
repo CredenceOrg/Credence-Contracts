@@ -582,5 +582,4 @@ mod tests {
         let data = Bytes::from_slice(&env, &[0x1f_u8]);
         verify_stringified_bytes_bytes(&env, &data);
     }
-
 }

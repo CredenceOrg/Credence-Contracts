@@ -165,7 +165,11 @@ mod tests {
             (10_000, 2, 40_000),
             (9_999, 1, 19_999),
             // 9_999 bps compounded 113 times — last period that fits in i128
-            (9_999, 113, 103_260_831_812_728_121_609_515_865_262_270_659_652),
+            (
+                9_999,
+                113,
+                103_260_831_812_728_121_609_515_865_262_270_659_652,
+            ),
         ];
 
         for &(bps, periods, expected) in vectors {
@@ -231,7 +235,10 @@ mod tests {
     #[test]
     fn compound_u32_max_bps_six_periods_fits_i128() {
         let result = Rate::compound(u32::MAX, 6);
-        assert_eq!(result, 62_771_894_172_262_314_583_782_748_390_709_427_055_i128);
+        assert_eq!(
+            result,
+            62_771_894_172_262_314_583_782_748_390_709_427_055_i128
+        );
     }
 
     /// u32::MAX bps at period 7 overflows i128 — must panic.

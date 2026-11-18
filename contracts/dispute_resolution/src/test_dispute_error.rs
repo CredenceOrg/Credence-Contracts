@@ -108,7 +108,8 @@ fn created_dispute_is_returned_and_the_error_is_only_for_absent_ids() {
     e.as_contract(&contract_id, || {
         let resolver = contract_id.clone();
         let creator = Address::generate(&e);
-        let id = DisputeResolutionContract::create_dispute(e.clone(), creator.clone(), resolver.clone());
+        let id =
+            DisputeResolutionContract::create_dispute(e.clone(), creator.clone(), resolver.clone());
 
         // Success boundary: the stored dispute round-trips.
         let dispute = DisputeResolutionContract::get_dispute(e.clone(), id).unwrap();

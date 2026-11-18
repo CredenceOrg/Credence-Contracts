@@ -159,7 +159,6 @@ pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), Arbitratio
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     extern crate std;
@@ -705,10 +704,7 @@ mod tests {
 
         #[test]
         fn allows_no_quorum_state() {
-            assert_eq!(
-                require_dispute_resolved(&DisputeStatus::NoQuorum),
-                Ok(())
-            );
+            assert_eq!(require_dispute_resolved(&DisputeStatus::NoQuorum), Ok(()));
         }
 
         // --- Active States (Should Fail) ---
@@ -973,9 +969,7 @@ mod tests {
             let to = DisputeStatus::Voting;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_transition(from, to))
-                .collect();
+            let results: Vec<_> = (0..10).map(|_| require_transition(from, to)).collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -1000,9 +994,7 @@ mod tests {
             let status = DisputeStatus::Resolved;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_dispute_resolved(&status))
-                .collect();
+            let results: Vec<_> = (0..10).map(|_| require_dispute_resolved(&status)).collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -1169,8 +1161,8 @@ mod tests {
                     let result = require_transition(*from, *to);
                     // Every transition must be either Ok or InvalidTransition
                     match result {
-                        Ok(()) => {}, // valid
-                        Err(ArbitrationError::InvalidTransition) => {}, // invalid
+                        Ok(()) => {}                                   // valid
+                        Err(ArbitrationError::InvalidTransition) => {} // invalid
                         Err(e) => panic!("Unexpected error: {:?}", e),
                     }
                 }

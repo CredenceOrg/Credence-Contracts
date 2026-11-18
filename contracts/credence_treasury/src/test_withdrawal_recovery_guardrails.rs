@@ -329,7 +329,10 @@ fn test_repeated_pause_toggle_retry_is_idempotent_for_balance_and_permissions() 
     assert_eq!(client.get_balance(), 10_000);
 
     let result = client.try_propose_withdrawal(&s1, &recipient, &1_000);
-    assert!(result.is_err(), "proposals must remain blocked while paused");
+    assert!(
+        result.is_err(),
+        "proposals must remain blocked while paused"
+    );
 
     client.unpause(&admin);
     client.unpause(&admin);

@@ -43,9 +43,7 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype,
-    testutils::Address as _,
-    Address, Env, Symbol,
+    contract, contractimpl, contracttype, testutils::Address as _, Address, Env, Symbol,
 };
 
 // ---------------------------------------------------------------------------
@@ -81,9 +79,7 @@ impl AdminGuardContract {
 
     /// Write `admin` under `AdminKey::Slot(index)`.
     pub fn set_admin_slot(e: Env, index: u32, admin: Address) {
-        e.storage()
-            .instance()
-            .set(&AdminKey::Slot(index), &admin);
+        e.storage().instance().set(&AdminKey::Slot(index), &admin);
     }
 
     /// Remove `AdminKey::Admin` entirely — simulates an uninitialized state.
@@ -162,7 +158,10 @@ fn require_admin_succeeds_for_correct_admin() {
     client.set_admin(&admin);
 
     let result = client.check_admin(&admin);
-    assert!(result, "require_admin must return true for the correct admin");
+    assert!(
+        result,
+        "require_admin must return true for the correct admin"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -365,7 +364,10 @@ fn require_admin_reflects_admin_rotation_immediately() {
 
     // Install old admin, verify success.
     client.set_admin(&old_admin);
-    assert!(client.check_admin(&old_admin), "old admin must pass before rotation");
+    assert!(
+        client.check_admin(&old_admin),
+        "old admin must pass before rotation"
+    );
 
     // Rotate to new admin.
     client.set_admin(&new_admin);
@@ -430,7 +432,10 @@ fn require_admin_is_idempotent_for_correct_caller() {
     client.set_admin(&admin);
 
     assert!(client.check_admin(&admin), "first call must succeed");
-    assert!(client.check_admin(&admin), "second call must also succeed (idempotent)");
+    assert!(
+        client.check_admin(&admin),
+        "second call must also succeed (idempotent)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -523,7 +528,10 @@ fn require_admin_old_caller_rejected_after_key_overwrite() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         client.check_admin(&original);
     }));
-    assert!(result.is_err(), "original admin must be rejected after overwrite");
+    assert!(
+        result.is_err(),
+        "original admin must be rejected after overwrite"
+    );
 
     // Replacement must succeed.
     assert!(

@@ -9,7 +9,6 @@
 #[cfg(test)]
 extern crate std;
 
-
 // `access_control` was not in the module tree on `main`, so none of it was
 // compiled or reachable. Made `pub` rather than private so the integration test
 // target in `tests/access_control_boundaries.rs` can exercise the guards against
@@ -217,7 +216,6 @@ mod test_attestation_dedup_cap;
 /// Validates event data correctness, invariant preservation, and schema immutability.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_invariants;
-
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
@@ -2311,17 +2309,14 @@ impl CredenceBond {
 
         Self::acquire_lock(&e);
 
-        let mut bond: IdentityBond = match e
-            .storage()
-            .instance()
-            .get(&DataKey::Bond(identity.clone()))
-        {
-            Some(b) => b,
-            None => {
-                Self::release_lock(&e);
-                panic_with_error!(e, ContractError::BondNotFound);
-            }
-        };
+        let mut bond: IdentityBond =
+            match e.storage().instance().get(&DataKey::Bond(identity.clone())) {
+                Some(b) => b,
+                None => {
+                    Self::release_lock(&e);
+                    panic_with_error!(e, ContractError::BondNotFound);
+                }
+            };
 
         if !bond.active {
             Self::release_lock(&e);

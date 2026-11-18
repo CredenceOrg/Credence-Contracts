@@ -103,7 +103,12 @@ mod tests {
         let treasury_debit = 490i128;
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
-            (recipient.clone(), min_amount_out, actual_amount, treasury_debit),
+            (
+                recipient.clone(),
+                min_amount_out,
+                actual_amount,
+                treasury_debit,
+            ),
         );
         let events = e.events().all();
         // Topics: treasury_withdrawal_executed, u64 (2)

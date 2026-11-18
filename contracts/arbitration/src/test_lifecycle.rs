@@ -809,7 +809,11 @@ fn test_invalid_cancel_preserves_state() {
     let initial_dispute = s.client.get_dispute(&id);
 
     // now Resolved
-    let err = s.client.try_cancel_dispute(&s.creator, &id, &None).unwrap_err().unwrap();
+    let err = s
+        .client
+        .try_cancel_dispute(&s.creator, &id, &None)
+        .unwrap_err()
+        .unwrap();
     assert_eq!(err, ArbitrationError::InvalidTransition);
 
     let d = s.client.get_dispute(&id);
@@ -887,11 +891,7 @@ fn creator_cannot_vote_own_dispute() {
     s.client.register_arbitrator(&s.creator, &10);
     let id = open_dispute(&s);
 
-    let err = s
-        .client
-        .try_vote(&s.creator, &id, &1)
-        .unwrap_err()
-        .unwrap();
+    let err = s.client.try_vote(&s.creator, &id, &1).unwrap_err().unwrap();
     assert_eq!(err, ArbitrationError::ConflictOfInterest);
 
     assert!(!s.client.has_voted(&id, &s.creator));

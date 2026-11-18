@@ -46,9 +46,11 @@ fn bump_instance_ttl(e: &Env) {
 }
 
 fn bump_persistent_ttl(e: &Env, key: DataKey) {
-    e.storage()
-        .persistent()
-        .extend_ttl(&key, CALL_BOUND_OPERATION_TTL / 2, CALL_BOUND_OPERATION_TTL);
+    e.storage().persistent().extend_ttl(
+        &key,
+        CALL_BOUND_OPERATION_TTL / 2,
+        CALL_BOUND_OPERATION_TTL,
+    );
 }
 
 pub const fn min_delay_seconds() -> u64 {
@@ -259,7 +261,13 @@ impl TimelockContract {
         }
 
         // Compute the operation hash on-chain
-        let op_hash = Self::hash_call(e.clone(), target.clone(), func.clone(), args.clone(), salt.clone());
+        let op_hash = Self::hash_call(
+            e.clone(),
+            target.clone(),
+            func.clone(),
+            args.clone(),
+            salt.clone(),
+        );
 
         // Replay guard: cannot queue an operation that was already executed
         if e.storage()
@@ -314,7 +322,9 @@ impl TimelockContract {
             expires_at,
             status: OperationStatus::Pending,
         };
-        e.storage().instance().set(&DataKey::Operation(op_id), &op_wrapper);
+        e.storage()
+            .instance()
+            .set(&DataKey::Operation(op_id), &op_wrapper);
 
         e.events().publish(
             (Symbol::new(&e, "operation_queued"), op_id),
@@ -336,7 +346,7 @@ impl TimelockContract {
         salt: BytesN<32>,
     ) -> BytesN<32> {
         use soroban_sdk::xdr::ToXdr;
-        
+
         let timelock_address = e.current_contract_address();
 
         // Build the pre-image using Bytes and append (following the pattern in credence_bond)
@@ -470,7 +480,9 @@ impl TimelockContract {
             expires_at: op.expires_at,
             status: op.status,
         };
-        e.storage().instance().set(&DataKey::Operation(op_id), &op_wrapper);
+        e.storage()
+            .instance()
+            .set(&DataKey::Operation(op_id), &op_wrapper);
 
         // Emit event BEFORE the call
         e.events()
@@ -480,7 +492,8 @@ impl TimelockContract {
         e.invoke_contract::<soroban_sdk::Val>(&op.target, &op.func, op.args.clone());
 
         // Emit post-execution event
-        e.events().publish(("call_executed", op_id), (op.target, op.func));
+        e.events()
+            .publish(("call_executed", op_id), (op.target, op.func));
     }
 
     /// Cancel a pending operation in the queue. Only callable by admin.
@@ -524,7 +537,9 @@ impl TimelockContract {
                 expires_at: op.expires_at,
                 status: op.status,
             };
-            e.storage().instance().set(&DataKey::Operation(op_id), &op_wrapper);
+            e.storage()
+                .instance()
+                .set(&DataKey::Operation(op_id), &op_wrapper);
 
             e.events()
                 .publish(("operation_cancelled", op_id), op.op_hash);

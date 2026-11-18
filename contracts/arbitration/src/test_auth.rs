@@ -825,10 +825,7 @@ fn no_quorum_is_terminal() {
         ArbitrationError::InvalidTransition
     );
     assert_eq!(
-        client
-            .try_vote(&s.arb, &id, &1_u32)
-            .unwrap_err()
-            .unwrap(),
+        client.try_vote(&s.arb, &id, &1_u32).unwrap_err().unwrap(),
         ArbitrationError::VotingInactive
     );
     assert_eq!(

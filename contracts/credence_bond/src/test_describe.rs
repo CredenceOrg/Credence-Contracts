@@ -59,10 +59,7 @@ fn test_describe_config_after_initialize() {
     // to `(0, DEFAULT_MAX_WEIGHT)` (see its doc comment) — the multiplier is 0,
     // not `DEFAULT_WEIGHT_MULTIPLIER_BPS`. Only `max_weight` uses the default.
     assert_eq!(cfg.weight_multiplier_bps, 0);
-    assert_eq!(
-        cfg.weight_max,
-        weighted_attestation::DEFAULT_MAX_WEIGHT
-    );
+    assert_eq!(cfg.weight_max, weighted_attestation::DEFAULT_MAX_WEIGHT);
 }
 
 #[test]

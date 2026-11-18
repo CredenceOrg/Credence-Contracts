@@ -1,7 +1,6 @@
 /// USDC token integration helpers for Credence Bond.
 /// Centralizes token configuration, allowance checks, and transfer operations.
 /// Rejects fee-on-transfer tokens where balance verification fails.
-
 use crate::safe_token;
 use crate::{storage, DataKey};
 use credence_errors::ContractError;
@@ -247,7 +246,9 @@ mod tests {
     fn setup_contract_with_token(e: &Env, _admin: &Address) -> (Address, Address) {
         e.mock_all_auths();
         let contract_id = e.register(CredenceBond, ());
-        let token_id = e.register_stellar_asset_contract_v2(Address::generate(e)).address();
+        let token_id = e
+            .register_stellar_asset_contract_v2(Address::generate(e))
+            .address();
 
         let mut accepted = soroban_sdk::Vec::new(e);
         accepted.push_back(token_id.clone());
@@ -400,8 +401,9 @@ mod tests {
     fn test_require_allowance_negative_panics() {
         let (e, _admin, _contract_id) = setup();
         let owner = Address::generate(&e);
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| require_allowance(&e, &owner, -1)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            require_allowance(&e, &owner, -1)
+        }));
         assert!(result.is_err());
     }
 
@@ -420,8 +422,9 @@ mod tests {
         let (e, _admin, _contract_id, token_id) = setup_with_token();
         let owner = Address::generate(&e);
         // No approval -> allowance is 0.
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| require_allowance(&e, &owner, 1)));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            require_allowance(&e, &owner, 1)
+        }));
         assert!(result.is_err());
         // Sanity: token is configured.
         assert!(has_token(&e));
@@ -839,7 +842,9 @@ mod tests {
             assert_eq!(get_token(&e), token_a);
             // Rotate admin.
             let new_admin = Address::generate(&e);
-            e.storage().instance().set(&crate::DataKey::Admin, &new_admin);
+            e.storage()
+                .instance()
+                .set(&crate::DataKey::Admin, &new_admin);
 
             // Old admin cannot set token B.
             let old_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

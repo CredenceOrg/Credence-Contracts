@@ -1,12 +1,12 @@
-#`![cfg(test)]
+#![cfg(test)]
 
 use super::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk:{Address, Env, String};
+use soroban_sdk::{Address, Env, String};
 use status::{ArbitrationError, DisputeStatus};
 
 fn advance(e: &Env, secs: u64) {
-    e.ledger().set(soroban_sdkz:testutils::LedgerInfo {
+    e.ledger().set(soroban_sdk::testutils::LedgerInfo {
         timestamp: e.ledger().timestamp() + secs,
         protocol_version: 22,
         sequence_number: 1,

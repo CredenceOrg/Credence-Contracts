@@ -399,7 +399,7 @@ mod suspension_tests {
                 AdminRole::Admin,
             );
         });
-        
+
         let now = env.ledger().timestamp();
         env.as_contract(&contract, || {
             AdminContract::suspend_admin(

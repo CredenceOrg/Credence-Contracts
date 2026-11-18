@@ -356,11 +356,7 @@ mod tests {
             ContractError::BytesTooLarge,
         ];
         for v in &bond_variants {
-            assert_eq!(
-                v.category(),
-                ErrorCategory::Bond,
-                "{v:?} should be Bond"
-            );
+            assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
         }
     }
 
@@ -459,7 +455,10 @@ mod tests {
 
     #[test]
     fn test_category_arithmetic() {
-        assert_eq!(ContractError::Overflow.category(), ErrorCategory::Arithmetic);
+        assert_eq!(
+            ContractError::Overflow.category(),
+            ErrorCategory::Arithmetic
+        );
         assert_eq!(
             ContractError::Underflow.category(),
             ErrorCategory::Arithmetic
@@ -729,7 +728,10 @@ mod tests {
         // Boundary: slash == bonded + 1 must fail.
         assert_eq!(mock_slash(101, 100), Err(ContractError::SlashExceedsBond));
         // Far over boundary.
-        assert_eq!(mock_slash(i128::MAX, 0), Err(ContractError::SlashExceedsBond));
+        assert_eq!(
+            mock_slash(i128::MAX, 0),
+            Err(ContractError::SlashExceedsBond)
+        );
         // Slash of 0 on any balance must succeed.
         assert!(mock_slash(0, 0).is_ok());
     }
@@ -792,7 +794,10 @@ mod tests {
     #[test]
     fn test_invalid_penalty_bps_boundary() {
         // Boundary at maximum valid value: 10_000 must pass.
-        assert!(mock_penalty_bps(10_000).is_ok(), "10000 bps should be valid");
+        assert!(
+            mock_penalty_bps(10_000).is_ok(),
+            "10000 bps should be valid"
+        );
         // One above the maximum: 10_001 must fail.
         assert_eq!(
             mock_penalty_bps(10_001),
@@ -801,7 +806,10 @@ mod tests {
         // Zero must be valid (no penalty).
         assert!(mock_penalty_bps(0).is_ok(), "0 bps should be valid");
         // Maximum u32 must fail.
-        assert_eq!(mock_penalty_bps(u32::MAX), Err(ContractError::InvalidPenaltyBps));
+        assert_eq!(
+            mock_penalty_bps(u32::MAX),
+            Err(ContractError::InvalidPenaltyBps)
+        );
     }
 
     // Attestation
@@ -1867,7 +1875,8 @@ mod tests {
         let e = Env::default();
         let treasury = Address::generate(&e);
         let recipient = treasury.clone();
-        crate::require_matching_treasury_beneficiary(&e, &recipient, &treasury); // must not panic
+        crate::require_matching_treasury_beneficiary(&e, &recipient, &treasury);
+        // must not panic
     }
 
     #[test]
@@ -2161,7 +2170,10 @@ mod tests {
         for e in &fatal {
             assert!(!e.is_recoverable(), "{e:?} should be fatal on every call");
             // Second call must return the same result.
-            assert!(!e.is_recoverable(), "{e:?} should be fatal on second call too");
+            assert!(
+                !e.is_recoverable(),
+                "{e:?} should be fatal on second call too"
+            );
         }
     }
 
@@ -2177,7 +2189,10 @@ mod tests {
         ];
         for e in &recoverable {
             assert!(e.is_recoverable(), "{e:?} should be recoverable");
-            assert!(e.is_recoverable(), "{e:?} should remain recoverable on second call");
+            assert!(
+                e.is_recoverable(),
+                "{e:?} should remain recoverable on second call"
+            );
         }
     }
 
@@ -2250,7 +2265,10 @@ mod tests {
     /// Stale epoch errors are fatal: the caller must re-derive the proposal.
     #[test]
     fn test_stale_epoch_errors_are_fatal_and_must_rederive() {
-        fn mock_use_proposal(epoch_current: u32, epoch_in_proposal: u32) -> Result<(), ContractError> {
+        fn mock_use_proposal(
+            epoch_current: u32,
+            epoch_in_proposal: u32,
+        ) -> Result<(), ContractError> {
             if epoch_in_proposal != epoch_current {
                 return Err(ContractError::StaleEpoch);
             }

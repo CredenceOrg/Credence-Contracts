@@ -279,10 +279,7 @@ fn insufficient_approvals_rejected_but_recoverable() {
     let id = client.pause(&s1).unwrap();
     let epoch_after_propose = client.get_config_epoch();
 
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS)
@@ -311,7 +308,8 @@ fn stale_epoch_proposal_cannot_execute() {
     let s1 = signers.get(0).unwrap();
 
     let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
-    e.ledger().with_mut(|l| l.sequence_number = epoch_boundary - 1);
+    e.ledger()
+        .with_mut(|l| l.sequence_number = epoch_boundary - 1);
     let id = client.pause(&s1).unwrap();
 
     let epoch_after_propose = client.get_config_epoch();
@@ -319,10 +317,7 @@ fn stale_epoch_proposal_cannot_execute() {
     let events_before = e.events().all().len();
 
     // The proposal met the threshold in its own epoch; only staleness blocks it.
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_STALE_ADMIN_EPOCH)

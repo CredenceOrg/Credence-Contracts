@@ -74,10 +74,7 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
 /// guard is satisfied for subsequent operations.
 ///
 /// Returns `(client, admin, identity)`.
-fn setup_with_bond(
-    e: &Env,
-    bond_amount: i128,
-) -> (CredenceBondClient<'_>, Address, Address) {
+fn setup_with_bond(e: &Env, bond_amount: i128) -> (CredenceBondClient<'_>, Address, Address) {
     let (client, admin, identity, _token, _cid) = test_helpers::setup_with_token(e);
     let treasury = Address::generate(e);
     client.set_slash_treasury(&admin, &treasury);
@@ -278,7 +275,10 @@ fn request_basic_fields_are_recorded() {
 
     assert_eq!(req.requester, identity, "requester must match identity");
     assert_eq!(req.amount, 500, "amount must match requested amount");
-    assert_eq!(req.requested_at, 5000, "timestamp must be ledger timestamp at request time");
+    assert_eq!(
+        req.requested_at, 5000,
+        "timestamp must be ledger timestamp at request time"
+    );
 }
 
 #[test]
@@ -392,7 +392,10 @@ fn get_cooldown_request_returns_stored_request() {
     client.request_cooldown_withdrawal(&identity, &750);
 
     let maybe = client.get_cooldown_request(&identity);
-    assert!(maybe.is_some(), "get_cooldown_request must return Some after a request is made");
+    assert!(
+        maybe.is_some(),
+        "get_cooldown_request must return Some after a request is made"
+    );
     let req = maybe.unwrap();
     assert_eq!(req.requester, identity);
     assert_eq!(req.amount, 750);
@@ -405,7 +408,10 @@ fn get_cooldown_request_returns_none_when_no_request() {
     let (client, _admin) = setup(&e);
     let identity = Address::generate(&e);
     let maybe = client.get_cooldown_request(&identity);
-    assert!(maybe.is_none(), "get_cooldown_request must return None when no request exists");
+    assert!(
+        maybe.is_none(),
+        "get_cooldown_request must return None when no request exists"
+    );
 }
 
 // ============================================================================
@@ -528,7 +534,10 @@ fn execute_clears_request_enabling_subsequent_request() {
     e.ledger().with_mut(|li| li.timestamp = 2000);
     client.request_cooldown_withdrawal(&identity, &200);
     let new_req = client.get_cooldown_request(&identity).unwrap();
-    assert_eq!(new_req.requested_at, 2000, "new request must use current timestamp");
+    assert_eq!(
+        new_req.requested_at, 2000,
+        "new request must use current timestamp"
+    );
     assert_eq!(new_req.amount, 200);
 }
 
@@ -719,7 +728,10 @@ fn cancel_enables_new_request_with_updated_timestamp() {
     e.ledger().with_mut(|li| li.timestamp = 2000);
     client.request_cooldown_withdrawal(&identity, &500);
     let req = client.get_cooldown_request(&identity).unwrap();
-    assert_eq!(req.requested_at, 2000, "re-request must record the new timestamp");
+    assert_eq!(
+        req.requested_at, 2000,
+        "re-request must record the new timestamp"
+    );
     assert_eq!(req.amount, 500, "re-request must record the new amount");
 }
 
@@ -950,7 +962,9 @@ fn unpause_re_enables_cooldown_operations() {
     client.set_cooldown_period(&admin, &100);
 
     client.pause(&admin);
-    assert!(client.try_request_cooldown_withdrawal(&identity, &500).is_err());
+    assert!(client
+        .try_request_cooldown_withdrawal(&identity, &500)
+        .is_err());
 
     client.unpause(&admin);
     assert!(!client.is_paused(), "contract must be unpaused");
@@ -1155,7 +1169,10 @@ fn cooldown_execute_persists_and_pays() {
     assert_eq!(token_client.balance(&identity), id_bal_before + 250);
 
     // Contract token balance -250
-    assert_eq!(token_client.balance(&contract_id), contract_bal_before - 250);
+    assert_eq!(
+        token_client.balance(&contract_id),
+        contract_bal_before - 250
+    );
 }
 
 #[test]
@@ -1288,9 +1305,10 @@ impl HostileCooldownToken {
             }
             _ => false,
         };
-        e.storage()
-            .instance()
-            .set(&soroban_sdk::Symbol::new(&e, "reentrancy_caught"), &is_reentrancy);
+        e.storage().instance().set(
+            &soroban_sdk::Symbol::new(&e, "reentrancy_caught"),
+            &is_reentrancy,
+        );
     }
 
     pub fn is_reentrancy_caught(e: Env) -> bool {

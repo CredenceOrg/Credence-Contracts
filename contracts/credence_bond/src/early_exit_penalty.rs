@@ -241,10 +241,7 @@ mod tests {
     fn test_calculate_penalty_out_of_range_bps_clamps_to_amount() {
         // Defensive: a misconfigured bps greater than 10000 must not
         // over-charge the user.
-        assert_eq!(
-            calculate_penalty(1000, 100, 100, 20000),
-            1000,
-        );
+        assert_eq!(calculate_penalty(1000, 100, 100, 20000), 1000,);
     }
 
     #[test]

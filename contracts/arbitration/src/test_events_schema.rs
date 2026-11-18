@@ -84,8 +84,7 @@ mod tests {
             &3600_u64,
         );
         client.vote(&arbitrator, &dispute_id, &1_u32);
-        e.ledger()
-            .set_timestamp(e.ledger().timestamp() + 3601);
+        e.ledger().set_timestamp(e.ledger().timestamp() + 3601);
 
         assert_eq!(client.resolve_dispute(&dispute_id), 0);
 
@@ -99,8 +98,7 @@ mod tests {
             let name = Symbol::try_from_val(&e, &topics.get(0).unwrap()).unwrap();
             let id = u64::try_from_val(&e, &topics.get(1).unwrap()).unwrap();
             if name == Symbol::new(&e, "quorum_not_met") && id == dispute_id {
-                let data: (i128, i128, u32, u32) =
-                    TryFromVal::try_from_val(&e, &event.2).unwrap();
+                let data: (i128, i128, u32, u32) = TryFromVal::try_from_val(&e, &event.2).unwrap();
                 assert_eq!(data, (10_i128, 100_i128, 1_u32, 1_u32));
                 found = true;
             }

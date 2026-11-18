@@ -1223,9 +1223,11 @@ fn creator_cancel_after_vote_rejected() {
 #[test]
 fn creator_cancel_after_deadline_rejected() {
     let s = setup_adversarial();
-    let id = s
-        .client
-        .create_dispute(&s.creator, &String::from_str(&s.env, "past-deadline"), &100u64);
+    let id = s.client.create_dispute(
+        &s.creator,
+        &String::from_str(&s.env, "past-deadline"),
+        &100u64,
+    );
 
     // No votes, but the voting window has closed.
     advance(&s.env, 101);
@@ -1278,11 +1280,7 @@ fn creator_cannot_vote_own_dispute() {
 
     let id = open(&s, "self-vote");
 
-    let err = s
-        .client
-        .try_vote(&s.creator, &id, &1)
-        .unwrap_err()
-        .unwrap();
+    let err = s.client.try_vote(&s.creator, &id, &1).unwrap_err().unwrap();
     assert_eq!(err, status::ArbitrationError::ConflictOfInterest);
 
     // No vote marker written and tally unchanged.

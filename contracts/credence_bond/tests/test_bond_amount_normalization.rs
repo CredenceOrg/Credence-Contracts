@@ -26,7 +26,9 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address, Address) {
     let admin = Address::generate(e);
     client.initialize(&admin, &None);
 
-    let token_id = e.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_id = e
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let mut accepted = Vec::new(e);
     accepted.push_back(token_id.clone());
     client.set_accepted_tokens(&admin, &accepted);

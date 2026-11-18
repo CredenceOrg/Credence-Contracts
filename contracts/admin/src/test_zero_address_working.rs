@@ -1,6 +1,6 @@
 use crate::*;
-use soroban_sdk::{Address, Env, String};
 use credence_errors::ContractError;
+use soroban_sdk::{Address, Env, String};
 
 #[cfg(test)]
 mod zero_address_tests {

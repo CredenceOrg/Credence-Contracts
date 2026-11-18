@@ -60,9 +60,9 @@ pub mod pausable;
 #[cfg(test)]
 mod test_events_schema;
 #[cfg(test)]
-mod test_ownership_transfer;
-#[cfg(test)]
 mod test_execute_pause_proposal_enhanced;
+#[cfg(test)]
+mod test_ownership_transfer;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
@@ -999,7 +999,7 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
 
-// Revalidate the pending owner's effective SuperAdmin status at
+        // Revalidate the pending owner's effective SuperAdmin status at
         // acceptance time. The candidate's role, activation, or suspension
         // state may have changed during the timelock window; a stale proposal
         // must never grant durable ownership to an admin who is no longer an
@@ -1146,10 +1146,7 @@ impl AdminContract {
     /// this to schedule retries deterministically without guessing.
     pub fn get_pending_owner_eligible_at(e: Env) -> Option<u64> {
         bump_instance_ttl(&e);
-        let proposed_at: u64 = e
-            .storage()
-            .instance()
-            .get(&DataKey::TransferProposedAt)?;
+        let proposed_at: u64 = e.storage().instance().get(&DataKey::TransferProposedAt)?;
         Some(
             proposed_at
                 .checked_add(OWNERSHIP_TRANSFER_TIMELOCK)
@@ -1957,7 +1954,7 @@ impl AdminContract {
         // The pausable module handles the core execution logic with enhanced
         // error boundaries and deterministic state transitions
         pausable::execute_pause_proposal(&e, proposal_id);
-        
+
         // ── Final Success Logging ───────────────────────────────────────────────
         soroban_sdk::log!(
             &e,
@@ -2062,7 +2059,7 @@ impl AdminContract {
             .instance()
             .get(&DataKey::Initialized)
             .unwrap_or(false);
-        
+
         if !initialized {
             return Err(1); // Error code 1: not initialized
         }

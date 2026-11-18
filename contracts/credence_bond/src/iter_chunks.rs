@@ -272,14 +272,14 @@ mod tests {
         // retries iteration starting from the same offset.
         let e = Env::default();
         let source = make_vec(&e, 50);
-        
+
         let (attempt1_chunk, attempt1_next) = vec_chunks(&e, &source, 10, 5);
         let (attempt2_chunk, attempt2_next) = vec_chunks(&e, &source, 10, 5);
         let (attempt3_chunk, attempt3_next) = vec_chunks(&e, &source, 10, 5);
-        
+
         assert_eq!(attempt1_chunk.len(), 5);
         assert_eq!(attempt1_next, Some(15));
-        
+
         // Ensure perfect determinism across multiple calls
         assert_eq!(attempt1_chunk, attempt2_chunk);
         assert_eq!(attempt1_next, attempt2_next);

@@ -99,7 +99,10 @@ fn require_no_ongoing_dispute(e: &Env, creator: &Address) -> Result<(), Arbitrat
         return Ok(());
     };
 
-    let Some(dispute) = e.storage().instance().get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
+    let Some(dispute) = e
+        .storage()
+        .instance()
+        .get::<DataKey, Dispute>(&DataKey::Dispute(active_id))
     else {
         e.storage().instance().remove(&key);
         return Ok(());

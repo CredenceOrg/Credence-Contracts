@@ -446,7 +446,6 @@ fn require_role_at_least_respects_suspended_until_zero() {
     }));
 }
 
-
 // ---------------------------------------------------------------------------
 // Determinism — repeated calls with identical input never mutate state
 // ---------------------------------------------------------------------------
@@ -457,9 +456,7 @@ fn require_role_at_least_is_deterministic_and_side_effect_free() {
     let admin = user(&env);
     as_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
-    let epoch_before = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_before = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     let first = env.as_contract(&contract, || {
         AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
@@ -468,9 +465,7 @@ fn require_role_at_least_is_deterministic_and_side_effect_free() {
         AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
     });
 
-    let epoch_after = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     assert_eq!(first, second, "repeated checks must return the same result");
     assert!(first);
@@ -546,21 +541,13 @@ fn require_role_at_least_never_satisfied_for_never_registered_address() {
 
     // Never added as an admin at all — every tier must reject it.
     assert!(!env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            random_address.clone(),
-            AdminRole::Operator,
-        )
+        AdminContract::has_role_at_least(env.clone(), random_address.clone(), AdminRole::Operator)
     }));
     assert!(!env.as_contract(&contract, || {
         AdminContract::has_role_at_least(env.clone(), random_address.clone(), AdminRole::Admin)
     }));
     assert!(!env.as_contract(&contract, || {
-        AdminContract::has_role_at_least(
-            env.clone(),
-            random_address.clone(),
-            AdminRole::SuperAdmin,
-        )
+        AdminContract::has_role_at_least(env.clone(), random_address.clone(), AdminRole::SuperAdmin)
     }));
 }
 
@@ -574,9 +561,8 @@ fn require_role_at_least_duplicate_role_update_is_noop_and_check_still_passes() 
     let admin = user(&env);
     as_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
-    let epoch_after_grant = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after_grant =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     // Re-assign the identical role. update_admin_role treats this as a no-op.
     env.mock_all_auths();
@@ -589,9 +575,8 @@ fn require_role_at_least_duplicate_role_update_is_noop_and_check_still_passes() 
         );
     });
 
-    let epoch_after_duplicate = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after_duplicate =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     assert_eq!(
         epoch_after_grant, epoch_after_duplicate,
@@ -620,9 +605,7 @@ fn require_role_at_least_rejection_does_not_advance_epoch() {
         AdminRole::Operator,
     );
 
-    let epoch_before = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_before = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     // Operator lacks the role required to add another admin; this must panic
     // and roll back without committing any partial state.
@@ -639,9 +622,7 @@ fn require_role_at_least_rejection_does_not_advance_epoch() {
     }));
     assert!(result.is_err());
 
-    let epoch_after = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     assert_eq!(
         epoch_before, epoch_after,
@@ -666,9 +647,8 @@ fn require_role_at_least_epoch_signals_concurrent_change_for_retry() {
     as_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     // Client reads state at epoch N.
-    let epoch_snapshot = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_snapshot =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
     let snapshot_passed = env.as_contract(&contract, || {
         AdminContract::has_role_at_least(env.clone(), admin.clone(), AdminRole::Admin)
     });
@@ -685,9 +665,8 @@ fn require_role_at_least_epoch_signals_concurrent_change_for_retry() {
         );
     });
 
-    let epoch_after_concurrent_change = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after_concurrent_change =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
     assert!(
         epoch_after_concurrent_change > epoch_snapshot,
         "a committed mutation must advance the epoch so the client can detect it"

@@ -74,10 +74,7 @@ fn test_create_single_bond_in_batch() {
     let bond = result.bonds.get(0).unwrap();
     assert_eq!(bond.identity, identity);
     assert_eq!(bond.bonded_amount, 1000);
-    assert_eq!(
-        bond.bond_duration,
-        credence_math::SECONDS_PER_DAY
-    );
+    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
     assert!(bond.active);
     assert!(!bond.is_rolling);
 }
@@ -553,10 +550,7 @@ fn test_atomic_failure_validation_order() {
 
     assert_eq!(result.created_count, 1);
     let bond = result.bonds.get(0).unwrap();
-    assert_eq!(
-        bond.bond_duration,
-        credence_math::SECONDS_PER_DAY
-    );
+    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -1669,10 +1663,7 @@ fn test_batch_created_bonds_persist_in_storage() {
     let stored1 = client.get_identity_state(&id1);
     assert_eq!(stored1.identity, id1);
     assert_eq!(stored1.bonded_amount, 1_000);
-    assert_eq!(
-        stored1.bond_duration,
-        credence_math::SECONDS_PER_DAY
-    );
+    assert_eq!(stored1.bond_duration, credence_math::SECONDS_PER_DAY);
     assert!(stored1.active);
     assert!(!stored1.is_rolling);
     assert_eq!(stored1.slashed_amount, 0);
@@ -2148,10 +2139,7 @@ fn test_successful_batch_stores_exactly_the_created_bonds() {
         let stored = client.get_identity_state(id);
         assert!(stored.active);
         assert_eq!(stored.bonded_amount, 1_000 + i128::try_from(i).unwrap());
-        assert_eq!(
-            stored.bond_duration,
-            credence_math::SECONDS_PER_DAY
-        );
+        assert_eq!(stored.bond_duration, credence_math::SECONDS_PER_DAY);
         assert_eq!(stored.slashed_amount, 0);
         assert_eq!(stored.withdrawal_requested_at, 0);
     }
