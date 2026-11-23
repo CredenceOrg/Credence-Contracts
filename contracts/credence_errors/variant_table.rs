@@ -127,6 +127,11 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    ("NoFeesToCollect", ContractError::NoFeesToCollect), // 240
+    (
+        "LockupAlreadyElapsed",
+        ContractError::LockupAlreadyElapsed,
+    ), // 241
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301

@@ -508,6 +508,18 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// No fees available to collect from the contract.
+    /// Replaces: panic!("no fees to collect")
+    /// Contracts: fixed_duration_bond
+    /// Wire-stable: do not renumber this error code.
+    NoFeesToCollect = 240,
+
+    /// Lock period has already elapsed; use normal withdraw instead of early exit.
+    /// Replaces: panic!("lock period has already elapsed; use withdraw")
+    /// Contracts: fixed_duration_bond
+    /// Wire-stable: do not renumber this error code.
+    LockupAlreadyElapsed = 241,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -962,7 +974,9 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::NoFeesToCollect
+            | ContractError::LockupAlreadyElapsed => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1163,6 +1177,10 @@ impl ErrorExt for ContractError {
             }
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
+            }
+            ContractError::NoFeesToCollect => "No fees to collect",
+            ContractError::LockupAlreadyElapsed => {
+                "Lock period has already elapsed; use withdraw"
             }
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
@@ -1369,6 +1387,8 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::NoFeesToCollect       // await fee accumulation before collecting
+            | ContractError::LockupAlreadyElapsed  // use normal withdraw instead of early exit
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.

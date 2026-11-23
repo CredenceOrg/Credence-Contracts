@@ -118,6 +118,8 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `NoFeesToCollect` | ✓ | No fees available to collect from the contract |
+| 241 | `LockupAlreadyElapsed` | ✓ | Lock period has already elapsed; use normal withdraw instead of early exit |
 
 ### Attestation (300–399)
 

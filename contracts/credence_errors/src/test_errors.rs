@@ -183,6 +183,8 @@ mod tests {
         assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
         assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
         assert_eq!(ContractError::BytesTooLarge as u32, 239);
+        assert_eq!(ContractError::NoFeesToCollect as u32, 240);
+        assert_eq!(ContractError::LockupAlreadyElapsed as u32, 241);
     }
 
     #[test]
@@ -354,6 +356,8 @@ mod tests {
             ContractError::CooldownRequestNotFound,
             ContractError::CooldownPeriodNotElapsed,
             ContractError::BytesTooLarge,
+            ContractError::NoFeesToCollect,
+            ContractError::LockupAlreadyElapsed,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -1422,6 +1426,8 @@ mod tests {
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::NoFeesToCollect => true,       // await fee accumulation
+            ContractError::LockupAlreadyElapsed => true,  // use normal withdraw
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -2055,6 +2061,18 @@ mod tests {
     #[test]
     fn test_bytes_too_large_is_recoverable() {
         assert!(ContractError::BytesTooLarge.is_recoverable());
+    }
+
+    /// NoFeesToCollect: caller waits for fees to accrue.
+    #[test]
+    fn test_no_fees_to_collect_is_recoverable() {
+        assert!(ContractError::NoFeesToCollect.is_recoverable());
+    }
+
+    /// LockupAlreadyElapsed: caller uses withdraw instead.
+    #[test]
+    fn test_lockup_already_elapsed_is_recoverable() {
+        assert!(ContractError::LockupAlreadyElapsed.is_recoverable());
     }
 
     /// MaxPauseSignersExceeded: admin can remove a signer or raise the cap.
