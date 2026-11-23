@@ -30,6 +30,7 @@ pub mod time;
 pub mod timestamp;
 
 pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
+pub use rate::{Rate, MAX_COMPOUND_PERIODS};
 pub use time::{
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
 };

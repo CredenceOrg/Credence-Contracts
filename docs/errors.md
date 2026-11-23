@@ -189,6 +189,7 @@ error code instead of an opaque transaction failure.
 | 701 | `Underflow` | ✗ | Integer underflow in checked arithmetic |
 | 702 | `DivisionByZero` | ✗ | Division by a zero denominator |
 | 703 | `InvalidPercentSplit` | ✓ | Percentage splits do not sum to exactly 10 000 basis points |
+| 704 | `InvalidPeriodCount` | ✓ | Compound period count exceeds the documented maximum |
 
 ### Escrow (800–899)
 
