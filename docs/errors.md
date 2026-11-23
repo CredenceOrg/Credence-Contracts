@@ -118,6 +118,11 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `BondAmountBelowMinimum` | ✓ | Bond amount is below the minimum required normalized bound |
+| 241 | `BondAmountExceedsMaximum` | ✓ | Bond amount exceeds the maximum allowed normalized bound |
+| 242 | `BondDurationTooShort` | ✓ | Bond duration is shorter than the minimum allowed (1 day) |
+| 243 | `BondDurationTooLong` | ✓ | Bond duration exceeds the maximum allowed (365 days) |
+| 244 | `InvalidRecipient` | ✓ | Recipient address is the contract itself; self-transfers are rejected |
 
 ### Attestation (300–399)
 
