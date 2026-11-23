@@ -337,6 +337,7 @@ fn test_error_discriminants_match_spec() {
     assert_eq!(DisputeError::DisputeNotFound as u32, 1);
     assert_eq!(DisputeError::AlreadyClosed as u32, 2);
     assert_eq!(DisputeError::Unauthorized as u32, 3);
+    assert_eq!(DisputeError::Paused as u32, 4);
 }
 
 // ─── § 17 ID boundary – sequential IDs and creator tracking ─────────────────
