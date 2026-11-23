@@ -118,6 +118,11 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `ClaimAlreadyProcessed` | ✗ | Claim has already been processed and cannot be paid again |
+| 241 | `ClaimExpired` | ✗ | Claim's expiry time has passed |
+| 242 | `ClaimNotFound` | ✓ | No pending claim exists for the given user and claim ID |
+| 243 | `NoPendingClaims` | ✓ | User has no pending claims to process |
+| 244 | `NoValidClaimsToProcess` | ✓ | No pending claims match the processing request |
 
 ### Attestation (300–399)
 
