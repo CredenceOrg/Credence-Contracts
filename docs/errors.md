@@ -54,6 +54,7 @@ error code instead of an opaque transaction failure.
 | 106 | `ContractPaused` | ✓ | Contract is paused; state-mutating operations disallowed |
 | 107 | `InvalidPauseAction` | ✓ | Pause action value is invalid |
 | 108 | `InsufficientSignatures` | ✓ | Not enough approvals to execute proposal |
+| 109 | `ZeroBytes32` | ✓ | Input `BytesN<32>` argument is all-zero |
 | 110 | `InvalidAdminAddress` | ✓ | Proposed admin is the zero/identity address |
 | 111 | `AdminUnchanged` | ✓ | Proposed admin is the same as the current admin |
 | 112 | `TimelockNotReady` | ✓ | Timelock delay has not yet elapsed |
@@ -68,11 +69,15 @@ error code instead of an opaque transaction failure.
 | 121 | `LeaseScopeMismatch` | ✓ | Lease scope bitmask does not cover the requested operation |
 | 122 | `LeaseExpired` | ✓ | Lease `expires_at` has been reached or passed |
 | 123 | `CrossContractCallerMismatch` | ✗ | Cross-contract caller does not match the configured partner |
-| 124 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
-| 125 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
+| 124 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
+| 125 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
 | 126 | `LeaseSignerMismatch` | ✓ | Caller is not the signer bound to the lease |
-| 127 | `ZeroBytes32` | ✓ | Input `BytesN<32>` argument is all-zero |
-| 128 | `RoleRequired` | ✓ | Caller does not hold the role required for the action |
+| 127 | `RoleRequired` | ✓ | Caller does not hold the role required for the action |
+| 128 | `UpgradeAuthorizationAlreadyExists` | ✓ | Upgrade authorization already exists for the address |
+| 129 | `UpgradeAuthorizationNotFound` | ✓ | No upgrade authorization exists for the address |
+| 130 | `UpgradeSelfRoleNotAllowed` | ✓ | Upgrade admin cannot grant themselves an equal or higher role |
+| 131 | `LastUpgradeAdmin` | ✓ | The last upgrade admin cannot be revoked |
+| 132 | `NotPendingUpgradeAdmin` | ✓ | Caller is not the pending upgrade admin |
 
 ### Bond (200–299)
 

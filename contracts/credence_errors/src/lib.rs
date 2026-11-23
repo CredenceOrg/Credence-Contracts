@@ -280,6 +280,36 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RoleRequired = 127,
 
+    /// Upgrade authorization already exists for the address.
+    /// Replaces: panic!("address already authorized")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeAuthorizationAlreadyExists = 128,
+
+    /// No upgrade authorization exists for the address.
+    /// Replaces: panic!("address not authorized")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeAuthorizationNotFound = 129,
+
+    /// An upgrade admin cannot grant themselves an equal or higher role.
+    /// Replaces: panic!("cannot grant equal or higher role to self")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeSelfRoleNotAllowed = 130,
+
+    /// The last active upgrade admin cannot be revoked.
+    /// Replaces: panic!("cannot revoke last upgrade admin")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    LastUpgradeAdmin = 131,
+
+    /// Caller is not the pending upgrade admin.
+    /// Replaces: panic!("not pending upgrade admin")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NotPendingUpgradeAdmin = 132,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -928,7 +958,12 @@ impl ErrorExt for ContractError {
             | ContractError::CrossContractCallerMismatch
             | ContractError::MigrationInProgress
             | ContractError::MaxPauseSignersExceeded
-            | ContractError::RoleRequired => ErrorCategory::Authorization,
+            | ContractError::RoleRequired
+            | ContractError::UpgradeAuthorizationAlreadyExists
+            | ContractError::UpgradeAuthorizationNotFound
+            | ContractError::UpgradeSelfRoleNotAllowed
+            | ContractError::LastUpgradeAdmin
+            | ContractError::NotPendingUpgradeAdmin => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -1086,6 +1121,19 @@ impl ErrorExt for ContractError {
             }
             ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
             ContractError::RoleRequired => "Caller does not hold the required role",
+            ContractError::UpgradeAuthorizationAlreadyExists => {
+                "Upgrade authorization already exists for the address"
+            }
+            ContractError::UpgradeAuthorizationNotFound => {
+                "No upgrade authorization exists for the address"
+            }
+            ContractError::UpgradeSelfRoleNotAllowed => {
+                "Upgrade admin cannot grant themselves an equal or higher role"
+            }
+            ContractError::LastUpgradeAdmin => "The last upgrade admin cannot be revoked",
+            ContractError::NotPendingUpgradeAdmin => {
+                "Caller is not the pending upgrade admin"
+            }
             ContractError::StaleAdminEpoch => {
                 "Admin pause proposal carries a stale epoch reference"
             }
@@ -1325,6 +1373,11 @@ impl ErrorExt for ContractError {
             | ContractError::RoleNotHeldAtLedger      // re-sign with a valid ledger timestamp
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleRequired
+            | ContractError::UpgradeAuthorizationAlreadyExists
+            | ContractError::UpgradeAuthorizationNotFound
+            | ContractError::UpgradeSelfRoleNotAllowed
+            | ContractError::LastUpgradeAdmin
+            | ContractError::NotPendingUpgradeAdmin
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired

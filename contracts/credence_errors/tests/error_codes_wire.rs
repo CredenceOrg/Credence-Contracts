@@ -40,6 +40,11 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::MaxPauseSignersExceeded as u32, 125);
     assert_eq!(ContractError::LeaseSignerMismatch as u32, 126);
     assert_eq!(ContractError::RoleRequired as u32, 127);
+    assert_eq!(ContractError::UpgradeAuthorizationAlreadyExists as u32, 128);
+    assert_eq!(ContractError::UpgradeAuthorizationNotFound as u32, 129);
+    assert_eq!(ContractError::UpgradeSelfRoleNotAllowed as u32, 130);
+    assert_eq!(ContractError::LastUpgradeAdmin as u32, 131);
+    assert_eq!(ContractError::NotPendingUpgradeAdmin as u32, 132);
 
     // Bond (200-299)
     assert_eq!(ContractError::BondNotFound as u32, 200);

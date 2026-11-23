@@ -28,6 +28,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "InsufficientSignatures",
         ContractError::InsufficientSignatures,
     ), // 108
+    ("ZeroBytes32", ContractError::ZeroBytes32),   // 109
     ("InvalidAdminAddress", ContractError::InvalidAdminAddress), // 110
     ("AdminUnchanged", ContractError::AdminUnchanged), // 111
     ("TimelockNotReady", ContractError::TimelockNotReady), // 112
@@ -51,14 +52,30 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "CrossContractCallerMismatch",
         ContractError::CrossContractCallerMismatch,
     ), // 123
+    ("MigrationInProgress", ContractError::MigrationInProgress), // 124
     (
         "MaxPauseSignersExceeded",
         ContractError::MaxPauseSignersExceeded,
-    ), // 124
-    ("MigrationInProgress", ContractError::MigrationInProgress), // 125
+    ), // 125
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
-    ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
-    ("RoleRequired", ContractError::RoleRequired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    (
+        "UpgradeAuthorizationAlreadyExists",
+        ContractError::UpgradeAuthorizationAlreadyExists,
+    ), // 128
+    (
+        "UpgradeAuthorizationNotFound",
+        ContractError::UpgradeAuthorizationNotFound,
+    ), // 129
+    (
+        "UpgradeSelfRoleNotAllowed",
+        ContractError::UpgradeSelfRoleNotAllowed,
+    ), // 130
+    ("LastUpgradeAdmin", ContractError::LastUpgradeAdmin), // 131
+    (
+        "NotPendingUpgradeAdmin",
+        ContractError::NotPendingUpgradeAdmin,
+    ), // 132
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201
@@ -251,7 +268,10 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("EscrowNotReleasable", ContractError::EscrowNotReleasable), // 801
     ("EscrowNotRefundable", ContractError::EscrowNotRefundable), // 802
     ("EscrowNotExpired", ContractError::EscrowNotExpired), // 803
-    ("RefundExceedsRemaining", ContractError::RefundExceedsRemaining), // 804
+    (
+        "RefundExceedsRemaining",
+        ContractError::RefundExceedsRemaining,
+    ), // 804
     ("InvalidEscrowExpiry", ContractError::InvalidEscrowExpiry), // 805
     ("NotEscrowParty", ContractError::NotEscrowParty), // 806
 ];
