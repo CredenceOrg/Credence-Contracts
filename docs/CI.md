@@ -56,6 +56,31 @@ testutils
 
 ## Quick Reference — Run All Checks Locally
 
+A `Makefile` at the repo root mirrors the five CI jobs. Run everything in one
+command:
+
+```bash
+make ci-local
+```
+
+Individual targets:
+
+| Target | Equivalent CI job |
+|---|---|
+| `make fmt` | `fmt` — `cargo fmt --all -- --check` |
+| `make test` | `test` — `cargo test -p <pkg> --locked` per gated package |
+| `make clippy` | `clippy` — `cargo clippy -p <pkg> --all-targets --locked -- -D warnings` per gated package |
+| `make wasm` | `wasm` — wasm32v1-none build + `scripts/check_wasm_size.sh` |
+| `make panic-check` | `no-bare-panic` — `python3 scripts/check_no_panic.py` |
+| `make fmt-fix` | *(not in CI)* — auto-fix formatting |
+
+Both `make ci-local` and the workflow read package names exclusively from
+`scripts/ci-gated-packages.txt`, so they stay in sync automatically.
+
+---
+
+### Manual commands (reference)
+
 ```bash
 # 1. Formatting
 cargo fmt --all -- --check
