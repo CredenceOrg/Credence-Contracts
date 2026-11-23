@@ -40,6 +40,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::MaxPauseSignersExceeded as u32, 125);
     assert_eq!(ContractError::LeaseSignerMismatch as u32, 126);
     assert_eq!(ContractError::RoleRequired as u32, 127);
+    assert_eq!(ContractError::OperationExpired as u32, 128);
 
     // Bond (200-299)
     assert_eq!(ContractError::BondNotFound as u32, 200);

@@ -58,7 +58,8 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("MigrationInProgress", ContractError::MigrationInProgress), // 125
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
     ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
-    ("RoleRequired", ContractError::RoleRequired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    ("OperationExpired", ContractError::OperationExpired), // 128
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201

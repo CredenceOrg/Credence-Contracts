@@ -139,6 +139,7 @@ mod tests {
     #[test]
     fn test_code_role_required() {
         assert_eq!(ContractError::RoleRequired as u32, 127);
+        assert_eq!(ContractError::OperationExpired as u32, 128);
     }
 
     #[test]
@@ -300,6 +301,7 @@ mod tests {
             ContractError::MaxPauseSignersExceeded,
             ContractError::LeaseSignerMismatch,
             ContractError::RoleRequired,
+            ContractError::OperationExpired,
             ContractError::StaleAdminEpoch,
             ContractError::StaleSignerEpoch,
         ];
@@ -1380,6 +1382,7 @@ mod tests {
             ContractError::InvalidAdminAddress => true,
             ContractError::AdminUnchanged => true,
             ContractError::TimelockNotReady => true, // wait for delay
+            ContractError::OperationExpired => true, // cancel and queue a replacement
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,

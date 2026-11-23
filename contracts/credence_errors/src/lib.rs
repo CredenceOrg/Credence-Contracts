@@ -280,6 +280,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RoleRequired = 127,
 
+    /// A queued timelock operation is past its configured execution grace period.
+    /// Contracts: timelock
+    /// Wire-stable: do not renumber this error code.
+    OperationExpired = 128,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -912,6 +917,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
+            | ContractError::OperationExpired
             | ContractError::AdminSuspended
             | ContractError::BorrowFrozen
             | ContractError::NoPendingAdmin
@@ -1051,6 +1057,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidAdminAddress => "Proposed admin is the zero or identity address",
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
+            ContractError::OperationExpired => "Queued operation execution grace period has expired",
             ContractError::AdminSuspended => "Admin is currently suspended",
             ContractError::BorrowFrozen => {
                 "Borrows are frozen: new bond creation and top-ups are not allowed"
@@ -1319,6 +1326,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady         // wait for delay
+            | ContractError::OperationExpired         // cancel and queue a replacement
             | ContractError::AdminSuspended           // wait for suspension to lift
             | ContractError::BorrowFrozen             // wait for unfreeze
             | ContractError::NoPendingAdmin           // call begin_admin_transfer first
