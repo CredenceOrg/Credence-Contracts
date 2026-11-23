@@ -101,6 +101,8 @@ pub enum DataKey {
     /// Admin-managed allowlist of settlement destinations. Only addresses
     /// registered here may receive funds via `settle`.
     Corridor(Address),
+    /// Reentrancy guard shared by all outbound token-transfer paths.
+    WithdrawalLock,
 }
 
 #[contract]
@@ -199,6 +201,21 @@ fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn acquire_withdrawal_lock(e: &Env) {
+    if e.storage()
+        .instance()
+        .get::<_, bool>(&DataKey::WithdrawalLock)
+        .unwrap_or(false)
+    {
+        panic_with_error!(e, ContractError::ReentrancyDetected);
+    }
+    e.storage().instance().set(&DataKey::WithdrawalLock, &true);
+}
+
+fn release_withdrawal_lock(e: &Env) {
+    e.storage().instance().set(&DataKey::WithdrawalLock, &false);
 }
 
 #[contractimpl]
@@ -706,6 +723,7 @@ impl CredenceTreasury {
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
         let contract_addr = e.current_contract_address();
 
+        acquire_withdrawal_lock(&e);
         let recipient_balance_before = token_client.balance(&proposal.recipient);
         token_client.transfer(&contract_addr, &proposal.recipient, &proposal.amount);
         let recipient_balance_after = token_client.balance(&proposal.recipient);
@@ -761,6 +779,7 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::Proposal(proposal_id), &proposal);
+        release_withdrawal_lock(&e);
         // Emit (recipient, min_amount_out, actual_amount) so observers can verify settlement.
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
@@ -891,6 +910,7 @@ impl CredenceTreasury {
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
         let contract_addr = e.current_contract_address();
 
+        acquire_withdrawal_lock(&e);
         let destination_balance_before = token_client.balance(&destination);
         token_client.transfer(&contract_addr, &destination, &amount);
         let destination_balance_after = token_client.balance(&destination);
@@ -934,6 +954,7 @@ impl CredenceTreasury {
             &new_slashed_balance,
         );
 
+        release_withdrawal_lock(&e);
         e.events().publish(
             (Symbol::new(&e, "treasury_corridor_settled"), destination),
             (amount, actual_amount, admin),
@@ -1216,6 +1237,7 @@ impl CredenceTreasury {
         let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
         let contract_addr = e.current_contract_address();
 
+        acquire_withdrawal_lock(&e);
         let actual_balance = token_client.balance(&contract_addr);
         let total_accounted: i128 = e
             .storage()
@@ -1233,6 +1255,7 @@ impl CredenceTreasury {
         }
 
         token_client.transfer(&contract_addr, &to, &amount);
+        release_withdrawal_lock(&e);
 
         e.events()
             .publish((Symbol::new(&e, "native_rescued"),), (to, amount, admin));

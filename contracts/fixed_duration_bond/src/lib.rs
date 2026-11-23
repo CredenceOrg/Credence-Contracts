@@ -1023,3 +1023,6 @@ mod tests {
         client.collect_fees(&admin, &collector);
     }
 }
+
+#[cfg(test)]
+mod test_reentrancy;
