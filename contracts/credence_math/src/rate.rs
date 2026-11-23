@@ -97,13 +97,13 @@ impl Rate {
     /// [`MAX_COMPOUND_PERIODS`], or `"compound overflow"` when the multiplier
     /// does not fit in `i128`.
     pub fn compound(rate: u32, periods: u32) -> i128 {
-        match Self::try_compound(rate, periods) {
-            Ok(value) => value,
-            Err(ContractError::InvalidPeriodCount) => {
-                Option::<i128>::None.expect("compound period cap exceeded")
-            }
-            Err(_) => Option::<i128>::None.expect("compound overflow"),
-        }
+        let message = match Self::try_compound(rate, periods) {
+            Ok(value) => return value,
+            Err(ContractError::InvalidPeriodCount) => "compound period cap exceeded",
+            Err(_) => "compound overflow",
+        };
+        let absent: Option<i128> = None;
+        absent.expect(message)
     }
 }
 
