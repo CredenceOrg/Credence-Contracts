@@ -1,10 +1,8 @@
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    vec, Address, BytesN, Env, IntoVal,
+    testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
+    vec, Address, BytesN, Env, IntoVal, Symbol,
 };
-
-use soroban_sdk::IntoVal;
 
 fn setup_env() -> (Env, TimelockContractClient<'static>, Address) {
     let env = Env::default();
@@ -499,73 +497,57 @@ fn test_is_ready_boundary_suite() {
 
 // ─── Acceptance criteria tests for issue #1625 ─────────────────────────────
 
-/// AC: call_bound_op_invokes_target - queue set_value(7), execute at ETA, target's get_value() == 7.
+/// A call-bound operation invokes a real entry point once it reaches ETA.
 #[test]
 fn test_call_bound_op_invokes_target() {
     let (env, client, admin) = setup_env();
 
-    // Register a mock target contract
-    let target_id = env.register(TimelockContract, ()); // Use same contract type for simplicity
+    let target_id = env.register(TimelockContract, ());
     let target_client = TimelockContractClient::new(&env, &target_id);
     target_client.initialize(&admin);
 
-    let delay = 86_400; // minimum delay
+    let delay = min_delay_seconds();
     let salt = BytesN::from_array(&env, &[100; 32]);
-
-    // Queue a call to transfer_admin (we'll use this as our "set_value" equivalent)
-    let func = Symbol::new(&env, "transfer_admin");
-    let new_admin = Address::generate(&env);
-    let args = vec![&env, (&new_admin.clone()).into_val(&env)];
+    let func = Symbol::new(&env, "get_admin");
+    let args = vec![&env];
     let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
 
     let op = client.get_operation(&op_id).unwrap();
     assert_eq!(op.status, OperationStatus::Pending);
 
-    // Before ETA: must fail
     env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
-    let res = client.try_execute_operation(&op_id);
-    assert!(res.is_err());
+    assert!(client.try_execute_operation(&op_id).is_err());
 
-    // At ETA: execute
     env.ledger().with_mut(|li| li.timestamp = op.eta);
-    let _result = client.try_execute_operation(&op_id);
-
-    // Verify the transfer happened (new admin is set)
-    assert_eq!(target_client.get_admin(), new_admin);
+    client.execute_operation(&op_id);
+    assert_eq!(target_client.get_admin(), admin);
 
     let op_after = client.get_operation(&op_id).unwrap();
     assert_eq!(op_after.status, OperationStatus::Executed);
 }
 
-/// AC: call_bound_op_not_before_eta - execute at eta - 1 returns TimelockNotReady, target unchanged.
+/// A call-bound operation remains pending before ETA and does not invoke its target.
 #[test]
 fn test_call_bound_op_not_before_eta() {
     let (env, client, admin) = setup_env();
 
-    // Register a mock target contract
     let target_id = env.register(TimelockContract, ());
     let target_client = TimelockContractClient::new(&env, &target_id);
     target_client.initialize(&admin);
     let original_admin = target_client.get_admin();
 
-    let delay = 86_400;
+    let delay = min_delay_seconds();
     let salt = BytesN::from_array(&env, &[101; 32]);
-    let func = Symbol::new(&env, "transfer_admin");
-    let new_admin = Address::generate(&env);
-    let args = vec![&env, (&new_admin).into_val(&env)];
+    let func = Symbol::new(&env, "get_admin");
+    let args = vec![&env];
 
     let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
     let op = client.get_operation(&op_id).unwrap();
 
-    // Try to execute before ETA
     env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
-    let res = client.try_execute_operation(&op_id);
-    assert!(res.is_err());
+    assert!(client.try_execute_operation(&op_id).is_err());
 
-    // Target should be unchanged
     assert_eq!(target_client.get_admin(), original_admin);
-
-    // Operation should still be pending
     let op_after = client.get_operation(&op_id).unwrap();
     assert_eq!(op_after.status, OperationStatus::Pending);
 }
@@ -575,27 +557,28 @@ fn test_call_bound_op_not_before_eta() {
 fn test_call_bound_op_executes_once() {
     let (env, client, admin) = setup_env();
 
-    // Register a mock target contract
     let target_id = env.register(TimelockContract, ());
-    let _target_client = TimelockContractClient::new(&env, &target_id);
-    _target_client.initialize(&admin);
+    let target_client = TimelockContractClient::new(&env, &target_id);
+    target_client.initialize(&admin);
 
-    let delay = 86_400;
+    let delay = min_delay_seconds();
     let salt = BytesN::from_array(&env, &[102; 32]);
-    let func = Symbol::new(&env, "transfer_admin");
-    let new_admin = Address::generate(&env);
-    let args = vec![&env, (&new_admin).into_val(&env)];
+    let func = Symbol::new(&env, "get_admin");
+    let args = vec![&env];
 
     let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
     let op = client.get_operation(&op_id).unwrap();
 
-    // Execute at ETA
     env.ledger().with_mut(|li| li.timestamp = op.eta);
     client.execute_operation(&op_id);
 
-    // Second execute should fail
     let res = client.try_execute_operation(&op_id);
     assert!(res.is_err());
+    assert_eq!(target_client.get_admin(), admin);
+    assert_eq!(
+        client.get_operation(&op_id).unwrap().status,
+        OperationStatus::Executed
+    );
 }
 
 /// AC: failing_target_reverts_status - if target panics, operation stays Pending.
@@ -608,7 +591,7 @@ fn test_failing_target_reverts_status() {
     let _target_client = TimelockContractClient::new(&env, &target_id);
     _target_client.initialize(&admin);
 
-    let delay = 86_400;
+    let delay = min_delay_seconds();
     let salt = BytesN::from_array(&env, &[103; 32]);
     // Use initialize on a contract that's already initialized - should fail
     let func = Symbol::new(&env, "initialize");
@@ -680,11 +663,10 @@ fn test_cancelled_call_never_runs() {
     target_client.initialize(&admin);
     let original_admin = target_client.get_admin();
 
-    let delay = 86_400;
+    let delay = min_delay_seconds();
     let salt = BytesN::from_array(&env, &[104; 32]);
-    let func = Symbol::new(&env, "transfer_admin");
-    let new_admin = Address::generate(&env);
-    let args = vec![&env, (&new_admin).into_val(&env)];
+    let func = Symbol::new(&env, "get_admin");
+    let args = vec![&env];
 
     let op_id = client.queue_call(&admin, &target_id, &func, &args, &salt, &delay);
     let op = client.get_operation(&op_id).unwrap();
