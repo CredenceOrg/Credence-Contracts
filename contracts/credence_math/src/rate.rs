@@ -431,6 +431,45 @@ mod tests {
         );
     }
 
+    // ── 10_000 bps overflow boundary ─────────────────────────────────────────
+    //
+    // At 10_000 bps (100% per period), the factor is 20_000 and the multiplier
+    // doubles every period: 10_000 × 2^n / 10_000^(n-1).  The last period that
+    // fits in i128 is 113; period 114 produces a value that exceeds i128::MAX
+    // (170_141_183_460_469_231_731_687_303_715_884_105_727).
+    //
+    // First overflowing period for rate = 10_000 bps: **114**.
+
+    /// `compound(10_000, 0)` is the identity regardless of rate.
+    #[test]
+    fn compound_10000_bps_zero_periods_is_identity() {
+        assert_eq!(Rate::compound(10_000, 0), 10_000);
+    }
+
+    /// `compound(10_000, 113)` is the last call at 100% bps that fits in i128.
+    #[test]
+    fn compound_10000_bps_period_113_last_safe() {
+        let result = Rate::compound(10_000, 113);
+        assert!(result > 0);
+        assert_eq!(result, 103_845_937_170_696_552_570_609_926_584_401_920_000);
+    }
+
+    /// `compound(10_000, 114)` is the first call at 100% bps that overflows i128.
+    #[test]
+    #[should_panic(expected = "compound overflow")]
+    fn compound_10000_bps_period_114_overflows() {
+        let _ = Rate::compound(10_000, 114);
+    }
+
+    /// `try_compound(10_000, 114)` returns the typed overflow instead of panicking.
+    #[test]
+    fn try_compound_10000_bps_period_114_returns_typed_overflow() {
+        assert_eq!(
+            Rate::try_compound(10_000, 114),
+            Err(ContractError::Overflow)
+        );
+    }
+
     // ── Exponentiation by squaring ───────────────────────────────────────────
 
     #[test]
