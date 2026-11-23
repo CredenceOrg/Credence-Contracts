@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUDGET_FILE="${WASM_BUDGET_FILE:-$SCRIPT_DIR/wasm-size-budget.toml}"
-WASM_DIR="$REPO_ROOT/target/wasm32-unknown-unknown/release"
+WASM_DIR="${WASM_DIR:-$REPO_ROOT/target/wasm32-unknown-unknown/release}"
 GLOBAL_OVERRIDE_KB="${1:-}"
 
 read_default_kb() {

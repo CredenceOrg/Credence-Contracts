@@ -14,15 +14,18 @@ CI enforces per-contract ceilings via [`.github/workflows/wasm-size.yml`](../.gi
 | `credence_delegation` | 64 | 65 536 |
 | `credence_multisig` | 64 | 65 536 |
 | `credence_treasury` | 64 | 65 536 |
+| `bounty-escrow` | 64 | 65 536 |
+| `credence_registry` | 64 | 65 536 |
+| `fixed_duration_bond` | 64 | 65 536 |
 | `templates` | 64 | 65 536 |
 | `timelock` | 64 | 65 536 |
 
-The default ceiling for any contract not listed explicitly is **64 KiB** (65 536 bytes).
+The listed values are explicit ceilings, not measured artifact sizes. The default ceiling for any contract not listed explicitly is **64 KiB** (65 536 bytes); measured sizes and growth headroom should be recorded when the corresponding wasm artifacts are available.
 
 ## How it works
 
 1. The **WASM Size Budget** workflow builds all deployable contracts with `cargo build --target wasm32-unknown-unknown --release --locked -p <contract>…` (pinned toolchain from [`rust-toolchain.toml`](../rust-toolchain.toml)).
-2. `scripts/check_wasm_size.sh` scans `target/wasm32-unknown-unknown/release/*.wasm` and fails if any artifact exceeds its configured budget.
+2. `scripts/check_wasm_size.sh` scans `target/wasm32-unknown-unknown/release/*.wasm` by default (or the directory in `WASM_DIR`) and fails if any artifact exceeds its configured budget.
 3. Debug symbols are stripped via the workspace `profile.release.strip = "symbols"` setting, so only deployable code size is measured.
 
 Pass a single argument to override all limits for a one-off local check, e.g. `./scripts/check_wasm_size.sh 60` for a 60 KiB ceiling.
