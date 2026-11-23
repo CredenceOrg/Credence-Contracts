@@ -7,7 +7,7 @@ mod pausable_tests {
 
     fn setup() -> (Env, CredenceRegistryClient<'static>, Address) {
         let e = Env::default();
-        let contract_id = e.register_contract(None, CredenceRegistry);
+        let contract_id = e.register(CredenceRegistry, ());
         let client = CredenceRegistryClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
         e.mock_all_auths();
