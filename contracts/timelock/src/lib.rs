@@ -138,6 +138,7 @@ pub struct PendingAdmin {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
     PendingAdmin,
