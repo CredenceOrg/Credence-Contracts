@@ -8,6 +8,7 @@ default_kb = 64
 
 [contracts]
 admin = 64
+bounty_escrow = 64
 credence_arbitration = 64
 credence_bond = 64
 credence_delegation = 64
