@@ -808,6 +808,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidPercentSplit = 703,
 
+    /// Compound period count exceeds the documented maximum.
+    /// Raised by `Rate::try_compound` before any multiplication so an
+    /// attacker cannot burn the instruction budget with `u32::MAX` periods.
+    /// Contracts: math
+    /// Wire-stable: do not renumber this error code.
+    InvalidPeriodCount = 704,
+
     // --- Escrow (800-899) ---
     /// No escrow exists for the given id.
     /// Contracts: bounty-escrow
@@ -1012,7 +1019,8 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero
-            | ContractError::InvalidPercentSplit => ErrorCategory::Arithmetic,
+            | ContractError::InvalidPercentSplit
+            | ContractError::InvalidPeriodCount => ErrorCategory::Arithmetic,
 
             ContractError::EscrowNotFound
             | ContractError::EscrowNotReleasable
@@ -1263,6 +1271,9 @@ impl ErrorExt for ContractError {
             ContractError::InvalidPercentSplit => {
                 "Percentage splits do not sum to exactly 10,000 basis points"
             }
+            ContractError::InvalidPeriodCount => {
+                "Compound period count exceeds the documented maximum"
+            }
             ContractError::EscrowNotFound => "No escrow exists for the given id",
             ContractError::EscrowNotReleasable => "Escrow is already released or fully refunded and cannot be released",
             ContractError::EscrowNotRefundable => "Escrow is already released or fully refunded and cannot be refunded",
@@ -1439,6 +1450,7 @@ impl ErrorExt for ContractError {
 
 
             ContractError::InvalidPercentSplit => true, // caller can provide valid splits
+            ContractError::InvalidPeriodCount => true,  // caller can pass fewer periods
 
             // --- Escrow (800-899) ---
             ContractError::EscrowNotFound => true, // caller supplies a valid id

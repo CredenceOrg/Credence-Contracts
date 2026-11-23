@@ -139,4 +139,5 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::Underflow as u32, 701);
     assert_eq!(ContractError::DivisionByZero as u32, 702);
     assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
+    assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
 }
