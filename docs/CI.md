@@ -23,14 +23,20 @@ for every PR and push to `main`/`master`:
 
 ### Gated packages (scripts/ci-gated-packages.txt)
 
-The gated packages as of this writing are:
+This file is the single source of truth for the gated package list. The current
+gated packages are:
 
 ```
-credence_arbitration
-timelock
 dispute_resolution
 testutils
 ```
+
+`credence_arbitration` and `timelock` are temporarily excluded. Their entries
+remain commented out in the list with TODO notes describing the current
+compilation and lint failures. Re-enable either crate after its tests compile
+and pass, its clippy checks pass (including dependency crates), and, for
+contract crates, its WASM build and size check pass. Add the package name back
+to `scripts/ci-gated-packages.txt` when those checks are met.
 
 ### How to add a crate to the gate
 
