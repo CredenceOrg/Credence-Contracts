@@ -508,6 +508,24 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// A token amount was negative where a non-negative amount is required.
+    /// Replaces: panic!("amount must be non-negative")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NegativeAmount = 240,
+
+    /// The token allowance is smaller than the requested transfer amount.
+    /// Replaces: panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InsufficientTokenAllowance = 241,
+
+    /// The configured Stellar network label is not supported.
+    /// Replaces: panic!("unsupported stellar network")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UnsupportedStellarNetwork = 242,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -962,7 +980,10 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::NegativeAmount
+            | ContractError::InsufficientTokenAllowance
+            | ContractError::UnsupportedStellarNetwork => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1163,6 +1184,13 @@ impl ErrorExt for ContractError {
             }
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
+            }
+            ContractError::NegativeAmount => "Token amount must be non-negative",
+            ContractError::InsufficientTokenAllowance => {
+                "Token allowance is smaller than the requested transfer amount"
+            }
+            ContractError::UnsupportedStellarNetwork => {
+                "The configured Stellar network label is not supported"
             }
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
@@ -1369,6 +1397,9 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::NegativeAmount        // supply a non-negative amount
+            | ContractError::InsufficientTokenAllowance // approve a sufficient allowance
+            | ContractError::UnsupportedStellarNetwork // use mainnet or testnet
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
