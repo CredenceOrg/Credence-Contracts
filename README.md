@@ -10,11 +10,11 @@ Soroban smart contracts for the Credence economic trust protocol on Stellar: bon
 |---|---|
 | `timelock` | [`CAKAQJWZN5O2BTSWKUAJZNJIF6ZPBZ2UEZM6H4IIVTC675JXHICCGM4K`](https://stellar.expert/explorer/testnet/contract/CAKAQJWZN5O2BTSWKUAJZNJIF6ZPBZ2UEZM6H4IIVTC675JXHICCGM4K) |
 | `credence_arbitration` | [`CCIED32YR7ZB5MBDKRCT7HYFWAH2AAKFH43HL4IREGSUJ2U3ZHECCL7T`](https://stellar.expert/explorer/testnet/contract/CCIED32YR7ZB5MBDKRCT7HYFWAH2AAKFH43HL4IREGSUJ2U3ZHECCL7T) |
-| `dispute_resolution` | [`CCKOGX3BZOH7VSMTIVPITZU6S32NY4PETJIRVQ6SA5WY7PABLMU3KXAH`](https://stellar.expert/explorer/testnet/contract/CCKOGX3BZOH7VSMTIVPITZU6S32NY7PABLMU3KXAH) |
+| `dispute_resolution` | [`CCKOGX3BZOH7VSMTIVPITZU6S32NY4PETJIRVQ6SA5WY7PABLMU3KXAH`](https://stellar.expert/explorer/testnet/contract/CCKOGX3BZOH7VSMTIVPITZU6S32NY4PETJIRVQ6SA5WY7PABLMU3KXAH) |
 
 ## Workspace layout
 
-The Cargo workspace contains 17 packages. Contract crates live under `contracts/`; shared interfaces, test utilities and the admin CLI live under `crates/`.
+The Cargo workspace contains 17 packages. Contract and shared-support crates live under `contracts/`; shared interfaces, test utilities and the admin CLI live under `crates/`.
 
 | Package | Path | Purpose |
 |---|---|---|
@@ -23,7 +23,7 @@ The Cargo workspace contains 17 packages. Contract crates live under `contracts/
 | `bounty-escrow` | `contracts/bounty-escrow` | Risk-monitoring analytics for escrowed bounty funds |
 | `credence_bond` | `contracts/credence_bond` | Identity bonds, lifecycle, fees, withdrawals and slashing |
 | `credence_delegation` | `contracts/credence_delegation` | Delegation of attestation and management rights |
-| `credence_errors` | `contracts/credence_errors` | Shared, wire-stable error types for contracts |
+| `credence_errors` | `contracts/credence_errors` | Shared error types for all Credence smart contracts |
 | `credence_math` | `contracts/credence_math` | Shared overflow-safe arithmetic helpers |
 | `credence_multisig` | `contracts/credence_multisig` | Threshold-based multi-signature governance and administration |
 | `credence_registry` | `contracts/credence_registry` | Maps identities to bond contracts |
@@ -65,14 +65,14 @@ Run all workspace tests:
 cargo test --workspace --locked
 ```
 
-The contracts CI workflow currently gates the following packages (the authoritative list is `scripts/ci-gated-packages.txt`):
+The packages currently enabled in the contracts CI test gate are listed in `scripts/ci-gated-packages.txt`. Run their tests individually:
 
 ```bash
 cargo test -p dispute_resolution --locked
 cargo test -p testutils --locked
 ```
 
-For test setup, coverage commands and the full CI test matrix, see [the testing guide](docs/testing.md) and [the CI guide](docs/CI.md).
+For test setup, coverage commands and the broader test matrix, see [the testing guide](docs/testing.md) and [the CI guide](docs/CI.md).
 
 ## Lint
 
@@ -82,7 +82,7 @@ Check formatting across the workspace:
 cargo fmt --all -- --check
 ```
 
-Run Clippy for the packages currently gated by contracts CI:
+Run Clippy for the packages currently enabled in the contracts CI gate:
 
 ```bash
 cargo clippy -p dispute_resolution --all-targets --locked -- -D warnings
@@ -95,7 +95,7 @@ Run the panic ratchet used by CI:
 python3 scripts/check_no_panic.py
 ```
 
-The [CI guide](docs/CI.md) documents the additional security-focused Clippy lints, WASM build and size checks, coverage, dependency audit and unsafe-code scan.
+See the [CI guide](docs/CI.md) for the full local check list, including security-focused Clippy lints, WASM build and size checks, dependency audit and unsafe-code scanning.
 
 ## Contribute
 
@@ -103,4 +103,3 @@ The [CI guide](docs/CI.md) documents the additional security-focused Clippy lint
 2. Read [the CI guide](docs/CI.md) and [the testing guide](docs/testing.md) before changing code.
 3. Run the relevant tests and checks above, and include their results in your pull request.
 4. Keep each pull request focused on one issue and link it in the PR description.
-
