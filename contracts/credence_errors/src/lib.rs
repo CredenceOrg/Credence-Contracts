@@ -508,6 +508,30 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// Fee basis points value is outside the allowed bounds.
+    /// Replaces: panic!("fee_bps out of bounds")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidFeeBps = 240,
+
+    /// No slash record was found for the given identity and index.
+    /// Replaces: panic!("slash record not found")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SlashRecordNotFound = 241,
+
+    /// Slash is blocked because collateral was increased in the current ledger.
+    /// Replaces: panic!("{}", SLASH_BLOCKED_REASON)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SameLedgerSlashBlocked = 242,
+
+    /// Cooldown execution is blocked because collateral was increased in the current ledger.
+    /// Replaces: panic!("{}", COOLDOWN_BLOCKED_REASON)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SameLedgerCooldownBlocked = 243,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -962,7 +986,11 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::InvalidFeeBps
+            | ContractError::SlashRecordNotFound
+            | ContractError::SameLedgerSlashBlocked
+            | ContractError::SameLedgerCooldownBlocked => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1163,6 +1191,14 @@ impl ErrorExt for ContractError {
             }
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
+            }
+            ContractError::InvalidFeeBps => "Fee basis points value is out of bounds",
+            ContractError::SlashRecordNotFound => "No slash record found for the given index",
+            ContractError::SameLedgerSlashBlocked => {
+                "Slash blocked: collateral increased in this ledger"
+            }
+            ContractError::SameLedgerCooldownBlocked => {
+                "Cooldown execution blocked: collateral increased in this ledger"
             }
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
@@ -1369,6 +1405,10 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::InvalidFeeBps         // supply fee_bps within allowed bounds
+            | ContractError::SlashRecordNotFound   // query an existing slash record index
+            | ContractError::SameLedgerSlashBlocked // retry in a subsequent ledger
+            | ContractError::SameLedgerCooldownBlocked // retry in a subsequent ledger
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
