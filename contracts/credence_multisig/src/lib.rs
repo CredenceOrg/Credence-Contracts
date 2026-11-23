@@ -56,8 +56,6 @@ extern crate std;
 #[cfg(test)]
 mod boundary_recovery_tests;
 #[cfg(test)]
-mod boundary_recovery_tests;
-#[cfg(test)]
 mod test_access_control;
 #[cfg(test)]
 mod test_governable;
