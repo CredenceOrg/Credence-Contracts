@@ -231,10 +231,33 @@ Cancels a pending operation.
 ### Query Functions
 
 - `get_operation(op_id) -> Option<QueuedOperation>`
+- `get_operation_count() -> u64`
+- `get_operations_page(offset, limit) -> Vec<QueuedOperation>`
 - `get_call(op_id) -> Option<CallSpec>` — `None` for hash-only operations
 - `is_operation_executed(op_hash) -> bool`
 - `get_admin() -> Address`
 - `get_pending_admin() -> Option<PendingAdmin>`
+
+### Operation listings
+
+`get_operations_page(offset, limit)` returns the queued operations that
+`get_operation` would return, without requiring the caller to know the ids in
+advance. Both reads live in `persistent()` storage under
+`DataKey::Operation(op_id)` and bump that entry's TTL, so paging through the
+queue keeps the entries alive exactly as repeated `get_operation` calls do.
+
+| Rule | Behaviour |
+|------|-----------|
+| Id space | Ids start at `0` and are allocated one per queued operation. `get_operation_count()` returns the next id, so valid ids are `0..count`. |
+| Ordering | Ascending id order. The order is stable for a fixed set of stored entries. |
+| `offset` | An index into the id space, not into the returned vector. The examined slice is `offset..min(offset + effective_limit, count)`. `offset >= count` returns an empty vector. |
+| `limit == 0` | Uses `MAX_PAGE_LIMIT` (200), matching the admin contract. |
+| `limit > MAX_PAGE_LIMIT` | Silently clamped to `MAX_PAGE_LIMIT`; the larger value is never honoured. |
+| Missing ids | Ids with no stored entry (never persisted, or expired from persistent storage) are skipped and nothing is fabricated. A page may therefore contain fewer than `effective_limit` entries while later ids still exist. |
+| Status | `Executed` and `Cancelled` operations remain in the listing with their terminal status. |
+
+The listing is read-only apart from the per-entry TTL bump; it never mutates
+operation state.
 
 Admin rotation entrypoints:
 
