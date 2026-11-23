@@ -14,9 +14,10 @@ Credence smart contract error codes are explicitly wire-stable. External systems
 1. Add the new variant in `contracts/credence_errors/src/lib.rs` in the correct category section.
 2. Assign it the next unused code within that category range.
 3. Add a doc comment describing the variant and reaffirming that the code is wire-stable.
-4. Add or update tests in `contracts/credence_errors/tests/error_codes_wire.rs`.
-5. Run `cargo test -p credence_errors error_codes_wire` to verify the discriminant values.
+4. Update the `ErrorExt` category, description, and recoverability classifications.
+5. Add or update tests in `contracts/credence_errors/tests/error_codes_wire.rs`.
 6. Review the new variant in `docs/errors.md` to keep the canonical reference in sync.
+7. Run `cargo test -p credence_errors error_codes_wire` to verify the discriminant values.
 
 ## Testing
 

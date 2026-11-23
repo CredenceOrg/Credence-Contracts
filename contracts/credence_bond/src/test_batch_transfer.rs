@@ -6,6 +6,7 @@ use crate::{
     test_helpers::setup_with_token, BatchTransferItem, CredenceBond, CredenceBondClient,
     MAX_BATCH_TRANSFER_SIZE,
 };
+use credence_errors::ContractError;
 use soroban_sdk::{testutils::Address as _, token::TokenClient, Address, Env, Vec};
 
 fn setup(env: &Env) -> (CredenceBondClient, Address, Address, Address, Address) {
@@ -94,7 +95,6 @@ fn test_batch_transfer_excessive_batch() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
 fn test_batch_transfer_zero_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -103,11 +103,15 @@ fn test_batch_transfer_zero_amount() {
     let recipient = Address::generate(&env);
     let mut items = Vec::new(&env);
     items.push_back(make_item(&env, &recipient, 0));
-    client.batch_transfer(&admin, &items);
+    assert_eq!(
+        client.try_batch_transfer(&admin, &items),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::AmountMustBePositive as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
 fn test_batch_transfer_negative_amount() {
     let env = Env::default();
     env.mock_all_auths();
@@ -116,11 +120,15 @@ fn test_batch_transfer_negative_amount() {
     let recipient = Address::generate(&env);
     let mut items = Vec::new(&env);
     items.push_back(make_item(&env, &recipient, -100));
-    client.batch_transfer(&admin, &items);
+    assert_eq!(
+        client.try_batch_transfer(&admin, &items),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::AmountMustBePositive as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "recipient cannot be the contract itself")]
 fn test_batch_transfer_self_transfer() {
     let env = Env::default();
     env.mock_all_auths();
@@ -128,5 +136,10 @@ fn test_batch_transfer_self_transfer() {
 
     let mut items = Vec::new(&env);
     items.push_back(make_item(&env, &contract_id, 100));
-    client.batch_transfer(&admin, &items);
+    assert_eq!(
+        client.try_batch_transfer(&admin, &items),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::SelfTransferNotAllowed as u32
+        )))
+    );
 }

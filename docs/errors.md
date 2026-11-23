@@ -118,6 +118,10 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `WithdrawalNotRequested` | ✓ | A rolling-bond withdrawal has not been requested |
+| 241 | `BondNotEligibleForLiquidation` | ✓ | Bond is not fully slashed or expired without renewal |
+| 242 | `SameLedgerCooldownBlocked` | ✓ | Cooldown execution is blocked after a collateral increase in this ledger |
+| 243 | `SelfTransferNotAllowed` | ✓ | A contract cannot transfer tokens to itself |
 
 ### Attestation (300–399)
 
