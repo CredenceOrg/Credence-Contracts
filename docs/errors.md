@@ -118,6 +118,10 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `InvalidTokenAmount` | ✓ | Token amount must be non-negative |
+| 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is below the requested amount |
+| 242 | `TokenTransferFailed` | ✓ | Token transfer failed |
+| 243 | `TokenApproveFailed` | ✓ | Token approval failed |
 
 ### Attestation (300–399)
 

@@ -1,9 +1,11 @@
 // Helpers for working with tokens without getting rekt
 // Handles all the annoying edge cases like zero addresses, negative amounts, etc.
+use credence_errors::{panic_with_error, ContractError};
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{Address, Env};
 
-// Error messages you'll see when stuff breaks
+// Legacy descriptions retained for callers and documentation; typed errors
+// below are the failure surface.
 pub mod errors {
     #[allow(dead_code)]
     pub const TOKEN_NOT_SET: &str = "token not configured";
@@ -30,9 +32,9 @@ fn validate_token_address(_token: &Address) {
 }
 
 // Can't send negative tokens, that doesn't make sense
-fn validate_amount(amount: i128) {
+fn validate_amount(e: &Env, amount: i128) {
     if amount < 0 {
-        panic!("{}", errors::INVALID_AMOUNT);
+        panic_with_error!(e, ContractError::InvalidTokenAmount);
     }
 }
 
@@ -57,13 +59,12 @@ pub fn token_client(e: &Env) -> TokenClient<'_> {
 /// * `recipient` - Address to receive tokens
 /// * `amount` - Amount to transfer
 ///
-/// # Panics
-/// * If token is not configured
-/// * If amount is negative
-/// * If transfer fails (with descriptive error)
-/// * If actual sent amount != requested (fee-on-transfer rejection)
+/// # Errors
+/// * `InvalidTokenAmount` if `amount` is negative
+/// * `TokenTransferFailed` if the token transfer fails
+/// * `UnsupportedToken` if actual sent amount differs from `amount`
 pub fn safe_transfer(e: &Env, recipient: &Address, amount: i128) {
-    validate_amount(amount);
+    validate_amount(e, amount);
     if amount == 0 {
         return; // nothing to do
     }
@@ -79,7 +80,7 @@ pub fn safe_transfer(e: &Env, recipient: &Address, amount: i128) {
 
     match token.try_transfer(&contract, recipient, &amount) {
         Ok(_) => {}
-        Err(_) => panic!("{}", errors::TRANSFER_FAILED),
+        Err(_) => panic_with_error!(e, ContractError::TokenTransferFailed),
     }
 
     let balance_after = token.balance(&contract);
@@ -88,7 +89,7 @@ pub fn safe_transfer(e: &Env, recipient: &Address, amount: i128) {
         .expect("balance underflow");
 
     if actual_sent != amount {
-        panic!("{}", errors::TRANSFER_AMOUNT_MISMATCH);
+        panic_with_error!(e, ContractError::UnsupportedToken);
     }
 }
 
@@ -99,21 +100,19 @@ pub fn safe_transfer(e: &Env, recipient: &Address, amount: i128) {
 ///
 /// Note: The allowance check is performed natively by `try_transfer_from`;
 /// no manual pre-check is needed. If the allowance is insufficient, the
-/// transfer itself will fail and we panic with a descriptive error.
+/// transfer itself will fail with a typed token-transfer error.
 ///
 /// # Arguments
 /// * `e` - Contract environment
 /// * `owner` - Address owning the tokens
 /// * `amount` - Amount to transfer
 ///
-/// # Panics
-/// * If token is not configured
-/// * If amount is negative
-/// * If allowance is insufficient (via try_transfer_from failure)
-/// * If transfer fails
-/// * If actual received amount != requested (fee-on-transfer rejection)
+/// # Errors
+/// * `InvalidTokenAmount` if `amount` is negative
+/// * `TokenTransferFailed` if the transfer fails, including insufficient allowance
+/// * `UnsupportedToken` if actual received amount differs from `amount`
 pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
-    validate_amount(amount);
+    validate_amount(e, amount);
     if amount == 0 {
         return;
     }
@@ -133,7 +132,7 @@ pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
         Err(_) => {
             // try_transfer_from can fail for many reasons (insufficient allowance,
             // insufficient balance, etc.). Panic so the caller gets a clear signal.
-            panic!("{}", errors::TRANSFER_FAILED);
+            panic_with_error!(e, ContractError::TokenTransferFailed);
         }
     }
 
@@ -143,7 +142,7 @@ pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
         .expect("balance underflow");
 
     if actual_received != amount {
-        panic!("{}", errors::TRANSFER_AMOUNT_MISMATCH);
+        panic_with_error!(e, ContractError::UnsupportedToken);
     }
 }
 
@@ -154,39 +153,37 @@ pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
 /// * `owner` - Address owning the tokens
 /// * `amount` - Required amount
 ///
-/// # Panics
-/// * If token is not configured
-/// * If allowance check fails
-/// * If allowance is insufficient
+/// # Errors
+/// * `InvalidTokenAmount` if `amount` is negative
+/// * `InsufficientTokenAllowance` if allowance is below `amount`
 pub fn safe_require_allowance(e: &Env, owner: &Address, amount: i128) {
-    validate_amount(amount);
+    validate_amount(e, amount);
     if amount == 0 {
         return;
     }
 
     let allowance = token_client(e).allowance(owner, &e.current_contract_address());
     if allowance < amount {
-        panic!("{}", errors::INSUFFICIENT_ALLOWANCE);
+        panic_with_error!(e, ContractError::InsufficientTokenAllowance);
     }
 }
 
 /// Safely approves token spending (use with caution).
 ///
-/// Uses `try_approve` so we can panic with a descriptive error message
-/// instead of relying on the SDK's default panic.
+/// Uses `try_approve` to return a typed error instead of the SDK's default
+/// token-contract failure.
 ///
 /// # Arguments
 /// * `e` - Contract environment
 /// * `spender` - Address to approve spending for
 /// * `amount` - Amount to approve
 ///
-/// # Panics
-/// * If token is not configured
-/// * If amount is negative
-/// * If approve fails
+/// # Errors
+/// * `InvalidTokenAmount` if `amount` is negative
+/// * `TokenApproveFailed` if the token rejects the approval
 #[allow(dead_code)]
 pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
-    validate_amount(amount);
+    validate_amount(e, amount);
     validate_token_address(spender);
 
     let token = get_token(e);
@@ -195,7 +192,7 @@ pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
     let expiration = e.ledger().sequence() + 10000;
     match TokenClient::new(e, &token).try_approve(&contract, spender, &amount, &expiration) {
         Ok(_) => {}
-        Err(_) => panic!("{}", errors::APPROVE_FAILED),
+        Err(_) => panic_with_error!(e, ContractError::TokenApproveFailed),
     }
 }
 
@@ -206,13 +203,12 @@ pub fn safe_approve(e: &Env, spender: &Address, amount: i128) {
 /// * `spender` - Address to increase allowance for
 /// * `added_value` - Amount to increase allowance by
 ///
-/// # Panics
-/// * If token is not configured
-/// * If amount is negative
-/// * If operation fails
+/// # Errors
+/// * `InvalidTokenAmount` if `added_value` is negative
+/// * `TokenApproveFailed` if the resulting approval fails
 #[allow(dead_code)]
 pub fn safe_increase_allowance(e: &Env, spender: &Address, added_value: i128) {
-    validate_amount(added_value);
+    validate_amount(e, added_value);
     if added_value == 0 {
         return;
     }
@@ -236,13 +232,12 @@ pub fn safe_increase_allowance(e: &Env, spender: &Address, added_value: i128) {
 /// * `spender` - Address to approve spending for
 /// * `amount` - Amount to approve
 ///
-/// # Panics
-/// * If token is not configured
-/// * If amount is negative
-/// * If operation fails
+/// # Errors
+/// * `InvalidTokenAmount` if `amount` is negative
+/// * `TokenApproveFailed` if either approval fails
 #[allow(dead_code)]
 pub fn force_approve(e: &Env, spender: &Address, amount: i128) {
-    validate_amount(amount);
+    validate_amount(e, amount);
     validate_token_address(spender);
 
     // Reset to 0 first
@@ -269,7 +264,7 @@ pub fn atomic_transfer_and_update<F>(e: &Env, recipient: &Address, amount: i128,
 where
     F: FnOnce(),
 {
-    validate_amount(amount);
+    validate_amount(e, amount);
     if amount == 0 {
         state_update(); // no transfer needed, just update
         return;
@@ -294,11 +289,11 @@ mod tests {
         let _env = Env::default();
 
         // Valid amounts
-        validate_amount(0);
-        validate_amount(100);
+        validate_amount(&_env, 0);
+        validate_amount(&_env, 100);
 
         // Invalid amount should panic
-        std::panic::catch_unwind(|| validate_amount(-1)).unwrap_err();
+        std::panic::catch_unwind(|| validate_amount(&_env, -1)).unwrap_err();
     }
 
     #[test]

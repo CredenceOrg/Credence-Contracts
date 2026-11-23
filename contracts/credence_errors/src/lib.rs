@@ -508,6 +508,30 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// Token helper rejected a negative amount.
+    /// Replaces: panic!("amount must be non-negative") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidTokenAmount = 240,
+
+    /// Token allowance is below the requested amount.
+    /// Replaces: panic!("insufficient token allowance") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InsufficientTokenAllowance = 241,
+
+    /// A token transfer call failed.
+    /// Replaces: panic!("token transfer failed") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TokenTransferFailed = 242,
+
+    /// A token approve call failed.
+    /// Replaces: panic!("token approve failed") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TokenApproveFailed = 243,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -962,7 +986,11 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::InvalidTokenAmount
+            | ContractError::InsufficientTokenAllowance
+            | ContractError::TokenTransferFailed
+            | ContractError::TokenApproveFailed => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1164,6 +1192,12 @@ impl ErrorExt for ContractError {
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
             }
+            ContractError::InvalidTokenAmount => "Token amount must be non-negative",
+            ContractError::InsufficientTokenAllowance => {
+                "Token allowance is below the requested amount"
+            }
+            ContractError::TokenTransferFailed => "Token transfer failed",
+            ContractError::TokenApproveFailed => "Token approval failed",
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
             }
@@ -1369,6 +1403,10 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::InvalidTokenAmount    // supply a non-negative amount
+            | ContractError::InsufficientTokenAllowance // approve the required amount
+            | ContractError::TokenTransferFailed   // retry after fixing token balance/state
+            | ContractError::TokenApproveFailed   // retry after fixing token state
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.

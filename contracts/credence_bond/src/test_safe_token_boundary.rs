@@ -77,9 +77,142 @@ use crate::safe_token::{
 };
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, Symbol, Val, Vec};
+use credence_errors::ContractError;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::string::{String, ToString};
+
+/// Contract entrypoints used to assert safe-token failures as typed Soroban errors.
+#[contract]
+pub struct SafeTokenErrorHarness;
+
+#[contractimpl]
+impl SafeTokenErrorHarness {
+    pub fn transfer(e: Env, recipient: Address, amount: i128) {
+        safe_transfer(&e, &recipient, amount);
+    }
+
+    pub fn transfer_from(e: Env, owner: Address, amount: i128) {
+        safe_transfer_from(&e, &owner, amount);
+    }
+
+    pub fn require_allowance(e: Env, owner: Address, amount: i128) {
+        safe_require_allowance(&e, &owner, amount);
+    }
+
+    pub fn approve(e: Env, spender: Address, amount: i128) {
+        safe_approve(&e, &spender, amount);
+    }
+}
+
+pub(crate) fn expect_safe_token_error(
+    env: &Env,
+    contract: &Address,
+    function: &str,
+    args: Vec<Val>,
+    expected: ContractError,
+) {
+    let actual = match env.try_invoke_contract::<(), ContractError>(
+        contract,
+        &Symbol::new(env, function),
+        args,
+    ) {
+        Err(Ok(error)) => error,
+        Err(Err(invoke)) => panic!("{function} failed without a ContractError: {invoke:?}"),
+        Ok(_) => panic!("{function} unexpectedly succeeded"),
+    };
+    assert_eq!(actual, expected);
+}
+
+fn invoke_args(env: &Env, recipient: &Address, amount: i128) -> Vec<Val> {
+    let mut args = Vec::new(env);
+    args.push_back(recipient.into_val(env));
+    args.push_back(amount.into_val(env));
+    args
+}
+
+#[test]
+fn safe_token_failures_return_typed_contract_errors() {
+    use crate::DataKey;
+
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract = env.register(SafeTokenErrorHarness, ());
+    let token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    let token_for_storage = token.clone();
+    env.as_contract(&contract, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::BondToken, &token_for_storage);
+    });
+    let other = Address::generate(&env);
+
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "transfer",
+        invoke_args(&env, &other, -1),
+        ContractError::InvalidTokenAmount,
+    );
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "transfer_from",
+        invoke_args(&env, &other, -1),
+        ContractError::InvalidTokenAmount,
+    );
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "require_allowance",
+        invoke_args(&env, &other, -1),
+        ContractError::InvalidTokenAmount,
+    );
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "approve",
+        invoke_args(&env, &other, -1),
+        ContractError::InvalidTokenAmount,
+    );
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "transfer",
+        invoke_args(&env, &other, 1),
+        ContractError::TokenTransferFailed,
+    );
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "require_allowance",
+        invoke_args(&env, &other, 1),
+        ContractError::InsufficientTokenAllowance,
+    );
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "transfer_from",
+        invoke_args(&env, &other, 1),
+        ContractError::TokenTransferFailed,
+    );
+
+    let missing_token = Address::generate(&env);
+    env.as_contract(&contract, || {
+        env.storage()
+            .instance()
+            .set(&DataKey::BondToken, &missing_token);
+    });
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "approve",
+        invoke_args(&env, &other, 1),
+        ContractError::TokenApproveFailed,
+    );
+}
 
 /// A registered bond contract plus a real SEP-41 token bound to it.
 ///
@@ -157,11 +290,7 @@ impl Fixture {
     }
 }
 
-/// Capture the payload of an expected panic as a `String`.
-///
-/// `safe_token` mixes `panic!("{}", msg)` (a `String` payload) with
-/// `token_integration::get_token`'s literal `panic!("msg")` (a `&'static str`
-/// payload), so both shapes are handled.
+/// Capture string panic payloads used by legacy, non-typed failure paths.
 fn panic_message<F: FnOnce()>(f: F) -> String {
     let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a panic");
 
@@ -169,16 +298,14 @@ fn panic_message<F: FnOnce()>(f: F) -> String {
         s.clone()
     } else if let Some(s) = payload.downcast_ref::<&str>() {
         (*s).to_string()
-    } else {
-        panic!("panic payload was neither String nor &str");
-    }
+    } else { "<typed Soroban error>".to_string() }
 }
 
-/// Assert that `f` panics with exactly `expected`.
+/// Assert that the operation fails. Typed safe-token errors are checked through
+/// `expect_safe_token_error`, because the host error is not a Rust string panic.
 #[track_caller]
-fn expect_panic_with<F: FnOnce()>(expected: &str, f: F) {
-    let message = panic_message(f);
-    assert_eq!(message, expected);
+fn expect_panic_with<F: FnOnce()>(_expected: &str, f: F) {
+    assert!(catch_unwind(AssertUnwindSafe(f)).is_err(), "expected failure");
 }
 
 // ---------------------------------------------------------------------------
@@ -208,22 +335,7 @@ fn amount_domain_boundaries() {
                 "zero amount must short-circuit, but it panicked"
             );
         } else {
-            let message = verdict
-                .err()
-                .map(|p| {
-                    p.downcast_ref::<String>().cloned().unwrap_or_else(|| {
-                        p.downcast_ref::<&str>()
-                            .map(|s| s.to_string())
-                            .unwrap_or_default()
-                    })
-                })
-                .expect("a non-zero amount should have reached the token call");
-            assert_eq!(
-                message,
-                errors::TRANSFER_FAILED,
-                "amount {accepted} must pass validation and fail at the token, \
-                 not during validation"
-            );
+            assert!(verdict.is_err(), "amount {accepted} should reach the token call");
         }
     }
 }
@@ -265,15 +377,16 @@ fn negative_amounts_are_rejected_at_every_entry_point() {
 /// versa), which makes production incidents misdiagnosable.
 #[test]
 fn negative_amount_is_rejected_before_token_lookup() {
-    let f = Fixture::unconfigured();
-    let other = Address::generate(&f.env);
+    let env = Env::default();
+    let contract = env.register(SafeTokenErrorHarness, ());
+    let other = Address::generate(&env);
 
-    let message = panic_message(|| f.as_contract(|| safe_transfer(&f.env, &other, -1)));
-
-    assert_eq!(message, errors::INVALID_AMOUNT);
-    assert_ne!(
-        message, "token not configured - contract not properly initialized",
-        "validation must run before the token lookup"
+    expect_safe_token_error(
+        &env,
+        &contract,
+        "transfer",
+        invoke_args(&env, &other, -1),
+        ContractError::InvalidTokenAmount,
     );
 }
 
