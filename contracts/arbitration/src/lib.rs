@@ -27,6 +27,14 @@ pub mod status;
 use status::ArbitrationError as Error;
 use status::{require_transition, ArbitrationError, DisputeStatus};
 
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Dispute {
@@ -221,6 +229,7 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        bump_instance_ttl(&e);
 
         // Lifecycle events: created + status transition
         e.events()
@@ -279,6 +288,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -486,6 +496,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "status_transition"), dispute_id),
@@ -549,10 +560,13 @@ impl CredenceArbitration {
 
     /// Get dispute details.
     pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
-        e.storage()
+        let dispute: Dispute = e
+            .storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
-            .ok_or(ArbitrationError::DisputeNotFound)
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+        bump_instance_ttl(&e);
+        Ok(dispute)
     }
 
     /// Get current total weight for an outcome.
