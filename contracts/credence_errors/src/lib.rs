@@ -138,10 +138,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     NotOriginalAttester = 103,
 
-    /// Caller is not a registered multi-sig signer.
+    /// Caller is not an authorized multi-sig pause or treasury signer.
     /// Replaces: panic!("only signer can propose withdrawal")
     ///           panic!("only signer can approve")
-    /// Contracts: treasury
+    ///           panic!("not pause signer")
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     NotSigner = 104,
 
@@ -159,7 +160,7 @@ pub enum ContractError {
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
-    /// Contracts: registry, treasury
+    /// Contracts: bond, registry, treasury
     /// Wire-stable: do not renumber this error code.
     InvalidPauseAction = 107,
 
@@ -704,7 +705,7 @@ pub enum ContractError {
 
     /// Approval threshold cannot exceed the current number of signers.
     /// Replaces: panic!("threshold cannot exceed signer count")
-    /// Contracts: treasury
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     ThresholdExceedsSigners = 601,
 
@@ -714,9 +715,9 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientTreasuryBalance = 602,
 
-    /// Withdrawal proposal was not found for the given id.
+    /// Governance proposal was not found for the given id.
     /// Replaces: panic!("proposal not found")
-    /// Contracts: treasury
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     ProposalNotFound = 603,
 
@@ -728,7 +729,7 @@ pub enum ContractError {
 
     /// Proposal does not yet have enough approvals to execute.
     /// Replaces: panic!("insufficient approvals to execute")
-    /// Contracts: treasury
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     InsufficientApprovals = 605,
 
@@ -1040,7 +1041,9 @@ impl ErrorExt for ContractError {
             ContractError::NotBondOwner => "Caller is not the bond owner",
             ContractError::UnauthorizedAttester => "Caller is not an authorized attester",
             ContractError::NotOriginalAttester => "Only the original attester can revoke",
-            ContractError::NotSigner => "Caller is not a registered multi-sig signer",
+            ContractError::NotSigner => {
+                "Caller is not an authorized multi-sig pause or treasury signer"
+            }
             ContractError::UnauthorizedDepositor => {
                 "Caller is neither admin nor an authorized depositor"
             }
@@ -1239,7 +1242,7 @@ impl ErrorExt for ContractError {
             ContractError::InsufficientTreasuryBalance => {
                 "Treasury balance is insufficient for withdrawal"
             }
-            ContractError::ProposalNotFound => "Withdrawal proposal not found",
+            ContractError::ProposalNotFound => "Governance proposal not found",
             ContractError::ProposalAlreadyExecuted => {
                 "Withdrawal proposal has already been executed"
             }

@@ -49,7 +49,7 @@ error code instead of an opaque transaction failure.
 | 101 | `NotBondOwner` | ✓ | Caller is not the bond owner |
 | 102 | `UnauthorizedAttester` | ✓ | Caller is not an authorized attester |
 | 103 | `NotOriginalAttester` | ✓ | Only the original attester can revoke |
-| 104 | `NotSigner` | ✓ | Caller is not a registered multi-sig signer |
+| 104 | `NotSigner` | ✓ | Caller is not an authorized multi-sig pause or treasury signer |
 | 105 | `UnauthorizedDepositor` | ✓ | Caller is neither admin nor authorized depositor |
 | 106 | `ContractPaused` | ✓ | Contract is paused; state-mutating operations disallowed |
 | 107 | `InvalidPauseAction` | ✓ | Pause action value is invalid |
@@ -169,11 +169,11 @@ error code instead of an opaque transaction failure.
 | Code | Variant | Recoverable | Description |
 |------|---------|:-----------:|-------------|
 | 600 | `AmountMustBePositive` | ✓ | Amount must be strictly positive |
-| 601 | `ThresholdExceedsSigners` | ✓ | Threshold cannot exceed the current signer count |
+| 601 | `ThresholdExceedsSigners` | ✓ | Approval threshold cannot exceed the current signer count |
 | 602 | `InsufficientTreasuryBalance` | ✓ | Treasury balance is insufficient for withdrawal |
-| 603 | `ProposalNotFound` | ✓ | Withdrawal proposal not found |
+| 603 | `ProposalNotFound` | ✓ | Governance proposal not found |
 | 604 | `ProposalAlreadyExecuted` | ✓ | Proposal has already been executed |
-| 605 | `InsufficientApprovals` | ✓ | Not enough approvals to execute proposal |
+| 605 | `InsufficientApprovals` | ✓ | Not enough approvals to execute the proposal |
 | 606 | `InvalidFlashLoanCallback` | ✗ | Flashloan callback returned an invalid magic value |
 | 607 | `FlashLoanRepaymentFailed` | ✗ | Flashloan principal plus fee was not fully repaid |
 | 608 | `ProposalExpired` | ✓ | Withdrawal proposal has expired; create a new proposal |
