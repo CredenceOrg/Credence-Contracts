@@ -7,6 +7,11 @@
 //! so the contract invocation XDR is actually being built (not just printed as
 //! an empty stub).
 
+// Integration test uses assert_ne! with custom messages for diagnostics.
+// The disallowed_macros lint targets production contract code; test harnesses
+// are explicitly exempted.
+#![allow(clippy::disallowed_macros)]
+
 use std::process::Command;
 
 fn bin() -> &'static str {
@@ -27,11 +32,15 @@ const CONTRACT_ADDR: &str = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
 fn bond_set_early_exit_dry_run_outputs_xdr() {
     let output = Command::new(bin())
         .args([
-            "--contract", CONTRACT_ADDR,
+            "--contract",
+            CONTRACT_ADDR,
             "bond-set-early-exit-config",
-            "--admin",    ADMIN_ADDR,
-            "--treasury", TREASURY_ADDR,
-            "--bps",      "500",
+            "--admin",
+            ADMIN_ADDR,
+            "--treasury",
+            TREASURY_ADDR,
+            "--bps",
+            "500",
         ])
         .output()
         .expect("failed to run credence-admin");
@@ -44,21 +53,34 @@ fn bond_set_early_exit_dry_run_outputs_xdr() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     // Must emit a JSON dry-run report with real XDR.
-    assert!(stdout.contains("\"status\": \"dry_run\""), "missing status: {stdout}");
-    assert!(stdout.contains("\"envelope_xdr\""),        "missing envelope_xdr: {stdout}");
-    assert!(stdout.contains("\"tx_hash\""),              "missing tx_hash: {stdout}");
-    assert!(stdout.contains("\"set_early_exit_config\""), "missing function name: {stdout}");
+    assert!(
+        stdout.contains("\"status\": \"dry_run\""),
+        "missing status: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"envelope_xdr\""),
+        "missing envelope_xdr: {stdout}"
+    );
+    assert!(stdout.contains("\"tx_hash\""), "missing tx_hash: {stdout}");
+    assert!(
+        stdout.contains("\"set_early_exit_config\""),
+        "missing function name: {stdout}"
+    );
 }
 
 #[test]
 fn bond_set_early_exit_dry_run_xdr_is_nonempty() {
     let output = Command::new(bin())
         .args([
-            "--contract", CONTRACT_ADDR,
+            "--contract",
+            CONTRACT_ADDR,
             "bond-set-early-exit-config",
-            "--admin",    ADMIN_ADDR,
-            "--treasury", TREASURY_ADDR,
-            "--bps",      "100",
+            "--admin",
+            ADMIN_ADDR,
+            "--treasury",
+            TREASURY_ADDR,
+            "--bps",
+            "100",
         ])
         .output()
         .expect("failed to run credence-admin");
@@ -67,7 +89,9 @@ fn bond_set_early_exit_dry_run_xdr_is_nonempty() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     let v: serde_json::Value = serde_json::from_str(&stdout)
         .unwrap_or_else(|_| panic!("output is not valid JSON: {stdout}"));
-    let xdr = v["envelope_xdr"].as_str().expect("envelope_xdr is not a string");
+    let xdr = v["envelope_xdr"]
+        .as_str()
+        .expect("envelope_xdr is not a string");
     assert!(!xdr.is_empty(), "envelope_xdr must not be empty");
     assert!(xdr.len() > 20, "envelope_xdr looks too short: {xdr}");
 }
@@ -80,11 +104,15 @@ fn bond_set_early_exit_dry_run_xdr_is_nonempty() {
 fn bond_set_weights_dry_run_outputs_xdr() {
     let output = Command::new(bin())
         .args([
-            "--contract", CONTRACT_ADDR,
+            "--contract",
+            CONTRACT_ADDR,
             "bond-set-weights",
-            "--admin",          ADMIN_ADDR,
-            "--multiplier-bps", "10000",
-            "--max-weight",     "100",
+            "--admin",
+            ADMIN_ADDR,
+            "--multiplier-bps",
+            "10000",
+            "--max-weight",
+            "100",
         ])
         .output()
         .expect("failed to run credence-admin");
@@ -96,9 +124,18 @@ fn bond_set_weights_dry_run_outputs_xdr() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"status\": \"dry_run\""),  "missing status: {stdout}");
-    assert!(stdout.contains("\"envelope_xdr\""),          "missing envelope_xdr: {stdout}");
-    assert!(stdout.contains("\"set_weight_config\""),     "missing function name: {stdout}");
+    assert!(
+        stdout.contains("\"status\": \"dry_run\""),
+        "missing status: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"envelope_xdr\""),
+        "missing envelope_xdr: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"set_weight_config\""),
+        "missing function name: {stdout}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -109,10 +146,13 @@ fn bond_set_weights_dry_run_outputs_xdr() {
 fn delegation_set_pause_signer_dry_run_outputs_xdr() {
     let output = Command::new(bin())
         .args([
-            "--contract", CONTRACT_ADDR,
+            "--contract",
+            CONTRACT_ADDR,
             "delegation-set-pause-signer",
-            "--admin",        ADMIN_ADDR,
-            "--pause-signer", TREASURY_ADDR,
+            "--admin",
+            ADMIN_ADDR,
+            "--pause-signer",
+            TREASURY_ADDR,
             "--enabled=true",
         ])
         .output()
@@ -125,9 +165,18 @@ fn delegation_set_pause_signer_dry_run_outputs_xdr() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("\"status\": \"dry_run\""),  "missing status: {stdout}");
-    assert!(stdout.contains("\"envelope_xdr\""),          "missing envelope_xdr: {stdout}");
-    assert!(stdout.contains("\"set_pause_signer\""),      "missing function name: {stdout}");
+    assert!(
+        stdout.contains("\"status\": \"dry_run\""),
+        "missing status: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"envelope_xdr\""),
+        "missing envelope_xdr: {stdout}"
+    );
+    assert!(
+        stdout.contains("\"set_pause_signer\""),
+        "missing function name: {stdout}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -138,12 +187,16 @@ fn delegation_set_pause_signer_dry_run_outputs_xdr() {
 fn submit_without_signer_fails() {
     let output = Command::new(bin())
         .args([
-            "--contract", CONTRACT_ADDR,
+            "--contract",
+            CONTRACT_ADDR,
             "--submit",
             "bond-set-weights",
-            "--admin",          ADMIN_ADDR,
-            "--multiplier-bps", "500",
-            "--max-weight",     "50",
+            "--admin",
+            ADMIN_ADDR,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "50",
         ])
         .output()
         .expect("failed to run credence-admin");
@@ -172,27 +225,53 @@ fn different_commands_produce_different_xdr() {
             .args(&args)
             .output()
             .expect("failed to run credence-admin");
-        assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-        let v: serde_json::Value = serde_json::from_str(
-            &String::from_utf8_lossy(&out.stdout)
-        ).expect("invalid JSON");
+        assert!(
+            out.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let v: serde_json::Value =
+            serde_json::from_str(&String::from_utf8_lossy(&out.stdout)).expect("invalid JSON");
         v["envelope_xdr"].as_str().unwrap().to_string()
     };
 
     let xdr_early_exit = run(&[
         "bond-set-early-exit-config",
-        "--admin", ADMIN_ADDR, "--treasury", TREASURY_ADDR, "--bps", "500",
+        "--admin",
+        ADMIN_ADDR,
+        "--treasury",
+        TREASURY_ADDR,
+        "--bps",
+        "500",
     ]);
     let xdr_weights = run(&[
         "bond-set-weights",
-        "--admin", ADMIN_ADDR, "--multiplier-bps", "9000", "--max-weight", "200",
+        "--admin",
+        ADMIN_ADDR,
+        "--multiplier-bps",
+        "9000",
+        "--max-weight",
+        "200",
     ]);
     let xdr_pause = run(&[
         "delegation-set-pause-signer",
-        "--admin", ADMIN_ADDR, "--pause-signer", TREASURY_ADDR, "--enabled=true",
+        "--admin",
+        ADMIN_ADDR,
+        "--pause-signer",
+        TREASURY_ADDR,
+        "--enabled=true",
     ]);
 
-    assert_ne!(xdr_early_exit, xdr_weights,   "early_exit and weights XDR should differ");
-    assert_ne!(xdr_weights,    xdr_pause,      "weights and pause XDR should differ");
-    assert_ne!(xdr_early_exit, xdr_pause,      "early_exit and pause XDR should differ");
+    assert_ne!(
+        xdr_early_exit, xdr_weights,
+        "early_exit and weights XDR should differ"
+    );
+    assert_ne!(
+        xdr_weights, xdr_pause,
+        "weights and pause XDR should differ"
+    );
+    assert_ne!(
+        xdr_early_exit, xdr_pause,
+        "early_exit and pause XDR should differ"
+    );
 }

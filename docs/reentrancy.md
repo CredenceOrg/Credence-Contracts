@@ -176,6 +176,41 @@ if let Some(callback) = get_callback() {
 4. **Validation Ordering**: Verify validation errors occur before lock acquisition
 5. **Sequential Operations**: Verify lock is properly released between operations
 6. **Lock State Tracking**: Verify lock state is correct throughout operations
+7. **Hostile Token Fault Injection**: Use a malicious SEP-41-compatible token
+   whose `transfer` / `transfer_from` callback attempts to re-enter bond
+   entrypoints while the outer call is moving funds.
+
+### Hostile Token Threat Model
+
+`ChaosToken` also exposes a configurable hostile-token mode for adversarial
+fault injection. When armed, its next `transfer` or `transfer_from` attempts a
+cross-contract call back into the bond contract and records whether that call
+was rejected. The token uses `try_invoke_contract` so a rejected re-entry can be
+observed without forcing the outer token transfer to fail.
+
+The hostile-token suite covers re-entry attempts into:
+
+- `withdraw` from a slash-to-treasury transfer after the lock-up period.
+- `withdraw_early` from an early-exit treasury/user payout.
+- `slash` from a slash-to-treasury transfer.
+- `top_up` from an allowance-based `transfer_from`.
+- `collect_fees` from an early-exit payout while protocol fees remain pending.
+
+Each attack asserts that the re-entry was attempted, the nested call was
+rejected, the lock is released after the outer call, and bond invariants still
+hold (`slashed_amount <= bonded_amount`, non-negative balances, and no
+double-spend of token balances).
+
+### Current Audit Note
+
+The hostile-token tests intentionally exercise the real token transfer paths,
+not only test callback hooks. During review, the highest-risk surfaces are any
+fund-moving entrypoint that calls `TokenClient::transfer` or
+`TokenClient::transfer_from` before acquiring the same reentrancy lock used by
+withdrawal, slashing, and fee collection paths. If a hostile-token test fails,
+do not relax the assertion; treat it as evidence that the entrypoint is missing
+guard coverage and either document the bypass or add the same guard to that
+path after audit approval.
 
 ### Malicious Callback Contract
 

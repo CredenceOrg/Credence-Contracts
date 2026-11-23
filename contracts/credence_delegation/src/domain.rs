@@ -26,10 +26,31 @@
 //! the scheme field is absent, preserving backwards compatibility. Clients
 //! transmitting payloads should always set the scheme explicitly.
 
-use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+use credence_errors::{verify_no_future_ledger_sequence, ContractError};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, String};
 
 pub use crate::verifier::SchemeTag;
+
+/// Signature domain identifier for the CredenceDelegation contract.
+///
+/// This constant binds signatures to this specific contract, preventing
+/// cross-contract replay attacks where a signature intended for one contract
+/// could be replayed against another. Each contract in the Credence system
+/// has a unique signature domain constant.
+///
+/// # Security
+///
+/// Without domain separation, a signature created for contract A could be
+/// replayed against contract B if both contracts share the same nonce namespace
+/// and signature verification logic. By including this domain in the signed
+/// payload hash, we ensure signatures are only valid for their intended contract.
+///
+/// # Value
+///
+/// The domain is a human-readable string that uniquely identifies this contract
+/// within the Credence system. It should be included in the signed payload hash
+/// along with other payload fields (nonce, deadline, etc.).
+pub const SIGNATURE_DOMAIN: &str = "CredenceDelegation";
 
 /// Labels each function domain that accepts a delegated (off-chain) signature.
 ///
@@ -65,6 +86,19 @@ pub enum DomainTag {
 /// Wire-stability note: The `scheme` field value must never be reinterpreted
 /// or renumbered after deployment. Old signatures must remain verifiable even
 /// after the contract supports new schemes.
+///
+/// ## Staleness Guard
+///
+/// The `ledger_number` field records the **Stellar ledger sequence number** at
+/// which the payload was signed. On execution the contract compares it to
+/// `e.ledger().sequence()` and rejects payloads where
+/// `sequence - ledger_number > MAX_PAYLOAD_AGE_LEDGERS`.
+///
+/// Without this bound an attacker who captures a signed-but-unsubmitted
+/// payload (e.g. via a network-layer intercept or a mempool watch) can hold
+/// it and replay it arbitrarily far in the future, until the owner happens to
+/// consume the nonce by other means. The staleness window limits that replay
+/// opportunity to a short forward-only interval (~17 min at 5 s/ledger).
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct DelegatedActionPayload {
@@ -81,6 +115,17 @@ pub struct DelegatedActionPayload {
     /// The signature scheme: Ed25519, Secp256r1, or MLDSA44.
     /// Defaults to Ed25519 for backwards compatibility with legacy payloads.
     pub scheme: u32,
+    /// Stellar ledger sequence number at signature time.
+    ///
+    /// The contract rejects payloads where
+    /// `e.ledger().sequence() - ledger_number > MAX_PAYLOAD_AGE_LEDGERS`.
+    /// Clients should populate this with `e.ledger().sequence()` (or the
+    /// sequence returned by the Horizon `/ledgers/latest` endpoint) at the
+    /// moment the payload is constructed and signed.
+    pub ledger_number: u32,
+    /// Signature domain string (e.g. "CredenceDelegation").
+    /// Bound into the signed hash to prevent cross-contract replay.
+    pub signature_domain: String,
 }
 
 /// Validates that the fields in `payload` match the parameters supplied at the
@@ -94,6 +139,7 @@ pub struct DelegatedActionPayload {
 /// - Owner mismatch  => `OwnerMismatch` (505)
 /// - Target mismatch => `TargetMismatch` (506)
 /// - Contract ID mismatch => `ContractIdMismatch` (507)
+/// - Signature domain mismatch => `DomainMismatch` (504)
 pub fn verify_payload(
     e: &Env,
     payload: &DelegatedActionPayload,
@@ -138,5 +184,71 @@ pub fn decode_scheme_safe(payload: &DelegatedActionPayload) -> SchemeTag {
 pub fn verify_scheme_supported(e: &Env, scheme: u32) {
     if !SchemeTag::is_known(scheme) {
         panic_with_error!(e, ContractError::UnknownScheme);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Staleness guard
+// ---------------------------------------------------------------------------
+
+/// Maximum age, in ledgers, that a `DelegatedActionPayload` may be at
+/// execution time.
+///
+/// A payload is rejected when `e.ledger().sequence() - payload.ledger_number`
+/// exceeds this threshold.
+///
+/// ## Threat mitigated
+///
+/// An attacker who captures a valid signed payload (e.g. via a network-layer
+/// intercept, a compromised relayer, or a mempool watch) can hold it and
+/// submit it at any future ledger — silently performing the action on behalf
+/// of the signer — as long as:
+///   (a) the nonce has not been consumed by another operation, and
+///   (b) there is no time-to-live baked into the payload.
+///
+/// Bounding `ledger_number` to a short forward-only window closes that gap:
+/// even a perfectly captured payload expires on-chain after at most
+/// `MAX_PAYLOAD_AGE_LEDGERS` ledgers (~17 min at 5 s/ledger for 200 ledgers).
+///
+/// ## Value choice
+///
+/// 200 ledgers ≈ 1 000 seconds (≈ 17 minutes) at the 5 s target close time.
+/// This is long enough for any realistic relayer latency or brief network
+/// partition, but short enough that captured payloads cannot be held for hours.
+///
+/// If operational requirements change (e.g. very slow networks), the constant
+/// can be increased by contract upgrade without touching the wire format.
+pub const MAX_PAYLOAD_AGE_LEDGERS: u32 = 200;
+
+/// Assert that `payload.ledger_number` is within the allowed staleness window.
+///
+/// Rejects the payload when the current ledger sequence exceeds
+/// `payload.ledger_number + MAX_PAYLOAD_AGE_LEDGERS`.
+///
+/// Also rejects the payload when `payload.ledger_number` exceeds the current
+/// ledger sequence (i.e. the payload claims to have been signed in the future).
+/// This is a defence-in-depth check: without it, `current.saturating_sub(signed_at)`
+/// would yield 0 for any future value, making the payload appear perpetually
+/// fresh and allowing indefinite replay.
+///
+/// Callers must invoke this **after** `verify_payload` (domain/owner/target
+/// binding) and **before** nonce consumption so that a stale payload does not
+/// burn a nonce slot.
+///
+/// # Panics
+/// * [`ContractError::TimestampInFuture`] when `payload.ledger_number > e.ledger().sequence()`.
+/// * [`ContractError::PayloadTooOld`] when
+///   `current_sequence - ledger_number > MAX_PAYLOAD_AGE_LEDGERS`.
+pub fn check_payload_age(e: &Env, payload: &DelegatedActionPayload) {
+    let current = e.ledger().sequence();
+    let signed_at = payload.ledger_number;
+    // Reject future-dated payloads first.  Without this guard,
+    // saturating_sub would yield 0 for any signed_at > current, making
+    // the payload appear fresh even though it carries an impossible future
+    // ledger number (issue #797).
+    verify_no_future_ledger_sequence!(e, signed_at);
+    // Now current >= signed_at is guaranteed, so subtraction is safe.
+    if current.saturating_sub(signed_at) > MAX_PAYLOAD_AGE_LEDGERS {
+        panic_with_error!(e, ContractError::PayloadTooOld);
     }
 }

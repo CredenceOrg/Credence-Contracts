@@ -1,6 +1,14 @@
 # Bond Introspection API
 
-Two read-only entrypoints that give operators and indexers a single-call snapshot of contract configuration and per-identity bond state.
+Read-only entrypoints that give operators and indexers a snapshot of contract configuration, versioning, and per-identity bond state.
+
+## Entrypoints
+
+### `version(env) -> String`
+
+Returns the constant version string for the contract (e.g., `"0.1.0"`). This is used for off-chain monitoring to identify which build is currently deployed.
+
+**Auth:** none — no `require_auth` is called on this path.
 
 ## Motivation
 
@@ -8,12 +16,12 @@ Previously, reconstructing the full contract state required multiple separate ca
 
 ## Entrypoints
 
-### `describe_config(env) -> BondConfigView`
+### `describe_config(env) -> Option<BondConfigView>`
 
 Returns all contract-level configuration in one call.
 
 **Auth:** none — no `require_auth` is called on this path.  
-**Panics:** `ContractError::NotInitialized` if the contract has not been initialized.
+**Returns:** `None` if the contract has not been initialized yet; otherwise `Some(BondConfigView)`.
 
 ```rust
 pub struct BondConfigView {
@@ -83,7 +91,7 @@ pub struct BondStateView {
 
 - Neither entrypoint calls `require_auth` or mutates any storage key.
 - Both are safe to call from any context (indexers, dashboards, other contracts).
-- `describe_config` panics on uninitialized contracts to prevent silent zero-value reads that could mislead callers.
+- `describe_config` returns `None` on uninitialized contracts so callers can safely inspect the contract without tripping a panic.
 - `describe_bond` returns `Option::None` rather than panicking so callers can distinguish "bond absent" from "contract not initialized".
 
 ## Example usage (Soroban CLI)

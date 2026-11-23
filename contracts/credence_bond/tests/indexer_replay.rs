@@ -204,7 +204,7 @@ fn setup() -> Fixture {
 /// The core invariant: replaying the captured stream equals on-chain state.
 fn assert_replay_matches(f: &Fixture) {
     let reconstructed = replay(&capture(&f.env));
-    let on_chain = f.client.get_identity_state();
+    let on_chain = f.client.get_identity_state(&identity);
     assert_eq!(
         reconstructed.expect("stream did not reconstruct any bond"),
         on_chain,
@@ -300,7 +300,7 @@ fn dropping_topup_event_diverges() {
     // Sanity: the intact stream reconstructs correctly.
     assert_eq!(
         replay(&full_stream).expect("intact stream should reconstruct"),
-        f.client.get_identity_state()
+        f.client.get_identity_state(&identity)
     );
 
     // Drop the first Increased (top_up) event, as a lossy indexer might.
@@ -321,7 +321,7 @@ fn dropping_topup_event_diverges() {
     let reconstructed = replay(&lossy).expect("stream still has genesis event");
     assert_ne!(
         reconstructed,
-        f.client.get_identity_state(),
+        f.client.get_identity_state(&identity),
         "dropping the top_up event should make replay diverge from on-chain state"
     );
 }

@@ -12,14 +12,43 @@
 
 #![allow(dead_code)]
 
+use crate::parameters::MAX_QUERY_LIMIT;
 use crate::{events, DataKey};
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Maximum number of claims that can be processed in a single batch
 const MAX_BATCH_CLAIMS: u32 = 50;
 
+/// Hard cap on the page size accepted by [`get_pending_claims_page`].
+///
+/// A caller requesting a larger `limit` is silently clamped to this value so a
+/// single read can never exceed the gas/read budget regardless of the argument.
+pub const MAX_PAGE_LIMIT: u32 = 50;
+
 /// Default claim expiry period (30 days in seconds)
 const DEFAULT_CLAIM_EXPIRY: u64 = 30 * 24 * 60 * 60;
+
+/// Safety buffer added on top of the claim's `expires_at` TTL (~1 day at 5 s/ledger).
+const LEDGER_BUMP_BUFFER: u32 = 17_280;
+
+/// Seconds per ledger (Soroban network standard).
+const SECONDS_PER_LEDGER: u64 = 5;
+
+/// Compute persistent TTL for a user claim entry.
+///
+/// Converts `expires_at` (Unix seconds) to ledgers relative to now, adds
+/// `LEDGER_BUMP_BUFFER`, and caps at `PERSISTENT_TTL_MAX`. If `expires_at == 0`
+/// (no expiry), returns `PERSISTENT_TTL_MAX`.
+fn ttl_for_claim(e: &Env, expires_at: u64) -> u32 {
+    if expires_at == 0 {
+        return crate::PERSISTENT_TTL_MAX;
+    }
+    let now = e.ledger().timestamp();
+    let remaining_secs = expires_at.saturating_sub(now);
+    let ledgers = (remaining_secs / SECONDS_PER_LEDGER) as u32;
+    let desired = ledgers.saturating_add(LEDGER_BUMP_BUFFER);
+    desired.min(crate::PERSISTENT_TTL_MAX)
+}
 
 /// Types of claimable rewards
 #[contracttype]
@@ -136,38 +165,43 @@ pub fn add_pending_claim(
     };
 
     // Store claim by ID for direct access
+    let claim_ttl = ttl_for_claim(e, expires_at);
+    let claim_by_id_key = DataKey::ClaimById(claim_id);
     e.storage()
         .persistent()
-        .set(&DataKey::ClaimById(claim_id), &claim.clone());
+        .set(&claim_by_id_key, &claim.clone());
+    e.storage()
+        .persistent()
+        .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
 
     // Get existing claims or create new vector
+    let pending_key = DataKey::PendingClaims(user.clone());
     let mut claims: Vec<PendingClaim> = e
         .storage()
         .persistent()
-        .get(&DataKey::PendingClaims(user.clone()))
+        .get(&pending_key)
         .unwrap_or(Vec::new(e));
 
     claims.push_back(claim.clone());
 
     // Update storage
+    e.storage().persistent().set(&pending_key, &claims);
     e.storage()
         .persistent()
-        .set(&DataKey::PendingClaims(user.clone()), &claims);
+        .extend_ttl(&pending_key, claim_ttl / 2, claim_ttl);
 
     // Update total claimable amount
-    let current_total: i128 = e
-        .storage()
-        .persistent()
-        .get(&DataKey::ClaimableAmount(user.clone()))
-        .unwrap_or(0);
+    let claimable_key = DataKey::ClaimableAmount(user.clone());
+    let current_total: i128 = e.storage().persistent().get(&claimable_key).unwrap_or(0);
 
     let new_total = current_total
         .checked_add(amount)
         .expect("claimable amount overflow");
 
+    e.storage().persistent().set(&claimable_key, &new_total);
     e.storage()
         .persistent()
-        .set(&DataKey::ClaimableAmount(user.clone()), &new_total);
+        .extend_ttl(&claimable_key, claim_ttl / 2, claim_ttl);
 
     // Emit event
     events::emit_claim_added(e, user, &claim);
@@ -184,10 +218,15 @@ fn get_next_claim_id(e: &Env) -> u64 {
         .unwrap_or(0);
     let next = current.checked_add(1).expect("claim counter overflow");
     e.storage().persistent().set(&DataKey::ClaimCounter, &next);
+    e.storage().persistent().extend_ttl(
+        &DataKey::ClaimCounter,
+        crate::PERSISTENT_TTL_MAX / 2,
+        crate::PERSISTENT_TTL_MAX,
+    );
     next
 }
 
-/// Get all pending claims for a user
+/// Get all pending claims for a user.
 ///
 /// # Arguments
 /// * `e` - Contract environment
@@ -195,11 +234,83 @@ fn get_next_claim_id(e: &Env) -> u64 {
 ///
 /// # Returns
 /// Vector of pending claims (empty if none)
+///
+/// # Note
+/// This performs an **unbounded** read of the user's entire claim vector. For a
+/// heavily-rewarded user the read can exceed the ledger read budget. Prefer
+/// [`get_pending_claims_page`] for large claim sets; this function is suitable
+/// only when the set is known to be small.
 pub fn get_pending_claims(e: &Env, user: &Address) -> Vec<PendingClaim> {
     e.storage()
         .persistent()
         .get(&DataKey::PendingClaims(user.clone()))
         .unwrap_or(Vec::new(e))
+}
+
+/// Get a bounded, cursor-paginated page of a user's pending claims.
+///
+/// Claims are stored in insertion order, and `claim_id` is assigned from a
+/// monotonically increasing counter, so the stored vector is already ordered by
+/// strictly increasing `claim_id`. This function relies on that ordering rather
+/// than any map-iteration order.
+///
+/// # Cursor contract
+/// * `start_after` — return only claims whose `claim_id > start_after`. Pass `0`
+///   for the first page (claim ids start at 1, so `0` includes everything).
+/// * `limit` — maximum number of claims to return. Hard-capped at
+///   [`MAX_PAGE_LIMIT`]; a larger value is clamped, never honored.
+/// * Returns `(page, next_cursor)` where `next_cursor` is `Some(last_claim_id)`
+///   when more claims may remain (the page filled to `limit`), or `None` when the
+///   page exhausted the remaining claims.
+///
+/// Feeding `next_cursor` back as `start_after` walks the full set in bounded,
+/// resumable pages; concatenating every page reproduces [`get_pending_claims`]
+/// (modulo claims added between calls).
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address to enumerate claims for
+/// * `start_after` - Exclusive lower bound on `claim_id` (cursor)
+/// * `limit` - Requested page size (clamped to `MAX_PAGE_LIMIT`)
+pub fn get_pending_claims_page(
+    e: &Env,
+    user: &Address,
+    start_after: u64,
+    limit: u32,
+) -> (Vec<PendingClaim>, Option<u64>) {
+    let claims = get_pending_claims(e, user);
+    let capped = limit.min(MAX_PAGE_LIMIT);
+
+    let mut page = Vec::new(e);
+    let mut next_cursor: Option<u64> = None;
+
+    // Empty set or a zero limit yields an empty, exhausted page.
+    if capped == 0 {
+        return (page, None);
+    }
+
+    for claim in claims.iter() {
+        // Deterministic ordering: storage is sorted ascending by claim_id, so
+        // skipping claims at or before the cursor is correct and cheap.
+        if claim.claim_id <= start_after {
+            continue;
+        }
+        if page.len() >= capped {
+            // The page is full and at least one more eligible claim exists, so
+            // hand back a resumable cursor pointing at the last returned id.
+            // (next_cursor was set on the final push below.)
+            break;
+        }
+        next_cursor = Some(claim.claim_id);
+        page.push_back(claim);
+    }
+
+    // If we never filled the page, the set is exhausted — no further pages.
+    if page.len() < capped {
+        next_cursor = None;
+    }
+
+    (page, next_cursor)
 }
 
 /// Get total claimable amount for a user
@@ -280,6 +391,12 @@ pub fn process_claims(
 
         let claim = claims.get(i).unwrap();
 
+        // Skip already-processed claims — they have been paid out and must not be re-paid.
+        if claim.processed {
+            remaining_claims.push_back(claim);
+            continue;
+        }
+
         // Skip expired claims
         if claim.expires_at > 0 && now > claim.expires_at {
             continue;
@@ -291,8 +408,20 @@ pub fn process_claims(
             continue;
         }
 
+        // Mark this claim as processed and persist the updated record so
+        // re-invocations and audit queries see the correct lifecycle state
+        // (pending -> processed -> expired-and-pruned).
+        let mut paid_claim = claim.clone();
+        paid_claim.processed = true;
+        let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
+        let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
+        e.storage().persistent().set(&claim_by_id_key, &paid_claim);
+        e.storage()
+            .persistent()
+            .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+
         // Process this claim
-        processed_claims.push_back(claim.clone());
+        processed_claims.push_back(paid_claim);
         total_amount = total_amount
             .checked_add(claim.amount)
             .expect("claim total overflow");
@@ -323,17 +452,29 @@ pub fn process_claims(
             .persistent()
             .remove(&DataKey::ClaimableAmount(user.clone()));
     } else {
+        let remaining_pending_key = DataKey::PendingClaims(user.clone());
         e.storage()
             .persistent()
-            .set(&DataKey::PendingClaims(user.clone()), &remaining_claims);
+            .set(&remaining_pending_key, &remaining_claims);
+        e.storage().persistent().extend_ttl(
+            &remaining_pending_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
 
         let remaining_amount = get_claimable_amount(e, user)
             .checked_sub(total_amount)
             .expect("claimable amount underflow");
 
+        let remaining_claimable_key = DataKey::ClaimableAmount(user.clone());
         e.storage()
             .persistent()
-            .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
+            .set(&remaining_claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(
+            &remaining_claimable_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
     }
 
     // Transfer tokens to user using safe token operations
@@ -356,6 +497,264 @@ pub fn process_claims(
 
     // Emit events
     events::emit_claims_processed(e, user, &result, &processed_claims);
+
+    result
+}
+
+/// Process a single claim by its unique `claim_id`
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address claiming the reward
+/// * `claim_id` - ID of the claim to process
+///
+/// # Returns
+/// ClaimResult with details of the processed claim
+///
+/// # Panics
+/// * If claim is not found, expired, or already processed
+pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResult {
+    user.require_auth();
+
+    let now = e.ledger().timestamp();
+    let mut claims = get_pending_claims(e, user);
+
+    let mut found_idx = None;
+    for (i, claim) in claims.iter().enumerate() {
+        if claim.claim_id == claim_id {
+            found_idx = Some(i);
+            break;
+        }
+    }
+
+    let idx = found_idx.expect("claim not found for user");
+    let claim = claims.get(idx as u32).unwrap();
+
+    if claim.processed {
+        panic!("claim already processed");
+    }
+    if claim.expires_at > 0 && now > claim.expires_at {
+        panic!("claim expired");
+    }
+
+    let mut paid_claim = claim.clone();
+    paid_claim.processed = true;
+
+    let claim_by_id_key = DataKey::ClaimById(claim_id);
+    let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
+    e.storage().persistent().set(&claim_by_id_key, &paid_claim);
+    e.storage()
+        .persistent()
+        .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+
+    claims.remove(idx as u32);
+
+    if claims.is_empty() {
+        e.storage()
+            .persistent()
+            .remove(&DataKey::PendingClaims(user.clone()));
+        e.storage()
+            .persistent()
+            .remove(&DataKey::ClaimableAmount(user.clone()));
+    } else {
+        let pending_key = DataKey::PendingClaims(user.clone());
+        e.storage().persistent().set(&pending_key, &claims);
+        e.storage().persistent().extend_ttl(
+            &pending_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
+
+        let current_amount = get_claimable_amount(e, user);
+        let remaining_amount = current_amount
+            .checked_sub(claim.amount)
+            .expect("amount underflow");
+        let claimable_key = DataKey::ClaimableAmount(user.clone());
+        e.storage()
+            .persistent()
+            .set(&claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(
+            &claimable_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
+    }
+
+    if claim.amount > 0 {
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::BondToken)
+            .expect("token not configured");
+        let contract = e.current_contract_address();
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &claim.amount);
+    }
+
+    let mut claim_types = Vec::new(e);
+    claim_types.push_back(claim.claim_type);
+
+    let result = ClaimResult {
+        processed_count: 1,
+        total_amount: claim.amount,
+        claim_types,
+    };
+
+    let mut processed_claims = Vec::new(e);
+    processed_claims.push_back(paid_claim);
+    events::emit_claims_processed(e, user, &result, &processed_claims);
+
+    result
+}
+
+/// Process claims for a user with cursor pagination
+///
+/// # Arguments
+/// * `e` - Contract environment
+/// * `user` - Address claiming rewards
+/// * `cursor` - Start processing claims with `claim_id > cursor`
+/// * `limit` - Maximum number of claims to process
+/// * `claim_types` - Optional filter for specific claim types (empty = all types)
+///
+/// # Returns
+/// ClaimResult with details of processed claims
+pub fn process_claims_paginated(
+    e: &Env,
+    user: &Address,
+    cursor: u64,
+    limit: u32,
+    claim_types: Vec<ClaimType>,
+) -> ClaimResult {
+    user.require_auth();
+
+    let now = e.ledger().timestamp();
+    let claims = get_pending_claims(e, user);
+
+    if claims.is_empty() {
+        return ClaimResult {
+            processed_count: 0,
+            total_amount: 0,
+            claim_types: Vec::new(e),
+        };
+    }
+
+    let filter_types = !claim_types.is_empty();
+    let mut type_set: Map<ClaimType, bool> = Map::new(e);
+    if filter_types {
+        for i in 0..claim_types.len() {
+            type_set.set(claim_types.get(i).unwrap(), true);
+        }
+    }
+
+    let actual_limit = if limit == 0 {
+        MAX_BATCH_CLAIMS
+    } else {
+        limit.min(MAX_BATCH_CLAIMS)
+    };
+
+    let mut processed_claims = Vec::new(e);
+    let mut valid_claims = Vec::new(e);
+    let mut total_amount = 0i128;
+    let mut processed_types = Vec::new(e);
+    let mut processed_count_in_batch = 0;
+
+    for i in 0..claims.len() {
+        let claim = claims.get(i).unwrap();
+
+        if claim.processed || (claim.expires_at > 0 && now > claim.expires_at) {
+            continue;
+        }
+
+        if claim.claim_id <= cursor || processed_count_in_batch >= actual_limit {
+            valid_claims.push_back(claim);
+            continue;
+        }
+
+        if filter_types && !type_set.contains_key(claim.claim_type) {
+            valid_claims.push_back(claim);
+            continue;
+        }
+
+        let mut paid_claim = claim.clone();
+        paid_claim.processed = true;
+        let claim_by_id_key = DataKey::ClaimById(paid_claim.claim_id);
+        let claim_ttl = ttl_for_claim(e, paid_claim.expires_at);
+        e.storage().persistent().set(&claim_by_id_key, &paid_claim);
+        e.storage()
+            .persistent()
+            .extend_ttl(&claim_by_id_key, claim_ttl / 2, claim_ttl);
+
+        processed_claims.push_back(paid_claim.clone());
+        total_amount = total_amount
+            .checked_add(claim.amount)
+            .expect("claim total overflow");
+
+        let mut type_exists = false;
+        for j in 0..processed_types.len() {
+            if processed_types.get(j).unwrap() == claim.claim_type {
+                type_exists = true;
+                break;
+            }
+        }
+        if !type_exists {
+            processed_types.push_back(claim.claim_type);
+        }
+
+        processed_count_in_batch += 1;
+    }
+
+    if valid_claims.is_empty() {
+        e.storage()
+            .persistent()
+            .remove(&DataKey::PendingClaims(user.clone()));
+        e.storage()
+            .persistent()
+            .remove(&DataKey::ClaimableAmount(user.clone()));
+    } else {
+        let remaining_pending_key = DataKey::PendingClaims(user.clone());
+        e.storage()
+            .persistent()
+            .set(&remaining_pending_key, &valid_claims);
+        e.storage().persistent().extend_ttl(
+            &remaining_pending_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
+
+        let mut remaining_amount = 0i128;
+        for claim in valid_claims.iter() {
+            remaining_amount += claim.amount;
+        }
+
+        let remaining_claimable_key = DataKey::ClaimableAmount(user.clone());
+        e.storage()
+            .persistent()
+            .set(&remaining_claimable_key, &remaining_amount);
+        e.storage().persistent().extend_ttl(
+            &remaining_claimable_key,
+            crate::PERSISTENT_TTL_MAX / 2,
+            crate::PERSISTENT_TTL_MAX,
+        );
+    }
+
+    if total_amount > 0 {
+        let token: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::BondToken)
+            .expect("token not configured");
+        let contract = e.current_contract_address();
+        soroban_sdk::token::TokenClient::new(e, &token).transfer(&contract, user, &total_amount);
+    }
+
+    let result = ClaimResult {
+        processed_count: processed_count_in_batch,
+        total_amount,
+        claim_types: processed_types,
+    };
+
+    if processed_count_in_batch > 0 {
+        events::emit_claims_processed(e, user, &result, &processed_claims);
+    }
 
     result
 }
@@ -403,17 +802,29 @@ pub fn cleanup_expired_claims(e: &Env, user: &Address) -> u32 {
                 .persistent()
                 .remove(&DataKey::ClaimableAmount(user.clone()));
         } else {
+            let valid_pending_key = DataKey::PendingClaims(user.clone());
             e.storage()
                 .persistent()
-                .set(&DataKey::PendingClaims(user.clone()), &valid_claims);
+                .set(&valid_pending_key, &valid_claims);
+            e.storage().persistent().extend_ttl(
+                &valid_pending_key,
+                crate::PERSISTENT_TTL_MAX / 2,
+                crate::PERSISTENT_TTL_MAX,
+            );
 
             let remaining_amount = get_claimable_amount(e, user)
                 .checked_sub(expired_amount)
                 .expect("claimable amount underflow");
 
+            let valid_claimable_key = DataKey::ClaimableAmount(user.clone());
             e.storage()
                 .persistent()
-                .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
+                .set(&valid_claimable_key, &remaining_amount);
+            e.storage().persistent().extend_ttl(
+                &valid_claimable_key,
+                crate::PERSISTENT_TTL_MAX / 2,
+                crate::PERSISTENT_TTL_MAX,
+            );
         }
 
         // Emit event
@@ -511,17 +922,29 @@ pub fn expire_claims_bounded(e: &Env, user: &Address, max_iter: u32) -> u32 {
                 .persistent()
                 .remove(&DataKey::ClaimableAmount(user.clone()));
         } else {
+            let pruned_pending_key = DataKey::PendingClaims(user.clone());
             e.storage()
                 .persistent()
-                .set(&DataKey::PendingClaims(user.clone()), &valid_claims);
+                .set(&pruned_pending_key, &valid_claims);
+            e.storage().persistent().extend_ttl(
+                &pruned_pending_key,
+                crate::PERSISTENT_TTL_MAX / 2,
+                crate::PERSISTENT_TTL_MAX,
+            );
 
             let remaining_amount = get_claimable_amount(e, user)
                 .checked_sub(expired_amount)
                 .expect("claimable amount underflow");
 
+            let pruned_claimable_key = DataKey::ClaimableAmount(user.clone());
             e.storage()
                 .persistent()
-                .set(&DataKey::ClaimableAmount(user.clone()), &remaining_amount);
+                .set(&pruned_claimable_key, &remaining_amount);
+            e.storage().persistent().extend_ttl(
+                &pruned_claimable_key,
+                crate::PERSISTENT_TTL_MAX / 2,
+                crate::PERSISTENT_TTL_MAX,
+            );
         }
 
         // Emit event with pruned count
@@ -529,4 +952,85 @@ pub fn expire_claims_bounded(e: &Env, user: &Address, max_iter: u32) -> u32 {
     }
 
     expired_count
+}
+
+// ============================================================================
+// Paginated Read Helpers
+// ============================================================================
+
+/// Return the total number of pending (unprocessed, non-expired) claims for
+/// `user`. O(1) — reads the stored Vec length without iterating.
+///
+/// Use this to drive pagination without loading the full claim vector.
+pub fn get_pending_claims_count(e: &Env, user: &Address) -> u32 {
+    e.storage()
+        .persistent()
+        .get::<_, Vec<PendingClaim>>(&DataKey::PendingClaims(user.clone()))
+        .map(|v| v.len())
+        .unwrap_or(0)
+}
+
+/// Return a bounded page of pending claims for `user`.
+///
+/// `limit` is silently clamped to [`MAX_QUERY_LIMIT`] (200). Pass `0` to use
+/// the cap directly. Returns an empty vec when `offset >= total count`.
+///
+/// This is a **pure read** — it does not process or remove claims.
+///
+/// # Arguments
+/// * `e`      - Contract environment
+/// * `user`   - Address whose pending claims to read
+/// * `offset` - Zero-based start index in the stored claim vector
+/// * `limit`  - Maximum claims to return (clamped to `MAX_QUERY_LIMIT`)
+///
+/// # Example
+/// ```text
+/// let mut offset = 0u32;
+/// loop {
+///     let page = get_pending_claims_paginated(e, &user, offset, 50);
+///     if page.is_empty() { break; }
+///     offset += page.len();
+/// }
+/// ```
+pub fn get_pending_claims_paginated(
+    e: &Env,
+    user: &Address,
+    offset: u32,
+    limit: u32,
+) -> Vec<PendingClaim> {
+    let all: Vec<PendingClaim> = e
+        .storage()
+        .persistent()
+        .get(&DataKey::PendingClaims(user.clone()))
+        .unwrap_or_else(|| Vec::new(e));
+
+    let total = all.len();
+    let mut page = Vec::new(e);
+
+    if offset >= total {
+        return page;
+    }
+
+    let effective_limit = if limit == 0 {
+        MAX_QUERY_LIMIT
+    } else {
+        limit.min(MAX_QUERY_LIMIT)
+    };
+
+    let end = (offset + effective_limit).min(total);
+    for i in offset..end {
+        page.push_back(all.get(i).unwrap());
+    }
+    page
+}
+
+/// Look up a single claim by its unique `claim_id`.
+///
+/// # Panics
+/// Panics with `"claim not found"` when no claim with that ID exists.
+pub fn get_claim_by_id(e: &Env, claim_id: u64) -> PendingClaim {
+    e.storage()
+        .persistent()
+        .get(&DataKey::ClaimById(claim_id))
+        .unwrap_or_else(|| panic!("claim not found"))
 }

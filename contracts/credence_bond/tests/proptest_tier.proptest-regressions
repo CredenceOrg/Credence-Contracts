@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 3d43fbad1114c66e476d5b0c492086c74999674e16f294199abbd81be9a818f8 # shrinks to ref actions = [Deposit { amount: 1000, duration: 86400, is_rolling: false, notice_period_duration: 0 }, Settle]

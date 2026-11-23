@@ -81,11 +81,11 @@ Some contracts guard against being initialized twice; others do not. **Never re-
 |---|---|---|
 | `admin` | `DataKey::Initialized` flag | Panics — `AlreadyInitialized` |
 | `credence_arbitration` | `has(&DataKey::Admin)` | Returns `AlreadyInitialized` error |
-| `timelock` | `has(&DataKey::Admin)` | Panics |
-| `credence_bond` | implicit | Panics — `AlreadyInitialized` |
-| `credence_delegation` | `has(&DataKey::Admin)` | Panics |
-| `credence_treasury` | **none** | **Overwrites existing state — dangerous** ⚠️ |
-| `credence_multisig` | **none** | **Overwrites existing state — dangerous** ⚠️ |
+| `timelock` | `has(&DataKey::Admin)` | Panics — `AlreadyInitialized` |
+| `credence_bond` | `has(&DataKey::Admin)` | Panics — `AlreadyInitialized` |
+| `credence_delegation` | `has(&DataKey::Admin)` | Panics — `AlreadyInitialized` |
+| `credence_treasury` | `has(&DataKey::Admin)` | Panics — `AlreadyInitialized` |
+| `credence_multisig` | `has(&DataKey::Admin)` | Panics — `AlreadyInitialized` |
 
 ---
 
@@ -176,7 +176,7 @@ soroban contract invoke \
   --threshold "$MULTISIG_THRESHOLD"
 ```
 
-⚠️ This contract has **no double-init guard**. If `initialize` is called again, it overwrites signers and threshold. Protect against accidental re-invocation at the ops level after this step.
+⚠️ This contract is now protected against double initialization; if `initialize` is called again it will panic with `AlreadyInitialized`. The `signers` and `threshold` arguments are validated — `threshold` must be `> 0` and `<= len(signers)`.
 
 ---
 
@@ -241,7 +241,7 @@ soroban contract invoke \
   --token "$USDC_TOKEN_ADDRESS"
 ```
 
-⚠️ `credence_treasury` has **no double-init guard** — a second `initialize` call overwrites all state.
+⚠️ `credence_treasury` is now protected against double initialization; calling `initialize` again will panic with `AlreadyInitialized`.
 
 Configure multi-sig signers and threshold:
 
@@ -516,8 +516,8 @@ There is no `get_arbitrators` list getter on `credence_arbitration`. Confirm reg
 | Scenario | Action |
 |---|---|
 | Wrong config setter value | Call the setter again — setters are not one-shot; admin can update at any time. |
-| Wrong `initialize` argument on a guarded contract | The contract panics on re-init. Deploy a new instance; update `deploy_addresses.env`; re-run all wiring steps. |
-| Wrong `initialize` argument on `credence_treasury` or `credence_multisig` | These have no guard — calling `initialize` again overwrites state. Do this only if no funds or proposals exist. Then re-run wiring. |
+| Wrong `initialize` argument on a guarded contract | The contract panics on re-init with `AlreadyInitialized`. Deploy a new instance; update `deploy_addresses.env`; re-run all wiring steps. |
+| Wrong `initialize` argument on `credence_treasury` or `credence_multisig` | These are now guarded — the contract panics with `AlreadyInitialized`. Deploy a new instance and re-run wiring. |
 | Full re-deploy of one contract | Update its `$CONTRACT_ID` variable in `deploy_addresses.env`. Re-run all wiring calls that reference it (both as caller and as argument). |
 
 Keep `deploy_addresses.env` in a secure location. It is the source of truth for all contract IDs across the deploy and is required to run any subsequent admin call.

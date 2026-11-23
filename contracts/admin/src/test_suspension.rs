@@ -14,6 +14,7 @@ fn setup(env: &Env) -> (Address, Address) {
 #[cfg(test)]
 mod suspension_tests {
     use super::*;
+    use credence_errors::Role;
     use soroban_sdk::testutils::Ledger;
 
     // ── 1. suspend_admin succeeds ─────────────────────────────────────────────
@@ -77,9 +78,12 @@ mod suspension_tests {
             );
         });
 
-        assert!(!env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::User
+        );
         assert!(!env.as_contract(&contract, || {
             AdminContract::has_role_at_least(env.clone(), target.clone(), AdminRole::Operator)
         }));
@@ -115,9 +119,12 @@ mod suspension_tests {
         // Advance ledger past expiry — no reactivate_admin call needed
         env.ledger().with_mut(|li| li.timestamp = now + 101);
 
-        assert!(env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::Admin
+        );
         assert!(env.as_contract(&contract, || {
             AdminContract::has_role_at_least(env.clone(), target.clone(), AdminRole::Admin)
         }));
@@ -170,10 +177,14 @@ mod suspension_tests {
         });
     }
 
-    // ── 6. Suspending last active admin → InvalidPauseAction (107) ───────────
+    // ── 6. Suspending self → AdminUnchanged (111) ────────────────────────────
+    //
+    // Self-suspension is rejected before the MinAdmins guard is reached: an
+    // admin must not be able to lock themselves out, which would otherwise
+    // strand governance when the caller is the only effective admin.
 
     #[test]
-    #[should_panic(expected = "Error(Contract, #107)")]
+    #[should_panic(expected = "Error(Contract, #111)")]
     fn test_suspend_below_min_admins_rejected() {
         let env = Env::default();
         let (contract, super_admin) = setup(&env);
@@ -317,15 +328,21 @@ mod suspension_tests {
 
         // Still inactive within the extended window
         env.ledger().with_mut(|li| li.timestamp = now + 100);
-        assert!(!env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::User
+        );
 
         // Active after the extended deadline
         env.ledger().with_mut(|li| li.timestamp = now + 201);
-        assert!(env.as_contract(&contract, || {
-            AdminContract::is_admin(env.clone(), target.clone())
-        }));
+        assert_eq!(
+            env.as_contract(&contract, || {
+                AdminContract::is_admin(env.clone(), target.clone())
+            }),
+            Role::Admin
+        );
     }
 
     // ── 11. Suspended admin cannot call privileged operations ─────────────────
@@ -364,6 +381,42 @@ mod suspension_tests {
                 admin.clone(),
                 new_op.clone(),
                 AdminRole::Operator,
+            );
+        });
+    }
+
+    #[test]
+    fn test_adversarial_regression_and_retry_scenarios() {
+        let env = Env::default();
+        let (contract, super_admin) = setup(&env);
+        let target = Address::generate(&env);
+
+        env.as_contract(&contract, || {
+            AdminContract::add_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                AdminRole::Admin,
+            );
+        });
+
+        let now = env.ledger().timestamp();
+        env.as_contract(&contract, || {
+            AdminContract::suspend_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                now + 100,
+            );
+        });
+
+        // Retry suspension
+        env.as_contract(&contract, || {
+            AdminContract::suspend_admin(
+                env.clone(),
+                super_admin.clone(),
+                target.clone(),
+                now + 200,
             );
         });
     }

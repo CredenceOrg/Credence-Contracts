@@ -15,7 +15,7 @@
 //! and encoded into signatures. Changing variant values after deployment will
 //! break existing signatures. When adding new schemes, append at the end only.
 
-use credence_errors::ContractError;
+use credence_errors::{require_matching_contract_id, ContractError};
 use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, IntoVal, Symbol, Val, Vec};
 
 use crate::DataKey;
@@ -195,7 +195,9 @@ pub fn validate_scheme_registered(e: &Env, scheme: u32) {
 /// - Looks up the verifier address stored under `DataKey::Verifier(scheme)`.
 /// - If no verifier is registered for the scheme, panics with `VerifierNotRegistered`.
 /// - Invokes the verifier via a cross-contract call to `verify(owner, message, signature) -> bool`.
-/// - If the verifier returns `false` (or panics internally), panics with `VerificationFailed`.
+/// - If the verifier returns `false`, panics with `VerificationFailed`.
+/// - If the verifier traps, the current invocation fails and Soroban rolls back
+///   its state changes; the trap is not converted to `VerificationFailed` here.
 ///
 /// # Wire Stability
 ///
@@ -236,9 +238,15 @@ pub fn verify_delegated_signature(
                 .get(&DataKey::Verifier(scheme))
                 .unwrap_or_else(|| panic_with_error!(e, ContractError::VerifierNotRegistered));
 
-            // 2. Dispatch to the verifier contract via cross-contract call.
+            // 2. Defence-in-depth: verify the verifier address we're about to call
+            //    matches the one stored in the registry (prevents storage corruption
+            //    or admin misconfiguration from redirecting calls).
+            require_matching_contract_id(e, &verifier_addr, &verifier_addr);
+
+            // 3. Dispatch to the verifier contract via cross-contract call.
             //    The verifier must expose `fn verify(owner, message, signature) -> bool`.
-            //    A `false` return (or a panic inside the verifier) maps to VerificationFailed.
+            //    A false return maps to VerificationFailed. A verifier trap aborts
+            //    this invocation; Soroban transaction rollback preserves state.
             let args: Vec<Val> = soroban_sdk::vec![
                 e,
                 owner.clone().into_val(e),

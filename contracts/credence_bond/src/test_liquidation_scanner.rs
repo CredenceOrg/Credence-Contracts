@@ -72,7 +72,7 @@ fn test_max_iter_hard_cap_enforced() {
     for _ in 0..10 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    let result = client.scan_liquidation_candidates(&keeper, &0, &(MAX_ITER_HARD_CAP + 100), &0);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &(MAX_ITER_HARD_CAP + 100), &0, &0);
     assert!(result.next_cursor <= MAX_ITER_HARD_CAP || result.done);
 }
 
@@ -84,7 +84,7 @@ fn test_zero_max_iter_uses_default() {
     for _ in 0..5 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    let result = client.scan_liquidation_candidates(&keeper, &0, &0, &0);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &0, &0, &0);
     assert!(result.done || result.next_cursor > 0);
 }
 
@@ -97,7 +97,7 @@ fn test_scan_empty_registry_returns_done() {
     let admin = Address::generate(&e);
     client.initialize(&admin, &None);
     let keeper = Address::generate(&e);
-    let result = client.scan_liquidation_candidates(&keeper, &0, &50, &0);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &50, &0, &0);
     assert!(result.done);
     assert_eq!(result.next_cursor, 0);
     assert_eq!(result.candidates.len(), 0);
@@ -117,7 +117,7 @@ fn test_pagination_covers_all_holders_no_overlap() {
     let mut pages = 0u32;
     let mut total_scanned = 0u32;
     loop {
-        let result = client.scan_liquidation_candidates(&keeper, &cursor, &page_size, &0);
+        let result = client.scan_liquidation_candidates(&keeper, &cursor, &page_size, &0, &total);
         let scanned_this_page = if result.done {
             total - cursor
         } else {
@@ -146,7 +146,7 @@ fn test_pagination_done_flag_set_on_last_page() {
     for _ in 0..5 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    let result = client.scan_liquidation_candidates(&keeper, &0, &5, &0);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &5, &0, &0);
     assert!(result.done);
     assert_eq!(result.next_cursor, 0);
 }
@@ -159,7 +159,7 @@ fn test_pagination_next_cursor_resets_to_zero_on_completion() {
     for _ in 0..4 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    let result = client.scan_liquidation_candidates(&keeper, &0, &10, &0);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &10, &0, &0);
     assert!(result.done);
     assert_eq!(result.next_cursor, 0);
 }
@@ -183,7 +183,7 @@ fn test_pagination_remains_stable_after_deregister_between_pages() {
     client.register_bond_holder(&admin, &a5);
 
     // First page scans slots [0, 2).
-    let page1 = client.scan_liquidation_candidates(&keeper, &0, &2, &0);
+    let page1 = client.scan_liquidation_candidates(&keeper, &0, &2, &0, &0);
     assert!(!page1.done);
     assert_eq!(page1.next_cursor, 2);
     assert_eq!(page1.registry_size, 5);
@@ -194,13 +194,13 @@ fn test_pagination_remains_stable_after_deregister_between_pages() {
     assert_eq!(client.get_registry_size(), 4);
 
     // Second page scans slots [2, 4).
-    let page2 = client.scan_liquidation_candidates(&keeper, &page1.next_cursor, &2, &0);
+    let page2 = client.scan_liquidation_candidates(&keeper, &page1.next_cursor, &2, &0, &page1.registry_size);
     assert!(!page2.done);
     assert_eq!(page2.next_cursor, 4);
     assert_eq!(page2.registry_size, 4);
 
     // Final page scans slot [4, 5) and completes.
-    let page3 = client.scan_liquidation_candidates(&keeper, &page2.next_cursor, &2, &0);
+    let page3 = client.scan_liquidation_candidates(&keeper, &page2.next_cursor, &2, &0, &page2.registry_size);
     assert!(page3.done);
     assert_eq!(page3.next_cursor, 0);
     assert_eq!(page3.registry_size, 4);
@@ -214,7 +214,7 @@ fn test_no_candidates_when_no_bonds_active() {
     for _ in 0..5 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    let result = client.scan_liquidation_candidates(&keeper, &0, &50, &5000);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &50, &5000, &0);
     assert_eq!(result.candidates.len(), 0);
 }
 
@@ -234,7 +234,7 @@ fn test_advance_keeper_cursor_reset_to_zero_allowed() {
     for _ in 0..5 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    let result = client.scan_liquidation_candidates(&keeper, &0, &3, &0);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &3, &0, &0);
     assert!(!result.done);
     client.advance_keeper_cursor(&keeper, &0);
     assert_eq!(client.get_keeper_cursor(&keeper), 0);
@@ -249,8 +249,23 @@ fn test_advance_keeper_cursor_backwards_rejected() {
     for _ in 0..10 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    client.scan_liquidation_candidates(&keeper, &0, &5, &0);
+    client.scan_liquidation_candidates(&keeper, &0, &5, &0, &0);
     client.advance_keeper_cursor(&keeper, &2);
+}
+
+#[test]
+#[should_panic(expected = "keeper cursor: invalid advance")]
+fn test_advance_keeper_cursor_rejects_skipped_positions() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let keeper = Address::generate(&e);
+    for _ in 0..10 {
+        client.register_bond_holder(&admin, &Address::generate(&e));
+    }
+
+    let page = client.scan_liquidation_candidates(&keeper, &0, &3, &0, &0);
+    assert_eq!(page.next_cursor, 3);
+    client.advance_keeper_cursor(&keeper, &5);
 }
 
 #[test]
@@ -262,7 +277,7 @@ fn test_scan_with_cursor_beyond_registry_panics() {
     for _ in 0..5 {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
-    client.scan_liquidation_candidates(&keeper, &99, &10, &0);
+    client.scan_liquidation_candidates(&keeper, &99, &10, &0, &0);
 }
 
 #[test]
@@ -285,7 +300,7 @@ fn test_scan_emits_page_event() {
         client.register_bond_holder(&admin, &Address::generate(&e));
     }
     let events_before = e.events().all().len();
-    client.scan_liquidation_candidates(&keeper, &0, &10, &0);
+    client.scan_liquidation_candidates(&keeper, &0, &10, &0, &0);
     let events_after = e.events().all().len();
     assert!(events_after > events_before);
 }
@@ -320,7 +335,7 @@ fn test_scan_mixed_ratio_identities_over_threshold() {
         &unsafe_bond,
     );
 
-    let result = client.scan_liquidation_candidates(&keeper, &0, &10, &5000);
+    let result = client.scan_liquidation_candidates(&keeper, &0, &10, &5000, &0);
 
     assert_eq!(
         result.candidates.len(),
@@ -334,4 +349,31 @@ fn test_scan_mixed_ratio_identities_over_threshold() {
     assert_eq!(candidate.slashed_amount, 60);
     assert_eq!(candidate.net_amount, 40);
     assert!(result.done);
+}
+
+#[test]
+#[should_panic(expected = "HostError: Error(Contract, #235)")]
+fn test_scan_rejects_different_snapshot_generation() {
+    let e = harness::test_env_with_time();
+    let (admin, bond_contract_id) = harness::create_and_register_bond_contract(&e);
+    let client = LiquidationScannerClient::new(&e, &bond_contract_id);
+    let keeper = Address::generate(&e);
+
+    // Register 5 identities
+    let mut identities = soroban_sdk::Vec::new(&e);
+    for _ in 0..5 {
+        let identity = Address::generate(&e);
+        client.register_bond_holder(&admin, &identity);
+        identities.push_back(identity);
+    }
+
+    // Call first page, gets active_registry_size = 5
+    let page1 = client.scan_liquidation_candidates(&keeper, &0, &2, &0, &0);
+    assert_eq!(page1.registry_size, 5);
+
+    // Simulate registry size change: deregister the last identity
+    client.deregister_bond_holder(&admin, &identities.last().unwrap());
+
+    // Try to fetch next page with the old snapshot generation (5), but current size is 4
+    client.scan_liquidation_candidates(&keeper, &page1.next_cursor, &2, &0, &page1.registry_size);
 }

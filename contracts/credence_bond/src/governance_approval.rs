@@ -4,8 +4,9 @@
 //! (with optional delegation), and slashing is executed only when quorum and approval
 //! requirements are met. Emits governance events for audit.
 
+use credence_errors::ContractError;
 use credence_math::BPS_DENOMINATOR;
-use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol, Vec};
 
 /// Status of a slash proposal.
 #[contracttype]
@@ -215,8 +216,18 @@ pub fn is_approved(e: &Env, proposal_id: u64) -> bool {
         .get(&key_min_governors())
         .unwrap_or(1);
     let (approve, _reject, voted) = count_votes(e, proposal_id);
-    let quorum_ok = voted >= (total * quorum_bps / BPS_DENOMINATOR as u32).max(min_governors);
-    let majority_approve = voted > 0 && approve > voted / 2;
+    let quorum_threshold = total
+        .checked_mul(quorum_bps)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow))
+        .checked_div(BPS_DENOMINATOR as u32)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow))
+        .max(min_governors);
+    let quorum_ok = voted >= quorum_threshold;
+    let majority_approve = voted > 0
+        && approve
+            > voted
+                .checked_div(2)
+                .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
     quorum_ok && majority_approve
 }
 

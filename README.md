@@ -1,94 +1,32 @@
 # Credence Contracts
 
-Soroban smart contracts for the Credence economic trust protocol. This workspace holds the identity bond and delegation contracts.
+Soroban smart contracts for the Credence economic trust protocol on Stellar: bonds, attestations, arbitration, dispute resolution, timelocks and treasury.
 
-## About
+**Live demo (frontend):** https://credence-frontend-fawn.vercel.app
 
-Part of [Credence](../README.md). Contracts run on the Stellar network via Soroban. The bond contract is the source of truth for staked amounts and is consumed by the backend reputation engine.
+## Testnet deployment
 
-## Prerequisites
+| Contract | Contract ID (Stellar testnet) |
+|---|---|
+| `timelock` | [`CAKAQJWZN5O2BTSWKUAJZNJIF6ZPBZ2UEZM6H4IIVTC675JXHICCGM4K`](https://stellar.expert/explorer/testnet/contract/CAKAQJWZN5O2BTSWKUAJZNJIF6ZPBZ2UEZM6H4IIVTC675JXHICCGM4K) |
+| `credence_arbitration` | [`CCIED32YR7ZB5MBDKRCT7HYFWAH2AAKFH43HL4IREGSUJ2U3ZHECCL7T`](https://stellar.expert/explorer/testnet/contract/CCIED32YR7ZB5MBDKRCT7HYFWAH2AAKFH43HL4IREGSUJ2U3ZHECCL7T) |
+| `dispute_resolution` | [`CCKOGX3BZOH7VSMTIVPITZU6S32NY4PETJIRVQ6SA5WY7PABLMU3KXAH`](https://stellar.expert/explorer/testnet/contract/CCKOGX3BZOH7VSMTIVPITZU6S32NY4PETJIRVQ6SA5WY7PABLMU3KXAH) |
 
-- Rust 1.85.1+ (pinned in [`rust-toolchain.toml`](rust-toolchain.toml)); the WASM target is included
-- [Soroban CLI](https://developers.stellar.org/docs/smart-contracts/getting-started/setup) (`cargo install soroban-cli`)
+## Layout
 
-## Setup
+- `contracts/` — one crate per contract, plus shared crates (`credence_errors`, `credence_math`, ...)
+- `crates/` — shared interfaces, test utilities and the admin CLI
+- `docs/` — design notes and templates
 
-From the repo root:
-
-```bash
-cargo build
-```
-
-For Soroban (WASM) build:
-
-```bash
-cargo build --target wasm32-unknown-unknown --release --locked -p credence_bond -p credence_delegation
-```
-
-For the reproducibility check and the CI hash comparison, see [docs/wasm-reproducibility.md](docs/wasm-reproducibility.md).
-
-## Tests
-
-Run all workspace tests:
+## Build
 
 ```bash
-cargo test --workspace
+stellar contract build            # all contracts
+stellar contract build --package timelock
 ```
 
-Run specific contract tests:
+Deploy a built contract to testnet:
 
 ```bash
-cargo test -p credence_bond
-cargo test -p credence_delegation
+stellar contract deploy --wasm target/wasm32v1-none/release/<crate>.wasm --source <identity> --network testnet
 ```
-
-The dedicated CI workflow at `.github/workflows/contracts-tests.yml` runs the full workspace tests on every PR.
-
-## Linting
-
-Run the contracts-only formatting and lint checks locally before opening a PR:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-```
-
-The dedicated CI workflow at `.github/workflows/contracts-lints.yml` runs the same checks.
-
-## Security scanning
-
-Pull requests run `cargo audit --deny warnings`; dependency vulnerabilities are surfaced in a sticky PR comment and the full JSON report is uploaded as a workflow artifact. See [docs/SECURITY_SCANNING.md](docs/SECURITY_SCANNING.md) for the local command and triage flow.
-
-## WASM size budget
-
-Release Wasm for every deployable contract must stay within per-contract size ceilings enforced in CI. See [docs/wasm-size-budget.md](docs/wasm-size-budget.md) for the enforced limits and [`.github/workflows/wasm-size.yml`](.github/workflows/wasm-size.yml) for the gate.
-
-## Project layout
-
-- `contracts/credence_bond/` — Identity bond contract
-  - `create_bond()` / `top_up()` / `withdraw()` / `withdraw_early()`
-  - Rolling bonds: `request_withdrawal()` and `renew_if_rolling()`
-  - Tiering: `get_tier()` with auto-upgrade/downgrade events
-  - Slashing: `slash()` with available-balance enforcement
-  - Emergency: `set_emergency_config()`, `set_emergency_mode()`, `emergency_withdraw()`
-  - Emergency audit: `get_latest_emergency_record_id()`, `get_emergency_record()`
-  - Lifecycle: [bond state transitions](docs/bond-state-transitions.md)
-- `contracts/credence_delegation/` — Delegation contract
-- `docs/` — Feature docs (`EVENTS.md`, `rolling-bonds.md`, `early-exit.md`, `slashing.md`, `tier-system.md`, `delegation.md`, `emergency.md`)
-
-**Known simplifications:** See [docs/known-simplifications.md](docs/known-simplifications.md) for a complete list of intentional limitations and production paths.
-
-## Deploy (Soroban CLI)
-
-Configure network and deploy:
-
-```bash
-soroban contract deploy \
-  --wasm target/wasm32-unknown-unknown/release/credence_bond.wasm \
-  --source <SECRET_KEY> \
-  --network <NETWORK>
-```
-
-See [Stellar Soroban docs](https://developers.stellar.org/docs/smart-contracts) for auth and network setup.
-
-For the full testnet deploy and cross-contract wiring runbook, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).

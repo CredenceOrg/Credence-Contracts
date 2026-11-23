@@ -1,3 +1,8 @@
+// This is an off-chain integration test binary, not deployed WASM. Issue #713
+// disallows `format!`/`write!`/`writeln!`/`format_args!` in production contract
+// code; integration tests aren't on chain, so we silence the lint locally.
+#![allow(clippy::disallowed_macros)]
+
 //! Regression guard for the on-chain contract interface (`contractspecv0`).
 //!
 //! The Soroban SDK embeds every public type and function as XDR in the WASM

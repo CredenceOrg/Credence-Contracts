@@ -1,7 +1,9 @@
+extern crate std;
+
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, Vec};
 
 #[contract]
 pub struct MockStellarAsset;
@@ -10,6 +12,9 @@ pub struct MockStellarAsset;
 impl MockStellarAsset {
     pub fn decimals(_e: Env) -> u32 {
         18
+    }
+    pub fn symbol(e: Env) -> soroban_sdk::String {
+        soroban_sdk::String::from_str(&e, "USDC")
     }
     pub fn balance(e: Env, id: Address) -> i128 {
         e.storage()
@@ -49,6 +54,42 @@ pub fn advance_ledger_sequence(e: &Env) {
     let mut info = e.ledger().get();
     info.sequence_number = info.sequence_number.saturating_add(1);
     e.ledger().set(info);
+}
+
+/// Jump the ledger forward by `n` sequences (test utility). Used by
+/// retention tests that need to step past an entry TTL.
+#[allow(dead_code)]
+pub fn advance_ledgers_by(e: &Env, n: u32) {
+    let mut info = e.ledger().get();
+    info.sequence_number = info.sequence_number.saturating_add(n);
+    e.ledger().set(info);
+}
+
+/// Assert that `f` reverts with the contract error `expected`.
+///
+/// The generated `try_*` client wrappers on this crate's client resolve to
+/// `Error(Context, InvalidAction)` instead of surfacing the contract's own
+/// error, so they cannot be used to assert *which* error a call produced. The
+/// tests in this crate therefore assert on the revert itself: catch the host
+/// panic and match the code that `panic_with_error!` embeds in the message as
+/// `Error(Contract, #<code>)`. This is the same mechanism `guards.rs` and
+/// `nonce.rs` use, with the code check added on top.
+#[allow(dead_code)]
+pub fn expect_contract_error_panic<F: FnOnce()>(expected: u32, f: F) {
+    let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
+        .err()
+        .expect("expected the call to revert, but it succeeded");
+
+    let message = payload
+        .downcast_ref::<std::string::String>()
+        .map(std::string::String::as_str)
+        .or_else(|| payload.downcast_ref::<&str>().copied())
+        .unwrap_or("<non-string panic payload>");
+
+    assert!(
+        message.contains(&std::format!("#{expected}")),
+        "expected contract error #{expected}, but the revert was: {message}"
+    );
 }
 
 /// Default mint amount for tests (covers tier thresholds and most scenarios).
@@ -95,6 +136,12 @@ pub fn setup_with_token_mint(
     let expiration = e.ledger().sequence().saturating_add(10000);
     token_client.approve(&identity, &contract_id, &mint_amount, &expiration);
 
+    // Set accepted tokens to include the stellar asset
+    let mut accepted_tokens = Vec::new(e);
+    accepted_tokens.push_back(stellar_asset.clone());
+    client.set_accepted_tokens(&admin, &accepted_tokens);
+
+    client.set_token(&admin, &stellar_asset);
     e.as_contract(&contract_id, || {
         e.storage()
             .instance()

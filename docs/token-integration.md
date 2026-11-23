@@ -4,12 +4,32 @@ This document describes how the Credence bond contract integrates with Stellar t
 
 ## Overview
 
-The bond contract uses Soroban token interfaces for all value movements:
+The bond contract uses Soroban token interfaces for all value movements. The
+token-custody layer is implemented in `contracts/credence_bond/src/token_integration.rs`
+and is the single integration point for every entrypoint that touches
+USDC. All real on-chain custody flows follow the Checks–Effects–Interactions
+(CEI) pattern: bond storage is updated *before* the external token call.
 
-- `initialize(admin, token)` stores the custody token contract address.
-- `create_bond` and `top_up` move tokens from identity to contract with `transfer_from`.
-- `withdraw` moves tokens from contract to the bonded identity with `transfer`.
-- `withdraw_early` moves net proceeds to the bonded identity and the penalty to treasury with `transfer`.
+- `initialize(admin)` registers the admin; `set_token(admin, token)` is
+  the canonical way to configure the USDC contract address (stored at
+  `DataKey::BondToken` after `set_accepted_tokens` has whitelisted it).
+- `create_bond` and `top_up` pull `amount` USDC from `identity` to the bond
+  contract via `TokenClient::transfer_from`, after `identity.require_auth()`
+  and a `token.allowance(owner, contract) >= amount` pre-check.
+- `withdraw` pushes `amount` USDC from the bond contract back to `identity`
+  via `TokenClient::transfer`. The entrypoint is gated by `has_token()` so
+  phantom-balance deployments remain supported.
+- `withdraw_early` pushes two transfers bucketed by source: `penalty` to
+  the early-exit treasury (FundSource::ProtocolFee, emitting
+  `bond_fund_transfer`) and `net_amount = amount - penalty` back to
+  `identity`.
+
+Every transfer (inbound or outbound) is wrapped in a balance-delta guard
+that compares `token.balance(contract)` before and after the call; any
+mismatch aborts the transaction with
+`unsupported token: transfer amount mismatch (code 213)`. See
+[bond-token-custody.md](bond-token-custody.md) for the full custody
+invariant, edge cases, and validation tests.
 
 ## Contract API
 
@@ -65,10 +85,25 @@ cargo test -p credence_bond -- --nocapture
 
 ## Custody Invariant
 
-For unslashed flows, contract token custody should match the withdrawable bond amount:
+The contract's USDC balance attributable to bonded identities is the
+running sum of `(bonded_amount - slashed_amount)` plus treasury
+accumulations (slashed funds and early-exit penalties not yet routed
+out).
+
+```text
+token.balance(bond_contract)
+    == Σ(bonded_amount − slashed_amount) over active identities
+      + treasuries[slash_treasury]
+      + treasuries[early_exit_treasury]
+    − Σ(amount) for historical `withdraw` / `withdraw_early` payouts
+```
+
+For the unslashed, unslashed-penalty case:
 
 ```text
 token.balance(bond_contract) == bonded_amount - slashed_amount
 ```
 
-See [bond-token-custody.md](bond-token-custody.md) for the current scope and the remaining slash-path gap.
+See [bond-token-custody.md](bond-token-custody.md) for the full
+broken-down invariant, the validation tests that exercise it, and the
+failure-mode rollback semantics.

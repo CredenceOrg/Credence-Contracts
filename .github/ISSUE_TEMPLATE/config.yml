@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Credence Contributor Community (Discord)
+    url: https://discord.gg/nmnPBkBge
+    about: Questions, environment help, and community discussion.
+  - name: Security Vulnerability
+    url: https://github.com/Ugasutun/Credence-Contracts/security/advisories/new
+    about: Please report security vulnerabilities via GitHub Security Advisories — do not file a public issue.

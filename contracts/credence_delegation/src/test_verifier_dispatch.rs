@@ -7,13 +7,13 @@
 use soroban_sdk::{
     contract, contractimpl,
     testutils::{Address as _, Ledger as _},
-    Address, Bytes, Env,
+    Address, Bytes, Env, String,
 };
 
 use crate::{
     domain::{DelegatedActionPayload, DomainTag},
     verifier::SchemeTag,
-    CredenceDelegation, CredenceDelegationClient, DelegationType,
+    CredenceDelegation, CredenceDelegationClient, DelegationType, SIGNATURE_DOMAIN,
 };
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,22 @@ mod invalid_verifier {
     }
 }
 
+mod panicking_verifier {
+    use soroban_sdk::{contract, contractimpl, Address, Bytes};
+
+    #[contract]
+    pub struct PanickingVerifier;
+
+    #[contractimpl]
+    impl PanickingVerifier {
+        pub fn verify(_owner: Address, _message: Bytes, _signature: Bytes) -> bool {
+            panic!("simulated verifier trap")
+        }
+    }
+}
+
 use invalid_verifier::AlwaysInvalidVerifier;
+use panicking_verifier::PanickingVerifier;
 use valid_verifier::AlwaysValidVerifier;
 
 // ---------------------------------------------------------------------------
@@ -67,6 +82,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>, Address) {
 }
 
 fn make_payload(
+    e: &Env,
     owner: &Address,
     target: &Address,
     contract_id: &Address,
@@ -80,6 +96,8 @@ fn make_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme,
+        ledger_number: 0,
+        signature_domain: String::from_str(e, SIGNATURE_DOMAIN),
     }
 }
 
@@ -96,6 +114,7 @@ fn test_ed25519_unaffected() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -119,6 +138,7 @@ fn test_ed25519_ignores_registered_verifier() {
     let v = e.register(AlwaysInvalidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Ed25519.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -152,6 +172,7 @@ fn test_secp256r1_unregistered_panics() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -174,6 +195,7 @@ fn test_secp256r1_valid_verifier_succeeds() {
     let v = e.register(AlwaysValidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -197,6 +219,7 @@ fn test_secp256r1_invalid_verifier_panics() {
     let v = e.register(AlwaysInvalidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -222,6 +245,7 @@ fn test_mldsa44_unregistered_panics() {
     let (e, client, _) = setup();
     let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -244,6 +268,7 @@ fn test_mldsa44_valid_verifier_succeeds() {
     let v = e.register(AlwaysValidVerifier, ());
     client.register_verifier(&admin, &SchemeTag::MLDSA44.to_u32(), &v);
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -275,6 +300,7 @@ fn test_re_registration_overwrites() {
     client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &good);
 
     let p = make_payload(
+        &e,
         &owner,
         &delegate,
         &client.address,
@@ -288,4 +314,108 @@ fn test_re_registration_overwrites() {
         &expiry(&e),
         &p,
     );
+}
+
+/// A negative verifier result must not consume the delegated payload's nonce
+/// or create delegation state. Replacing the verifier lets the same payload
+/// be retried successfully.
+#[test]
+fn test_rejected_verifier_preserves_state_for_retry_after_reregistration() {
+    let (e, client, admin) = setup();
+    let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
+    let expiry = expiry(&e);
+    let payload = make_payload(
+        &e,
+        &owner,
+        &delegate,
+        &client.address,
+        0,
+        SchemeTag::Secp256r1.to_u32(),
+    );
+
+    let rejecting = e.register(AlwaysInvalidVerifier, ());
+    client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &rejecting);
+
+    let result = client.try_execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expiry,
+        &payload,
+    );
+    assert!(result.is_err(), "a rejecting verifier must fail the call");
+    assert_eq!(
+        client.get_nonce(&owner),
+        0,
+        "failed verification must not consume the nonce"
+    );
+    assert!(
+        !client.is_valid_delegate(&owner, &delegate, &DelegationType::Management),
+        "failed verification must not create a delegation"
+    );
+
+    let accepting = e.register(AlwaysValidVerifier, ());
+    client.register_verifier(&admin, &SchemeTag::Secp256r1.to_u32(), &accepting);
+    let created = client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expiry,
+        &payload,
+    );
+
+    assert_eq!(created.expires_at, expiry);
+    assert_eq!(client.get_nonce(&owner), 1);
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
+}
+
+/// A verifier trap must also leave the delegated call retryable after the
+/// admin repairs the verifier registration.
+#[test]
+fn test_panicking_verifier_preserves_state_for_retry_after_reregistration() {
+    let (e, client, admin) = setup();
+    let (owner, delegate) = (Address::generate(&e), Address::generate(&e));
+    let expiry = expiry(&e);
+    let payload = make_payload(
+        &e,
+        &owner,
+        &delegate,
+        &client.address,
+        0,
+        SchemeTag::MLDSA44.to_u32(),
+    );
+
+    let panicking = e.register(PanickingVerifier, ());
+    client.register_verifier(&admin, &SchemeTag::MLDSA44.to_u32(), &panicking);
+
+    let result = client.try_execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expiry,
+        &payload,
+    );
+    assert!(result.is_err(), "a trapping verifier must fail the call");
+    assert_eq!(
+        client.get_nonce(&owner),
+        0,
+        "a trapped call must not consume the nonce"
+    );
+    assert!(
+        !client.is_valid_delegate(&owner, &delegate, &DelegationType::Management),
+        "a trapped call must not create a delegation"
+    );
+
+    let accepting = e.register(AlwaysValidVerifier, ());
+    client.register_verifier(&admin, &SchemeTag::MLDSA44.to_u32(), &accepting);
+    client.execute_delegated_delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expiry,
+        &payload,
+    );
+
+    assert_eq!(client.get_nonce(&owner), 1);
+    assert!(client.is_valid_delegate(&owner, &delegate, &DelegationType::Management));
 }

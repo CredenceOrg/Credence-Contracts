@@ -44,6 +44,7 @@ fn setup_client(e: &Env) -> CredenceDelegationClient<'static> {
 
 /// Build a `DelegatedActionPayload` with the given nonce for `execute_delegated_delegate`.
 fn make_delegate_payload(
+    e: &Env,
     owner: &Address,
     delegate: &Address,
     contract_id: &Address,
@@ -56,6 +57,8 @@ fn make_delegate_payload(
         contract_id: contract_id.clone(),
         nonce,
         scheme: 0,
+        ledger_number: 0,
+        signature_domain: soroban_sdk::String::from_str(e, "CredenceDelegation"),
     }
 }
 
@@ -93,7 +96,7 @@ fn boundary_invalidate_by_one() {
         &delegate,
         &DelegationType::Attestation,
         &(e.ledger().timestamp() + 86_400),
-        &make_delegate_payload(&identity, &delegate, &client.address, 0),
+        &make_delegate_payload(&e, &identity, &delegate, &client.address, 0),
     );
     assert!(result.is_err(), "nonce 0 must be rejected after jump to 1");
 }
@@ -141,7 +144,7 @@ fn boundary_last_invalidated_nonce_rejected() {
         &delegate,
         &DelegationType::Attestation,
         &(e.ledger().timestamp() + 86_400),
-        &make_delegate_payload(&identity, &delegate, &client.address, 49),
+        &make_delegate_payload(&e, &identity, &delegate, &client.address, 49),
     );
     assert!(
         result.is_err(),
@@ -165,7 +168,7 @@ fn boundary_first_valid_nonce_accepted() {
         &delegate,
         &DelegationType::Attestation,
         &(e.ledger().timestamp() + 86_400),
-        &make_delegate_payload(&identity, &delegate, &client.address, 50),
+        &make_delegate_payload(&e, &identity, &delegate, &client.address, 50),
     );
     assert_eq!(client.get_nonce(&identity), 51);
 }
@@ -189,7 +192,7 @@ fn boundary_double_invalidation_still_rejects_old_nonces() {
             &delegate,
             &DelegationType::Attestation,
             &(e.ledger().timestamp() + 86_400),
-            &make_delegate_payload(&identity, &delegate, &client.address, n),
+            &make_delegate_payload(&e, &identity, &delegate, &client.address, n),
         );
         assert!(
             result.is_err(),
@@ -236,7 +239,7 @@ fn boundary_post_invalidation_nonce_consumed_once() {
         &delegate,
         &DelegationType::Attestation,
         &(e.ledger().timestamp() + 86_400),
-        &make_delegate_payload(&identity, &delegate, &client.address, 100),
+        &make_delegate_payload(&e, &identity, &delegate, &client.address, 100),
     );
 
     // Attempting to replay nonce 100 must now fail.
@@ -245,7 +248,7 @@ fn boundary_post_invalidation_nonce_consumed_once() {
         &delegate,
         &DelegationType::Attestation,
         &(e.ledger().timestamp() + 86_400),
-        &make_delegate_payload(&identity, &delegate, &client.address, 100),
+        &make_delegate_payload(&e, &identity, &delegate, &client.address, 100),
     );
     assert!(
         result.is_err(),
@@ -300,7 +303,7 @@ proptest! {
             &delegate,
             &DelegationType::Attestation,
             &(e.ledger().timestamp() + 86_400),
-            &make_delegate_payload(&identity, &delegate, &client.address, test_nonce),
+            &make_delegate_payload(&e, &identity, &delegate, &client.address, test_nonce),
         );
         prop_assert!(
             result.is_err(),
@@ -332,7 +335,7 @@ proptest! {
             &delegate,
             &DelegationType::Attestation,
             &(e.ledger().timestamp() + 86_400),
-            &make_delegate_payload(&identity, &delegate, &client.address, new_nonce),
+            &make_delegate_payload(&e, &identity, &delegate, &client.address, new_nonce),
         );
         prop_assert!(
             result.is_ok(),

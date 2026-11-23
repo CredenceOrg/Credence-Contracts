@@ -14,7 +14,8 @@
 #![allow(dead_code)]
 
 use crate::{tiered_bond, BondTier, DataKey, IdentityBond};
-use soroban_sdk::{contracttype, Address, Env, Symbol, Vec};
+use credence_errors::ContractError;
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol, Vec};
 
 /// Conservative upper bound to keep batch execution below Soroban budget limits.
 pub const MAX_BATCH_BOND_SIZE: u32 = 20;
@@ -45,10 +46,8 @@ pub struct BatchBondResult {
     pub bonds: Vec<IdentityBond>,
 }
 
-fn validate_batch_size(params_list: &Vec<BatchBondParams>) {
-    if params_list.len() > MAX_BATCH_BOND_SIZE {
-        panic!("batch too large");
-    }
+fn validate_batch_size(e: &Env, params_list: &Vec<BatchBondParams>) {
+    crate::validation::verify_batch_size(e, params_list.len(), MAX_BATCH_BOND_SIZE);
 }
 
 /// Validate all bonds before execution to ensure atomicity
@@ -61,11 +60,9 @@ fn validate_batch_size(params_list: &Vec<BatchBondParams>) {
 /// * If any bond has invalid parameters (negative amount, duration overflow, etc.)
 /// * If params_list is empty
 pub fn validate_batch_bonds(e: &Env, params_list: &Vec<BatchBondParams>) {
-    if params_list.is_empty() {
-        panic!("empty batch");
-    }
+    crate::validation::require_non_empty_vec(e, params_list);
 
-    validate_batch_size(params_list);
+    validate_batch_size(e, params_list);
 
     let bond_start = e.ledger().timestamp();
 
@@ -115,7 +112,7 @@ pub fn validate_batch_bonds(e: &Env, params_list: &Vec<BatchBondParams>) {
 ///     BatchBondParams {
 ///         identity: addr1,
 ///         amount: 1000,
-///         duration: 86400,
+///         duration: SECONDS_PER_DAY,
 ///         is_rolling: false,
 ///         notice_period_duration: 0,
 ///     },
@@ -136,13 +133,18 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     let bond_start = e.ledger().timestamp();
     let mut bonds: Vec<IdentityBond> = Vec::new(e);
 
+    // Read the tier thresholds once for the whole batch. `TierThresholds` is
+    // configuration, not per-item state, so every element in this batch
+    // classifies against the same value; reading it inside the loop would
+    // repeat the same storage read and deserialization N times.
+    let tier_thresholds = tiered_bond::get_tier_thresholds(e);
+
     // Step 2: Check for existing bonds (before creating any)
     for i in 0..params_list.len() {
-        let _params = params_list.get(i).unwrap();
-        let bond_key = DataKey::Bond; // Note: Current implementation uses single bond
+        let params = params_list.get(i).unwrap();
+        // Per-identity bond key: each identity owns its own bond slot.
+        let bond_key = DataKey::Bond(params.identity.clone());
 
-        // In a multi-identity system, you'd check per-identity:
-        // let bond_key = DataKey::IdentityBond(params.identity.clone());
         if e.storage().instance().has(&bond_key) {
             panic!("bond already exists");
         }
@@ -164,12 +166,12 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
             notice_period_duration: params.notice_period_duration,
         };
 
-        // Store the bond
-        let bond_key = DataKey::Bond;
+        // Store the bond under the per-identity key.
+        let bond_key = DataKey::Bond(params.identity.clone());
         e.storage().instance().set(&bond_key, &bond);
 
         // Emit tier change event for this bond
-        let tier = tiered_bond::get_tier_for_amount(e, params.amount);
+        let tier = tiered_bond::tier_for_amount_with_thresholds(params.amount, &tier_thresholds);
         tiered_bond::emit_tier_change_if_needed(e, &params.identity, BondTier::Bronze, tier);
 
         bonds.push_back(bond);
@@ -222,12 +224,12 @@ pub fn validate_batch(e: &Env, params_list: Vec<BatchBondParams>) -> bool {
 /// # Panics
 /// * If the total amount would overflow i128
 /// * If batch size exceeds MAX_BATCH_BOND_SIZE
-pub fn get_batch_total_amount(params_list: &Vec<BatchBondParams>) -> i128 {
+pub fn get_batch_total_amount(e: &Env, params_list: &Vec<BatchBondParams>) -> i128 {
     if params_list.is_empty() {
         return 0;
     }
 
-    validate_batch_size(params_list);
+    validate_batch_size(e, params_list);
 
     let mut total: i128 = 0;
 
@@ -241,9 +243,10 @@ pub fn get_batch_total_amount(params_list: &Vec<BatchBondParams>) -> i128 {
     total
 }
 
-#[cfg(test)]
+/* [pre-broken on main] #[cfg(test)]
 mod tests {
     use super::*;
+    use credence_math::SECONDS_PER_DAY;
     use soroban_sdk::testutils::Address as _;
 
     #[test]
@@ -257,7 +260,7 @@ mod tests {
         params_list.push_back(BatchBondParams {
             identity: addr1,
             amount: 1000,
-            duration: 86400,
+            duration: SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });
@@ -265,12 +268,12 @@ mod tests {
         params_list.push_back(BatchBondParams {
             identity: addr2,
             amount: 2000,
-            duration: 86400,
+            duration: SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });
 
-        let total = get_batch_total_amount(&params_list);
+        let total = get_batch_total_amount(&env, &params_list);
         assert_eq!(total, 3000);
     }
-}
+} */

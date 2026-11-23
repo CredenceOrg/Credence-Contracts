@@ -1,14 +1,9 @@
-#![cfg(test)]
-
 extern crate std;
 
-use crate::{
-    AttestationBatchItem, CredenceBond,
-    CredenceBondClient,
-};
+use crate::{AttestationBatchItem, CredenceBond, CredenceBondClient};
 use soroban_sdk::{
     testutils::{Address as _, Events},
-    Address, Env, String, Symbol, Vec, FromVal,
+    Address, Env, FromVal, String, Symbol, Vec,
 };
 use std::panic::AssertUnwindSafe;
 
@@ -19,6 +14,10 @@ fn setup(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let admin = Address::generate(e);
     client.initialize(&admin, &None);
     (client, admin, contract_id)
+}
+
+fn deadline(e: &Env) -> u64 {
+    e.ledger().timestamp() + 3600
 }
 
 #[test]
@@ -49,20 +48,27 @@ fn test_batch_success() {
     let nonce2 = client.get_nonce(&attester2);
     let nonce3 = client.get_nonce(&attester3);
 
+    let dl = deadline(&e);
     let mut items = Vec::new(&e);
     items.push_back(AttestationBatchItem {
         attester: attester1.clone(),
         attestation_data: String::from_str(&e, "claim1"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: nonce1,
     });
     items.push_back(AttestationBatchItem {
         attester: attester2.clone(),
         attestation_data: String::from_str(&e, "claim2"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: nonce2,
     });
     items.push_back(AttestationBatchItem {
         attester: attester3.clone(),
         attestation_data: String::from_str(&e, "claim3"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: nonce3,
     });
 
@@ -79,11 +85,12 @@ fn test_batch_success() {
         .iter()
         .filter(|ev| {
             ev.0 == contract_id
-                && Symbol::from_val(&e, &ev.1.get(0).unwrap()) == Symbol::new(&e, "attestations_batch_added")
+                && Symbol::from_val(&e, &ev.1.get(0).unwrap())
+                    == Symbol::new(&e, "attestations_batch_added")
         })
         .collect();
     assert_eq!(batch_events.len(), 1);
-    let ev = batch_events.get(0).unwrap();
+    let ev = batch_events.first().unwrap();
     assert_eq!(Address::from_val(&e, &ev.1.get(1).unwrap()), subject);
 }
 
@@ -103,14 +110,17 @@ fn test_batch_empty_rejected() {
 #[test]
 fn test_batch_too_large_rejected() {
     let e = Env::default();
-    let (client, _admin, _contract_id) = setup(&e);
+    let (client, _admin, contract_id) = setup(&e);
     let subject = Address::generate(&e);
 
+    let dl = deadline(&e);
     let mut items = Vec::new(&e);
     for _ in 0..65 {
         items.push_back(AttestationBatchItem {
             attester: Address::generate(&e),
             attestation_data: String::from_str(&e, "data"),
+            contract_id: contract_id.clone(),
+            deadline: dl,
             nonce: 0,
         });
     }
@@ -124,22 +134,27 @@ fn test_batch_too_large_rejected() {
 #[test]
 fn test_batch_duplicate_attester_rejected() {
     let e = Env::default();
-    let (client, _admin, _contract_id) = setup(&e);
+    let (client, _admin, contract_id) = setup(&e);
     let subject = Address::generate(&e);
     let attester = Address::generate(&e);
     client.register_attester(&attester);
 
     let nonce = client.get_nonce(&attester);
+    let dl = deadline(&e);
 
     let mut items = Vec::new(&e);
     items.push_back(AttestationBatchItem {
         attester: attester.clone(),
         attestation_data: String::from_str(&e, "data1"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce,
     });
     items.push_back(AttestationBatchItem {
         attester: attester.clone(),
         attestation_data: String::from_str(&e, "data2"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: nonce + 1,
     });
 
@@ -152,7 +167,7 @@ fn test_batch_duplicate_attester_rejected() {
 #[test]
 fn test_batch_aggregate_weight_cap_rejected() {
     let e = Env::default();
-    let (client, admin, _contract_id) = setup(&e);
+    let (client, admin, contract_id) = setup(&e);
 
     let attester1 = Address::generate(&e);
     let attester2 = Address::generate(&e);
@@ -166,16 +181,21 @@ fn test_batch_aggregate_weight_cap_rejected() {
     client.set_weight_config(&admin, &100u32, &5000u32);
 
     let subject = Address::generate(&e);
+    let dl = deadline(&e);
 
     let mut items = Vec::new(&e);
     items.push_back(AttestationBatchItem {
         attester: attester1.clone(),
         attestation_data: String::from_str(&e, "data1"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: client.get_nonce(&attester1),
     });
     items.push_back(AttestationBatchItem {
         attester: attester2.clone(),
         attestation_data: String::from_str(&e, "data2"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: client.get_nonce(&attester2),
     });
 
@@ -189,7 +209,7 @@ fn test_batch_aggregate_weight_cap_rejected() {
 #[test]
 fn test_batch_atomic_rollback() {
     let e = Env::default();
-    let (client, admin, _contract_id) = setup(&e);
+    let (client, admin, contract_id) = setup(&e);
 
     let attester1 = Address::generate(&e);
     let attester2 = Address::generate(&e); // Unregistered attester to trigger failure
@@ -200,16 +220,21 @@ fn test_batch_atomic_rollback() {
 
     let subject = Address::generate(&e);
     let nonce1 = client.get_nonce(&attester1);
+    let dl = deadline(&e);
 
     let mut items = Vec::new(&e);
     items.push_back(AttestationBatchItem {
         attester: attester1.clone(),
         attestation_data: String::from_str(&e, "data1"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: nonce1,
     });
     items.push_back(AttestationBatchItem {
         attester: attester2.clone(),
         attestation_data: String::from_str(&e, "data2"),
+        contract_id: contract_id.clone(),
+        deadline: dl,
         nonce: 0,
     });
 
@@ -222,6 +247,6 @@ fn test_batch_atomic_rollback() {
     assert_eq!(client.get_nonce(&attester1), nonce1);
 
     // Verify no attestations were stored for subject
-    let view = client.describe_config(); // check if contract still works
+    let view = client.describe_config().unwrap(); // check if contract still works
     assert_eq!(view.weight_max, 10_000);
 }

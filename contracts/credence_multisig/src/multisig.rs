@@ -1,3 +1,4 @@
+//! Boundary and recovery test coverage for multisig entry points.
 //! # Credence Multi-Signature Contract
 //!
 //! Generic multi-signature contract for governance and administrative actions.
@@ -7,8 +8,8 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, String,
-    Symbol, Vec,
+    contract, contractimpl, contracttype, panic_with_error, xdr::ToXdr, Address, Bytes, BytesN,
+    Env, String, Symbol, Vec,
 };
 
 /// Type of action that can be proposed and executed.
@@ -68,7 +69,7 @@ pub struct Proposal {
     pub expires_at: u64,
     /// Custom metadata (flexible storage).
     pub metadata: Option<String>,
-    /// Deterministic hash of the operation payload to prevent replays.
+    /// Contract-derived hash of the operation payload and caller-provided salt.
     pub op_hash: BytesN<32>,
 }
 
@@ -100,6 +101,9 @@ pub enum DataKey {
     PauseProposal(u64),
     PauseApproval(u64, Address),
     PauseApprovalCount(u64),
+    /// Admin-configured cap on the number of registered pause signers.
+    /// Value: `u32`. Defaults to `pausable::DEFAULT_MAX_PAUSE_SIGNERS` when unset.
+    MaxPauseSigners,
     /// Tracks executed operations by their deterministic hash to prevent replay across proposals.
     ExecutedOp(BytesN<32>),
 }
@@ -109,6 +113,21 @@ pub const MAX_ITER_HARD_CAP: u32 = 200;
 
 /// Default page size for proposal pruning if the caller passes 0.
 pub const DEFAULT_MAX_ITER: u32 = 50;
+
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
+
+fn current_admin(e: &Env) -> Address {
+    e.storage()
+        .instance()
+        .get(&DataKey::Admin)
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
+}
 
 #[contract]
 pub struct CredenceMultiSig;
@@ -122,6 +141,11 @@ impl CredenceMultiSig {
     /// @param signers Initial list of authorized signers
     /// @param threshold Required number of signatures for execution
     pub fn initialize(e: Env, admin: Address, signers: Vec<Address>, threshold: u32) {
+        bump_instance_ttl(&e);
+        credence_errors::require_contract_uninitialized(
+            &e,
+            e.storage().instance().has(&DataKey::Admin),
+        );
         admin.require_auth();
 
         if signers.is_empty() {
@@ -152,9 +176,11 @@ impl CredenceMultiSig {
         e.storage().instance().set(&DataKey::SignerList, &signers);
 
         for signer in signers.iter() {
-            e.storage()
-                .instance()
-                .set(&DataKey::Signer(signer.clone()), &true);
+            let key = DataKey::Signer(signer.clone());
+            if e.storage().instance().has(&key) {
+                panic_with_error!(&e, ContractError::AlreadyActive);
+            }
+            e.storage().instance().set(&key, &true);
         }
 
         e.events().publish(
@@ -165,6 +191,7 @@ impl CredenceMultiSig {
 
     /// Add a new signer. Only admin can add signers.
     pub fn add_signer(e: Env, admin: Address, signer: Address) {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
@@ -210,6 +237,7 @@ impl CredenceMultiSig {
 
     /// Remove a signer. Only admin can remove signers.
     pub fn remove_signer(e: Env, admin: Address, signer: Address) {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
@@ -272,6 +300,7 @@ impl CredenceMultiSig {
 
     /// Set the signature threshold. Only admin can set threshold.
     pub fn set_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
@@ -302,8 +331,9 @@ impl CredenceMultiSig {
         description: String,
         expires_at: u64,
         metadata: Option<String>,
-        op_hash: BytesN<32>,
+        salt: BytesN<32>,
     ) -> u64 {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         proposer.require_auth();
 
@@ -312,6 +342,15 @@ impl CredenceMultiSig {
         if description.len() == 0 {
             panic_with_error!(&e, ContractError::InvalidPauseAction);
         }
+
+        let op_hash = Self::compute_op_hash(
+            e.clone(),
+            action_type.clone(),
+            target.clone(),
+            function_name.clone(),
+            arguments.clone(),
+            salt,
+        );
 
         let id: u64 = e
             .storage()
@@ -355,8 +394,34 @@ impl CredenceMultiSig {
         id
     }
 
+    /// Compute the replay-protection hash for an operation payload and salt.
+    ///
+    /// The preimage is the concatenation of the XDR encodings of the signature
+    /// domain, this contract's address, action type, target, function name,
+    /// arguments, and salt, in that order.
+    pub fn compute_op_hash(
+        e: Env,
+        action_type: ActionType,
+        target: Option<Address>,
+        function_name: Option<String>,
+        arguments: Option<Bytes>,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        let mut preimage = Bytes::new(&e);
+        preimage.append(&String::from_str(&e, crate::SIGNATURE_DOMAIN).to_xdr(&e));
+        preimage.append(&e.current_contract_address().to_xdr(&e));
+        preimage.append(&action_type.to_xdr(&e));
+        preimage.append(&target.to_xdr(&e));
+        preimage.append(&function_name.to_xdr(&e));
+        preimage.append(&arguments.to_xdr(&e));
+        preimage.append(&salt.to_xdr(&e));
+
+        e.crypto().sha256(&preimage).into()
+    }
+
     /// Sign a proposal. Only signers can sign.
     pub fn sign_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         signer.require_auth();
 
@@ -372,9 +437,11 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
-            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
-        }
+        crate::require_within_ttl_panic(
+            &e,
+            proposal.expires_at,
+            ContractError::ProposalAlreadyExecuted,
+        );
 
         let already_signed = e
             .storage()
@@ -410,6 +477,7 @@ impl CredenceMultiSig {
 
     /// Execute a proposal. Anyone can execute once threshold is met.
     pub fn execute_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         let mut proposal: Proposal = e
             .storage()
@@ -421,7 +489,7 @@ impl CredenceMultiSig {
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
-        if proposal.expires_at > 0 && e.ledger().timestamp() >= proposal.expires_at {
+        if crate::is_expired(&e, proposal.expires_at) {
             Self::expire_proposal(&e, proposal_id);
             panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
@@ -457,7 +525,7 @@ impl CredenceMultiSig {
             .unwrap_or(false);
 
         if already_executed {
-            panic!("operation already executed");
+            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
         }
 
         // Mark executed globally to prevent exact replay
@@ -478,6 +546,7 @@ impl CredenceMultiSig {
 
     /// Reject a proposal. Only admin can reject.
     pub fn reject_proposal(e: Env, admin: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
         Self::require_admin(&e, &admin);
 
@@ -508,6 +577,7 @@ impl CredenceMultiSig {
     /// @param max_iter Maximum number of proposals to scan (bounded by MAX_ITER_HARD_CAP)
     /// @return The count of proposals pruned
     pub fn prune_expired_proposals(e: Env, start_id: u64, max_iter: u32) -> u32 {
+        bump_instance_ttl(&e);
         crate::pausable::require_not_paused(&e);
 
         let effective_max = if max_iter == 0 {
@@ -571,6 +641,7 @@ impl CredenceMultiSig {
 
     /// Get proposal by ID.
     pub fn get_proposal(e: Env, proposal_id: u64) -> Proposal {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Proposal(proposal_id))
@@ -579,6 +650,7 @@ impl CredenceMultiSig {
 
     /// Check if a deterministic operation hash has already been executed.
     pub fn is_operation_executed(e: Env, op_hash: BytesN<32>) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::ExecutedOp(op_hash))
@@ -587,6 +659,7 @@ impl CredenceMultiSig {
 
     /// Get current signature count for a proposal.
     pub fn get_signature_count(e: Env, proposal_id: u64) -> u32 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::SignatureCount(proposal_id))
@@ -595,6 +668,7 @@ impl CredenceMultiSig {
 
     /// Check if a signer has signed a proposal.
     pub fn has_signed(e: Env, proposal_id: u64, signer: Address) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Signature(proposal_id, signer))
@@ -603,6 +677,7 @@ impl CredenceMultiSig {
 
     /// Check if an address is a signer.
     pub fn is_signer(e: Env, address: Address) -> bool {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::Signer(address))
@@ -611,11 +686,13 @@ impl CredenceMultiSig {
 
     /// Get current threshold.
     pub fn get_threshold(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         e.storage().instance().get(&DataKey::Threshold).unwrap_or(0)
     }
 
     /// Get current signer count.
     pub fn get_signer_count(e: Env) -> u32 {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::SignerCount)
@@ -624,6 +701,7 @@ impl CredenceMultiSig {
 
     /// Get list of all signers.
     pub fn get_signers(e: Env) -> Vec<Address> {
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .get(&DataKey::SignerList)
@@ -632,24 +710,14 @@ impl CredenceMultiSig {
 
     /// Get admin address.
     pub fn get_admin(e: Env) -> Address {
-        e.storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized))
+        bump_instance_ttl(&e);
+        current_admin(&e)
     }
 
     // ==================== Internal Helpers ====================
 
     fn require_admin(e: &Env, admin: &Address) {
-        admin.require_auth();
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-        if stored_admin != *admin {
-            panic_with_error!(e, ContractError::NotAdmin);
-        }
+        credence_errors::require_admin!(e, admin, DataKey::Admin);
     }
 
     fn require_signer(e: &Env, signer: &Address) {
@@ -700,30 +768,69 @@ impl CredenceMultiSig {
     }
 
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         crate::pausable::pause(&e, &caller)
     }
 
     pub fn unpause(e: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&e);
         crate::pausable::unpause(&e, &caller)
     }
 
     pub fn is_paused(e: Env) -> bool {
+        bump_instance_ttl(&e);
         crate::pausable::is_paused(&e)
     }
 
     pub fn set_pause_signer(e: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&e);
         crate::pausable::set_pause_signer(&e, &admin, &signer, enabled)
     }
 
     pub fn set_pause_threshold(e: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&e);
         crate::pausable::set_pause_threshold(&e, &admin, threshold)
     }
 
+    /// Get the configured cap on the number of pause signers (or the
+    /// default if the admin has not configured one).
+    pub fn get_max_pause_signers(e: Env) -> u32 {
+        bump_instance_ttl(&e);
+        crate::pausable::get_max_pause_signers(&e)
+    }
+
+    /// Configure the cap on the number of pause signers. Admin-only.
+    pub fn set_max_pause_signers(e: Env, admin: Address, max_signers: u32) {
+        bump_instance_ttl(&e);
+        crate::pausable::set_max_pause_signers(&e, &admin, max_signers)
+    }
+
     pub fn approve_pause_proposal(e: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&e);
         crate::pausable::approve_pause_proposal(&e, &signer, proposal_id)
     }
 
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
+        bump_instance_ttl(&e);
         crate::pausable::execute_pause_proposal(&e, proposal_id)
     }
+
+    pub fn transfer_admin(e: Env, new_admin: Address) {
+        bump_instance_ttl(&e);
+        let current_admin = current_admin(&e);
+        current_admin.require_auth();
+
+        e.storage().instance().set(&DataKey::Admin, &new_admin);
+
+        e.events().publish(
+            (soroban_sdk::Symbol::new(&e, "admin_transferred"),),
+            (current_admin, new_admin),
+        );
+    }
+
+    pub fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
+    }
 }
+
+// Boundary and recovery invariants are exercised in `boundary_recovery_tests`.

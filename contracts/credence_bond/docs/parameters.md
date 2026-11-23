@@ -343,3 +343,15 @@ Potential future improvements to the parameters system:
 3. **Parameter Ranges:** Allow governance to adjust min/max bounds within safe limits
 4. **Emergency Pause:** Add ability to pause parameter updates in emergencies
 5. **Parameter History:** Store historical parameter values on-chain
+
+---
+
+## Pagination — `MAX_QUERY_LIMIT`
+
+Collection reads (`get_subject_attestations_page`, `get_slash_history_page`,
+`get_pending_claims_paginated`) are capped at **200 items per call** via the
+`MAX_QUERY_LIMIT` constant defined in this module. This prevents callers from
+forcing unbounded iteration that would exhaust the Soroban instruction budget.
+
+See [`docs/pagination.md`](./pagination.md) for full documentation of all
+paginated entry-points and the migration guide.
