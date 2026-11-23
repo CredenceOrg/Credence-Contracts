@@ -21,8 +21,6 @@
 // is the only mode where this deny fires (tests
 // stay free to use format!/write! for diagnostics).
 use credence_errors::ContractError;
-use ethnum::U256;
-use soroban_sdk;
 
 pub mod fixed_point;
 pub mod rate;
@@ -46,7 +44,7 @@ pub const PERCENT_DENOMINATOR: i128 = 100;
 /// The operation names are for panic messages only (kept for backward compatibility).
 #[inline]
 pub fn bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str) -> i128 {
-    (value as i128).saturating_mul(bps as i128) / BPS_DENOMINATOR
+    value.saturating_mul(bps as i128) / BPS_DENOMINATOR
 }
 
 /// Convert basis points to a u64 numerator.
@@ -74,7 +72,7 @@ pub fn split_bps(
     _div_op: &str,
     _sub_op: &str,
 ) -> (i128, i128) {
-    let fee = (value as i128).saturating_mul(bps as i128) / BPS_DENOMINATOR;
+    let fee = value.saturating_mul(bps as i128) / BPS_DENOMINATOR;
     let net = value.saturating_sub(fee);
     (fee, net)
 }
@@ -158,7 +156,7 @@ pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
 #[inline]
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
-    assert!(b > 0, "denominator must be positive");
+    assert!(b > 0, "{message}");
     (a + b - 1) / b
 }
 
@@ -230,7 +228,6 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
 
     let mut result = (num / denom_abs) as i128;
     let rem = num % denom_abs;
-    let mut result = result as i128;
 
     match rounding {
         Rounding::Down => {}
@@ -258,7 +255,6 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
 
 /// Fixed-point multiplication with checked overflow.
 #[inline]
-#[must_use]
 pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
     let num = a.checked_mul(b).ok_or(ContractError::Overflow)?;
     num.checked_div(WAD).ok_or(ContractError::Overflow)
@@ -266,7 +262,6 @@ pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
 
 /// Fixed-point division with checked overflow.
 #[inline]
-#[must_use]
 pub fn checked_div_wad(a: i128, b: i128) -> Result<i128, ContractError> {
     let num = a.checked_mul(WAD).ok_or(ContractError::Overflow)?;
     num.checked_div(b).ok_or(ContractError::Overflow)
