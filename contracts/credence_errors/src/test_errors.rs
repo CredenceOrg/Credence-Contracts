@@ -183,6 +183,11 @@ mod tests {
         assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
         assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
         assert_eq!(ContractError::BytesTooLarge as u32, 239);
+        assert_eq!(ContractError::ClaimAlreadyProcessed as u32, 240);
+        assert_eq!(ContractError::ClaimExpired as u32, 241);
+        assert_eq!(ContractError::ClaimNotFound as u32, 242);
+        assert_eq!(ContractError::NoPendingClaims as u32, 243);
+        assert_eq!(ContractError::NoValidClaimsToProcess as u32, 244);
     }
 
     #[test]
@@ -250,6 +255,7 @@ mod tests {
         assert_eq!(ContractError::Underflow as u32, 701);
         assert_eq!(ContractError::DivisionByZero as u32, 702);
         assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
+        assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
     }
 
     // ---------------------------------------------------------------------------
@@ -354,6 +360,11 @@ mod tests {
             ContractError::CooldownRequestNotFound,
             ContractError::CooldownPeriodNotElapsed,
             ContractError::BytesTooLarge,
+            ContractError::ClaimAlreadyProcessed,
+            ContractError::ClaimExpired,
+            ContractError::ClaimNotFound,
+            ContractError::NoPendingClaims,
+            ContractError::NoValidClaimsToProcess,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -469,6 +480,10 @@ mod tests {
         );
         assert_eq!(
             ContractError::InvalidPercentSplit.category(),
+            ErrorCategory::Arithmetic
+        );
+        assert_eq!(
+            ContractError::InvalidPeriodCount.category(),
             ErrorCategory::Arithmetic
         );
     }
@@ -1422,6 +1437,11 @@ mod tests {
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::ClaimAlreadyProcessed => false,
+            ContractError::ClaimExpired => false,
+            ContractError::ClaimNotFound => true,
+            ContractError::NoPendingClaims => true,
+            ContractError::NoValidClaimsToProcess => true,
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -1486,6 +1506,7 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
             ContractError::InvalidPercentSplit => true,
+            ContractError::InvalidPeriodCount => true,
 
             // Escrow
             ContractError::EscrowNotFound => true,
@@ -2097,6 +2118,12 @@ mod tests {
     #[test]
     fn test_invalid_percent_split_is_recoverable() {
         assert!(ContractError::InvalidPercentSplit.is_recoverable());
+    }
+
+    /// InvalidPeriodCount: caller supplies a period count within the cap.
+    #[test]
+    fn test_invalid_period_count_is_recoverable() {
+        assert!(ContractError::InvalidPeriodCount.is_recoverable());
     }
 
     // ---------------------------------------------------------------------------

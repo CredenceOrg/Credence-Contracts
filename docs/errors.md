@@ -118,6 +118,14 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `NegativeAmount` | ✓ | Token amount must be non-negative |
+| 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is smaller than the requested transfer amount |
+| 242 | `UnsupportedStellarNetwork` | ✓ | The configured Stellar network label is not supported |
+| 240 | `ClaimAlreadyProcessed` | ✗ | Claim has already been processed and cannot be paid again |
+| 241 | `ClaimExpired` | ✗ | Claim's expiry time has passed |
+| 242 | `ClaimNotFound` | ✓ | No pending claim exists for the given user and claim ID |
+| 243 | `NoPendingClaims` | ✓ | User has no pending claims to process |
+| 244 | `NoValidClaimsToProcess` | ✓ | No pending claims match the processing request |
 
 ### Attestation (300–399)
 
@@ -189,6 +197,7 @@ error code instead of an opaque transaction failure.
 | 701 | `Underflow` | ✗ | Integer underflow in checked arithmetic |
 | 702 | `DivisionByZero` | ✗ | Division by a zero denominator |
 | 703 | `InvalidPercentSplit` | ✓ | Percentage splits do not sum to exactly 10 000 basis points |
+| 704 | `InvalidPeriodCount` | ✓ | Compound period count exceeds the documented maximum |
 
 ### Escrow (800–899)
 

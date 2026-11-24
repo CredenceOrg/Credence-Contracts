@@ -82,6 +82,14 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
     assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
     assert_eq!(ContractError::BytesTooLarge as u32, 239);
+    assert_eq!(ContractError::NegativeAmount as u32, 240);
+    assert_eq!(ContractError::InsufficientTokenAllowance as u32, 241);
+    assert_eq!(ContractError::UnsupportedStellarNetwork as u32, 242);
+    assert_eq!(ContractError::ClaimAlreadyProcessed as u32, 240);
+    assert_eq!(ContractError::ClaimExpired as u32, 241);
+    assert_eq!(ContractError::ClaimNotFound as u32, 242);
+    assert_eq!(ContractError::NoPendingClaims as u32, 243);
+    assert_eq!(ContractError::NoValidClaimsToProcess as u32, 244);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
@@ -139,4 +147,5 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::Underflow as u32, 701);
     assert_eq!(ContractError::DivisionByZero as u32, 702);
     assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
+    assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
 }

@@ -4,12 +4,6 @@
 # instead (use panic_with_error! with a typed ContractError variant).
 # This file only exists to grandfather pre-existing debt; it should
 # shrink over time, never grow casually.
-contracts/credence_bond/src/claims.rs::panic!("claim already processed")
-contracts/credence_bond/src/claims.rs::panic!("claim amount must be positive")
-contracts/credence_bond/src/claims.rs::panic!("claim expired")
-contracts/credence_bond/src/claims.rs::panic!("claim not found"))
-contracts/credence_bond/src/claims.rs::panic!("no pending claims")
-contracts/credence_bond/src/claims.rs::panic!("no valid claims to process")
 contracts/credence_bond/src/early_exit_penalty.rs::panic!("penalty_bps must be <= 10000")
 contracts/credence_bond/src/emergency.rs::panic!("emergency config not set"))
 contracts/credence_bond/src/emergency.rs::panic!("emergency fee bps must be <= {}", math::BPS_DENOMINATOR)
@@ -59,12 +53,6 @@ contracts/credence_bond/src/same_ledger_liquidation_guard.rs::panic!("{}", COOLD
 contracts/credence_bond/src/same_ledger_liquidation_guard.rs::panic!("{}", SLASH_BLOCKED_REASON)
 contracts/credence_bond/src/slash_history.rs::panic!("slash record not found"))
 contracts/credence_bond/src/status_snapshot.rs::panic!("no bond"))
-contracts/credence_bond/src/token_integration.rs::panic!("amount must be non-negative")
-contracts/credence_bond/src/token_integration.rs::panic!("not admin")
-contracts/credence_bond/src/token_integration.rs::panic!("not initialized"))
-contracts/credence_bond/src/token_integration.rs::panic!("token not configured - contract not properly initialized"))
-contracts/credence_bond/src/token_integration.rs::panic!("unsupported stellar network")
-contracts/credence_bond/src/token_integration.rs::panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE)
 contracts/credence_bond/src/types/attestation.rs::panic!("attestation data exceeds maximum length")
 contracts/credence_bond/src/types/attestation.rs::panic!("attestation weight exceeds maximum")
 contracts/credence_bond/src/types/attestation.rs::panic!("attestation weight must be positive")
