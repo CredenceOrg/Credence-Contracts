@@ -21,7 +21,7 @@
 use super::*;
 use interfaces::governable::GovernableClient;
 use soroban_sdk::testutils::{Address as _, Ledger as _, MockAuth, MockAuthInvoke};
-use soroban_sdk::{Address, Env, IntoVal, InvokeError, String};
+use soroban_sdk::{Address, Env, IntoVal, String};
 use status::ArbitrationError;
 
 // ---------------------------------------------------------------------------
@@ -833,7 +833,7 @@ fn no_quorum_is_terminal() {
             .try_cancel_dispute(&s.creator, &id, &None)
             .unwrap_err()
             .unwrap(),
-        ArbitrationError::InvalidTransition
+        ArbitrationError::CancelNotAllowed
     );
 }
 

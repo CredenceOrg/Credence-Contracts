@@ -5,9 +5,9 @@ its state. If a key's encoding changes between two deployed versions, the new
 code reads/writes a *different* slot and the old entry is **orphaned** — funds,
 flags, and counters silently disappear from the contract's view.
 
-`tests/datakey_fingerprint.rs` pins the XDR encoding of every
-`credence_delegation::DataKey` variant so any change that would move a key fails
-CI instead of shipping.
+`tests/datakey_fingerprint.rs` pins the XDR encoding of each contract's
+`DataKey` variants so any change that would move a key fails CI instead of
+shipping.
 
 ## How a `#[contracttype]` enum is keyed
 
@@ -75,9 +75,18 @@ Rename or change the fields of any `DataKey` variant (e.g. `Nonce` → `Nonces`)
 and re-run the test: `datakey_fingerprints_are_pinned` fails with the moved key
 shown in the diff. Revert to restore green.
 
-## Bond contract
+## Contracts covered
 
-The same rule applies to `credence_bond`'s `DataKey`; its declaration carries the
-same stability doc-comment. A parallel fingerprint test there is blocked only by
-unrelated build breakage in the bond crate, and should be added with the same
-pattern once that crate compiles.
+The fingerprint tests cover `credence_bond`, `credence_delegation`, `admin`,
+`arbitration`, `credence_registry`, `credence_treasury`, `timelock`,
+`credence_multisig`, `fixed_duration_bond`, and `bounty-escrow`.
+
+The registry exposes its key through `credence_registry::storage::DataKey`;
+the fixed-duration bond exposes `DataKey` at the crate root for its integration
+test. The other covered crates already expose their key enums. These visibility
+changes do not alter the `#[contracttype]` variants or their storage encodings.
+
+Run an individual snapshot with
+`cargo test -p <crate> --locked --test datakey_fingerprint`. Intentional
+changes to a key's variant name or fields must update that crate's pinned
+snapshot after reviewing the resulting encoding change.

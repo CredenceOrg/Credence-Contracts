@@ -1,4 +1,7 @@
 use soroban_sdk::{contracttype, Address, Env, Vec};
+use crate::Bond;
+use credence_errors::ContractError;
+use soroban_sdk::{contracttype, Address, Env, Vec};
 
 /// Instance-storage keys owned by this module.
 ///
@@ -11,6 +14,14 @@ use soroban_sdk::{contracttype, Address, Env, Vec};
 /// adding variants to either enum.
 #[contracttype]
 pub enum DataKey {
+    Admin,
+    Token,
+    Bond(Address),
+    Attester(Address),
+    Attestation(u64),
+    AttestationCounter,
+    SubjectAttestations(Address),
+    Locked,
     AcceptedTokens,
 }
 
@@ -30,6 +41,21 @@ pub fn is_token_accepted(e: &Env, token: &Address) -> bool {
     accepted.iter().any(|t| t == *token)
 }
 
+#[cfg(test)]
+pub fn get_accepted_tokens(e: &Env) -> Vec<Address> {
+    e.storage()
+        .instance()
+        .get(&DataKey::AcceptedTokens)
+        .unwrap_or_else(|| Vec::new(e))
+}
+
+pub fn set_accepted_tokens(e: &Env, tokens: &Vec<Address>) {
+    e.storage().instance().set(&DataKey::AcceptedTokens, tokens);
+}
+
+pub fn is_token_accepted(e: &Env, token: &Address) -> bool {
+    let accepted = get_accepted_tokens(e);
+    accepted.iter().any(|t| t == token)
 pub fn is_locked(e: &Env) -> bool {
     e.storage()
         .instance()
@@ -37,12 +63,14 @@ pub fn is_locked(e: &Env) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(test)]
 pub fn set_lock(e: &Env, value: bool) {
     e.storage()
         .instance()
         .set(&crate::DataKey::SettlingFlag, &value);
 }
 
+#[cfg(test)]
 pub fn get_admin(e: &Env) -> Option<Address> {
     e.storage().instance().get(&crate::DataKey::Admin)
 }
