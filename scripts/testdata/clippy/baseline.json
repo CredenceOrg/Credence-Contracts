@@ -1,0 +1,8 @@
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-a@0.1.0","message":{"level":"error","code":{"code":"clippy::expect_used"},"message":"expect used"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-a@0.1.0","message":{"level":"warning","code":{"code":"clippy::unwrap_used"},"message":"unwrap used"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-a@0.1.0","message":{"level":"warning","code":{"code":"clippy::unwrap_used"},"message":"unwrap used"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-y@0.1.0","message":{"level":"warning","code":{"code":"clippy::todo"},"message":"todo used"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-z@0.1.0","message":{"level":"warning","code":{"code":"clippy::arithmetic_side_effects"},"message":"unchecked arithmetic"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-z@0.1.0","message":{"level":"error","code":{"code":"clippy::unwrap_used"},"message":"unwrap used"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-z@0.1.0","message":{"level":"warning","code":{"code":"clippy::unwrap_used"},"message":"unwrap used"}}
+{"reason":"compiler-message","package_id":"path+file:///workspace#crate-z@0.1.0","message":{"level":"warning","code":{"code":"clippy::unwrap_used"},"message":"unwrap used"}}
