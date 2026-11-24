@@ -80,7 +80,7 @@ pub fn require_slash_allowed_after_collateral_increase(e: &Env) {
         .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
     {
         if last == current {
-            panic!("{}", SLASH_BLOCKED_REASON);
+            e.panic_with_error(credence_errors::ContractError::SameLedgerSlashBlocked);
         }
     }
 }
@@ -105,7 +105,7 @@ pub fn require_cooldown_allowed_after_collateral_increase(e: &Env) {
         .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
     {
         if last == current {
-            panic!("{}", COOLDOWN_BLOCKED_REASON);
+            e.panic_with_error(credence_errors::ContractError::SameLedgerCooldownBlocked);
         }
     }
 }
