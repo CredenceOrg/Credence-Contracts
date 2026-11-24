@@ -376,7 +376,14 @@ impl BountyEscrow {
     }
 
     pub fn get_escrow(env: Env, id: u64) -> Option<Escrow> {
-        env.storage().persistent().get(&DataKey::Escrow(id))
+        let key = DataKey::Escrow(id);
+        let escrow: Option<Escrow> = env.storage().persistent().get(&key);
+        // Refresh the TTL on read so monitoring/indexer polling keeps live
+        // records from expiring.
+        if escrow.is_some() {
+            bump_persistent(&env, &key);
+        }
+        escrow
     }
 
     pub fn get_high_value_bounties(env: Env, min_amount: i128, start: u32, limit: u32) -> Vec<u64> {
@@ -405,6 +412,9 @@ impl BountyEscrow {
         get_aggregate_stats_full_scan(env, start, limit)
     }
 }
+
+#[cfg(test)]
+mod test_ttl;
 
 #[cfg(test)]
 mod tests {
