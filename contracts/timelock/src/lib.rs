@@ -5,7 +5,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Symbol,
+    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
     Val, Vec,
 };
 

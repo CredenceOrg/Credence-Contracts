@@ -104,6 +104,11 @@ impl Rate {
         };
         let absent: Option<i128> = None;
         absent.expect(message)
+        assert!(
+            periods <= MAX_COMPOUND_PERIODS,
+            "compound period cap exceeded"
+        );
+        Self::try_compound(rate, periods).expect("compound overflow")
     }
 }
 

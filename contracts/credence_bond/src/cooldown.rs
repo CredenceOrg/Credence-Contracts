@@ -31,8 +31,6 @@ use crate::DataKey;
 use soroban_sdk::{contracttype, Address, Env, Symbol};
 
 const KEY_COOLDOWN_PERIOD: &str = "cooldown_period";
-const KEY_COOLDOWN_REQUEST: &str = "cooldown_request";
-
 /// Cooldown withdrawal request state stored per-identity.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[contracttype]

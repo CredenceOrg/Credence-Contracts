@@ -18,7 +18,7 @@ use crate::validation::{verify_stringified_bytes_bytes, MAX_STRINGIFIED_BYTES_LE
 
 /// Build a `Bytes` filled with `count` copies of `byte`.
 fn repeat_byte(e: &Env, byte: u8, count: usize) -> Bytes {
-    let vec: std::vec::Vec<u8> = core::iter::repeat(byte).take(count).collect();
+    let vec: std::vec::Vec<u8> = core::iter::repeat_n(byte, count).collect();
     Bytes::from_slice(e, &vec)
 }
 

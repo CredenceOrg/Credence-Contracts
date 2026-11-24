@@ -8,7 +8,7 @@ use crate::{
 };
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
-    Address, Env, FromVal, Symbol, TryFromVal, Vec,
+    Address, Env, Symbol, TryFromVal, Vec,
 };
 use std::panic::AssertUnwindSafe;
 
@@ -1382,10 +1382,10 @@ fn test_create_batch_bonds_rejected_when_paused() {
     client.create_batch_bonds(&params_list);
 }
 
-/// validate_batch_bonds is rejected with HostError when the contract is paused.
+/// validate_batch_bonds is a side-effect-free pre-flight check, so it stays
+/// available while the contract is paused.
 #[test]
-#[should_panic(expected = "HostError")]
-fn test_validate_batch_bonds_rejected_when_paused() {
+fn test_validate_batch_bonds_allowed_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register(CredenceBond, ());
@@ -1397,13 +1397,13 @@ fn test_validate_batch_bonds_rejected_when_paused() {
     assert!(client.is_paused(), "precondition: contract must be paused");
 
     let params_list = build_valid_batch(&env, 1);
-    client.validate_batch_bonds(&params_list);
+    assert!(client.validate_batch_bonds(&params_list));
 }
 
-/// get_batch_total_amount is rejected with HostError when the contract is paused.
+/// get_batch_total_amount writes no state, so it stays available while the
+/// contract is paused.
 #[test]
-#[should_panic(expected = "HostError")]
-fn test_get_batch_total_amount_rejected_when_paused() {
+fn test_get_batch_total_amount_allowed_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register(CredenceBond, ());
@@ -1415,7 +1415,7 @@ fn test_get_batch_total_amount_rejected_when_paused() {
     assert!(client.is_paused(), "precondition: contract must be paused");
 
     let params_list = build_valid_batch(&env, 2);
-    client.get_batch_total_amount(&params_list);
+    assert_eq!(client.get_batch_total_amount(&params_list), 1_000 + 1_001);
 }
 
 /// After unpausing, create_batch_bonds succeeds again.
@@ -1475,12 +1475,11 @@ fn test_slash_blocked_same_ledger_after_batch_creation() {
 /// Slash attempted one ledger after a batch creation succeeds.
 #[test]
 fn test_slash_allowed_next_ledger_after_batch_creation() {
+    // A slash moves the slashed funds to the treasury, so the bond token must be
+    // configured as well as the treasury.
     let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin, &None);
+    let (client, admin, _unused_identity, _token, _contract_id) =
+        crate::test_helpers::setup_with_token(&env);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -1496,7 +1495,8 @@ fn test_slash_allowed_next_ledger_after_batch_creation() {
     // Advance to the next ledger sequence so the guard clears.
     crate::test_helpers::advance_ledger_sequence(&env);
 
-    // Slash now succeeds.
+    // Slash now succeeds (a slash treasury must be configured first).
+    client.set_slash_treasury(&admin, &Address::generate(&env));
     let updated = client.slash(&admin, &identity, &300_i128);
     assert_eq!(updated.slashed_amount, 300);
     assert_eq!(updated.bonded_amount, 1_000);

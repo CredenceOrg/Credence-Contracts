@@ -30,6 +30,7 @@ pub fn is_token_accepted(e: &Env, token: &Address) -> bool {
     accepted.iter().any(|t| t == *token)
 }
 
+#[cfg(test)]
 pub fn is_locked(e: &Env) -> bool {
     e.storage()
         .instance()
@@ -37,12 +38,14 @@ pub fn is_locked(e: &Env) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(test)]
 pub fn set_lock(e: &Env, value: bool) {
     e.storage()
         .instance()
         .set(&crate::DataKey::SettlingFlag, &value);
 }
 
+#[cfg(test)]
 pub fn get_admin(e: &Env) -> Option<Address> {
     e.storage().instance().get(&crate::DataKey::Admin)
 }

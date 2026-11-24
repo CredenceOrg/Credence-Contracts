@@ -1,4 +1,5 @@
 extern crate std;
+use crate::upgrade_auth::{UpgradeAuthorization, UpgradeProposal, UpgradeRecord};
 use crate::{
     test_helpers::expect_contract_error_panic,
     upgrade_auth::{self, UpgradeRole, UpgradeStatus},
@@ -8,16 +9,102 @@ use credence_errors::ContractError;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, Env, Vec};
 use crate::test_helpers::expect_contract_error_panic;
+    upgrade_auth::{UpgradeRole, UpgradeStatus},
+    CredenceBond,
+};
+use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{Address, Bytes, Env, Vec};
+use std::cell::RefCell;
 use std::panic::AssertUnwindSafe;
 
-// Helper: register contract + admin, return (client, admin, contract_id).
-fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
-    e.mock_all_auths();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    client.initialize(&admin, &None);
-    (client, admin, contract_id)
+std::thread_local! {
+    /// The contract registered by `create_test_env` for the current test.
+    static TEST_CONTRACT: RefCell<Option<Address>> = const { RefCell::new(None) };
+}
+
+/// Runs `f` inside the test contract's frame. The `upgrade_auth` functions read
+/// and write contract storage, which the host only allows from within a contract.
+fn in_contract<T>(e: &Env, f: impl FnOnce() -> T) -> T {
+    let id = TEST_CONTRACT
+        .with(|slot| slot.borrow().clone())
+        .expect("create_test_env must be called first");
+    e.as_contract(&id, f)
+}
+
+/// The `upgrade_auth` module, with each call run through `in_contract`.
+mod upgrade_auth {
+    use super::*;
+
+    pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
+        in_contract(e, || crate::upgrade_auth::initialize_upgrade_auth(e, admin))
+    }
+    pub fn grant_upgrade_auth(
+        e: &Env,
+        admin: &Address,
+        address: &Address,
+        role: UpgradeRole,
+        expires_at: u64,
+    ) {
+        in_contract(e, || {
+            crate::upgrade_auth::grant_upgrade_auth(e, admin, address, role, expires_at)
+        })
+    }
+    pub fn revoke_upgrade_auth(e: &Env, admin: &Address, address: &Address) {
+        in_contract(e, || crate::upgrade_auth::revoke_upgrade_auth(e, admin, address))
+    }
+    pub fn is_authorized_upgrader(e: &Env, address: &Address) -> bool {
+        in_contract(e, || crate::upgrade_auth::is_authorized_upgrader(e, address))
+    }
+    pub fn get_upgrade_role(e: &Env, address: &Address) -> UpgradeRole {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_role(e, address))
+    }
+    pub fn propose_upgrade(
+        e: &Env,
+        proposer: &Address,
+        new_implementation: &Address,
+        upgrade_data: Bytes,
+        required_approvals: u32,
+    ) -> u64 {
+        in_contract(e, || {
+            crate::upgrade_auth::propose_upgrade(
+                e,
+                proposer,
+                new_implementation,
+                upgrade_data,
+                required_approvals,
+            )
+        })
+    }
+    pub fn approve_upgrade_proposal(e: &Env, approver: &Address, proposal_id: u64) {
+        in_contract(e, || {
+            crate::upgrade_auth::approve_upgrade_proposal(e, approver, proposal_id)
+        })
+    }
+    pub fn execute_upgrade(
+        e: &Env,
+        executor: &Address,
+        new_implementation: &Address,
+        proposal_id: Option<u64>,
+    ) {
+        in_contract(e, || {
+            crate::upgrade_auth::execute_upgrade(e, executor, new_implementation, proposal_id)
+        })
+    }
+    pub fn get_implementation(e: &Env) -> Address {
+        in_contract(e, || crate::upgrade_auth::get_implementation(e))
+    }
+    pub fn get_upgrade_auth(e: &Env, address: &Address) -> UpgradeAuthorization {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_auth(e, address))
+    }
+    pub fn get_upgrade_proposal(e: &Env, proposal_id: u64) -> UpgradeProposal {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_proposal(e, proposal_id))
+    }
+    pub fn get_authorized_upgraders(e: &Env) -> Vec<Address> {
+        in_contract(e, || crate::upgrade_auth::get_authorized_upgraders(e))
+    }
+    pub fn get_upgrade_history(e: &Env) -> Vec<UpgradeRecord> {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_history(e))
+    }
 }
 
 fn create_test_address(e: &Env) -> Address {
@@ -25,7 +112,11 @@ fn create_test_address(e: &Env) -> Address {
 }
 
 fn create_test_env() -> Env {
-    Env::default()
+    let e = Env::default();
+    e.mock_all_auths();
+    let id = e.register(CredenceBond, ());
+    TEST_CONTRACT.with(|slot| *slot.borrow_mut() = Some(id));
+    e
 }
 
 #[test]
@@ -99,7 +190,9 @@ fn test_upgrade_authorization_expiry() {
     // Initialize
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    // Grant authorization with expiry in the future
+    // Grant authorization with expiry in the future. The clock must be past the
+    // one-hour offset below: an `expires_at` of 0 means "never expires".
+    env.ledger().with_mut(|l| l.timestamp = 10_000);
     let now = env.ledger().timestamp();
     let expiry = now + 3600; // 1 hour from now
     upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Upgrader, expiry);
@@ -183,10 +276,12 @@ fn test_upgrade_execution_with_proposal() {
 
     // Set an initial implementation so execute_upgrade has a "current" value to
     // compare against and record in history.
-    env.storage().instance().set(
-        &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
-        &old_impl,
-    );
+    in_contract(&env, || {
+        env.storage().instance().set(
+            &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+            &old_impl,
+        );
+    });
 
     // Create and approve proposal
     let proposal_id =
@@ -227,12 +322,28 @@ fn test_unauthorized_upgrade_attempts() {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
     });
 
-    // Grant proposer role (still can't upgrade)
-    upgrade_auth::grant_upgrade_auth(&env, &admin, &unauthorized, UpgradeRole::Proposer, 0);
+}
+
+#[test]
+fn test_proposer_cannot_execute_upgrade() {
+    // A separate Env: after a panic is caught inside a contract frame the host's
+    // frame stack can no longer be used, so this scenario cannot share one.
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    // Proposer role (still can't upgrade)
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
 
     expect_contract_error_panic(ContractError::RoleRequired as u32, || {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
     });
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        upgrade_auth::execute_upgrade(&env, &proposer, &new_impl, None);
+    }))
+    .expect_err("Proposer should not be able to upgrade");
 }
 
 #[test]
@@ -263,10 +374,12 @@ fn test_upgrade_history_tracking() {
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
 
     // Seed the initial implementation so execute_upgrade has an existing value to compare.
-    env.storage().instance().set(
-        &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
-        &impl1,
-    );
+    in_contract(&env, || {
+        env.storage().instance().set(
+            &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+            &impl1,
+        );
+    });
 
     // Execute multiple upgrades
     upgrade_auth::execute_upgrade(&env, &executor, &impl2, None);
@@ -323,10 +436,12 @@ fn test_upgrade_replay_prevention_surfaces_typed_error() {
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
 
     // Seed the initial implementation required by execute_upgrade's "no current implementation" guard.
-    env.storage().instance().set(
-        &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
-        &initial_impl,
-    );
+    in_contract(&env, || {
+        env.storage().instance().set(
+            &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+            &initial_impl,
+        );
+    });
 
     // First execution should succeed
     upgrade_auth::execute_upgrade(&env, &executor, &new_impl, None);
@@ -1050,7 +1165,7 @@ fn test_accept_upgrade_admin_no_duplicate_when_already_upgrader() {
 
     // Grant new_admin the Upgrader role before the admin transfer completes
     env.as_contract(&contract_id, || {
-        upgrade_auth::grant_upgrade_auth(&env, &admin, &new_admin, UpgradeRole::Upgrader, 0);
+        crate::upgrade_auth::grant_upgrade_auth(&env, &admin, &new_admin, UpgradeRole::Upgrader, 0);
     });
 
     client.transfer_upgrade_admin(&admin, &new_admin);
@@ -1062,7 +1177,7 @@ fn test_accept_upgrade_admin_no_duplicate_when_already_upgrader() {
     client.accept_upgrade_admin(&new_admin);
 
     let upgraders = env.as_contract(&contract_id, || {
-        upgrade_auth::get_authorized_upgraders(&env)
+        crate::upgrade_auth::get_authorized_upgraders(&env)
     });
 
     let count = (0..upgraders.len())
