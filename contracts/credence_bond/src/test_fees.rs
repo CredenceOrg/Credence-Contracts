@@ -118,12 +118,17 @@ fn test_fee_max_bps_capped() {
 }
 
 #[test]
-#[should_panic(expected = "fee_bps out of bounds")]
 fn test_fee_over_max_rejected() {
     let e = Env::default();
     let (client, admin, _identity) = setup(&e);
     let treasury = Address::generate(&e);
-    client.set_fee_config(&admin, &treasury, &(crate::fees::MAX_FEE_BPS + 1));
+    let res = client.try_set_fee_config(&admin, &treasury, &(crate::fees::MAX_FEE_BPS + 1));
+    assert_eq!(
+        res,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::InvalidFeeBps as u32
+        )))
+    );
 }
 
 #[test]
@@ -214,22 +219,32 @@ fn test_set_fee_config_at_max_boundary_accepted() {
 
 /// `MAX_FEE_BPS + 1` is the first value that must be rejected.
 #[test]
-#[should_panic(expected = "fee_bps out of bounds")]
 fn test_set_fee_config_max_plus_one_rejected() {
     let e = Env::default();
     let (client, admin, _identity) = setup(&e);
     let treasury = Address::generate(&e);
-    client.set_fee_config(&admin, &treasury, &(crate::fees::MAX_FEE_BPS + 1));
+    let res = client.try_set_fee_config(&admin, &treasury, &(crate::fees::MAX_FEE_BPS + 1));
+    assert_eq!(
+        res,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::InvalidFeeBps as u32
+        )))
+    );
 }
 
 /// `u32::MAX` is well past the cap — also rejected with the same error.
 #[test]
-#[should_panic(expected = "fee_bps out of bounds")]
 fn test_set_fee_config_u32_max_rejected() {
     let e = Env::default();
     let (client, admin, _identity) = setup(&e);
     let treasury = Address::generate(&e);
-    client.set_fee_config(&admin, &treasury, &u32::MAX);
+    let res = client.try_set_fee_config(&admin, &treasury, &u32::MAX);
+    assert_eq!(
+        res,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::InvalidFeeBps as u32
+        )))
+    );
 }
 
 /// A rejected `set_fee_config` must leave storage untouched on the **same**

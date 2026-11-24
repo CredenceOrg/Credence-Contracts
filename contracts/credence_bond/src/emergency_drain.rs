@@ -43,9 +43,6 @@ pub const DRAIN_TIMELOCK_SECONDS: u64 = 86_400; // 24 hours
 /// executable).  Stored in instance storage so it is cleared on upgrade.
 pub const KEY_DRAIN_ETA: &str = "drain_eta";
 
-/// Storage key for the drain sequence counter.
-pub const KEY_DRAIN_SEQ: &str = "drain_seq";
-
 /// Persistent storage key for individual drain audit records.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -188,7 +185,7 @@ pub fn execute_drain(
 
     // Gate 3: amount must be positive.
     if amount <= 0 {
-        panic!("amount must be positive");
+        panic_with_error!(e, ContractError::AmountMustBePositive);
     }
 
     // Gate 4: recipient must be treasury.
@@ -246,7 +243,7 @@ pub fn get_drain_record(e: &Env, id: u64) -> DrainRecord {
     e.storage()
         .persistent()
         .get(&DrainDataKey::DrainRecord(id))
-        .unwrap_or_else(|| panic!("drain record not found"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::DrainRecordNotFound))
 }
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-#![allow(clippy::disallowed_macros)]
 // Off-chain CLI binary — issue #713 silences dynamic-string macros in
 // ON-CHAIN contract code only. Production contract wasm cannot depend on
 // `format!` for event topics or reverts, but an admin CLI printing JSON
@@ -13,12 +12,14 @@ use soroban_client::{
     transaction_builder::{TransactionBuilder, TransactionBuilderBehavior},
     Options, Server,
 };
+use std::str::FromStr;
 use stellar_baselib::{
     address::{Address, AddressTrait},
     contract::{ContractBehavior, Contracts},
     keypair::{Keypair, KeypairBehavior},
-    xdr::{Limits, ScVal, WriteXdr},
+    xdr::{Limits, ScBytes, ScString, ScSymbol, ScVal, ScVec, WriteXdr},
 };
+use stellar_strkey::ed25519::PrivateKey;
 
 /// Admin CLI for Credence protocol contracts.
 ///
@@ -26,7 +27,7 @@ use stellar_baselib::{
 /// admin operation. Without --submit the XDR envelope is printed as a
 /// structured JSON dry-run. With --submit the transaction is signed with the
 /// key from --signer (or the CREDENCE_SIGNER env-var) and sent to the RPC.
-#[derive(Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "credence-admin",
     author,
@@ -67,6 +68,7 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Debug, Subcommand)]
 /// Maximum basis-points value accepted on-chain (100%).
 const MAX_BPS: i64 = 10_000;
 /// Maximum attestation weight cap accepted on-chain (`MAX_ATTESTATION_WEIGHT`).
@@ -118,6 +120,97 @@ enum Commands {
         #[arg(long, default_value = "true", num_args = 0..=1, default_missing_value = "true")]
         enabled: bool,
     },
+
+    /// Queue a call-bound operation on a timelock contract.
+    ///
+    /// Maps to: queue_call(proposer, target, func, args, salt, delay)
+    TimelockQueueCall {
+        /// Proposer (admin) Stellar address (G…).
+        #[arg(long)]
+        proposer: String,
+        /// Target contract address (C…) that execute_operation will invoke.
+        #[arg(long)]
+        target: String,
+        /// Target function name (≤32 characters).
+        #[arg(long)]
+        func: String,
+        /// Typed call arguments, e.g. --arg address:G… --arg u32:7.
+        /// Repeatable; order is preserved.
+        #[arg(long = "arg")]
+        args: Vec<String>,
+        /// 32-byte salt as 64 hex characters.
+        #[arg(long)]
+        salt: String,
+        /// Minimum delay in seconds before execution.
+        #[arg(long)]
+        delay: u64,
+    },
+
+    /// Execute a queued timelock operation (optionally after its ETA).
+    ///
+    /// Maps to: execute_operation(op_id)
+    TimelockExecute {
+        /// Operation id returned by queue_call.
+        #[arg(long)]
+        op_id: u64,
+    },
+
+    /// Cancel a pending timelock operation.
+    ///
+    /// Maps to: cancel_operation(admin, op_id)
+    TimelockCancel {
+        /// Admin Stellar address (G…).
+        #[arg(long)]
+        admin: String,
+        /// Operation id to cancel.
+        #[arg(long)]
+        op_id: u64,
+    },
+
+    /// Register or update an arbitrator and its voting weight.
+    ///
+    /// Maps to: register_arbitrator(arbitrator, weight)
+    ArbitrationRegisterArbitrator {
+        /// Arbitrator Stellar address (G…).
+        #[arg(long)]
+        arbitrator: String,
+        /// Positive voting weight (i128).
+        #[arg(long, allow_hyphen_values = true)]
+        weight: i128,
+    },
+
+    /// Remove an arbitrator from the registry.
+    ///
+    /// Maps to: unregister_arbitrator(arbitrator)
+    ArbitrationUnregisterArbitrator {
+        /// Arbitrator Stellar address (G…).
+        #[arg(long)]
+        arbitrator: String,
+    },
+
+    /// Set dispute resolution quorum requirements.
+    ///
+    /// Maps to: set_quorum(admin, min_total_weight, min_voters)
+    ArbitrationSetQuorum {
+        /// Admin Stellar address (G…).
+        #[arg(long)]
+        admin: String,
+        /// Minimum total vote weight (i128; 0 disables the weight gate).
+        #[arg(long, allow_hyphen_values = true)]
+        min_total_weight: i128,
+        /// Minimum number of distinct voters.
+        #[arg(long)]
+        min_voters: u32,
+    },
+
+    /// Pause an arbitration contract (admin or pause signer).
+    ///
+    /// Maps to: pause(caller)
+    ArbitrationPause {
+        /// Authorized caller Stellar address (G…).
+        #[arg(long)]
+        caller: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +250,45 @@ fn main() -> Result<()> {
             let args = build_pause_signer_args(admin, pause_signer, *enabled)?;
             run(&cli, contract_id, "set_pause_signer", args)
         }
+        Commands::TimelockQueueCall {
+            proposer,
+            target,
+            func,
+            args: arg_specs,
+            salt,
+            delay,
+        } => {
+            let args = build_queue_call_args(proposer, target, func, arg_specs, salt, *delay)?;
+            run(&cli, contract_id, "queue_call", args)
+        }
+        Commands::TimelockExecute { op_id } => {
+            let args = build_op_id_args(*op_id)?;
+            run(&cli, contract_id, "execute_operation", args)
+        }
+        Commands::TimelockCancel { admin, op_id } => {
+            let args = build_cancel_operation_args(admin, *op_id)?;
+            run(&cli, contract_id, "cancel_operation", args)
+        }
+        Commands::ArbitrationRegisterArbitrator { arbitrator, weight } => {
+            let args = build_register_arbitrator_args(arbitrator, *weight)?;
+            run(&cli, contract_id, "register_arbitrator", args)
+        }
+        Commands::ArbitrationUnregisterArbitrator { arbitrator } => {
+            let args = build_unregister_arbitrator_args(arbitrator)?;
+            run(&cli, contract_id, "unregister_arbitrator", args)
+        }
+        Commands::ArbitrationSetQuorum {
+            admin,
+            min_total_weight,
+            min_voters,
+        } => {
+            let args = build_set_quorum_args(admin, *min_total_weight, *min_voters)?;
+            run(&cli, contract_id, "set_quorum", args)
+        }
+        Commands::ArbitrationPause { caller } => {
+            let args = build_caller_args(caller)?;
+            run(&cli, contract_id, "pause", args)
+        }
     }
 }
 
@@ -191,12 +323,156 @@ fn build_pause_signer_args(admin: &str, signer: &str, enabled: bool) -> Result<V
     ])
 }
 
+/// Encode args for `queue_call(proposer, target, func, args, salt, delay)`.
+///
+/// `args` is encoded as a Soroban `Vec<Val>` and `salt` as `BytesN<32>`.
+fn build_queue_call_args(
+    proposer: &str,
+    target: &str,
+    func: &str,
+    arg_specs: &[String],
+    salt: &str,
+    delay: u64,
+) -> Result<Vec<ScVal>> {
+    let mut encoded_args = Vec::with_capacity(arg_specs.len());
+    for spec in arg_specs {
+        encoded_args.push(parse_arg_spec(spec)?);
+    }
+
+    Ok(vec![
+        addr_to_sc_val(proposer)?,
+        addr_to_sc_val(target)?,
+        symbol_sc_val(func, "function name")?,
+        ScVal::Vec(Some(ScVec::try_from(encoded_args)?)),
+        bytes32_sc_val(salt, "salt")?,
+        ScVal::U64(delay),
+    ])
+}
+
+/// Encode args for `execute_operation(op_id: u64)`.
+fn build_op_id_args(op_id: u64) -> Result<Vec<ScVal>> {
+    Ok(vec![ScVal::U64(op_id)])
+}
+
+/// Encode args for `cancel_operation(admin: Address, op_id: u64)`.
+fn build_cancel_operation_args(admin: &str, op_id: u64) -> Result<Vec<ScVal>> {
+    Ok(vec![addr_to_sc_val(admin)?, ScVal::U64(op_id)])
+}
+
+/// Encode args for `register_arbitrator(arbitrator: Address, weight: i128)`.
+fn build_register_arbitrator_args(arbitrator: &str, weight: i128) -> Result<Vec<ScVal>> {
+    Ok(vec![addr_to_sc_val(arbitrator)?, ScVal::from(weight)])
+}
+
+/// Encode args for `unregister_arbitrator(arbitrator: Address)`.
+fn build_unregister_arbitrator_args(arbitrator: &str) -> Result<Vec<ScVal>> {
+    Ok(vec![addr_to_sc_val(arbitrator)?])
+}
+
+/// Encode args for `set_quorum(admin: Address, min_total_weight: i128, min_voters: u32)`.
+fn build_set_quorum_args(
+    admin: &str,
+    min_total_weight: i128,
+    min_voters: u32,
+) -> Result<Vec<ScVal>> {
+    Ok(vec![
+        addr_to_sc_val(admin)?,
+        ScVal::from(min_total_weight),
+        ScVal::U32(min_voters),
+    ])
+}
+
+/// Encode args for `pause(caller: Address)`.
+fn build_caller_args(caller: &str) -> Result<Vec<ScVal>> {
+    Ok(vec![addr_to_sc_val(caller)?])
+}
+
+/// Parse a typed `--arg TYPE:VALUE` specification into an `ScVal`.
+///
+/// Supported types: `address`, `bool`, `bytes`, `bytes32`, `i32`, `i64`,
+/// `i128`, `string`, `symbol`, `u32`, `u64`, `void`, and `vec:[spec,...]`.
+fn parse_arg_spec(spec: &str) -> Result<ScVal> {
+    let (kind, value) = spec
+        .split_once(':')
+        .ok_or_else(|| anyhow!("invalid --arg {spec:?}: expected TYPE:VALUE (e.g. address:G…)"))?;
+
+    match kind {
+        "address" => addr_to_sc_val(value),
+        "bool" => match value {
+            "true" => Ok(ScVal::Bool(true)),
+            "false" => Ok(ScVal::Bool(false)),
+            _ => Err(anyhow!("invalid --arg bool value {value:?}: expected true/false")),
+        },
+        "bytes" => Ok(ScVal::Bytes(ScBytes::try_from(hex::decode(value)?)?)),
+        "bytes32" => bytes32_sc_val(value, "--arg bytes32"),
+        "i32" => Ok(ScVal::I32(value.parse()?)),
+        "i64" => Ok(ScVal::I64(value.parse()?)),
+        "i128" => Ok(ScVal::from(value.parse::<i128>()?)),
+        "string" => Ok(ScVal::String(ScString::try_from(value.as_bytes().to_vec())?)),
+        "symbol" => symbol_sc_val(value, "--arg symbol"),
+        "u32" => Ok(ScVal::U32(value.parse()?)),
+        "u64" => Ok(ScVal::U64(value.parse()?)),
+        "void" => Ok(ScVal::Void),
+        "vec" => {
+            let inner = value
+                .strip_prefix('[')
+                .and_then(|v| v.strip_suffix(']'))
+                .ok_or_else(|| anyhow!("invalid --arg vec {spec:?}: expected vec:[spec,...]"))?;
+            let values = if inner.trim().is_empty() {
+                Vec::new()
+            } else {
+                inner.split(',').map(parse_arg_spec).collect::<Result<Vec<_>>>()?
+            };
+            Ok(ScVal::Vec(Some(ScVec::try_from(values)?)))
+        }
+        _ => Err(anyhow!(
+            "unsupported --arg type {kind:?}; expected address, bool, bytes, bytes32, i32, i64, i128, string, symbol, u32, u64, void or vec"
+        )),
+    }
+}
+
+/// Encode a Soroban symbol, rejecting names the host cannot decode.
+fn symbol_sc_val(name: &str, label: &str) -> Result<ScVal> {
+    let bytes = name.as_bytes();
+    if bytes.is_empty()
+        || bytes.len() > 32
+        || !bytes[0].is_ascii_alphabetic() && bytes[0] != b'_'
+        || !bytes
+            .iter()
+            .all(|b| b.is_ascii_alphanumeric() || *b == b'_')
+    {
+        return Err(anyhow!(
+            "invalid {label} {name:?}: expected 1–32 characters matching [A-Za-z_][A-Za-z0-9_]*"
+        ));
+    }
+    Ok(ScVal::Symbol(ScSymbol::try_from(bytes.to_vec())?))
+}
+
+/// Encode a 32-byte value as `ScVal::Bytes` (`BytesN<32>` on-chain).
+fn bytes32_sc_val(value: &str, label: &str) -> Result<ScVal> {
+    let bytes = hex::decode(value)
+        .map_err(|e| anyhow!("invalid {label} {value:?}: expected hex bytes: {e}"))?;
+    if bytes.len() != 32 {
+        return Err(anyhow!(
+            "invalid {label}: expected 32 bytes (64 hex chars), got {}",
+            bytes.len()
+        ));
+    }
+    Ok(ScVal::Bytes(ScBytes::try_from(bytes)?))
+}
+
 /// Convert a Stellar address string (G… or C…) to an `ScVal::Address`.
 fn addr_to_sc_val(addr: &str) -> Result<ScVal> {
     let address = Address::new(addr).map_err(|e| anyhow!("invalid address {addr:?}: {e}"))?;
     address
         .to_sc_val()
         .map_err(|e| anyhow!("failed to convert address {addr:?} to ScVal: {e}"))
+}
+
+/// Decode a Stellar secret key without relying on helpers that panic on bad input.
+fn signer_keypair(secret: &str) -> Result<Keypair> {
+    let private = PrivateKey::from_str(secret).map_err(|e| anyhow!("invalid signer key: {e}"))?;
+    Keypair::from_raw_ed25519_seed(&private.0).map_err(|e| anyhow!("invalid signer key: {e}"))
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +493,7 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
             .signer
             .as_deref()
             .ok_or_else(|| anyhow!("--signer / CREDENCE_SIGNER is required with --submit"))?;
-        Some(Keypair::from_secret(secret).map_err(|e| anyhow!("invalid signer key: {e}"))?)
+        Some(signer_keypair(secret)?)
     } else {
         None
     };
@@ -271,6 +547,7 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
                 .await
                 .map_err(|e| anyhow!("send_transaction failed: {e:?}"))?;
 
+            #[allow(clippy::disallowed_macros)]
             let out = json!({
                 "status": format!("{:?}", resp.status),
                 "hash": resp.hash,
@@ -321,6 +598,9 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
 mod tests {
     use super::*;
     use clap::Parser;
+    use std::{env, ffi::OsString, sync::Mutex};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -331,7 +611,43 @@ mod tests {
     /// A well-formed C-address (Soroban contract id) used across tests.
     const VALID_C: &str = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 
+    struct EnvVarGuard(Vec<(&'static str, Option<OsString>)>);
+
+    impl EnvVarGuard {
+        fn clear() -> Self {
+            let vars = [
+                "CREDENCE_RPC_URL",
+                "CREDENCE_NETWORK",
+                "CREDENCE_CONTRACT",
+                "CREDENCE_SIGNER",
+            ]
+            .into_iter()
+            .map(|name| (name, env::var_os(name)))
+            .collect::<Vec<_>>();
+
+            for (name, _) in &vars {
+                env::remove_var(name);
+            }
+
+            Self(vars)
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            for (name, value) in self.0.drain(..) {
+                if let Some(value) = value {
+                    env::set_var(name, value);
+                } else {
+                    env::remove_var(name);
+                }
+            }
+        }
+    }
+
     fn parse_cli(args: &[&str]) -> Result<Cli, clap::Error> {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = EnvVarGuard::clear();
         Cli::try_parse_from(args)
     }
 
@@ -450,6 +766,144 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
+    // Timelock and arbitration argument builders
+    // -----------------------------------------------------------------------
+
+    const VALID_SALT: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+
+    #[test]
+    fn queue_call_args_are_encoded_in_contract_order() {
+        let specs = vec![
+            "address:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string(),
+            "u32:7".to_string(),
+        ];
+        let args = build_queue_call_args(
+            VALID_G,
+            VALID_C,
+            "set_early_exit_config",
+            &specs,
+            VALID_SALT,
+            300,
+        )
+        .expect("valid queue_call args");
+        assert_eq!(args.len(), 6);
+        assert!(matches!(args[0], ScVal::Address(_)));
+        assert!(matches!(args[1], ScVal::Address(_)));
+        assert!(matches!(args[2], ScVal::Symbol(_)));
+        let ScVal::Vec(Some(call_args)) = &args[3] else {
+            panic!("args must be encoded as ScVal::Vec");
+        };
+        assert_eq!(call_args.len(), 2);
+        assert!(matches!(call_args[0], ScVal::Address(_)));
+        assert!(matches!(call_args[1], ScVal::U32(7)));
+        let ScVal::Bytes(salt) = &args[4] else {
+            panic!("salt must be encoded as ScVal::Bytes");
+        };
+        let raw_salt: &[u8] = salt.as_ref();
+        assert_eq!(raw_salt.len(), 32);
+        assert!(matches!(args[5], ScVal::U64(300)));
+    }
+
+    #[test]
+    fn queue_call_args_allow_no_call_arguments() {
+        let args = build_queue_call_args(VALID_G, VALID_C, "pause", &[], VALID_SALT, 0)
+            .expect("valid queue_call args");
+        assert!(matches!(&args[3], ScVal::Vec(Some(values)) if values.is_empty()));
+        assert!(matches!(args[5], ScVal::U64(0)));
+    }
+
+    #[test]
+    fn op_id_and_cancel_args_are_encoded() {
+        assert!(matches!(
+            build_op_id_args(42).unwrap().as_slice(),
+            [ScVal::U64(42)]
+        ));
+        let args = build_cancel_operation_args(VALID_G, 42).unwrap();
+        assert_eq!(args.len(), 2);
+        assert!(matches!(args[0], ScVal::Address(_)));
+        assert!(matches!(args[1], ScVal::U64(42)));
+    }
+
+    #[test]
+    fn arbitration_args_are_encoded() {
+        let registered = build_register_arbitrator_args(VALID_G, -7).unwrap();
+        assert_eq!(registered.len(), 2);
+        assert!(matches!(registered[0], ScVal::Address(_)));
+        assert_eq!(i128::try_from(registered[1].clone()).unwrap(), -7);
+
+        assert_eq!(build_unregister_arbitrator_args(VALID_G).unwrap().len(), 1);
+
+        let quorum = build_set_quorum_args(VALID_G, 9, 3).unwrap();
+        assert_eq!(quorum.len(), 3);
+        assert_eq!(i128::try_from(quorum[1].clone()).unwrap(), 9);
+        assert!(matches!(quorum[2], ScVal::U32(3)));
+
+        let paused = build_caller_args(VALID_G).unwrap();
+        assert_eq!(paused.len(), 1);
+        assert!(matches!(paused[0], ScVal::Address(_)));
+    }
+
+    #[test]
+    fn typed_arg_specs_encode_address_bytes_symbol_and_vec() {
+        assert!(matches!(
+            parse_arg_spec("address:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF")
+                .unwrap(),
+            ScVal::Address(_)
+        ));
+        assert!(matches!(
+            parse_arg_spec(
+                "bytes32:0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20"
+            )
+            .unwrap(),
+            ScVal::Bytes(_)
+        ));
+        assert!(matches!(
+            parse_arg_spec("symbol:set_quorum").unwrap(),
+            ScVal::Symbol(_)
+        ));
+        assert!(matches!(
+            parse_arg_spec("string:hello").unwrap(),
+            ScVal::String(_)
+        ));
+        assert!(matches!(parse_arg_spec("i128:-5").unwrap(), ScVal::I128(_)));
+        assert!(matches!(parse_arg_spec("u64:9").unwrap(), ScVal::U64(9)));
+
+        let ScVal::Vec(Some(values)) = parse_arg_spec(
+            "vec:[u32:1,address:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF]",
+        )
+        .unwrap() else {
+            panic!("nested vec must encode as ScVal::Vec");
+        };
+        assert_eq!(values.len(), 2);
+        assert!(matches!(values[0], ScVal::U32(1)));
+        assert!(matches!(values[1], ScVal::Address(_)));
+    }
+
+    #[test]
+    fn queue_call_args_reject_bad_salt_function_and_arg_types() {
+        let err = build_queue_call_args(VALID_G, VALID_C, "pause", &[], "00", 1).unwrap_err();
+        assert!(err.to_string().contains("32 bytes"));
+
+        let err =
+            build_queue_call_args(VALID_G, VALID_C, "bad-func", &[], VALID_SALT, 1).unwrap_err();
+        assert!(err.to_string().contains("function name"));
+
+        let err = build_queue_call_args(
+            VALID_G,
+            VALID_C,
+            "pause",
+            &["not-a-spec".to_string()],
+            VALID_SALT,
+            1,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("TYPE:VALUE"));
+
+        let err = parse_arg_spec("float:1.5").unwrap_err();
+        assert!(err.to_string().contains("unsupported --arg type"));
+    }
+
+    // -----------------------------------------------------------------------
     // CLI parsing: defaults and env fallbacks
     // -----------------------------------------------------------------------
 
@@ -471,6 +925,105 @@ mod tests {
         assert!(!cli.submit);
         assert!(cli.contract.is_none());
         assert!(cli.signer.is_none());
+    }
+
+    #[test]
+    fn cli_parses_bond_set_early_exit_config() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "bond-set-early-exit-config",
+            "--admin",
+            VALID_G,
+            "--treasury",
+            VALID_C,
+            "--bps",
+            "250",
+        ])
+        .expect("parse ok");
+
+        assert!(matches!(
+            cli.command,
+            Commands::BondSetEarlyExitConfig {
+                admin,
+                treasury,
+                bps: 250,
+            } if admin == VALID_G && treasury == VALID_C
+        ));
+    }
+
+    #[test]
+    fn cli_parses_bond_set_weights() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        assert!(matches!(
+            cli.command,
+            Commands::BondSetWeights {
+                admin,
+                multiplier_bps: 500,
+                max_weight: 10000,
+            } if admin == VALID_G
+        ));
+    }
+
+    #[test]
+    fn cli_parses_delegation_set_pause_signer() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "delegation-set-pause-signer",
+            "--admin",
+            VALID_G,
+            "--pause-signer",
+            VALID_C,
+            "--enabled",
+            "false",
+        ])
+        .expect("parse ok");
+
+        assert!(matches!(
+            cli.command,
+            Commands::DelegationSetPauseSigner {
+                admin,
+                pause_signer,
+                enabled: false,
+            } if admin == VALID_G && pause_signer == VALID_C
+        ));
+    }
+
+    #[test]
+    fn cli_uses_environment_fallbacks() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = EnvVarGuard::clear();
+        env::set_var("CREDENCE_RPC_URL", "https://rpc.example.test");
+        env::set_var("CREDENCE_NETWORK", "Example Network");
+        env::set_var("CREDENCE_CONTRACT", VALID_C);
+        env::set_var("CREDENCE_SIGNER", "S-example-secret");
+
+        let cli = Cli::try_parse_from([
+            "credence-admin",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        assert_eq!(cli.rpc_url, "https://rpc.example.test");
+        assert_eq!(cli.network, "Example Network");
+        assert_eq!(cli.contract.as_deref(), Some(VALID_C));
+        assert_eq!(cli.signer.as_deref(), Some("S-example-secret"));
     }
 
     #[test]
@@ -527,18 +1080,78 @@ mod tests {
     }
 
     #[test]
-    fn cli_rejects_missing_required_admin() {
-        let err = parse_cli(&[
-            "credence-admin",
-            "bond-set-early-exit-config",
-            "--treasury",
-            VALID_G,
-            "--bps",
-            "100",
-        ])
-        .unwrap_err();
-        // clap exits with code 2 for missing required args.
-        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    fn cli_rejects_missing_required_flags() {
+        let missing_required_flags = [
+            vec![
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--treasury",
+                VALID_G,
+                "--bps",
+                "100",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--admin",
+                VALID_G,
+                "--bps",
+                "100",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--admin",
+                VALID_G,
+                "--treasury",
+                VALID_G,
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-weights",
+                "--admin",
+                VALID_G,
+                "--max-weight",
+                "10000",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-weights",
+                "--admin",
+                VALID_G,
+                "--multiplier-bps",
+                "500",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-weights",
+                "--multiplier-bps",
+                "500",
+                "--max-weight",
+                "10000",
+            ],
+            vec![
+                "credence-admin",
+                "delegation-set-pause-signer",
+                "--pause-signer",
+                VALID_G,
+            ],
+            vec![
+                "credence-admin",
+                "delegation-set-pause-signer",
+                "--admin",
+                VALID_G,
+            ],
+        ];
+
+        for args in missing_required_flags {
+            let err = parse_cli(&args).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "arguments should be rejected: {args:?}"
+            );
+        }
     }
 
     #[test]
@@ -575,6 +1188,103 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_timelock_and_arbitration_commands() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "timelock-queue-call",
+            "--proposer",
+            VALID_G,
+            "--target",
+            VALID_C,
+            "--func",
+            "set_quorum",
+            "--arg",
+            "u32:1",
+            "--arg",
+            "address:GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF",
+            "--salt",
+            VALID_SALT,
+            "--delay",
+            "300",
+        ])
+        .expect("parse ok");
+        match cli.command {
+            Commands::TimelockQueueCall {
+                args, delay, func, ..
+            } => {
+                assert_eq!(args.len(), 2);
+                assert_eq!(func, "set_quorum");
+                assert_eq!(delay, 300);
+            }
+            _ => panic!("wrong command"),
+        }
+
+        let cli =
+            parse_cli(&["credence-admin", "timelock-execute", "--op-id", "7"]).expect("parse ok");
+        assert!(matches!(
+            cli.command,
+            Commands::TimelockExecute { op_id: 7 }
+        ));
+
+        let cli = parse_cli(&[
+            "credence-admin",
+            "timelock-cancel",
+            "--admin",
+            VALID_G,
+            "--op-id",
+            "7",
+        ])
+        .expect("parse ok");
+        assert!(matches!(
+            cli.command,
+            Commands::TimelockCancel { op_id: 7, .. }
+        ));
+
+        let cli = parse_cli(&[
+            "credence-admin",
+            "arbitration-register-arbitrator",
+            "--arbitrator",
+            VALID_G,
+            "--weight",
+            "-5",
+        ])
+        .expect("parse ok");
+        assert!(matches!(
+            cli.command,
+            Commands::ArbitrationRegisterArbitrator { weight: -5, .. }
+        ));
+
+        let cli = parse_cli(&[
+            "credence-admin",
+            "arbitration-unregister-arbitrator",
+            "--arbitrator",
+            VALID_G,
+        ])
+        .expect("parse ok");
+        assert!(matches!(
+            cli.command,
+            Commands::ArbitrationUnregisterArbitrator { .. }
+        ));
+
+        let cli = parse_cli(&[
+            "credence-admin",
+            "arbitration-set-quorum",
+            "--admin",
+            VALID_G,
+            "--min-total-weight",
+            "100",
+            "--min-voters",
+            "3",
+        ])
+        .expect("parse ok");
+        assert!(matches!(
+            cli.command,
+            Commands::ArbitrationSetQuorum { min_voters: 3, .. }
+        ));
+
+        let cli = parse_cli(&["credence-admin", "arbitration-pause", "--caller", VALID_G])
+            .expect("parse ok");
+        assert!(matches!(cli.command, Commands::ArbitrationPause { .. }));
     fn cli_accepts_bps_boundary_values() {
         for bps in ["0", "10000"] {
             let cli = parse_cli(&[
