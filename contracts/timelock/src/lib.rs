@@ -50,6 +50,7 @@ const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400; // ~180 days
 /// single read can never exceed the gas/read budget regardless of the argument.
 /// `limit == 0` selects this maximum, matching the admin contract's pagination.
 const MAX_PAGE_LIMIT: u32 = 200;
+pub const MAX_BATCH_SIZE: u32 = 20;
 
 fn effective_page_limit(limit: u32) -> u32 {
     if limit == 0 {
@@ -108,6 +109,16 @@ pub struct CallSpec {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CallRequest {
+    pub target: Address,
+    pub func: Symbol,
+    pub args: Vec<Val>,
+    pub salt: BytesN<32>,
+    pub delay: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueuedOperation {
     pub id: u64,
     pub op_hash: BytesN<32>,
@@ -149,6 +160,8 @@ pub enum DataKey {
     ExecutedOp(BytesN<32>),
     /// Persistent storage key for call-bound operations.
     CallBoundOperation(u64),
+    /// Optional configured grace period; absent entries use `GRACE_PERIOD`.
+    GracePeriod,
 }
 
 #[contract]
@@ -221,6 +234,29 @@ impl TimelockContract {
             .set(&DataKey::OperationCounter, &0_u64);
     }
 
+    /// Set the grace period applied to newly queued operations.
+    pub fn set_grace_period(e: Env, admin: Address, grace_period: u64) {
+        bump_instance_ttl(&e);
+        Self::require_proposer_admin(&e, &admin);
+        let previous = Self::get_grace_period(e.clone());
+        e.storage()
+            .instance()
+            .set(&DataKey::GracePeriod, &grace_period);
+        e.events().publish(
+            (Symbol::new(&e, "grace_period_updated"),),
+            (previous, grace_period),
+        );
+    }
+
+    /// Get the grace period used for newly queued operations.
+    pub fn get_grace_period(e: Env) -> u64 {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::GracePeriod)
+            .unwrap_or(GRACE_PERIOD)
+    }
+
     /// Queue a new administrative operation to be executed after the delay.
     ///
     /// This is the hash-only variant for backward compatibility. The operation
@@ -271,94 +307,40 @@ impl TimelockContract {
         delay: u64,
     ) -> u64 {
         bump_instance_ttl(&e);
-        proposer.require_auth();
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+        Self::require_proposer_admin(&e, &proposer);
+        Self::queue_call_internal(
+            &e,
+            &proposer,
+            CallRequest {
+                target,
+                func,
+                args,
+                salt,
+                delay,
+            },
+        )
+    }
 
-        if proposer != admin {
-            panic_with_error!(&e, ContractError::NotAdmin);
+    /// Atomically queue a bounded batch of call-bound operations.
+    ///
+    /// Each request supplies its own target, payload, salt, and delay. Any
+    /// invalid request aborts the transaction, including all earlier requests.
+    pub fn queue_calls(e: Env, proposer: Address, calls: Vec<CallRequest>) -> Vec<u64> {
+        bump_instance_ttl(&e);
+        Self::require_proposer_admin(&e, &proposer);
+        if calls.is_empty() {
+            panic_with_error!(&e, ContractError::EmptyBatch);
+        }
+        if calls.len() > MAX_BATCH_SIZE {
+            panic_with_error!(&e, ContractError::BatchTooLarge);
         }
 
-        if delay < min_delay_seconds() {
-            panic_with_error!(&e, ContractError::TimelockNotReady);
+        let mut op_ids = Vec::new(&e);
+        for index in 0..calls.len() {
+            let call = calls.get(index).unwrap();
+            op_ids.push_back(Self::queue_call_internal(&e, &proposer, call));
         }
-
-        // Compute the operation hash on-chain
-        let op_hash = Self::hash_call(
-            e.clone(),
-            target.clone(),
-            func.clone(),
-            args.clone(),
-            salt.clone(),
-        );
-
-        // Replay guard: cannot queue an operation that was already executed
-        if e.storage()
-            .instance()
-            .get(&DataKey::ExecutedOp(op_hash.clone()))
-            .unwrap_or(false)
-        {
-            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
-        }
-
-        let op_id: u64 = e
-            .storage()
-            .instance()
-            .get(&DataKey::OperationCounter)
-            .unwrap_or(0);
-        let next_op_id = op_id
-            .checked_add(1)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        e.storage()
-            .instance()
-            .set(&DataKey::OperationCounter, &next_op_id);
-
-        let now = e.ledger().timestamp();
-        let eta = now
-            .checked_add(delay)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        let expires_at = eta
-            .checked_add(GRACE_PERIOD)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-
-        let op = CallBoundOperation {
-            id: op_id,
-            op_hash: op_hash.clone(),
-            target: target.clone(),
-            func: func.clone(),
-            args: args.clone(),
-            salt: salt.clone(),
-            eta,
-            expires_at,
-            status: OperationStatus::Pending,
-        };
-
-        // Store in persistent storage with TTL extension
-        let op_key = DataKey::CallBoundOperation(op_id);
-        e.storage().persistent().set(&op_key, &op);
-        bump_persistent_ttl(&e, op_key);
-
-        // Also store in instance storage for backward compatibility with get_operation
-        let op_wrapper = QueuedOperation {
-            id: op_id,
-            op_hash: op_hash.clone(),
-            eta,
-            expires_at,
-            status: OperationStatus::Pending,
-        };
-        e.storage()
-            .instance()
-            .set(&DataKey::Operation(op_id), &op_wrapper);
-
-        e.events().publish(
-            (Symbol::new(&e, "operation_queued"), op_id),
-            (proposer, op_hash, eta, expires_at),
-        );
-
-        op_id
+        op_ids
     }
 
     /// Compute the hash for a call-bound operation.
@@ -419,7 +401,7 @@ impl TimelockContract {
         }
 
         if now > op.expires_at {
-            panic_with_error!(&e, ContractError::SignatureExpired);
+            panic_with_error!(&e, ContractError::OperationExpired);
         }
 
         // Replay guard check
@@ -476,7 +458,7 @@ impl TimelockContract {
         }
 
         if now > op.expires_at {
-            panic_with_error!(&e, ContractError::SignatureExpired);
+            panic_with_error!(&e, ContractError::OperationExpired);
         }
 
         // Replay guard check
@@ -689,6 +671,56 @@ impl TimelockContract {
         }
     }
 
+    fn queue_call_internal(e: &Env, proposer: &Address, call: CallRequest) -> u64 {
+        Self::require_valid_delay(e, call.delay);
+        let op_hash = Self::hash_call(
+            e.clone(),
+            call.target.clone(),
+            call.func.clone(),
+            call.args.clone(),
+            call.salt.clone(),
+        );
+        if e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op_hash.clone()))
+            .unwrap_or(false)
+        {
+            panic_with_error!(e, ContractError::ProposalAlreadyExecuted);
+        }
+
+        let (op_id, eta, expires_at) = Self::begin_queue(e, call.delay);
+        let op = CallBoundOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            target: call.target.clone(),
+            func: call.func.clone(),
+            args: call.args,
+            salt: call.salt,
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+        let op_key = DataKey::CallBoundOperation(op_id);
+        e.storage().persistent().set(&op_key, &op);
+        bump_persistent_ttl(e, op_key);
+
+        let op_wrapper = QueuedOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+        e.storage()
+            .instance()
+            .set(&DataKey::Operation(op_id), &op_wrapper);
+        e.events().publish(
+            (Symbol::new(e, "operation_queued"), op_id),
+            (proposer.clone(), op_hash, eta, expires_at),
+        );
+        op_id
+    }
+
     /// Allocate the next operation id and compute its execution window.
     fn begin_queue(e: &Env, delay: u64) -> (u64, u64, u64) {
         let op_id: u64 = e
@@ -708,7 +740,7 @@ impl TimelockContract {
             .checked_add(delay)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
         let expires_at = eta
-            .checked_add(GRACE_PERIOD)
+            .checked_add(Self::get_grace_period(e.clone()))
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
 
         (op_id, eta, expires_at)
@@ -751,7 +783,7 @@ impl TimelockContract {
             .checked_add(min_delay_seconds())
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let expires_at = eta
-            .checked_add(GRACE_PERIOD)
+            .checked_add(Self::get_grace_period(e.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let pending = PendingAdmin {
             address: new_admin.clone(),
