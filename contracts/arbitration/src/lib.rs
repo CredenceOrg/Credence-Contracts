@@ -6,7 +6,8 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
+    contract, contractimpl, contracttype, panic_with_error, symbol_short, Address, Env, Map,
+    String, Symbol, Vec,
 };
 
 /// Signature domain identifier for the CredenceArbitration contract.
@@ -429,9 +430,9 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::NotInitialized)?;
 
         let role = if caller == dispute.creator {
-            Symbol::short("creator")
+            symbol_short!("creator")
         } else if caller == admin {
-            Symbol::short("admin")
+            symbol_short!("admin")
         } else {
             return Err(ArbitrationError::NotAuthorized);
         };
@@ -441,7 +442,7 @@ impl CredenceArbitration {
 
         // Creator may only cancel before any votes are cast and within the voting window.
         // Admin retains a moderation override to cancel a Voting dispute at any time.
-        if role == Symbol::short("creator") {
+        if role == symbol_short!("creator") {
             let voter_count: u32 = e
                 .storage()
                 .instance()
@@ -452,6 +453,9 @@ impl CredenceArbitration {
                 return Err(ArbitrationError::CancelNotAllowed);
             }
         }
+
+        let from = dispute.status;
+        require_transition(from, DisputeStatus::Cancelled)?;
 
         dispute.status = DisputeStatus::Cancelled;
         dispute.cancellation_reason = reason.clone();
@@ -562,7 +566,7 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::DisputeNotFound)?;
 
         // Must be Voting to start resolution
-        require_transition(dispute.status.clone(), DisputeStatus::Resolving)?;
+        require_transition(dispute.status, DisputeStatus::Resolving)?;
 
         let now = e.ledger().timestamp();
         if now <= dispute.voting_end {

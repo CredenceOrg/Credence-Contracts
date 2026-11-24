@@ -91,6 +91,10 @@ pub enum ArbitrationError {
     /// Creator may not cancel after votes have been cast or the voting window ended.
     CancelNotAllowed = 19,
     /// A dispute creator may not vote on their own dispute.
+    /// The creator may not cancel once votes have been cast or after the voting
+    /// window has closed.
+    CancelNotAllowed = 19,
+    /// A dispute's creator cannot vote on their own dispute.
     ConflictOfInterest = 20,
 }
 

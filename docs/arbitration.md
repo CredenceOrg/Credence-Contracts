@@ -189,3 +189,21 @@ Run tests:
 ```bash
 cargo test -p credence_arbitration
 ```
+
+## Dispute resolution integration
+
+Arbitration rulings back the `dispute_resolution` contract directly: a dispute
+there can name an arbitration contract as its resolver, and is then resolved from
+the arbitration ruling rather than a single address.
+
+- `dispute_resolution::create_arbitration_dispute(creator, arbitration_contract, arbitration_dispute_id)`
+  binds a dispute to an arbitration dispute id.
+- When resolving, `dispute_resolution` reads the ruling through the shared client
+  in `crates/interfaces/src/arbitration.rs` (mirroring `Dispute`/`DisputeStatus`,
+  so no contract-to-contract build edge is created) and calls `get_dispute`.
+- Only a final `Resolved` ruling with a non-zero outcome is accepted; `Tied`,
+  `NoQuorum`, cancelled/archived, and any non-final status are rejected with typed
+  errors.
+
+See [docs/dispute-resolution.md](dispute-resolution.md) for the full
+mapping and the events emitted.
