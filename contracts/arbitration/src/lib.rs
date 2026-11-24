@@ -37,7 +37,13 @@ pub mod status;
 use status::ArbitrationError as Error;
 use status::{require_transition, ArbitrationError, DisputeStatus};
 
-use interfaces::governable::Governable;
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -282,36 +288,7 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
-        e.storage()
-            .instance()
-            .set(&DataKey::ActiveDispute(creator.clone()), &id);
-
-        let creator_dispute_count_key = DataKey::CreatorDisputeCount(creator.clone());
-        let creator_dispute_count: u32 = e
-            .storage()
-            .persistent()
-            .get(&creator_dispute_count_key)
-            .unwrap_or(0);
-        let next_creator_dispute_count = creator_dispute_count
-            .checked_add(1)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        let creator_dispute_key = DataKey::CreatorDispute(creator.clone(), creator_dispute_count);
-        e.storage()
-            .persistent()
-            .set(&creator_dispute_key, &id);
-        e.storage().persistent().extend_ttl(
-            &creator_dispute_key,
-            PERSISTENT_TTL_THRESHOLD,
-            PERSISTENT_TTL_EXTEND_TO,
-        );
-        e.storage()
-            .persistent()
-            .set(&creator_dispute_count_key, &next_creator_dispute_count);
-        e.storage().persistent().extend_ttl(
-            &creator_dispute_count_key,
-            PERSISTENT_TTL_THRESHOLD,
-            PERSISTENT_TTL_EXTEND_TO,
-        );
+        bump_instance_ttl(&e);
 
         // Lifecycle events: created + status transition
         e.events()
@@ -385,7 +362,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
-        clear_active_dispute(&e, &dispute.creator);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -602,15 +579,14 @@ impl CredenceArbitration {
             is_tie = true;
         }
 
-        if is_tie {
-            // Resolving → Tied (explicit tie state)
-            require_transition(DisputeStatus::Resolving, DisputeStatus::Tied)?;
-            dispute.status = DisputeStatus::Tied;
-            dispute.outcome = 0; // Reserved sentinel for tie; cannot confuse with a valid outcome
-            e.storage()
-                .instance()
-                .set(&DataKey::Dispute(dispute_id), &dispute);
-            clear_active_dispute(&e, &dispute.creator);
+        // Resolving → Resolved
+        require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
+        dispute.status = DisputeStatus::Resolved;
+        dispute.outcome = winning_outcome;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
@@ -695,11 +671,13 @@ impl CredenceArbitration {
 
     /// Get dispute details.
     pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
-        bump_instance_ttl(&e);
-        e.storage()
+        let dispute: Dispute = e
+            .storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
-            .ok_or(ArbitrationError::DisputeNotFound)
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+        bump_instance_ttl(&e);
+        Ok(dispute)
     }
 
     /// Get current total weight for an outcome.
