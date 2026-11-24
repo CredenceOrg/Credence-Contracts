@@ -38,7 +38,9 @@ const CALL_BOUND_OPERATION_TTL: u32 = 3600;
 /// call) must be kept alive for at least as long as the longest execution
 /// window. The limits are kept below the network's maximum entry TTL
 /// (`6_311_520` ledgers) so that `extend_ttl` is always valid.
+#[allow(dead_code, reason = "reserved for future TTL-extension wiring")]
 const PERSISTENT_TTL_THRESHOLD: u32 = 518_400; // ~30 days
+#[allow(dead_code, reason = "reserved for future TTL-extension wiring")]
 const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400; // ~180 days
 
 /// Hard cap on the page size accepted by
@@ -153,6 +155,7 @@ pub struct TimelockContract;
 
 /// Derive the per-operation salt from values that are only known once the
 /// operation id and its execution window have been assigned.
+#[allow(dead_code, reason = "prepared for call-bound operation hashing; not yet wired to an entrypoint")]
 fn derive_salt(e: &Env, op_id: u64, eta: u64) -> BytesN<32> {
     let mut preimage = Bytes::new(e);
     preimage.append(&op_id.to_xdr(e));
@@ -165,6 +168,7 @@ fn derive_salt(e: &Env, op_id: u64, eta: u64) -> BytesN<32> {
 /// Every field of the pre-image is length-delimited by its XDR encoding, so
 /// changing any byte of `target`, `func`, `args` or `salt` yields a different
 /// hash and therefore a different queued operation.
+#[allow(dead_code, reason = "prepared for call-bound operation hashing; not yet wired to an entrypoint")]
 fn compute_call_hash(
     e: &Env,
     target: &Address,
@@ -182,6 +186,8 @@ fn compute_call_hash(
     e.crypto().sha256(&preimage).to_bytes()
 }
 
+/// Load a queued operation from persistent storage, bumping its TTL.
+#[allow(dead_code, reason = "helper used by test helpers and future entrypoints")]
 fn load_operation(e: &Env, op_id: u64) -> QueuedOperation {
     let key = DataKey::Operation(op_id);
     let op: QueuedOperation = e
