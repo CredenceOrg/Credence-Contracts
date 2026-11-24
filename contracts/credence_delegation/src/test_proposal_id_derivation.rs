@@ -15,6 +15,9 @@ use crate::pausable::PROPOSAL_EPOCH_SIZE;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{vec, Address, Env, Vec};
 
+/// Number of ledgers per proposal epoch, widened to `u32` for ledger math.
+const EPOCH_SIZE: u32 = PROPOSAL_EPOCH_SIZE as u32;
+
 fn setup() -> (Env, Address, CredenceDelegationClient<'static>) {
     let env = Env::default();
     env.mock_all_auths();
@@ -82,7 +85,7 @@ fn test_proposal_id_different_epoch_yields_new_id() {
 
     // Advance to the next epoch.
     env.ledger().with_mut(|l| {
-        l.sequence_number += u32::from(PROPOSAL_EPOCH_SIZE);
+        l.sequence_number += EPOCH_SIZE;
     });
 
     // Unpause to allow a new pause proposal.
@@ -135,16 +138,16 @@ proptest! {
     #[test]
     fn test_proposal_id_derivation_property(
         epoch in 0u32..10_000,
-        offset1 in 1u32..=PROPOSAL_EPOCH_SIZE,
-        offset2 in 1u32..=PROPOSAL_EPOCH_SIZE,
+        offset1 in 1u32..=EPOCH_SIZE,
+        offset2 in 1u32..=EPOCH_SIZE,
     ) {
         let (env, admin, client) = setup();
         let signers = add_signers(&env, &admin, &client, 2, 2);
         let s1 = signers.get(0).unwrap();
         let s2 = signers.get(1).unwrap();
 
-        let seq1 = epoch * PROPOSAL_EPOCH_SIZE + offset1;
-        let seq2 = epoch * PROPOSAL_EPOCH_SIZE + offset2;
+        let seq1 = epoch * EPOCH_SIZE + offset1;
+        let seq2 = epoch * EPOCH_SIZE + offset2;
 
         env.ledger().with_mut(|l| l.sequence_number = seq1);
         let id1 = client.pause(&s1).unwrap();
@@ -160,7 +163,7 @@ proptest! {
         client.unpause(&admin);
 
         // Sequence in the NEXT epoch MUST yield a different ID
-        let seq3 = (epoch + 1) * PROPOSAL_EPOCH_SIZE + 1;
+        let seq3 = (epoch + 1) * EPOCH_SIZE + 1;
         env.ledger().with_mut(|l| l.sequence_number = seq3);
         let id3 = client.pause(&s1).unwrap();
 
@@ -178,7 +181,7 @@ fn test_proposal_id_epoch_boundary() {
     let s2 = signers.get(1).unwrap();
 
     // Place ledger at the exact end of epoch 0.
-    let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
+    let epoch_boundary = EPOCH_SIZE;
     env.ledger().with_mut(|l| {
         l.sequence_number = epoch_boundary;
     });
@@ -272,7 +275,7 @@ fn test_stale_epoch_rejected() {
 
     // Advance to epoch 1 before approving.
     env.ledger().with_mut(|l| {
-        l.sequence_number += u32::from(PROPOSAL_EPOCH_SIZE);
+        l.sequence_number += EPOCH_SIZE;
     });
 
     // This should panic with StaleEpoch (513) because the proposal ID

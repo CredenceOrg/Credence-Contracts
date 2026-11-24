@@ -40,11 +40,13 @@ A Soroban smart contract that allows users to lock USDC for a **fixed, predeterm
 
 ### Queries
 
-| Function             | Parameters       | Returns     | Description                                     |
-| -------------------- | ---------------- | ----------- | ----------------------------------------------- |
-| `get_bond`           | `owner: Address` | `FixedBond` | Returns bond state for `owner`. Panics if none. |
-| `is_matured`         | `owner: Address` | `bool`      | True if lock period has elapsed.                |
-| `get_time_remaining` | `owner: Address` | `u64`       | Seconds until maturity; 0 if already matured.   |
+| Function             | Parameters       | Returns                  | Description                                                            |
+| -------------------- | ---------------- | ------------------------ | ---------------------------------------------------------------------- |
+| `get_bond`           | `owner: Address` | `FixedBond`              | Returns bond state for `owner`. Panics if none.                        |
+| `is_matured`         | `owner: Address` | `bool`                   | True if lock period has elapsed.                                       |
+| `get_time_remaining` | `owner: Address` | `u64`                    | Seconds until maturity; 0 if already matured.                          |
+| `get_fee_config`     | _(none)_         | `Option<(Address, u32)>` | Returns configured `(treasury, fee_bps)`, or `None` if unset.          |
+| `get_penalty_config` | _(none)_         | `Option<(Address, u32)>` | Returns configured `(treasury, base_penalty_bps)`, or `None` if unset. |
 
 ---
 

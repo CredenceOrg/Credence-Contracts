@@ -535,7 +535,7 @@ fn integration_cap_raised_allows_top_up_recovery() {
 /// A non-admin caller must not be able to set the leverage cap.
 /// Relaxing the cap from a non-admin address is a privilege escalation vector.
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn integration_non_admin_cannot_set_max_leverage() {
     let e = Env::default();
     let (client, _admin) = bare_contract(&e);
@@ -552,7 +552,7 @@ fn integration_non_admin_cannot_set_max_leverage() {
 /// `set_max_leverage(0)` must panic — zero disables the cap entirely,
 /// which is an unsafe invariant (any bond size would pass).
 #[test]
-#[should_panic(expected = "max_leverage out of bounds")]
+#[should_panic(expected = "#240")]
 fn param_set_max_leverage_zero_rejected() {
     let e = Env::default();
     let (client, admin) = bare_contract(&e);
@@ -561,7 +561,7 @@ fn param_set_max_leverage_zero_rejected() {
 
 /// A value one above the hard ceiling must be rejected.
 #[test]
-#[should_panic(expected = "max_leverage out of bounds")]
+#[should_panic(expected = "#240")]
 fn param_set_max_leverage_above_ceiling_rejected() {
     let e = Env::default();
     let (client, admin) = bare_contract(&e);

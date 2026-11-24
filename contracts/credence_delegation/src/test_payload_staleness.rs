@@ -31,10 +31,9 @@
 use super::*;
 use credence_errors::ContractError;
 use domain::MAX_PAYLOAD_AGE_LEDGERS;
-use soroban_sdk::Env;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
-    String,
+    Env, String,
 };
 
 // ---------------------------------------------------------------------------
@@ -117,11 +116,9 @@ fn stale_delegate_is_rejected() {
         &payload,
     );
 
-    assert!(
-        result.is_err(),
-        "a payload older than MAX_PAYLOAD_AGE_LEDGERS must be rejected"
-    );
-    let err = result.unwrap_err().unwrap();
+    let err = result
+        .expect_err("a payload older than MAX_PAYLOAD_AGE_LEDGERS must be rejected")
+        .expect("rejection must be a contract error");
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ContractError::PayloadTooOld as u32),
@@ -213,8 +210,9 @@ fn stale_revoke_is_rejected() {
         &payload,
     );
 
-    assert!(result.is_err());
-    let err = result.unwrap_err().unwrap();
+    let err = result
+        .expect_err("a stale revoke payload must be rejected")
+        .expect("rejection must be a contract error");
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ContractError::PayloadTooOld as u32),
@@ -257,8 +255,9 @@ fn stale_revoke_attest_is_rejected() {
 
     let result = client.try_execute_delegated_revoke_attest(&attester, &subject, &payload);
 
-    assert!(result.is_err());
-    let err = result.unwrap_err().unwrap();
+    let err = result
+        .expect_err("a stale revoke-attest payload must be rejected")
+        .expect("rejection must be a contract error");
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ContractError::PayloadTooOld as u32),
@@ -316,11 +315,9 @@ fn future_ledger_number_is_rejected() {
         &payload,
     );
 
-    assert!(
-        result.is_err(),
-        "a payload with a future ledger_number must be rejected"
-    );
-    let err = result.unwrap_err().unwrap();
+    let err = result
+        .expect_err("a payload with a future ledger_number must be rejected")
+        .expect("rejection must be a contract error");
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ContractError::TimestampInFuture as u32),
