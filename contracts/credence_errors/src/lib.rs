@@ -581,6 +581,14 @@ pub enum ContractError {
 
     /// The token allowance is smaller than the requested transfer amount.
     /// Replaces: panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE)
+    /// Token helper rejected a negative amount.
+    /// Replaces: panic!("amount must be non-negative") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidTokenAmount = 240,
+
+    /// Token allowance is below the requested amount.
+    /// Replaces: panic!("insufficient token allowance") in bond safe_token helpers.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InsufficientTokenAllowance = 241,
@@ -725,6 +733,17 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     ParameterOutOfBounds = 240,
+    /// A token transfer call failed.
+    /// Replaces: panic!("token transfer failed") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TokenTransferFailed = 242,
+
+    /// A token approve call failed.
+    /// Replaces: panic!("token approve failed") in bond safe_token helpers.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    TokenApproveFailed = 243,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -1246,6 +1265,10 @@ impl ErrorExt for ContractError {
             | ContractError::ImplementationNotSet
             | ContractError::SameImplementation => ErrorCategory::Bond,
             | ContractError::ParameterOutOfBounds => ErrorCategory::Bond,
+            | ContractError::InvalidTokenAmount
+            | ContractError::InsufficientTokenAllowance
+            | ContractError::TokenTransferFailed
+            | ContractError::TokenApproveFailed => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1510,6 +1533,12 @@ impl ErrorExt for ContractError {
             ContractError::UpgradeImplementationMismatch => "Implementation does not match the upgrade proposal",
             ContractError::ImplementationNotSet => "No implementation address has been set",
             ContractError::SameImplementation => "New implementation is the same as the current implementation",
+            ContractError::InvalidTokenAmount => "Token amount must be non-negative",
+            ContractError::InsufficientTokenAllowance => {
+                "Token allowance is below the requested amount"
+            }
+            ContractError::TokenTransferFailed => "Token transfer failed",
+            ContractError::TokenApproveFailed => "Token approval failed",
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
             }
@@ -1771,6 +1800,10 @@ impl ErrorExt for ContractError {
             | ContractError::UpgradeImplementationMismatch  // resubmit with the proposed implementation
             | ContractError::SameImplementation  // supply a different implementation
             | ContractError::ParameterOutOfBounds  // supply a value within [min, max]
+            | ContractError::InvalidTokenAmount    // supply a non-negative amount
+            | ContractError::InsufficientTokenAllowance // approve the required amount
+            | ContractError::TokenTransferFailed   // retry after fixing token balance/state
+            | ContractError::TokenApproveFailed   // retry after fixing token state
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.

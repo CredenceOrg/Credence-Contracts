@@ -114,6 +114,10 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::ImplementationNotSet as u32, 247);
     assert_eq!(ContractError::SameImplementation as u32, 248);
     assert_eq!(ContractError::ParameterOutOfBounds as u32, 240);
+    assert_eq!(ContractError::InvalidTokenAmount as u32, 240);
+    assert_eq!(ContractError::InsufficientTokenAllowance as u32, 241);
+    assert_eq!(ContractError::TokenTransferFailed as u32, 242);
+    assert_eq!(ContractError::TokenApproveFailed as u32, 243);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
