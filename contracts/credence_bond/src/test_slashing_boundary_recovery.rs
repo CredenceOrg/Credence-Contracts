@@ -795,6 +795,22 @@ fn slash_records_single_admin_auth() {
 
     let auths = e.auths();
     assert_eq!(auths.len(), 1, "expected exactly one auth entry");
+    let auth = &auths[0];
+    assert_eq!(auth.0, admin, "auth entry address must be the admin");
+    let soroban_sdk::testutils::AuthorizedFunction::Contract((contract, fn_name, _)) =
+        &auth.1.function
+    else {
+        panic!("expected a contract invocation");
+    };
+    assert_eq!(
+        *contract, contract_id,
+        "auth entry contract must be this contract"
+    );
+    assert_eq!(
+        *fn_name,
+        soroban_sdk::Symbol::new(&e, "slash"),
+        "auth entry fn_name must be slash"
+    );
     let (auth_address, invocation) = &auths[0];
     assert_eq!(auth_address, &admin, "auth entry address must be the admin");
     match &invocation.function {
@@ -829,6 +845,7 @@ fn slash_non_admin_typed_error() {
         err,
         Err(Ok(soroban_sdk::Error::from_contract_error(
             ContractError::NotAdmin as u32
+        )))
         ))),
         "non-admin must get ContractError::NotAdmin"
     );
@@ -850,6 +867,7 @@ fn slash_zero_and_overflow_typed_errors() {
         err,
         Err(Ok(soroban_sdk::Error::from_contract_error(
             ContractError::AmountMustBePositive as u32
+        )))
         ))),
         "zero amount must get ContractError::AmountMustBePositive"
     );
@@ -861,6 +879,7 @@ fn slash_zero_and_overflow_typed_errors() {
         err,
         Err(Ok(soroban_sdk::Error::from_contract_error(
             ContractError::SlashExceedsBond as u32
+        )))
         ))),
         "overflow amount must get ContractError::SlashExceedsBond"
     );

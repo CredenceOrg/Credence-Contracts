@@ -74,7 +74,7 @@ pub fn get_config(e: &Env) -> (Option<Address>, u32) {
 pub fn set_config(e: &Env, admin: &Address, treasury: Address, fee_bps: u32) {
     // ── Range check (issue #1027 governance safety rail) ─────────────────
     if !(MIN_FEE_BPS..=MAX_FEE_BPS).contains(&fee_bps) {
-        panic!("fee_bps out of bounds");
+        e.panic_with_error(credence_errors::ContractError::InvalidFeeBps);
     }
 
     // ── CEI: read previous values before overwriting ────────────────────

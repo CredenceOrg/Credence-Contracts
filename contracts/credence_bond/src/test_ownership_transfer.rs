@@ -1,6 +1,7 @@
 #![cfg(test)]
 
-use crate::{CredenceBond, CredenceBondClient, DataKey};
+use crate::{test_helpers::expect_contract_error_panic, CredenceBond, CredenceBondClient, DataKey};
+use credence_errors::ContractError;
 use soroban_sdk::{testutils::Address as _, Address, Env};
 
 #[test]
@@ -113,7 +114,6 @@ fn test_upgrade_admin_transfer_flow() {
 }
 
 #[test]
-#[should_panic(expected = "new admin must be different")]
 fn test_admin_transfer_to_self() {
     let env = Env::default();
     env.mock_all_auths();
@@ -123,11 +123,12 @@ fn test_admin_transfer_to_self() {
     let client = CredenceBondClient::new(&env, &contract_id);
 
     client.initialize(&admin, &None);
-    client.transfer_admin(&admin, &admin);
+    expect_contract_error_panic(ContractError::AdminUnchanged as u32, || {
+        client.transfer_admin(&admin, &admin);
+    });
 }
 
 #[test]
-#[should_panic(expected = "not upgrade admin")]
 fn test_transfer_upgrade_admin_unauthorized() {
     let env = Env::default();
     env.mock_all_auths();
@@ -139,5 +140,7 @@ fn test_transfer_upgrade_admin_unauthorized() {
     let client = CredenceBondClient::new(&env, &contract_id);
 
     client.initialize(&admin, &None);
-    client.transfer_upgrade_admin(&malicious, &new_admin);
+    expect_contract_error_panic(ContractError::NotAdmin as u32, || {
+        client.transfer_upgrade_admin(&malicious, &new_admin);
+    });
 }

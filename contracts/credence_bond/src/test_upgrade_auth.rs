@@ -1,6 +1,14 @@
 extern crate std;
 use crate::upgrade_auth::{UpgradeAuthorization, UpgradeProposal, UpgradeRecord};
 use crate::{
+    test_helpers::expect_contract_error_panic,
+    upgrade_auth::{self, UpgradeRole, UpgradeStatus},
+    CredenceBond, CredenceBondClient,
+};
+use credence_errors::ContractError;
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{Address, Bytes, Env, Vec};
+use crate::test_helpers::expect_contract_error_panic;
     upgrade_auth::{UpgradeRole, UpgradeStatus},
     CredenceBond,
 };
@@ -310,10 +318,9 @@ fn test_unauthorized_upgrade_attempts() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to upgrade without authorization - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::RoleRequired as u32, || {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
-    }))
-    .expect_err("Unauthorized upgrade should fail");
+    });
 
 }
 
@@ -330,6 +337,9 @@ fn test_proposer_cannot_execute_upgrade() {
     // Proposer role (still can't upgrade)
     upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
 
+    expect_contract_error_panic(ContractError::RoleRequired as u32, || {
+        upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
+    });
     std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::execute_upgrade(&env, &proposer, &new_impl, None);
     }))
@@ -345,10 +355,9 @@ fn test_cannot_revoke_last_upgrade_admin() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to revoke the only upgrade admin - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::LastUpgradeAdmin as u32, || {
         upgrade_auth::revoke_upgrade_auth(&env, &admin, &admin);
-    }))
-    .expect_err("Cannot revoke last upgrade admin");
+    });
 }
 
 #[test]
@@ -469,10 +478,9 @@ fn test_execute_upgrade_unapproved_proposal_fails() {
         upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
 
     // Attempt to execute unapproved proposal - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(245, || {
         upgrade_auth::execute_upgrade(&env, &executor, &new_impl, Some(proposal_id));
-    }))
-    .expect_err("Execution of unapproved proposal should fail");
+    });
 }
 
 #[test]
@@ -495,10 +503,9 @@ fn test_execute_upgrade_mismatched_proposal_implementation_fails() {
     upgrade_auth::approve_upgrade_proposal(&env, &approver, proposal_id);
 
     // Attempt to execute proposal with a different implementation address - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(246, || {
         upgrade_auth::execute_upgrade(&env, &executor, &actual_impl, Some(proposal_id));
-    }))
-    .expect_err("Execution with mismatched implementation should fail");
+    });
 }
 
 // ── Boundary and Recovery Tests (issue #1356) ────────────────────────────────
@@ -556,10 +563,12 @@ fn test_grant_to_already_authorized_address_panics() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Proposer, 0);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
-        upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Upgrader, 0);
-    }))
-    .expect_err("grant_upgrade_auth on already-authorized address must panic");
+    expect_contract_error_panic(
+        ContractError::UpgradeAuthorizationAlreadyExists as u32,
+        || {
+            upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Upgrader, 0);
+        },
+    );
 }
 
 /// A non-admin caller must not be able to grant upgrade authorization.
@@ -575,10 +584,9 @@ fn test_non_admin_cannot_grant() {
 
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::NotAdmin as u32, || {
         upgrade_auth::grant_upgrade_auth(&env, &impostor, &target, UpgradeRole::Proposer, 0);
-    }))
-    .expect_err("non-admin caller of grant_upgrade_auth must panic");
+    });
 }
 
 /// A non-admin caller must not be able to revoke upgrade authorization.
@@ -594,10 +602,9 @@ fn test_non_admin_cannot_revoke() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Proposer, 0);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::NotAdmin as u32, || {
         upgrade_auth::revoke_upgrade_auth(&env, &impostor, &user);
-    }))
-    .expect_err("non-admin caller of revoke_upgrade_auth must panic");
+    });
 }
 
 /// Revoking an address that was never authorized must panic.
@@ -613,10 +620,9 @@ fn test_revoke_nonexistent_auth_panics() {
 
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::UpgradeAuthorizationNotFound as u32, || {
         upgrade_auth::revoke_upgrade_auth(&env, &admin, &stranger);
-    }))
-    .expect_err("revoke_upgrade_auth on unknown address must panic");
+    });
 }
 
 /// With two upgraders, revoking one must succeed and shrink the list to one.
@@ -673,11 +679,11 @@ fn test_revoke_then_regrant_same_address_panics() {
     upgrade_auth::revoke_upgrade_auth(&env, &admin, &target);
 
     // The storage key still exists (active = false).  grant must still panic.
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
-        upgrade_auth::grant_upgrade_auth(&env, &admin, &target, UpgradeRole::Upgrader, 0);
-    }))
-    .expect_err(
-        "grant_upgrade_auth after revoke must panic because the storage record still exists",
+    expect_contract_error_panic(
+        ContractError::UpgradeAuthorizationAlreadyExists as u32,
+        || {
+            upgrade_auth::grant_upgrade_auth(&env, &admin, &target, UpgradeRole::Upgrader, 0);
+        },
     );
 }
 
@@ -700,10 +706,9 @@ fn test_duplicate_approval_panics() {
     let pid = upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 2);
     upgrade_auth::approve_upgrade_proposal(&env, &approver, pid);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(244, || {
         upgrade_auth::approve_upgrade_proposal(&env, &approver, pid);
-    }))
-    .expect_err("second approval from the same address must panic");
+    });
 }
 
 /// Approving a proposal ID that does not exist must panic.
@@ -719,10 +724,9 @@ fn test_approve_nonexistent_proposal_panics() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &approver, UpgradeRole::Upgrader, 0);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(603, || {
         upgrade_auth::approve_upgrade_proposal(&env, &approver, 999);
-    }))
-    .expect_err("approving a nonexistent proposal must panic");
+    });
 }
 
 /// Executing with an explicit proposal ID that does not exist must panic.
@@ -738,10 +742,9 @@ fn test_execute_nonexistent_proposal_panics() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(603, || {
         upgrade_auth::execute_upgrade(&env, &executor, &new_impl, Some(999));
-    }))
-    .expect_err("executing a nonexistent proposal must panic");
+    });
 }
 
 /// `execute_upgrade` must panic when no implementation has been stored.
@@ -759,10 +762,9 @@ fn test_execute_upgrade_without_implementation_panics() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(247, || {
         upgrade_auth::execute_upgrade(&env, &executor, &new_impl, None);
-    }))
-    .expect_err("execute_upgrade with no implementation stored must panic");
+    });
 }
 
 /// `get_upgrade_proposal` must panic for a nonexistent proposal ID.
@@ -776,10 +778,9 @@ fn test_get_upgrade_proposal_nonexistent_panics() {
 
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(603, || {
         upgrade_auth::get_upgrade_proposal(&env, 42);
-    }))
-    .expect_err("get_upgrade_proposal for nonexistent id must panic");
+    });
 }
 
 /// `get_upgrade_auth` must panic for an address that has no authorization
@@ -795,10 +796,9 @@ fn test_get_upgrade_auth_unknown_address_panics() {
 
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::UpgradeAuthorizationNotFound as u32, || {
         upgrade_auth::get_upgrade_auth(&env, &stranger);
-    }))
-    .expect_err("get_upgrade_auth for unknown address must panic");
+    });
 }
 
 /// `get_upgrade_role` must panic for an address that has no authorization
@@ -813,10 +813,9 @@ fn test_get_upgrade_role_unknown_address_panics() {
 
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::UpgradeAuthorizationNotFound as u32, || {
         upgrade_auth::get_upgrade_role(&env, &stranger);
-    }))
-    .expect_err("get_upgrade_role for unknown address must panic");
+    });
 }
 
 /// `get_implementation` must panic when the implementation key has not yet
@@ -831,10 +830,9 @@ fn test_get_implementation_unset_panics() {
 
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(247, || {
         upgrade_auth::get_implementation(&env);
-    }))
-    .expect_err("get_implementation before any upgrade must panic");
+    });
 }
 
 /// An authorization with `expires_at = 0` must remain valid indefinitely,
@@ -924,10 +922,9 @@ fn test_expired_proposer_cannot_propose() {
 
     let new_impl = create_test_address(&env);
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(242, || {
         upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
-    }))
-    .expect_err("expired proposer must not be able to create a proposal");
+    });
 }
 
 /// An upgrader with an expired authorization must not be able to approve a
@@ -1120,8 +1117,8 @@ fn test_accept_at_exact_expiry_boundary_succeeds() {
 /// `accept_upgrade_admin` at `proposed_at + 604_801` (one second past the
 /// expiry boundary) must panic.
 ///
-/// Invariant: `now > proposed_at + 604_800` triggers the
-/// "admin transfer proposal expired" panic.
+/// Invariant: `now > proposed_at + 604_800` triggers the typed
+/// `ContractError::ProposalExpired` error.
 #[test]
 fn test_accept_one_second_past_expiry_panics() {
     use soroban_sdk::testutils::Ledger as _;
@@ -1142,10 +1139,9 @@ fn test_accept_one_second_past_expiry_panics() {
         l.timestamp = proposed_at + 604_801;
     });
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::ProposalExpired as u32, || {
         client.accept_upgrade_admin(&new_admin);
-    }))
-    .expect_err("accepting one second past the 7-day expiry must panic");
+    });
 }
 
 /// When `accept_upgrade_admin` is called and `new_admin` already holds the
@@ -1252,4 +1248,81 @@ fn test_cancel_then_repropose_and_complete() {
             .unwrap()
     });
     assert_eq!(stored, final_admin);
+}
+
+// ── Typed errors for proposal lifecycle (issue #1710) ────────────────────────
+
+/// An address with no upgrade authorization record cannot propose.
+#[test]
+fn test_propose_without_authorization_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let stranger = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(240, || {
+        upgrade_auth::propose_upgrade(&env, &stranger, &new_impl, Bytes::new(&env), 1);
+    });
+}
+
+/// A revoked (inactive) authorization record cannot propose.
+#[test]
+fn test_propose_with_revoked_authorization_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::revoke_upgrade_auth(&env, &admin, &proposer);
+
+    expect_contract_error_panic(241, || {
+        upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+    });
+}
+
+/// Approving a proposal that already left `Pending` is rejected.
+#[test]
+fn test_approve_non_pending_proposal_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let approver_a = create_test_address(&env);
+    let approver_b = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver_a, UpgradeRole::Upgrader, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver_b, UpgradeRole::Upgrader, 0);
+
+    let pid = upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+    upgrade_auth::approve_upgrade_proposal(&env, &approver_a, pid);
+
+    expect_contract_error_panic(243, || {
+        upgrade_auth::approve_upgrade_proposal(&env, &approver_b, pid);
+    });
+}
+
+/// Upgrading to the implementation that is already current is rejected.
+#[test]
+fn test_execute_upgrade_same_implementation_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let executor = create_test_address(&env);
+    let current_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+    env.storage().instance().set(
+        &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+        &current_impl,
+    );
+
+    expect_contract_error_panic(248, || {
+        upgrade_auth::execute_upgrade(&env, &executor, &current_impl, None);
+    });
 }

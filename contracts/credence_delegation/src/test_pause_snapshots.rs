@@ -69,6 +69,9 @@ fn dump_pause_storage(
     })
 }
 
+#[allow(dead_code)]
+fn _assert_snapshot_types(_: &StorageSnapshot, _: &ProposalSnapshot) {}
+
 fn assert_pause_snapshot(
     name: &str,
     e: &Env,

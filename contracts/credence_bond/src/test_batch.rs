@@ -83,19 +83,27 @@ fn test_create_single_bond_in_batch() {
 fn test_create_multiple_bonds_in_batch() {
     let env = Env::default();
     env.mock_all_auths();
-
-    // Note: Current implementation only supports one bond per contract instance
-    // This test demonstrates the batch interface even though it will panic
-    // In a multi-identity system, this would work
+    let contract_id = env.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&env);
     let identity2 = Address::generate(&env);
     let identity3 = Address::generate(&env);
+    let unaddressed = Address::generate(&env);
+    client.create_bond(
+        &unaddressed,
+        &4000,
+        credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     let mut params_list = Vec::new(&env);
 
     params_list.push_back(BatchBondParams {
-        identity: identity1,
+        identity: identity1.clone(),
         amount: 1000,
         duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
@@ -103,7 +111,7 @@ fn test_create_multiple_bonds_in_batch() {
     });
 
     params_list.push_back(BatchBondParams {
-        identity: identity2,
+        identity: identity2.clone(),
         amount: 2000,
         duration: 172800,
         is_rolling: true,
@@ -111,16 +119,49 @@ fn test_create_multiple_bonds_in_batch() {
     });
 
     params_list.push_back(BatchBondParams {
-        identity: identity3,
+        identity: identity3.clone(),
         amount: 3000,
         duration: 259200,
         is_rolling: false,
         notice_period_duration: 0,
     });
 
-    // This test verifies the batch interface works correctly
-    // In production with per-identity bonds, all 3 would be created
-    assert_eq!(params_list.len(), 3);
+    let result = client.create_batch_bonds(&params_list);
+    assert_eq!(result.created_count, 3);
+
+    assert_eq!(client.get_identity_state(&identity1).bonded_amount, 1000);
+    assert_eq!(client.get_identity_state(&identity2).bonded_amount, 2000);
+    assert_eq!(client.get_identity_state(&identity3).bonded_amount, 3000);
+    assert_eq!(
+        client.get_identity_state(&unaddressed).bonded_amount,
+        4000,
+        "an unaddressed identity's bond must remain unchanged"
+    );
+
+    // The existing batch event payload must preserve input identity/amount order.
+    let all_events = env.events().all();
+    let expected_topic = Symbol::new(&env, "batch_bonds_created");
+    let batch_event = all_events
+        .iter()
+        .find(|ev| {
+            ev.0 == contract_id
+                && ev.1.get(0)
+                    .and_then(|v| Symbol::try_from_val(&env, &v).ok())
+                    .map(|topic| topic == expected_topic)
+                    .unwrap_or(false)
+        })
+        .expect("batch_bonds_created event must exist");
+
+    let decoded = crate::BatchBondResult::try_from_val(&env, &batch_event.2)
+        .expect("batch event payload must decode");
+    assert_eq!(decoded.created_count, 3);
+    assert_eq!(decoded.bonds.len(), 3);
+    assert_eq!(decoded.bonds.get(0).unwrap().identity, identity1);
+    assert_eq!(decoded.bonds.get(1).unwrap().identity, identity2);
+    assert_eq!(decoded.bonds.get(2).unwrap().identity, identity3);
+    assert_eq!(decoded.bonds.get(0).unwrap().bonded_amount, 1000);
+    assert_eq!(decoded.bonds.get(1).unwrap().bonded_amount, 2000);
+    assert_eq!(decoded.bonds.get(2).unwrap().bonded_amount, 3000);
 }
 
 #[test]

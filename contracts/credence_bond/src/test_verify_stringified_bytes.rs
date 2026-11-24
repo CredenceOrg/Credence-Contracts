@@ -90,7 +90,7 @@ fn valid_tilde_character_boundary() {
 
 /// A byte value of `0x80` — the first byte outside printable ASCII — must be rejected.
 #[test]
-#[should_panic(expected = "stringified bytes contain a non-printable byte")]
+#[should_panic(expected = "#230")]
 fn malformed_high_byte_0x80() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, &[0x68, 0x65, 0x6c, 0x6c, 0x6f, 0x80]); // "hello" + 0x80
@@ -99,7 +99,7 @@ fn malformed_high_byte_0x80() {
 
 /// A lone byte `0xFF` (all-bits-set) — invalid in any ASCII / UTF-8 context.
 #[test]
-#[should_panic(expected = "stringified bytes contain a non-printable byte")]
+#[should_panic(expected = "#230")]
 fn malformed_byte_0xff() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, &[0xff]);
@@ -108,7 +108,7 @@ fn malformed_byte_0xff() {
 
 /// A DEL character (`0x7F`) sits just above the printable range and must be rejected.
 #[test]
-#[should_panic(expected = "stringified bytes contain a non-printable byte")]
+#[should_panic(expected = "#230")]
 fn malformed_del_character_0x7f() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"valid_prefix\x7f");
@@ -117,7 +117,7 @@ fn malformed_del_character_0x7f() {
 
 /// A non-printable control character (`\r`, `0x0D`) embedded in otherwise-valid text.
 #[test]
-#[should_panic(expected = "stringified bytes contain a non-printable byte")]
+#[should_panic(expected = "#230")]
 fn malformed_carriage_return_control_byte() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"line1\rline2");
@@ -126,7 +126,7 @@ fn malformed_carriage_return_control_byte() {
 
 /// A newline character (`\n`, `0x0A`) — below the printable ASCII floor of `0x20`.
 #[test]
-#[should_panic(expected = "stringified bytes contain a non-printable byte")]
+#[should_panic(expected = "#230")]
 fn malformed_newline_control_byte() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"data\ninjection");
@@ -136,7 +136,7 @@ fn malformed_newline_control_byte() {
 /// Multi-byte UTF-8 sequence (`é` encodes as `0xC3 0xA9`). These bytes sit in
 /// the high range and must be rejected because we enforce printable ASCII only.
 #[test]
-#[should_panic(expected = "stringified bytes contain a non-printable byte")]
+#[should_panic(expected = "#230")]
 fn malformed_multibyte_utf8_sequence() {
     let e = Env::default();
     // "café" in UTF-8: b"caf\xc3\xa9"
@@ -148,7 +148,7 @@ fn malformed_multibyte_utf8_sequence() {
 
 /// One byte past the maximum must be rejected.
 #[test]
-#[should_panic(expected = "stringified bytes too long")]
+#[should_panic(expected = "#239")]
 fn oversized_one_byte_above_limit() {
     let e = Env::default();
     let data = repeat_byte(&e, b'a', MAX_STRINGIFIED_BYTES_LEN as usize + 1);
@@ -157,7 +157,7 @@ fn oversized_one_byte_above_limit() {
 
 /// A much-larger payload (double the limit) is also rejected.
 #[test]
-#[should_panic(expected = "stringified bytes too long")]
+#[should_panic(expected = "#239")]
 fn oversized_double_the_limit() {
     let e = Env::default();
     let data = repeat_byte(&e, b'x', MAX_STRINGIFIED_BYTES_LEN as usize * 2);
@@ -168,7 +168,7 @@ fn oversized_double_the_limit() {
 /// otherwise-invalid bytes must still fail with the size error, not a
 /// content error, ensuring predictable error ordering.
 #[test]
-#[should_panic(expected = "stringified bytes too long")]
+#[should_panic(expected = "#239")]
 fn oversized_takes_priority_over_malformed() {
     let e = Env::default();
     // All bytes are 0xFF (malformed), but the length check should fire first.
@@ -180,7 +180,7 @@ fn oversized_takes_priority_over_malformed() {
 
 /// A lone NUL byte by itself must be caught.
 #[test]
-#[should_panic(expected = "stringified bytes contain a null byte")]
+#[should_panic(expected = "#230")]
 fn injected_null_single_nul_byte() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"\x00");
@@ -190,7 +190,7 @@ fn injected_null_single_nul_byte() {
 /// A NUL byte embedded in the middle of otherwise-valid text — the classic
 /// null-injection attack vector.
 #[test]
-#[should_panic(expected = "stringified bytes contain a null byte")]
+#[should_panic(expected = "#230")]
 fn injected_null_in_middle_of_valid_string() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"abc\x00def");
@@ -199,7 +199,7 @@ fn injected_null_in_middle_of_valid_string() {
 
 /// NUL at the very beginning of the payload.
 #[test]
-#[should_panic(expected = "stringified bytes contain a null byte")]
+#[should_panic(expected = "#230")]
 fn injected_null_at_start() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"\x00validprefix");
@@ -209,7 +209,7 @@ fn injected_null_at_start() {
 /// NUL at the very end of the payload — simulates a C-style null-terminator
 /// appended to an otherwise valid string.
 #[test]
-#[should_panic(expected = "stringified bytes contain a null byte")]
+#[should_panic(expected = "#230")]
 fn injected_null_at_end() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"validprefix\x00");
@@ -218,7 +218,7 @@ fn injected_null_at_end() {
 
 /// Multiple NUL bytes scattered through the payload.
 #[test]
-#[should_panic(expected = "stringified bytes contain a null byte")]
+#[should_panic(expected = "#230")]
 fn injected_null_multiple_nuls() {
     let e = Env::default();
     let data = Bytes::from_slice(&e, b"a\x00b\x00c");
@@ -229,7 +229,7 @@ fn injected_null_multiple_nuls() {
 /// The null message should appear because nulls are tested first in the byte
 /// iteration order (null appears before the high byte in this sequence).
 #[test]
-#[should_panic(expected = "stringified bytes contain a null byte")]
+#[should_panic(expected = "#230")]
 fn injected_null_before_high_byte() {
     let e = Env::default();
     // NUL comes before 0xFF in the payload

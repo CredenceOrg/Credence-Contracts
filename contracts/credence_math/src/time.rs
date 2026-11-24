@@ -92,22 +92,22 @@ mod tests {
     /// remain unchanged.
     #[test]
     fn constants_are_strictly_increasing() {
-        assert!(SECONDS_PER_MINUTE < SECONDS_PER_HOUR);
-        assert!(SECONDS_PER_HOUR < SECONDS_PER_DAY);
-        assert!(SECONDS_PER_DAY < SECONDS_PER_WEEK);
-        assert!(SECONDS_PER_WEEK < SECONDS_PER_YEAR);
+        const _: () = assert!(SECONDS_PER_MINUTE < SECONDS_PER_HOUR);
+        const _: () = assert!(SECONDS_PER_HOUR < SECONDS_PER_DAY);
+        const _: () = assert!(SECONDS_PER_DAY < SECONDS_PER_WEEK);
+        const _: () = assert!(SECONDS_PER_WEEK < SECONDS_PER_YEAR);
     }
 
     /// A week must be strictly less than a year (52 weeks ≈ 364 days < 365 days).
     #[test]
     fn year_is_greater_than_fifty_two_weeks() {
-        assert!(SECONDS_PER_YEAR > 52 * SECONDS_PER_WEEK);
+        const _: () = assert!(SECONDS_PER_YEAR > 52 * SECONDS_PER_WEEK);
     }
 
     /// A year (365 days) must be less than 53 weeks (371 days).
     #[test]
     fn year_is_less_than_fifty_three_weeks() {
-        assert!(SECONDS_PER_YEAR < 53 * SECONDS_PER_WEEK);
+        const _: () = assert!(SECONDS_PER_YEAR < 53 * SECONDS_PER_WEEK);
     }
 
     // ── u64 boundary / overflow-safety ──────────────────────────────────────
@@ -118,11 +118,11 @@ mod tests {
     /// from silently wrapping.
     #[test]
     fn all_constants_are_less_than_u64_max() {
-        assert!(SECONDS_PER_MINUTE < u64::MAX);
-        assert!(SECONDS_PER_HOUR < u64::MAX);
-        assert!(SECONDS_PER_DAY < u64::MAX);
-        assert!(SECONDS_PER_WEEK < u64::MAX);
-        assert!(SECONDS_PER_YEAR < u64::MAX);
+        const _: () = assert!(SECONDS_PER_MINUTE < u64::MAX);
+        const _: () = assert!(SECONDS_PER_HOUR < u64::MAX);
+        const _: () = assert!(SECONDS_PER_DAY < u64::MAX);
+        const _: () = assert!(SECONDS_PER_WEEK < u64::MAX);
+        const _: () = assert!(SECONDS_PER_YEAR < u64::MAX);
     }
 
     /// Multiplying SECONDS_PER_YEAR by 1_000 must not overflow u64.
@@ -288,29 +288,29 @@ mod tests {
     #[test]
     fn adding_zero_seconds_is_identity() {
         let ts: u64 = 1_704_067_200;
-        assert_eq!(ts + 0, ts);
+        assert_eq!(ts.checked_add(0), Some(ts));
     }
 
     /// Subtracting a constant from itself must always yield zero — relevant for
     /// contracts that compute `deadline - now` to get remaining time.
     #[test]
     fn constant_minus_itself_is_zero() {
-        assert_eq!(SECONDS_PER_MINUTE - SECONDS_PER_MINUTE, 0);
-        assert_eq!(SECONDS_PER_HOUR - SECONDS_PER_HOUR, 0);
-        assert_eq!(SECONDS_PER_DAY - SECONDS_PER_DAY, 0);
-        assert_eq!(SECONDS_PER_WEEK - SECONDS_PER_WEEK, 0);
-        assert_eq!(SECONDS_PER_YEAR - SECONDS_PER_YEAR, 0);
+        assert_eq!(SECONDS_PER_MINUTE.checked_sub(SECONDS_PER_MINUTE), Some(0));
+        assert_eq!(SECONDS_PER_HOUR.checked_sub(SECONDS_PER_HOUR), Some(0));
+        assert_eq!(SECONDS_PER_DAY.checked_sub(SECONDS_PER_DAY), Some(0));
+        assert_eq!(SECONDS_PER_WEEK.checked_sub(SECONDS_PER_WEEK), Some(0));
+        assert_eq!(SECONDS_PER_YEAR.checked_sub(SECONDS_PER_YEAR), Some(0));
     }
 
     /// Multiplying any constant by zero must yield zero — guards against
     /// future refactors that replace the literal `0` with a constant expression.
     #[test]
     fn constant_times_zero_is_zero() {
-        assert_eq!(SECONDS_PER_MINUTE * 0, 0);
-        assert_eq!(SECONDS_PER_HOUR * 0, 0);
-        assert_eq!(SECONDS_PER_DAY * 0, 0);
-        assert_eq!(SECONDS_PER_WEEK * 0, 0);
-        assert_eq!(SECONDS_PER_YEAR * 0, 0);
+        assert_eq!(SECONDS_PER_MINUTE.checked_mul(0), Some(0));
+        assert_eq!(SECONDS_PER_HOUR.checked_mul(0), Some(0));
+        assert_eq!(SECONDS_PER_DAY.checked_mul(0), Some(0));
+        assert_eq!(SECONDS_PER_WEEK.checked_mul(0), Some(0));
+        assert_eq!(SECONDS_PER_YEAR.checked_mul(0), Some(0));
     }
 
     // ── Regression / duplicate-input safety ─────────────────────────────────

@@ -88,7 +88,7 @@ pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
         .get(&DataKey::PauseSignerCount)
         .unwrap_or(0);
     if threshold > count {
-        panic!("threshold cannot exceed signer count");
+        e.panic_with_error(ContractError::ThresholdExceedsSigners);
     }
     let old_threshold: u32 = e
         .storage()
@@ -114,7 +114,7 @@ fn require_pause_signer(e: &Env, signer: &Address) {
         .get(&DataKey::PauseSigner(signer.clone()))
         .unwrap_or(false);
     if !ok {
-        panic!("not pause signer");
+        e.panic_with_error(ContractError::NotSigner);
     }
 }
 
@@ -180,7 +180,7 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_or_else(|| e.panic_with_error(ContractError::NotInitialized));
 
         if *caller == stored_admin {
             caller.require_auth();
@@ -218,7 +218,7 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_or_else(|| e.panic_with_error(ContractError::ProposalNotFound));
 
     record_approval(e, proposal_id, signer);
 
@@ -233,7 +233,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_or_else(|| e.panic_with_error(ContractError::ProposalNotFound));
 
     let threshold: u32 = e
         .storage()
@@ -247,13 +247,13 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .unwrap_or(0);
 
     if approvals < threshold {
-        panic!("insufficient approvals to execute");
+        e.panic_with_error(ContractError::InsufficientApprovals);
     }
 
     match action {
         1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
-        _ => panic!("invalid pause action"),
+        _ => e.panic_with_error(ContractError::InvalidPauseAction),
     }
 
     e.storage()
