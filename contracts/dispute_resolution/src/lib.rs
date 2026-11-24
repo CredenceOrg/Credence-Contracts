@@ -9,6 +9,9 @@ pub mod pausable;
 #[cfg(test)]
 mod test_dispute_error;
 
+#[cfg(test)]
+mod test_lifecycle;
+
 /// Lifecycle state of a dispute.
 ///
 /// Invariants:
