@@ -15,19 +15,39 @@ Open ──────> Voting ──────> Resolving ──────
   │            │              │
   └────────────┴──────────────┤──────────> Cancelled
                               ↓
-                             Tied
+                  ┌───────────┴───────────┐
+                  Tied                 NoQuorum
+                    └───────────┬───────────┘
+                                ↓
+                             Archived ──────> Voting
 ```
 
 ### Valid Transitions
 
-- `Open → Voting` — Voting period begins (implicit at creation)
-- `Voting → Resolving` — Voting period ends, `resolve_dispute` called
-- `Voting → Cancelled` — Dispute cancelled by creator or admin
-- `Resolving → Resolved` — Outcome tallied with a clear winner
-- `Resolving → Tied` — Outcome tallied with a tie (two or more outcomes have equal highest weight)
-- `Open → Cancelled` — Cancelled before voting starts
+- `Open → Voting` — Voting period begins immediately when a dispute is created.
+- `Voting → Resolving` — The voting period ends and `resolve_dispute` begins tallying.
+- `Voting → Cancelled` — The dispute is cancelled by the creator (only before any vote is cast and before `voting_end`) or by the admin (at any time before resolution).
+- `Resolving → Resolved` — The tally produces a clear winner.
+- `Resolving → Tied` — The tally produces an equal highest-weight outcome.
+- `Resolving → NoQuorum` — Voting ended without meeting the configured quorum.
+- `Open → Cancelled` — The dispute is cancelled before voting begins.
+- `NoQuorum → Archived` — The admin archives a dispute that missed quorum.
+- `Archived → Voting` — The admin reopens an archived dispute for new voting.
 
 All other transitions are rejected with `ArbitrationError::InvalidTransition`.
+
+### Lifecycle Events
+
+The contract emits lifecycle events for the major milestones in the dispute lifecycle:
+
+- `dispute_created` when a dispute is opened.
+- `status_transition` for every accepted transition, including the initial `Open → Voting` step.
+- `dispute_cancelled` when a dispute is cancelled.
+- `dispute_resolved` when a dispute reaches a terminal resolved state.
+- `dispute_tied` when tallying ends in a tie.
+- `quorum_not_met` when resolution completes without meeting the configured quorum; data is `(total_weight, min_total_weight, voter_count, min_voters)`.
+
+These events are intended to make the dispute lifecycle auditable and easy to consume off-chain.
 
 ## Types
 
@@ -41,6 +61,8 @@ All other transitions are rejected with `ArbitrationError::InvalidTransition`.
 | Resolved  | 3     | Final outcome determined with a clear winner      |
 | Cancelled | 4     | Dispute cancelled by creator or admin             |
 | Tied      | 5     | Votes resulted in a tie (equal highest weights)   |
+| Archived  | 6     | Finalized dispute archived by an admin             |
+| NoQuorum  | 7     | Voting ended without meeting quorum; outcome is 0   |
 
 ### Dispute
 
@@ -52,7 +74,7 @@ All other transitions are rejected with `ArbitrationError::InvalidTransition`.
 | voting_start | u64           | Timestamp when voting begins           |
 | voting_end   | u64           | Timestamp when voting ends             |
 | status       | DisputeStatus | Current status in the lifecycle        |
-| outcome      | u32           | The winning outcome (0 only when Tied) |
+| outcome      | u32           | Winning outcome (0 when Tied or NoQuorum) |
 
 ### ArbitrationError
 
@@ -70,6 +92,13 @@ All other transitions are rejected with `ArbitrationError::InvalidTransition`.
 | InvalidOutcome     | 10   | Outcome must be > 0                      |
 | WeightNotPositive  | 11   | Arbitrator weight must be positive       |
 | NotAuthorized      | 12   | Caller not authorized for this action    |
+| QuorumNotMet       | 13   | Quorum requirements were not met         |
+| ReasonTooLong      | 14   | Cancellation reason exceeds the limit    |
+| PromiseNotKept     | 15   | The promise outcome did not match reality |
+| DisputeActive      | 16   | Dispute is still active and blocks this action |
+| OngoingDispute     | 17   | Creator already has an unresolved dispute |
+| CancelNotAllowed   | 19   | Creator cannot cancel after votes or after voting_end |
+| ConflictOfInterest | 20   | Voter is the creator of the dispute       |
 
 ## Contract Functions
 
@@ -91,15 +120,15 @@ Creates a new dispute. Requires creator authorization. Returns the dispute ID. S
 
 ### `cancel_dispute(caller: Address, dispute_id: u64) -> Result<(), ArbitrationError>`
 
-Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status.
+Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status. The creator may cancel a `Voting` dispute only while no votes have been cast (`VoterCounter(dispute_id) == 0`) and `now <= voting_end`; otherwise the call returns `CancelNotAllowed`. The admin may cancel a `Voting` dispute at any time before resolution, and the `dispute_cancelled` event reports `cancelled_by_role` as `"admin"`.
 
 ### `vote(voter: Address, dispute_id: u64, outcome: u32) -> Result<(), ArbitrationError>`
 
-Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status.
+Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status. A dispute's creator cannot vote on their own dispute; such a call returns `ConflictOfInterest`.
 
 ### `resolve_dispute(dispute_id: u64) -> Result<u32, ArbitrationError>`
 
-Resolves the dispute after the voting period has ended. Transitions `Voting → Resolving → Resolved` (or `Tied` if outcomes are tied). Calculates the winning outcome based on total weight. Returns the winning outcome if one is found, or 0 if a tie is detected. On tie, the dispute transitions to `Tied` status so consumers can distinguish it from a definite ruling.
+Resolves the dispute after the voting period has ended. Transitions `Voting → Resolving → Resolved` (or `Tied` if outcomes are tied). If configured quorum is not met, transitions `Voting → Resolving → NoQuorum`, keeps votes and tallies for audit, clears the creator's active-dispute guard, emits `quorum_not_met`, and returns 0. A NoQuorum dispute is terminal and can be archived and reopened by an admin.
 
 ### `get_dispute(dispute_id: u64) -> Result<Dispute, ArbitrationError>`
 
@@ -129,6 +158,8 @@ Returns the current total weight for a specific outcome.
 - Overflow protection for weight tallies and counters
 - Canonical status machine prevents invalid state transitions
 - Result-based error handling for all state-changing operations
+- Creator cancellation is bounded by vote count and voting deadline to prevent discarding a losing tally
+- Conflict-of-interest check prevents a creator from voting on their own dispute
 
 ## Testing
 
@@ -138,6 +169,9 @@ The contract includes comprehensive test coverage:
 - Tie scenarios
 - Double-voting prevention
 - Unauthorized voter rejection
+- Creator cancellation restrictions (before votes, after votes, after deadline)
+- Admin cancellation override after votes
+- Creator cannot vote on own dispute
 - All valid status transitions
 - All invalid status transitions (regression tests)
 - Edge cases (zero/negative weights, outcome validation, etc.)

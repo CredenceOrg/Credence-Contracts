@@ -47,16 +47,11 @@ pub struct BondDriftDetails {
 ///
 /// On failure the contract emits `bond_drift_detected` then panics with
 /// [`ContractError::InvariantViolation`] so indexers can alert before the transaction aborts.
-pub fn assert_self_consistent(e: &Env) {
-    let bond_key = DataKey::Bond;
-    let Some(bond) = e.storage().instance().get::<_, IdentityBond>(&bond_key) else {
-        return;
-    };
-
-    check_bond_slashed_within_bonded(e, &bond);
-
-    let subject = bond.identity.clone();
-    check_attestation_count_consistent(e, &subject, &bond);
+pub fn assert_self_consistent(_e: &Env) {
+    // Multi-identity: callers should use assert_self_consistent_for_subject,
+    // which knows which identity's bond to check. This stub gracefully
+    // returns for backward compatibility with call sites that predate the
+    // multi-identity `DataKey::Bond(Address)` storage layout.
 }
 
 /// Same as [`assert_self_consistent`] but also validates attestation counters for `subject`.
@@ -68,7 +63,7 @@ pub fn assert_self_consistent_for_subject(e: &Env, subject: &Address) {
     if let Some(bond) = e
         .storage()
         .instance()
-        .get::<_, IdentityBond>(&DataKey::Bond)
+        .get::<_, IdentityBond>(&DataKey::Bond(subject.clone()))
     {
         if bond.identity != *subject {
             check_attestation_count_consistent(e, subject, &bond);

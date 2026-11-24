@@ -9,6 +9,7 @@ CI enforces per-contract ceilings via [`.github/workflows/wasm-size.yml`](../.gi
 | Contract | Budget (KiB) | Budget (bytes) |
 | --- | ---: | ---: |
 | `admin` | 64 | 65 536 |
+| `bounty_escrow` | 64 | 65 536 |
 | `credence_arbitration` | 64 | 65 536 |
 | `credence_bond` | 64 | 65 536 |
 | `credence_delegation` | 64 | 65 536 |

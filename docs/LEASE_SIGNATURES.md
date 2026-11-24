@@ -144,4 +144,5 @@ relying on hidden assumptions about the underlying verifier path.
 
 - [DELEGATION_HANDBOOK.md](DELEGATION_HANDBOOK.md) — end-to-end relayed-action flow and nonce model
 - [LEASE_MODEL.md](LEASE_MODEL.md) — lease scope, expiry, and renewal semantics
+- [LEASE_SCOPES.md](LEASE_SCOPES.md) — scope bits, permissions, and guard functions
 - [credence_delegation_api.md](credence_delegation_api.md) — contract entrypoints and types

@@ -6,11 +6,7 @@ use crate::{
     test_helpers::setup_with_token, BatchTransferItem, CredenceBond, CredenceBondClient,
     MAX_BATCH_TRANSFER_SIZE,
 };
-use soroban_sdk::{
-    testutils::Address as _,
-    token::TokenClient,
-    Address, Env, Vec,
-};
+use soroban_sdk::{testutils::Address as _, token::TokenClient, Address, Env, Vec};
 
 fn setup(env: &Env) -> (CredenceBondClient, Address, Address, Address, Address) {
     let (client, admin, identity, token_id, contract_id) = setup_with_token(env);

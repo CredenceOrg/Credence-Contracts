@@ -69,7 +69,10 @@ fn test_guard_allows_after_ledger_advance() {
     let _handles = test_helpers::setup_with_token(&e);
 
     record_collateral_increase(&e);
-    assert_eq!(last_collateral_increase_ledger(&e), Some(e.ledger().sequence()));
+    assert_eq!(
+        last_collateral_increase_ledger(&e),
+        Some(e.ledger().sequence())
+    );
 
     test_helpers::advance_ledger_sequence(&e);
 

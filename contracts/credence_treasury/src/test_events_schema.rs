@@ -15,11 +15,7 @@ mod tests {
     ) {
         assert_eq!(events.len(), 1, "Expected exactly one event");
         let (_contract, topics, _data) = events.get_unchecked(0);
-        assert_eq!(
-            topics.len(),
-            expected_topics_len,
-            "Topics length mismatch"
-        );
+        assert_eq!(topics.len(), expected_topics_len, "Topics length mismatch");
         // data is a Val; we can't easily check its len here without decoding
         // but we verify topics count which is the primary schema contract
         let _ = expected_data_len;
@@ -104,13 +100,19 @@ mod tests {
         let recipient = Address::generate(&e);
         let min_amount_out = 450i128;
         let actual_amount = 480i128;
+        let treasury_debit = 490i128;
         e.events().publish(
             (Symbol::new(&e, "treasury_withdrawal_executed"), proposal_id),
-            (recipient.clone(), min_amount_out, actual_amount),
+            (
+                recipient.clone(),
+                min_amount_out,
+                actual_amount,
+                treasury_debit,
+            ),
         );
         let events = e.events().all();
         // Topics: treasury_withdrawal_executed, u64 (2)
-        verify_event_structure(&events, 2, 3);
+        verify_event_structure(&events, 2, 4);
     }
 
     #[test]

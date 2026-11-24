@@ -177,8 +177,8 @@ Approximate resource costs per entrypoint across all Credence contracts. Costs a
 | `deactivate` | Business logic write | 55,000 | 8,500 |
 | `remove` | Business logic write | 60,000 | 9,000 |
 | `reactivate` | Business logic write | 55,000 | 8,500 |
-| `get_identities_page` | Persistent read | 30,000 | 4,500 |
-| `get_all_identities` | Persistent read | 40,000 | 6,000 |
+| `get_identities_page` | Persistent read (per page entry) | 30,000 | 4,500 |
+| `get_identity_count` | Instance read | 15,000 | 1,500 |
 | `get_admin` | Instance read | 15,000 | 1,500 |
 | `transfer_admin` | Admin config write | 50,000 | 7,500 |
 | `pause` / `unpause` | Business logic write | 70,000 | 10,000 |

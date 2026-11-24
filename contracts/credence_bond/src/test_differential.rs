@@ -76,7 +76,7 @@ fn scenario_full_bond_lifecycle() {
     c.create_bond(&identity, &1_000_i128, &10_000_u64, &false, &0_u64);
     assert_pinned(
         "after_create",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 1_000,
             slashed_amount: 0,
@@ -90,7 +90,7 @@ fn scenario_full_bond_lifecycle() {
     c.top_up(&identity, &5_000_i128);
     assert_pinned(
         "after_top_up",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 6_000,
             slashed_amount: 0,
@@ -106,7 +106,7 @@ fn scenario_full_bond_lifecycle() {
     c.withdraw(&identity, &2_000_i128);
     assert_pinned(
         "after_first_withdraw",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 4_000,
             slashed_amount: 0,
@@ -121,7 +121,7 @@ fn scenario_full_bond_lifecycle() {
     c.slash(&admin, &500_i128);
     assert_pinned(
         "after_slash",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 4_000,
             slashed_amount: 500,
@@ -135,7 +135,7 @@ fn scenario_full_bond_lifecycle() {
     c.slash_bond(&admin, &200_i128);
     assert_pinned(
         "after_slash_bond",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 4_000,
             slashed_amount: 700,
@@ -151,7 +151,7 @@ fn scenario_full_bond_lifecycle() {
     c.withdraw(&identity, &3_300_i128);
     assert_pinned(
         "final",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 700,
             slashed_amount: 700,
@@ -185,7 +185,7 @@ fn scenario_rolling_bond_with_renewal() {
     c.create_bond(&identity, &50_000_i128, &5_000_u64, &true, &1_000_u64);
     assert_pinned(
         "after_create",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 50_000,
             slashed_amount: 0,
@@ -199,7 +199,7 @@ fn scenario_rolling_bond_with_renewal() {
     env.ledger().with_mut(|l| l.timestamp = 5_001);
     c.renew_if_rolling(&identity);
     // apply_renewal sets bond_start = now (5_001) and resets withdrawal_requested_at = 0.
-    let bond_after_renew = c.get_identity_state();
+    let bond_after_renew = c.get_identity_state(&identity);
     assert_eq!(
         bond_after_renew.bond_start, 5_001,
         "bond_start after renewal"
@@ -211,7 +211,7 @@ fn scenario_rolling_bond_with_renewal() {
     assert_eq!(bond_after_renew.bonded_amount, 50_000);
 
     c.request_withdrawal(&identity);
-    let bond_after_req = c.get_identity_state();
+    let bond_after_req = c.get_identity_state(&identity);
     assert_eq!(
         bond_after_req.withdrawal_requested_at, 5_001,
         "withdrawal_requested_at set to current timestamp"
@@ -222,7 +222,7 @@ fn scenario_rolling_bond_with_renewal() {
     c.withdraw(&identity, &10_000_i128);
     assert_pinned(
         "after_partial_withdraw",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 40_000,
             slashed_amount: 0,
@@ -268,7 +268,7 @@ fn scenario_early_exit_and_penalty() {
     c.withdraw_early(&identity, &2_000_i128);
     assert_pinned(
         "after_early_exit",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 8_000,
             slashed_amount: 0,
@@ -284,7 +284,7 @@ fn scenario_early_exit_and_penalty() {
     c.withdraw(&identity, &8_000_i128);
     assert_pinned(
         "after_final_withdraw",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 0,
             slashed_amount: 0,
@@ -312,7 +312,7 @@ fn scenario_zero_amount_slash() {
     c.slash(&admin, &0_i128);
     assert_pinned(
         "after_zero_slash",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 5_000,
             slashed_amount: 0,
@@ -340,7 +340,7 @@ fn scenario_extend_duration() {
     c.extend_duration(&identity, &1_800_u64);
     assert_pinned(
         "after_extend",
-        &c.get_identity_state(),
+        &c.get_identity_state(&identity),
         &Pinned {
             bonded_amount: 1_000,
             slashed_amount: 0,
@@ -368,7 +368,7 @@ fn scenario_rolling_renew_at_exact_expiry() {
     // Exactly at expiry: is_period_ended(3600, 0, 3600) → 3600 >= 3600 → true.
     env.ledger().with_mut(|l| l.timestamp = 3_600);
     c.renew_if_rolling(&identity);
-    let bond = c.get_identity_state();
+    let bond = c.get_identity_state(&identity);
     assert_eq!(bond.bond_start, 3_600, "bond_start after first renewal");
     assert_eq!(bond.bond_duration, 3_600);
     assert_eq!(
@@ -379,7 +379,7 @@ fn scenario_rolling_renew_at_exact_expiry() {
     // Past end of renewed period: 3_600 + 3_600 = 7_200; advance past it.
     env.ledger().with_mut(|l| l.timestamp = 7_201);
     c.renew_if_rolling(&identity);
-    let bond2 = c.get_identity_state();
+    let bond2 = c.get_identity_state(&identity);
     assert_eq!(bond2.bond_start, 7_201, "bond_start after second renewal");
 }
 
@@ -413,9 +413,9 @@ fn deliberate_divergence_is_caught() {
     // Divergent: any amount ≥ 1 → Gold.
     assert_ne!(
         canonical.get_tier(),
-        divergent.get_tier(),
+        divergent.get_tier(&identity),
         "divergent fork tier must differ from canonical"
     );
     assert_eq!(canonical.get_tier(), crate::BondTier::Bronze);
-    assert_eq!(divergent.get_tier(), crate::BondTier::Gold);
+    assert_eq!(divergent.get_tier(&identity), crate::BondTier::Gold);
 }

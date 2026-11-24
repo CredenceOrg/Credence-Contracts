@@ -180,6 +180,7 @@ Wire codes are stable — do not renumber after deployment.
 
 ## Related docs
 
+- [LEASE_SCOPES.md](LEASE_SCOPES.md) — scope bits, permissions, and guard functions
 - [TIME_UNITS.md](TIME_UNITS.md) — seconds / ledger timestamps / test time travel
 - [storage-ttl.md](storage-ttl.md) — Soroban storage TTL (distinct from lease expiry)
 - [expiry-boundaries.md](expiry-boundaries.md) — delegation expiry window rules

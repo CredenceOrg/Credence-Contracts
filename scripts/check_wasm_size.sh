@@ -9,6 +9,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BUDGET_FILE="${WASM_BUDGET_FILE:-$SCRIPT_DIR/wasm-size-budget.toml}"
+# Allow the caller to override the WASM output directory.  The default is the
+# legacy wasm32-unknown-unknown path; CI passes wasm32v1-none's path via the
+# WASM_DIR env variable when building with the current Soroban/Stellar tooling.
 WASM_DIR="${WASM_DIR:-$REPO_ROOT/target/wasm32-unknown-unknown/release}"
 GLOBAL_OVERRIDE_KB="${1:-}"
 
@@ -43,13 +46,20 @@ get_contract_limit_kb() {
   fi
 
   local limit
+  # Entries are written as `name = 64` (with spaces), so compare the whole
+  # assignment rather than $1 of a whitespace-split line.
   limit=$(awk -v name="$contract" '
     /^\[contracts\]/ { in_section=1; next }
     /^\[/ { in_section=0 }
-    in_section && $1 == name "=" {
-      gsub(/[^0-9]/, "", $3)
-      print $3
-      exit
+    in_section {
+      line = $0
+      sub(/#.*/, "", line)
+      gsub(/[[:space:]]/, "", line)
+      split(line, parts, "=")
+      if (parts[1] == name && parts[2] ~ /^[0-9]+$/) {
+        print parts[2]
+        exit
+      }
     }
   ' "$BUDGET_FILE")
 

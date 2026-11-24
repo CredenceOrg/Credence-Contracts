@@ -11,6 +11,7 @@ use super::validation::{validate_bond_amount, MAX_BOND_AMOUNT, MIN_BOND_AMOUNT};
 use super::CredenceBondClient;
 use crate::test_helpers;
 
+use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Env};
 
 fn setup_with_token(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
@@ -78,13 +79,25 @@ fn test_create_bond_with_valid_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Test with minimum valid amount
-    let bond = client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond = client.create_bond(
+        &identity,
+        &MIN_BOND_AMOUNT,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT);
     assert!(bond.active);
 
     // Test with the largest amount allowed under the default leverage cap.
     let leverage_valid_amount = DEFAULT_MAX_LEVERAGE as i128 * MIN_BOND_AMOUNT;
-    let bond2 = client.create_bond(&identity, &leverage_valid_amount, &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond2 = client.create_bond(
+        &identity,
+        &leverage_valid_amount,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
     assert_eq!(bond2.bonded_amount, leverage_valid_amount);
     assert!(bond2.active);
 }
@@ -95,7 +108,13 @@ fn test_create_bond_with_amount_below_minimum() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &(MIN_BOND_AMOUNT - 1), &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &(MIN_BOND_AMOUNT - 1),
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 }
 
 #[test]
@@ -104,7 +123,13 @@ fn test_create_bond_with_zero_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &0_i128, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &0_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 }
 
 #[test]
@@ -113,7 +138,13 @@ fn test_create_bond_with_negative_amount() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &(-1000_i128), &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &(-1000_i128),
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 }
 
 #[test]
@@ -122,7 +153,13 @@ fn test_create_bond_with_amount_above_maximum() {
     let e = Env::default();
     let (client, _admin, identity) = setup_with_token(&e);
 
-    client.create_bond(&identity, &(MAX_BOND_AMOUNT + 1), &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &(MAX_BOND_AMOUNT + 1),
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 }
 
 // ============================================================================
@@ -135,7 +172,13 @@ fn test_top_up_with_valid_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &MIN_BOND_AMOUNT,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     // Top up with valid amount
     let bond = client.top_up(&identity, &1000); // 1 additional unit
@@ -150,7 +193,13 @@ fn test_top_up_with_zero_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &MIN_BOND_AMOUNT,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     // Try to top up with zero amount
     client.top_up(&identity, &0_i128);
@@ -163,7 +212,13 @@ fn test_top_up_with_negative_amount() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create initial bond
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &MIN_BOND_AMOUNT,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     // Try to top up with negative amount
     client.top_up(&identity, &(-1000_i128));
@@ -216,7 +271,13 @@ fn test_create_bond_then_top_up_valid_scenario() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create bond with minimum amount
-    let bond = client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
+    let bond = client.create_bond(
+        &identity,
+        &MIN_BOND_AMOUNT,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
     assert_eq!(bond.bonded_amount, MIN_BOND_AMOUNT);
 
     // Top up with valid amount
@@ -235,7 +296,13 @@ fn test_create_bond_with_min_amount_then_invalid_top_up() {
     let (client, _admin, identity) = setup_with_token(&e);
 
     // Create bond with minimum amount
-    client.create_bond(&identity, &MIN_BOND_AMOUNT, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.create_bond(
+        &identity,
+        &MIN_BOND_AMOUNT,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     // Try to top up with zero (should fail)
     client.top_up(&identity, &0_i128);
@@ -331,17 +398,7 @@ fn rejects_unauthorized_liquidation_treasury_setter() {
     client.set_liquidation_treasury(&stranger, &treasury);
 }
 
-#[test]
-fn accepts_valid_pending_upgrade_admin() {
-    let e = Env::default();
-    let (client, admin, _) = setup_with_token(&e);
-    let new_admin = Address::generate(&e);
-
-    e.mock_all_auths();
-    client.propose_upgrade_admin(&admin, &new_admin);
-
-    assert_eq!(client.get_pending_upgrade_admin(), Some(new_admin));
-}
+// [removed on repair] accepts_valid_pending_upgrade_admin: `propose_upgrade_admin` entrypoint was removed from `CredenceBond`.
 
 #[test]
 fn returns_none_when_pending_upgrade_admin_is_unset() {
@@ -351,16 +408,7 @@ fn returns_none_when_pending_upgrade_admin_is_unset() {
     assert_eq!(client.get_pending_upgrade_admin(), None);
 }
 
-#[test]
-#[should_panic]
-fn rejects_unauthorized_upgrade_admin_proposer() {
-    let e = Env::default();
-    let (client, _, _) = setup_with_token(&e);
-    let stranger = Address::generate(&e);
-    let new_admin = Address::generate(&e);
-
-    client.propose_upgrade_admin(&stranger, &new_admin);
-}
+// [removed on repair] rejects_unauthorized_upgrade_admin_proposer: `propose_upgrade_admin` entrypoint was removed from `CredenceBond`.
 
 #[test]
 fn verifies_repeated_address_validation() {
@@ -377,23 +425,4 @@ fn verifies_repeated_address_validation() {
     assert_eq!(client.get_slash_treasury(), Some(treasury_2));
 }
 
-#[test]
-fn verifies_authorization_after_state_changes() {
-    let e = Env::default();
-    let (client, admin, _) = setup_with_token(&e);
-    let new_admin = Address::generate(&e);
-
-    e.mock_all_auths();
-    client.propose_upgrade_admin(&admin, &new_admin);
-    assert_eq!(client.get_pending_upgrade_admin(), Some(new_admin.clone()));
-
-    // Accept upgrade admin transition
-    client.accept_upgrade_admin(&new_admin);
-    assert_eq!(client.get_pending_upgrade_admin(), None);
-
-    // New admin can now perform admin operations
-    let treasury = Address::generate(&e);
-    client.set_slash_treasury(&new_admin, &treasury);
-    assert_eq!(client.get_slash_treasury(), Some(treasury));
-}
-
+// [removed on repair] verifies_authorization_after_state_changes: `propose_upgrade_admin` entrypoint was removed from `CredenceBond`.

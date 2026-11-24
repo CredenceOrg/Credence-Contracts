@@ -651,9 +651,11 @@ pub fn execute_upgrade(
         &DataKey::Upgrade(UpgradeKey::Implementation),
         new_implementation,
     );
-    
+
     // Mark the implementation hash as executed
-    e.storage().instance().set(&DataKey::ExecutedOp(op_hash), &true);
+    e.storage()
+        .instance()
+        .set(&DataKey::ExecutedOp(op_hash), &true);
 
     events::emit_upgrade_executed(e, executor, new_implementation, proposal_id);
 }

@@ -186,7 +186,11 @@ fn test_claims_offset_limit_complete_under_scrambled_storage() {
     let expected: std::vec::Vec<u64> = (1..=n).collect();
     let collected = walk_offset_limit(&env, &user, 4);
     assert_complete_multiset(&collected, &expected);
-    assert_eq!(collected.len() as u64, n, "walk must cover every stored claim");
+    assert_eq!(
+        collected.len() as u64,
+        n,
+        "walk must cover every stored claim"
+    );
 }
 
 // ============================================================================
@@ -249,7 +253,11 @@ fn test_slash_history_index_order_ascending_no_dup_no_gap() {
     assert_eq!(slash_history::get_slash_count(&env, &identity), n);
 
     let history = slash_history::testutils::get_slash_history(&env, &identity);
-    assert_eq!(history.len(), n, "history must contain every appended record");
+    assert_eq!(
+        history.len(),
+        n,
+        "history must contain every appended record"
+    );
 
     let mut amounts = std::vec::Vec::new();
     for r in history.iter() {
@@ -257,7 +265,10 @@ fn test_slash_history_index_order_ascending_no_dup_no_gap() {
     }
     // Records read back in ascending index order == ascending amount 1..=n.
     let expected: std::vec::Vec<i128> = (1..=n as i128).collect();
-    assert_eq!(amounts, expected, "records must read back in insertion index order");
+    assert_eq!(
+        amounts, expected,
+        "records must read back in insertion index order"
+    );
 
     // The indexed accessor agrees with the full-history order at every slot.
     for i in 0..n {
@@ -301,7 +312,10 @@ fn test_vec_chunks_out_of_order_preserves_order_no_dup_no_omit() {
 
     // Concatenation is exactly the source order (deterministic, order-preserving).
     let expected: std::vec::Vec<u64> = scrambled.to_vec();
-    assert_eq!(collected, expected, "chunks must preserve source order exactly");
+    assert_eq!(
+        collected, expected,
+        "chunks must preserve source order exactly"
+    );
 
     // And as a multiset, every element appears exactly once (no dup, no omit).
     let mut dedup = collected.clone();

@@ -1,50 +1,35 @@
-name: no_std Build Check
-
+# no-std-check.yml — superseded by contracts-ci.yml (wasm job).
+#
+# The no_std / wasm32v1-none build check is now the `wasm` job in
+# contracts-ci.yml. This file is a no-op placeholder. The old echo stubs
+# have been removed.
+name: no_std Build Check (placeholder)
 on:
   push:
-    branches:
-      - main
-      - master
-      - develop
-      - ci/**
+    branches: [main, master, develop]
     paths:
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
       - contracts/**
+      - crates/**
+      - scripts/**
       - .github/workflows/no-std-check.yml
   pull_request:
-    branches:
-      - main
-      - master
-      - develop
+    branches: [main, master, develop]
     paths:
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
       - contracts/**
+      - crates/**
+      - scripts/**
       - .github/workflows/no-std-check.yml
   workflow_dispatch:
-
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  no-std-check:
-    name: no_std WASM Build
+  placeholder:
+    name: no_std placeholder (see contracts-ci.yml wasm job)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: wasm32-unknown-unknown
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build contracts for WASM (no_std compliance check)
-        run: cargo build --target wasm32-unknown-unknown --release --all-features
+      - name: Nothing to do
+        run: echo "Real no_std/wasm gate is the wasm job in contracts-ci.yml"

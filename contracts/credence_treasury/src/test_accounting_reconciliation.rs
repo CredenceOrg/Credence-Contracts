@@ -889,15 +889,8 @@ mod tests {
 
         // Withdraw 1 at a time, 9 times (leaving 1).
         let labels = [
-            "uneven 0",
-            "uneven 1",
-            "uneven 2",
-            "uneven 3",
-            "uneven 4",
-            "uneven 5",
-            "uneven 6",
-            "uneven 7",
-            "uneven 8",
+            "uneven 0", "uneven 1", "uneven 2", "uneven 3", "uneven 4", "uneven 5", "uneven 6",
+            "uneven 7", "uneven 8",
         ];
 
         for i in 0..9 {

@@ -195,7 +195,9 @@ pub fn validate_scheme_registered(e: &Env, scheme: u32) {
 /// - Looks up the verifier address stored under `DataKey::Verifier(scheme)`.
 /// - If no verifier is registered for the scheme, panics with `VerifierNotRegistered`.
 /// - Invokes the verifier via a cross-contract call to `verify(owner, message, signature) -> bool`.
-/// - If the verifier returns `false` (or panics internally), panics with `VerificationFailed`.
+/// - If the verifier returns `false`, panics with `VerificationFailed`.
+/// - If the verifier traps, the current invocation fails and Soroban rolls back
+///   its state changes; the trap is not converted to `VerificationFailed` here.
 ///
 /// # Wire Stability
 ///
@@ -243,7 +245,8 @@ pub fn verify_delegated_signature(
 
             // 3. Dispatch to the verifier contract via cross-contract call.
             //    The verifier must expose `fn verify(owner, message, signature) -> bool`.
-            //    A `false` return (or a panic inside the verifier) maps to VerificationFailed.
+            //    A false return maps to VerificationFailed. A verifier trap aborts
+            //    this invocation; Soroban transaction rollback preserves state.
             let args: Vec<Val> = soroban_sdk::vec![
                 e,
                 owner.clone().into_val(e),

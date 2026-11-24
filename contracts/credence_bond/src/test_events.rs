@@ -30,8 +30,7 @@ use soroban_sdk::{
 
 fn setup<'a>(e: &'a Env) -> (CredenceBondClient<'a>, Address, Address) {
     e.mock_all_auths();
-    let (client, admin, identity, _token_id, _bond_contract_id) =
-        test_helpers::setup_with_token(e);
+    let (client, admin, identity, _token_id, _bond_contract_id) = test_helpers::setup_with_token(e);
     (client, admin, identity)
 }
 
@@ -39,7 +38,12 @@ fn event_name(e: &Env, ev: &soroban_sdk::ContractEvent) -> Symbol {
     Symbol::from_val(e, &ev.1.get(0).unwrap())
 }
 
-fn find_events<F>(e: &Env, name: Symbol, contract: &Address, predicate: F) -> Vec<soroban_sdk::ContractEvent>
+fn find_events<F>(
+    e: &Env,
+    name: Symbol,
+    contract: &Address,
+    predicate: F,
+) -> Vec<soroban_sdk::ContractEvent>
 where
     F: Fn(&soroban_sdk::ContractEvent) -> bool,
 {
@@ -50,7 +54,12 @@ where
         .collect()
 }
 
-fn find_event<F>(e: &Env, name: Symbol, contract: &Address, predicate: F) -> soroban_sdk::ContractEvent
+fn find_event<F>(
+    e: &Env,
+    name: Symbol,
+    contract: &Address,
+    predicate: F,
+) -> soroban_sdk::ContractEvent
 where
     F: Fn(&soroban_sdk::ContractEvent) -> bool,
 {
@@ -71,17 +80,14 @@ fn bond_created_v1_carries_identity_in_topic_and_amount_in_data() {
     let contract_addr = e.current_contract_address();
 
     let amount = 10_000_i128;
-    let duration = credence_math::Timestamp::SECONDS_PER_DAY;
+    let duration = credence_math::SECONDS_PER_DAY;
     let is_rolling = false;
 
     client.create_bond_with_rolling(&identity, &amount, &duration, &is_rolling, &0_u64);
 
-    let v1 = find_event(
-        &e,
-        Symbol::new(&e, "bond_created"),
-        &contract_addr,
-        |_| true,
-    );
+    let v1 = find_event(&e, Symbol::new(&e, "bond_created"), &contract_addr, |_| {
+        true
+    });
 
     // Legacy topics: (Symbol, identity) — length 2
     assert_eq!(v1.1.len(), 2, "v1 topics must be name + identity");
@@ -104,7 +110,7 @@ fn bond_increased_v1_carries_top_up_amounts_in_data() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -135,14 +141,14 @@ fn bond_withdrawn_v1_carries_amount_and_remaining_in_data() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
 
     // Advance past the lock-up so a regular `withdraw` succeeds.
     let mut ledger_info = e.ledger().get();
-    ledger_info.timestamp += credence_math::Timestamp::SECONDS_PER_DAY + 1;
+    ledger_info.timestamp += credence_math::SECONDS_PER_DAY + 1;
     e.ledger().set(ledger_info);
 
     client.withdraw(&identity, &3_000_i128);
@@ -176,7 +182,7 @@ fn bond_slashed_v1_is_emitted_with_identity_in_data() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -185,7 +191,9 @@ fn bond_slashed_v1_is_emitted_with_identity_in_data() {
 
     client.slash(&admin, &4_000_i128);
 
-    let slash_events = find_events(&e, Symbol::new(&e, "bond_slashed"), &contract_addr, |_| true);
+    let slash_events = find_events(&e, Symbol::new(&e, "bond_slashed"), &contract_addr, |_| {
+        true
+    });
     assert!(
         !slash_events.is_empty(),
         "at least one bond_slashed variant must be emitted per slash"
@@ -196,9 +204,7 @@ fn bond_slashed_v1_is_emitted_with_identity_in_data() {
     let mut saw_legacy_data_shape = false;
     for ev in slash_events.iter() {
         if ev.1.len() == 1 {
-            if let Ok((who, amount, total)) =
-                <(Address, i128, i128)>::try_from_val(&e, &ev.2)
-            {
+            if let Ok((who, amount, total)) = <(Address, i128, i128)>::try_from_val(&e, &ev.2) {
                 assert_eq!(who, identity);
                 assert_eq!(amount, 4_000);
                 assert_eq!(total, 4_000);
@@ -224,22 +230,18 @@ fn tier_changed_v1_emits_identity_in_data_when_threshold_crossed() {
 
     // Default tier thresholds: 1e21 bronze_max, 5e21 silver_max, ...
     // creating with bronze+1 forces a Bronze→Silver transition.
-    let amount_above_bronze =
-        crate::tiered_bond::TIER_BRONZE_MAX + 1_i128;
+    let amount_above_bronze = crate::tiered_bond::TIER_BRONZE_MAX + 1_i128;
     client.create_bond_with_rolling(
         &identity,
         &amount_above_bronze,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
 
-    let v1 = find_event(
-        &e,
-        Symbol::new(&e, "tier_changed"),
-        &contract_addr,
-        |_| true,
-    );
+    let v1 = find_event(&e, Symbol::new(&e, "tier_changed"), &contract_addr, |_| {
+        true
+    });
 
     // Legacy topics: single Symbol("tier_changed")
     assert_eq!(
@@ -252,8 +254,7 @@ fn tier_changed_v1_emits_identity_in_data_when_threshold_crossed() {
     let (who, tier) = <(Address, crate::BondTier)>::from_val(&e, &v1.2);
     assert_eq!(who, identity);
     assert!(
-        core::mem::discriminant(&tier)
-            == core::mem::discriminant(&crate::BondTier::Silver),
+        core::mem::discriminant(&tier) == core::mem::discriminant(&crate::BondTier::Silver),
         "expected Silver tier, got {:?}",
         tier
     );
@@ -270,13 +271,14 @@ fn tier_changed_v1_is_NOT_emitted_when_tier_unchanged() {
     client.create_bond_with_rolling(
         &identity,
         &amount,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
 
-    let v1_events =
-        find_events(&e, Symbol::new(&e, "tier_changed"), &contract_addr, |_| true);
+    let v1_events = find_events(&e, Symbol::new(&e, "tier_changed"), &contract_addr, |_| {
+        true
+    });
     assert!(
         v1_events.is_empty(),
         "creating a Bronze bond must not emit tier_changed"
@@ -328,7 +330,11 @@ fn attester_unregistered_v1_emits_target_in_data() {
         |_| true,
     );
 
-    assert_eq!(v1.1.len(), 1, "attester_unregistered v1 topic is symbol only");
+    assert_eq!(
+        v1.1.len(),
+        1,
+        "attester_unregistered v1 topic is symbol only"
+    );
     let data_address = Address::from_val(&e, &v1.2).unwrap();
     assert_eq!(data_address, attester);
 
@@ -426,15 +432,16 @@ fn param_updated_v1_emits_key_category_admin_old_and_new() {
     let new_bps = 75_u32;
     client.set_protocol_fee_bps(&admin, &new_bps);
 
-    let v1 = find_event(
-        &e,
-        Symbol::new(&e, "param_updated"),
-        &contract_addr,
-        |_| true,
-    );
+    let v1 = find_event(&e, Symbol::new(&e, "param_updated"), &contract_addr, |_| {
+        true
+    });
 
     // topics: (Symbol, key, category, admin) — 4 entries
-    assert_eq!(v1.1.len(), 4, "param_updated v1 has name + key + category + admin");
+    assert_eq!(
+        v1.1.len(),
+        4,
+        "param_updated v1 has name + key + category + admin"
+    );
     let key = Symbol::from_val(&e, &v1.1.get(1).unwrap()).unwrap();
     let category = Symbol::from_val(&e, &v1.1.get(2).unwrap()).unwrap();
     let topic_admin = Address::from_val(&e, &v1.1.get(3).unwrap()).unwrap();
@@ -491,7 +498,7 @@ fn early_exit_penalty_v1_carries_full_payload() {
     client.create_bond_with_rolling(
         &identity,
         &1_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -561,7 +568,7 @@ fn claim_added_v1_carries_type_amount_and_source() {
     client.create_bond_with_rolling(
         &identity,
         &10_000_i128,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0_u64,
     );
@@ -573,17 +580,15 @@ fn claim_added_v1_carries_type_amount_and_source() {
     client.set_slash_treasury(&admin, &slash_treasury);
     client.slash(&admin, &1_000_i128);
 
-    let v1 = find_event(
-        &e,
-        Symbol::new(&e, "claim_added"),
-        &contract_addr,
-        |_| true,
-    );
+    let v1 = find_event(&e, Symbol::new(&e, "claim_added"), &contract_addr, |_| true);
 
     // topics: (Symbol("claim_added"), recipient: Address)
     assert_eq!(v1.1.len(), 2);
     let recipient = Address::from_val(&e, &v1.1.get(1).unwrap()).unwrap();
-    assert_eq!(recipient, admin, "slash reward is paid to the slasher (admin)");
+    assert_eq!(
+        recipient, admin,
+        "slash reward is paid to the slasher (admin)"
+    );
 
     // data: (ClaimType, amount: i128, source_id: u64)
     let (claim_type, amount, source_id) =
@@ -615,13 +620,7 @@ fn bond_liquidated_v1_carries_residual_reason_timestamp_and_admin() {
     let slash_treasury = Address::generate(&e);
     client.set_slash_treasury(&admin, &slash_treasury);
 
-    client.create_bond_with_rolling(
-        &identity,
-        &1_000_i128,
-        &86_400_u64,
-        &false,
-        &0_u64,
-    );
+    client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     client.slash(&admin, &1_000_i128); // fully slash
     client.liquidate(&admin);
 

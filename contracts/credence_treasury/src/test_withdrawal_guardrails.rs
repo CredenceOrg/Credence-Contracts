@@ -451,7 +451,10 @@ fn test_operator_top_up_allows_withdrawal() {
     client.approve_withdrawal(&signer, &id);
     // Expect failure due to insufficient treasury balance (floor breach)
     let result = client.try_execute_withdrawal(&id, &0);
-    assert!(result.is_err(), "withdrawal should have failed due to floor breach");
+    assert!(
+        result.is_err(),
+        "withdrawal should have failed due to floor breach"
+    );
 
     // Operator (admin) tops up the treasury
     client.receive_fee(&admin, &2_000, &FundSource::ProtocolFee);

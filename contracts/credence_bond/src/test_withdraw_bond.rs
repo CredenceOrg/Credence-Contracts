@@ -34,13 +34,19 @@ fn test_withdraw_bond_callback_failure_reverts_state() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, token_id, bond_contract_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
     let callback_id = e.register(failing_withdraw_callback::FailingWithdrawCallback, ());
     client.set_callback(&admin, &callback_id);
 
-    let before_bond = client.get_identity_state();
+    let before_bond = client.get_identity_state(&identity);
     let token_client = TokenClient::new(&e, &token_id);
     let before_identity_balance = token_client.balance(&identity);
     let before_contract_balance = token_client.balance(&bond_contract_id);
@@ -50,7 +56,7 @@ fn test_withdraw_bond_callback_failure_reverts_state() {
     }));
     assert!(result.is_err());
 
-    let after_bond = client.get_identity_state();
+    let after_bond = client.get_identity_state(&identity);
     assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
     assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
     assert_eq!(token_client.balance(&identity), before_identity_balance);
@@ -59,13 +65,101 @@ fn test_withdraw_bond_callback_failure_reverts_state() {
         before_contract_balance
     );
 }
+
+#[test]
+fn test_withdraw_early_callback_failure_reverts_state() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, admin, identity, token_id, bond_contract_id) = setup_with_token(&e);
+
+    let treasury = soroban_sdk::Address::generate(&e);
+    client.set_early_exit_config(&admin, &treasury, &500_u32);
+
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    e.ledger().with_mut(|li| li.timestamp = 44200);
+
+    let callback_id = e.register(failing_withdraw_callback::FailingWithdrawCallback, ());
+    client.set_callback(&admin, &callback_id);
+
+    let before_bond = client.get_identity_state(&identity);
+    let token_client = TokenClient::new(&e, &token_id);
+    let before_identity_balance = token_client.balance(&identity);
+    let before_contract_balance = token_client.balance(&bond_contract_id);
+    let before_treasury_balance = token_client.balance(&treasury);
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        client.withdraw_early(&identity, &500);
+    }));
+    assert!(result.is_err());
+
+    let after_bond = client.get_identity_state(&identity);
+    assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
+    assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
+    assert_eq!(token_client.balance(&identity), before_identity_balance);
+    assert_eq!(
+        token_client.balance(&bond_contract_id),
+        before_contract_balance
+    );
+    assert_eq!(token_client.balance(&treasury), before_treasury_balance);
+}
+
+#[test]
+fn test_withdraw_alias_callback_failure_reverts_state() {
+    let e = Env::default();
+    e.ledger().with_mut(|li| li.timestamp = 1000);
+    let (client, admin, identity, token_id, bond_contract_id) = setup_with_token(&e);
+
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
+    e.ledger().with_mut(|li| li.timestamp = 87401);
+
+    let callback_id = e.register(failing_withdraw_callback::FailingWithdrawCallback, ());
+    client.set_callback(&admin, &callback_id);
+
+    let before_bond = client.get_identity_state(&identity);
+    let token_client = TokenClient::new(&e, &token_id);
+    let before_identity_balance = token_client.balance(&identity);
+    let before_contract_balance = token_client.balance(&bond_contract_id);
+
+    let result = catch_unwind(AssertUnwindSafe(|| {
+        client.withdraw(&identity, &500);
+    }));
+    assert!(result.is_err());
+
+    let after_bond = client.get_identity_state(&identity);
+    assert_eq!(after_bond.bonded_amount, before_bond.bonded_amount);
+    assert_eq!(after_bond.slashed_amount, before_bond.slashed_amount);
+    assert_eq!(token_client.balance(&identity), before_identity_balance);
+    assert_eq!(
+        token_client.balance(&bond_contract_id),
+        before_contract_balance
+    );
+}
+
 #[test]
 fn test_withdraw_bond_after_lockup_non_rolling() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     e.ledger().with_mut(|li| li.timestamp = 87401);
     let bond = client.withdraw_bond(&500);
@@ -79,7 +173,13 @@ fn test_withdraw_bond_before_lockup_panics() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
 
     e.ledger().with_mut(|li| li.timestamp = 44200);
     client.withdraw_bond(&500);
@@ -92,7 +192,13 @@ fn test_withdraw_bond_rolling_before_notice_panics() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &10_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &true,
+        &10_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 1101);
 
     client.withdraw_bond(&500);
@@ -105,7 +211,13 @@ fn test_withdraw_bond_rolling_before_cooldown_panics() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &10_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &true,
+        &10_u64,
+    );
     client.request_withdrawal(&identity);
     e.ledger().with_mut(|li| li.timestamp = 1005);
 
@@ -118,7 +230,13 @@ fn test_withdraw_bond_rolling_after_cooldown() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &true, &10_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &true,
+        &10_u64,
+    );
     client.request_withdrawal(&identity);
     e.ledger().with_mut(|li| li.timestamp = 1011);
 
@@ -132,7 +250,13 @@ fn test_withdraw_bond_partial_withdrawal() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
     let bond = client.withdraw_bond(&300);
@@ -150,7 +274,13 @@ fn test_withdraw_bond_insufficient_balance() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
     client.withdraw_bond(&1001);
@@ -162,7 +292,13 @@ fn test_withdraw_bond_after_slash() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     test_helpers::advance_ledger_sequence(&e);
     client.slash(&admin, &400);
     e.ledger().with_mut(|li| li.timestamp = 87401);
@@ -178,7 +314,13 @@ fn test_withdraw_bond_zero_amount() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
     let bond = client.withdraw_bond(&0);
@@ -191,7 +333,13 @@ fn test_withdraw_bond_full_withdrawal() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, token_id, bond_contract_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
     let bond = client.withdraw_bond(&1000);
@@ -208,7 +356,13 @@ fn test_withdraw_alias_calls_withdraw_bond() {
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
 
-    client.create_bond_with_rolling(&identity, &1000_i128, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0_u64);
+    client.create_bond_with_rolling(
+        &identity,
+        &1000_i128,
+        &credence_math::SECONDS_PER_DAY,
+        &false,
+        &0_u64,
+    );
     e.ledger().with_mut(|li| li.timestamp = 87401);
 
     let bond = client.withdraw(&identity, &500);

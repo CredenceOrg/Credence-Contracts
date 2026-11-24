@@ -21,6 +21,7 @@ error code instead of an opaque transaction failure.
 | 500–599 | Delegation     | credence\_delegation                              |
 | 600–699 | Treasury       | credence\_treasury                                |
 | 700–799 | Arithmetic     | bond, treasury, and others                        |
+| 800–899 | Escrow         | bounty-escrow                                     |
 
 > **Stability Guarantee** — Error codes are wire-stable and must **never** be renumbered
 > after deployment. Append new variants at the end of their category block only.
@@ -53,7 +54,6 @@ error code instead of an opaque transaction failure.
 | 106 | `ContractPaused` | ✓ | Contract is paused; state-mutating operations disallowed |
 | 107 | `InvalidPauseAction` | ✓ | Pause action value is invalid |
 | 108 | `InsufficientSignatures` | ✓ | Not enough approvals to execute proposal |
-| 109 | `ZeroBytes32` | ✓ | Input `BytesN<32>` argument is all-zero |
 | 110 | `InvalidAdminAddress` | ✓ | Proposed admin is the zero/identity address |
 | 111 | `AdminUnchanged` | ✓ | Proposed admin is the same as the current admin |
 | 112 | `TimelockNotReady` | ✓ | Timelock delay has not yet elapsed |
@@ -68,8 +68,11 @@ error code instead of an opaque transaction failure.
 | 121 | `LeaseScopeMismatch` | ✓ | Lease scope bitmask does not cover the requested operation |
 | 122 | `LeaseExpired` | ✓ | Lease `expires_at` has been reached or passed |
 | 123 | `CrossContractCallerMismatch` | ✗ | Cross-contract caller does not match the configured partner |
-| 124 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
-| 125 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
+| 124 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
+| 125 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
+| 126 | `LeaseSignerMismatch` | ✓ | Caller is not the signer bound to the lease |
+| 127 | `ZeroBytes32` | ✓ | Input `BytesN<32>` argument is all-zero |
+| 128 | `RoleRequired` | ✓ | Caller does not hold the role required for the action |
 
 ### Bond (200–299)
 
@@ -111,6 +114,13 @@ error code instead of an opaque transaction failure.
 | 233 | `InvariantViolation` | ✗ | Post-write self-check detected bond/attestation accounting drift |
 | 234 | `InvalidCurrency` | ✓ | Empty or whitespace-only currency symbol |
 | 235 | `SnapshotGenerationMismatch` | ✗ | Snapshot generation does not match the current epoch |
+| 236 | `CooldownRequestAlreadyPending` | ✓ | A cooldown request is already pending |
+| 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
+| 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
+| 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `NegativeAmount` | ✓ | Token amount must be non-negative |
+| 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is smaller than the requested transfer amount |
+| 242 | `UnsupportedStellarNetwork` | ✓ | The configured Stellar network label is not supported |
 
 ### Attestation (300–399)
 
@@ -182,6 +192,19 @@ error code instead of an opaque transaction failure.
 | 701 | `Underflow` | ✗ | Integer underflow in checked arithmetic |
 | 702 | `DivisionByZero` | ✗ | Division by a zero denominator |
 | 703 | `InvalidPercentSplit` | ✓ | Percentage splits do not sum to exactly 10 000 basis points |
+| 704 | `InvalidPeriodCount` | ✓ | Compound period count exceeds the documented maximum |
+
+### Escrow (800–899)
+
+| Code | Variant | Recoverable | Description |
+|------|---------|:-----------:|-------------|
+| 800 | `EscrowNotFound` | ✓ | No escrow exists for the given id |
+| 801 | `EscrowNotReleasable` | ✗ | Escrow is already released or fully refunded and cannot be released |
+| 802 | `EscrowNotRefundable` | ✗ | Escrow is already released or fully refunded and cannot be refunded |
+| 803 | `EscrowNotExpired` | ✓ | Escrow cannot be refunded before its expiry time |
+| 804 | `RefundExceedsRemaining` | ✓ | Refund amount exceeds the escrow's remaining balance |
+| 805 | `InvalidEscrowExpiry` | ✓ | Escrow expiry must be in the future |
+| 806 | `NotEscrowParty` | ✓ | Caller is neither the escrow depositor nor the contract admin |
 
 ---
 
