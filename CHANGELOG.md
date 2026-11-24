@@ -52,4 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Protocol Fixes**: Resolved compilation errors, completed `top_up` and `extend_duration` with overflow protection.
 - **Event Indexing**: Migrated lifecycle events to V2 for optimized off-chain indexing.
 
+### Removed
+
+- **Superseded ignored batch tests**: Removed `test_atomic_failure_on_second_bond` and `test_atomic_failure_validation_order` from `contracts/credence_bond/src/test_batch.rs` (already replaced by Section J `try_*` atomicity tests) and marked `docs/known-simplifications.md` § 5.1 as resolved.
+
 <!-- a -->
