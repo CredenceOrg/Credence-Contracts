@@ -183,6 +183,15 @@ mod tests {
         assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
         assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
         assert_eq!(ContractError::BytesTooLarge as u32, 239);
+        assert_eq!(ContractError::UpgradeNotAuthorized as u32, 240);
+        assert_eq!(ContractError::UpgradeAuthNotActive as u32, 241);
+        assert_eq!(ContractError::UpgradeAuthExpired as u32, 242);
+        assert_eq!(ContractError::UpgradeProposalNotPending as u32, 243);
+        assert_eq!(ContractError::UpgradeProposalAlreadyApproved as u32, 244);
+        assert_eq!(ContractError::UpgradeProposalNotApproved as u32, 245);
+        assert_eq!(ContractError::UpgradeImplementationMismatch as u32, 246);
+        assert_eq!(ContractError::ImplementationNotSet as u32, 247);
+        assert_eq!(ContractError::SameImplementation as u32, 248);
     }
 
     #[test]
@@ -355,6 +364,15 @@ mod tests {
             ContractError::CooldownRequestNotFound,
             ContractError::CooldownPeriodNotElapsed,
             ContractError::BytesTooLarge,
+            ContractError::UpgradeNotAuthorized,
+            ContractError::UpgradeAuthNotActive,
+            ContractError::UpgradeAuthExpired,
+            ContractError::UpgradeProposalNotPending,
+            ContractError::UpgradeProposalAlreadyApproved,
+            ContractError::UpgradeProposalNotApproved,
+            ContractError::UpgradeImplementationMismatch,
+            ContractError::ImplementationNotSet,
+            ContractError::SameImplementation,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -1427,6 +1445,15 @@ mod tests {
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::UpgradeNotAuthorized => false, // admin must grant upgrade authorization
+            ContractError::UpgradeAuthNotActive => false, // admin must reactivate authorization
+            ContractError::UpgradeAuthExpired => false, // admin must renew authorization
+            ContractError::UpgradeProposalNotPending => false, // proposal already left Pending
+            ContractError::UpgradeProposalAlreadyApproved => false, // approval already recorded
+            ContractError::UpgradeProposalNotApproved => true, // wait for approvals then retry
+            ContractError::UpgradeImplementationMismatch => true, // resubmit with the proposed implementation
+            ContractError::ImplementationNotSet => false, // implementation must be initialized first
+            ContractError::SameImplementation => true, // supply a different implementation
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period

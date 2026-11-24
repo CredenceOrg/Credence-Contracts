@@ -82,6 +82,15 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
     assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
     assert_eq!(ContractError::BytesTooLarge as u32, 239);
+    assert_eq!(ContractError::UpgradeNotAuthorized as u32, 240);
+    assert_eq!(ContractError::UpgradeAuthNotActive as u32, 241);
+    assert_eq!(ContractError::UpgradeAuthExpired as u32, 242);
+    assert_eq!(ContractError::UpgradeProposalNotPending as u32, 243);
+    assert_eq!(ContractError::UpgradeProposalAlreadyApproved as u32, 244);
+    assert_eq!(ContractError::UpgradeProposalNotApproved as u32, 245);
+    assert_eq!(ContractError::UpgradeImplementationMismatch as u32, 246);
+    assert_eq!(ContractError::ImplementationNotSet as u32, 247);
+    assert_eq!(ContractError::SameImplementation as u32, 248);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);

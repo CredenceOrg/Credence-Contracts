@@ -118,6 +118,15 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `UpgradeNotAuthorized` | ✗ | Caller is not authorized to propose upgrades |
+| 241 | `UpgradeAuthNotActive` | ✗ | Upgrade authorization is not active |
+| 242 | `UpgradeAuthExpired` | ✗ | Upgrade authorization has expired |
+| 243 | `UpgradeProposalNotPending` | ✗ | Upgrade proposal is not pending |
+| 244 | `UpgradeProposalAlreadyApproved` | ✗ | Approver has already approved this upgrade proposal |
+| 245 | `UpgradeProposalNotApproved` | ✓ | Upgrade proposal has not been approved |
+| 246 | `UpgradeImplementationMismatch` | ✓ | Implementation does not match the upgrade proposal |
+| 247 | `ImplementationNotSet` | ✗ | No implementation address has been set |
+| 248 | `SameImplementation` | ✓ | New implementation is the same as the current implementation |
 
 ### Attestation (300–399)
 
