@@ -58,7 +58,7 @@ credence-admin \
 |----------|------|-------------|
 | `--admin G…` | Stellar address | Admin authority address |
 | `--treasury G…` | Stellar address | Penalty recipient address |
-| `--bps <u32>` | 0–10 000 | Early-exit penalty in basis points |
+| `--bps <u32>` | `0..=10000` | Early-exit penalty in basis points (validated locally before any RPC call) |
 
 ---
 
@@ -80,8 +80,8 @@ credence-admin \
 | Argument | Type | Description |
 |----------|------|-------------|
 | `--admin G…` | Stellar address | Admin authority address |
-| `--multiplier-bps <u32>` | basis points | Attestation weight multiplier |
-| `--max-weight <u32>` | integer | Maximum attestation weight cap |
+| `--multiplier-bps <u32>` | `0..=10000` | Attestation weight multiplier in basis points (validated locally before any RPC call) |
+| `--max-weight <u32>` | `0..=1000000` | Maximum attestation weight cap (validated locally before any RPC call) |
 
 ---
 
