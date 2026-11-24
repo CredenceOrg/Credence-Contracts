@@ -1,5 +1,7 @@
 # Timelock for Protocol Changes
 
+> For a concise crate-level entrypoint summary and backend checklist, see [Crate: timelock](./credence-timelock.md).
+
 ## Overview
 
 The Timelock contract enforces a mandatory delay before high-impact administrative changes take effect. This protects users by ensuring that proposed changes are visible on-chain for a defined period before they can be executed, giving the community time to review and respond.
@@ -7,17 +9,17 @@ The Timelock contract enforces a mandatory delay before high-impact administrati
 ## Architecture
 
 ```
-Admin ──queue_operation──> Timelock ──(wait min_delay)──> execute_operation
-                               ^
-Admin ──cancel_operation───────┘
+Admin ──queue_call / queue_operation──> Timelock ──(wait min_delay)──> execute_operation
+                                           ^
+Admin ──cancel_operation───────────────────┘
 ```
 
 **Lifecycle of an operation:**
 
-1. Admin calls `queue_operation(proposer, op_hash, delay)` (hash-only) or `queue_call(proposer, target, func, args, delay)` (call-bound). The operation is recorded with an ETA of `now + delay` (where delay >= min_delay) and an `expires_at` grace window.
+1. Admin calls `queue_call(proposer, target, func, args, salt, delay)` (call-bound) or `queue_operation(proposer, op_hash, delay)` (legacy hash-only). The operation is recorded with an ETA of `now + delay` (where `delay >= min_delay_seconds()`) and an `expires_at` grace window.
 2. The operation sits in a pending state until the ETA passes.
-3. After the ETA, anyone can call `execute_operation(op_id)` to execute it, provided it's within the grace window (`now <= expires_at`). A call-bound operation invokes its queued `(target, func, args)`; a hash-only operation only records that it executed.
-4. At any point before execution, the admin can call `cancel_operation(op_id)` to discard it.
+3. After the ETA, anyone can call `execute_operation(op_id)` to execute it, provided it is within the grace window (`eta <= now <= expires_at`). A call-bound operation invokes its queued `(target, func, args)`; a hash-only operation only records that it executed.
+4. At any point before execution, the admin can call `cancel_operation(admin, op_id)` to discard it.
 
 ## Call-bound operations
 
@@ -26,42 +28,44 @@ has to be performed by the admin key directly, and no on-chain link exists
 between the queued hash and that action. Call-bound operations close that gap.
 
 ```
-Admin ──queue_call(target, func, args, delay)──> Timelock
-                                                   │  (wait, then anyone executes)
-                                                   ▼
-                                     target.func(args) as the timelock
+Admin ──queue_call(proposer, target, func, args, salt, delay)──> Timelock
+                                                                    │  (wait, then anyone executes)
+                                                                    ▼
+                                                      target.func(args) as the timelock
 ```
 
 ### Hash pre-image
 
-`op_hash` is derived **inside the contract**:
+`op_hash` is computed on-chain by `hash_call(target, func, args, salt)`:
 
 ```
-op_hash = sha256(xdr(network_id ‖ timelock_address ‖ target ‖ func ‖ args ‖ salt))
+op_hash = sha256(xdr(timelock_address) ‖ xdr(target) ‖ xdr(func) ‖ xdr(args) ‖ xdr(salt))
 ```
 
-- `network_id` binds the hash to the deployment network.
-- `timelock_address` binds it to this contract, so an identical call queued on
-  another timelock never shares a hash.
-- Each component is length-delimited by its XDR encoding, so changing any byte
-  of `target`, `func`, `args` or `salt` produces a different hash.
-- `salt` is derived on-chain as `sha256(xdr(op_id) ‖ xdr(eta))` and stored with
-  the call, so observers can recompute the hash from public data with
-  `hash_call(target, func, args, salt)` and compare it with `op_hash`.
+Pre-image field order (matching `TimelockContract::hash_call` in `contracts/timelock/src/lib.rs`):
+
+1. `timelock_address` (`Address`) — `e.current_contract_address()`, binding the hash to this timelock instance.
+2. `target` (`Address`) — the contract to invoke on execution.
+3. `func` (`Symbol`) — the function name to call on `target`.
+4. `args` (`Vec<Val>`) — the arguments passed to `target.func`.
+5. `salt` (`BytesN<32>`) — caller-supplied 32-byte salt, allowing identical `(target, func, args)` calls to produce distinct `op_hash` values across separate executions.
+
+Notes:
+- Each field is length-delimited by its XDR encoding (`to_xdr`), so changing any byte of `timelock_address`, `target`, `func`, `args`, or `salt` produces a different hash.
+- `network_id` is **not** included in `hash_call`'s pre-image (domain separation is provided by `timelock_address` and the caller-supplied `salt`).
+- Observers and off-chain tools can call `hash_call(target, func, args, salt)` directly to verify the `op_hash` of a queued operation against the `CallSpec` returned by `get_call(op_id)`.
 
 ### Execute ordering
 
-`execute_operation` on a call-bound operation:
+Any address may call `execute_operation(op_id)` once the delay has elapsed. On a call-bound operation, `execute_operation`:
 
-1. checks the ETA, grace window, status and replay guards,
-2. writes `status = Executed` and the `ExecutedOp(op_hash)` replay key **before**
-   the interaction (checks-effects-interactions),
-3. invokes `target.func(args)` through `env.invoke_contract`,
-4. emits `operation_executed` with `(op_hash, target, func)`.
+1. checks that status is `Pending`, `now >= eta`, `now <= expires_at`, and `ExecutedOp(op_hash)` is not already set,
+2. writes `ExecutedOp(op_hash) = true` and `status = Executed` (to both persistent `CallBoundOperation` storage and the instance `Operation` wrapper) **before** the external call (checks-effects-interactions),
+3. emits `operation_executed` with topic `("operation_executed", op_id)` and body `op_hash`,
+4. invokes `target.func(args)` through `e.invoke_contract`,
+5. emits `call_executed` with topic `("call_executed", op_id)` and body `(target, func)`.
 
-If the inner call panics the whole invocation — including the status update and
-the replay key — is rolled back, so the operation stays `Pending` and remains
-executable until `expires_at`.
+If the inner call panics, the entire transaction — including the status update, replay key, and events — is rolled back, so the operation stays `Pending` and remains executable until `expires_at`.
 
 ### Integration: who authorizes the timelock?
 
@@ -75,11 +79,13 @@ contract decision and is not performed by the timelock itself.
 
 ### Storage
 
-Operations and their bound calls live in `persistent()` storage under
-`DataKey::Operation(op_id)` and `DataKey::Call(op_id)`, with TTL extended on
-every write and read (`PERSISTENT_TTL_THRESHOLD` / `PERSISTENT_TTL_EXTEND_TO`).
-A queued `args` vector can be arbitrarily large, so it must never live in
-instance storage.
+Call-bound operations are stored in `persistent()` storage under
+`DataKey::CallBoundOperation(op_id)` with TTL extended on write and read
+(`CALL_BOUND_OPERATION_TTL = 3600` ledgers). A `QueuedOperation` metadata
+wrapper is also written to `instance()` storage under `DataKey::Operation(op_id)`
+for backward compatibility with `get_operation`. A queued `args` vector can be
+arbitrarily large, so the full `CallBoundOperation` lives in persistent storage
+rather than instance storage.
 
 Execution time boundaries are deterministic and inclusive across the full lifecycle window `[eta, expires_at]`:
 
@@ -193,10 +199,11 @@ Queues a new operation. Returns a unique operation ID.
 | `op_hash`  | BytesN<32> | Deterministic hash of the operation payload  |
 | `delay`    | u64        | Seconds to delay (>= min_delay_seconds())    |
 
-### `queue_call(proposer, target, func, args, delay) -> u64`
+### `queue_call(proposer, target, func, args, salt, delay) -> u64`
 
 Queues a call-bound operation. Returns the operation ID; the derived `op_hash`
-is available on the returned operation and in the `operation_queued` event.
+is computed via `hash_call(target, func, args, salt)` and is available on the
+returned operation and in the `operation_queued` event.
 
 | Parameter  | Type          | Description                                       |
 |------------|---------------|---------------------------------------------------|
@@ -204,20 +211,29 @@ is available on the returned operation and in the `operation_queued` event.
 | `target`   | Address       | Contract to invoke on execution                   |
 | `func`     | Symbol        | Function to call on `target`                      |
 | `args`     | Vec<Val>      | Arguments, encoded exactly as they will be passed |
-| `delay`    | u64           | Seconds to delay (>= min_delay_seconds())         |
+| `salt`     | BytesN<32>    | Caller-supplied 32-byte salt for hash uniqueness  |
+| `delay`    | u64           | Seconds to delay (`>= min_delay_seconds()`)       |
 
 ### `hash_call(target, func, args, salt) -> BytesN<32>`
 
-Recomputes the call hash with the same pre-image the contract uses, for
-off-chain verification against a queued operation's `op_hash`.
+Recomputes the call hash with the same pre-image the contract uses
+(`sha256(xdr(timelock_address) || xdr(target) || xdr(func) || xdr(args) || xdr(salt))`),
+for off-chain verification against a queued operation's `op_hash`.
+
+| Parameter | Type       | Description                                      |
+|-----------|------------|--------------------------------------------------|
+| `target`  | Address    | Target contract address                          |
+| `func`    | Symbol     | Function name on `target`                        |
+| `args`    | Vec<Val>   | Encoded function arguments                       |
+| `salt`    | BytesN<32> | 32-byte salt used when queueing the call         |
 
 ### `execute_operation(op_id)`
 
-Executes a pending operation. Requires the current timestamp to be at or past the operation's ETA and before `expires_at`. For call-bound operations, invokes the queued `(target, func, args)`.
+Executes a pending operation. Callable by **any address** (permissionless) once the current timestamp is in the inclusive window `[eta, expires_at]`. For call-bound operations, invokes the queued `(target, func, args)`.
 
-| Parameter | Type | Description                  |
-|-----------|------|------------------------------|
-| `op_id`   | u64  | ID returned by queue_operation |
+| Parameter | Type | Description                                          |
+|-----------|------|------------------------------------------------------|
+| `op_id`   | u64  | ID returned by `queue_call` or `queue_operation`     |
 
 ### `cancel_operation(admin, op_id)`
 
@@ -270,7 +286,8 @@ Admin rotation entrypoints:
 | Event                 | Topic Data       | Body Data                           |
 |-----------------------|------------------|-------------------------------------|
 | `operation_queued`    | (tag, op_id)     | (proposer, op_hash, eta, expires_at)|
-| `operation_executed`  | (tag, op_id)     | `op_hash` for hash-only operations; `(op_hash, target, func)` for call-bound operations |
+| `operation_executed`  | (tag, op_id)     | `op_hash`                           |
+| `call_executed`       | (tag, op_id)     | `(target, func)` (emitted after the target invocation on call-bound operations) |
 | `operation_cancelled` | (tag, op_id)     | op_hash                             |
 | `admin_proposed`      | (tag)            | (current_admin, new_admin, eta, expires_at) |
 | `admin_transferred`   | (tag)            | (old_admin, new_admin)              |
