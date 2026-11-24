@@ -102,7 +102,7 @@ fn view_matches_per_key_reads() {
     let mut expected = Vec::new(&s.e);
     for signer in all_signers(&s).iter() {
         if raw_approved(&s, id, &signer) {
-            expected.push_back(signer);
+            expected.push_back(signer.clone());
         }
     }
     assert_eq!(view.approved_by, expected);

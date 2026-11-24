@@ -34,28 +34,6 @@ use soroban_sdk::{panic_with_error, Env};
 
 use crate::IdentityBond;
 
-/// Read the lifecycle stage of an identity's bond from storage.
-///
-/// `None` when no bond is stored; otherwise derived from `bond.active`.
-pub fn stage_of(_e: &Env, bond: &IdentityBond) -> BondStage {
-    if bond.active {
-        BondStage::Active
-    } else {
-        BondStage::Closed
-    }
-}
-
-/// The lifecycle stage of a bond.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum BondStage {
-    /// No bond exists yet (before `create_bond`).
-    None,
-    /// Bond is active and may be mutated / slashed / withdrawn / liquidated.
-    Active,
-    /// Bond is closed (withdrawn or liquidated); terminal.
-    Closed,
-}
-
 /// Central pre-condition: the loaded bond must be active for any mutating
 /// lifecycle operation to proceed.
 ///

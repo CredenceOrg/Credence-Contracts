@@ -43,9 +43,6 @@ pub const DRAIN_TIMELOCK_SECONDS: u64 = 86_400; // 24 hours
 /// executable).  Stored in instance storage so it is cleared on upgrade.
 pub const KEY_DRAIN_ETA: &str = "drain_eta";
 
-/// Storage key for the drain sequence counter.
-pub const KEY_DRAIN_SEQ: &str = "drain_seq";
-
 /// Persistent storage key for individual drain audit records.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

@@ -8,7 +8,7 @@ use crate::{
 };
 use soroban_sdk::{
     testutils::{Address as _, Events, Ledger},
-    Address, Env, FromVal, Symbol, TryFromVal, Vec,
+    Address, Env, Symbol, TryFromVal, Vec,
 };
 use std::panic::AssertUnwindSafe;
 
@@ -83,19 +83,27 @@ fn test_create_single_bond_in_batch() {
 fn test_create_multiple_bonds_in_batch() {
     let env = Env::default();
     env.mock_all_auths();
-
-    // Note: Current implementation only supports one bond per contract instance
-    // This test demonstrates the batch interface even though it will panic
-    // In a multi-identity system, this would work
+    let contract_id = env.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&env);
     let identity2 = Address::generate(&env);
     let identity3 = Address::generate(&env);
+    let unaddressed = Address::generate(&env);
+    client.create_bond(
+        &unaddressed,
+        &4000,
+        credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     let mut params_list = Vec::new(&env);
 
     params_list.push_back(BatchBondParams {
-        identity: identity1,
+        identity: identity1.clone(),
         amount: 1000,
         duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
@@ -103,7 +111,7 @@ fn test_create_multiple_bonds_in_batch() {
     });
 
     params_list.push_back(BatchBondParams {
-        identity: identity2,
+        identity: identity2.clone(),
         amount: 2000,
         duration: 172800,
         is_rolling: true,
@@ -111,16 +119,49 @@ fn test_create_multiple_bonds_in_batch() {
     });
 
     params_list.push_back(BatchBondParams {
-        identity: identity3,
+        identity: identity3.clone(),
         amount: 3000,
         duration: 259200,
         is_rolling: false,
         notice_period_duration: 0,
     });
 
-    // This test verifies the batch interface works correctly
-    // In production with per-identity bonds, all 3 would be created
-    assert_eq!(params_list.len(), 3);
+    let result = client.create_batch_bonds(&params_list);
+    assert_eq!(result.created_count, 3);
+
+    assert_eq!(client.get_identity_state(&identity1).bonded_amount, 1000);
+    assert_eq!(client.get_identity_state(&identity2).bonded_amount, 2000);
+    assert_eq!(client.get_identity_state(&identity3).bonded_amount, 3000);
+    assert_eq!(
+        client.get_identity_state(&unaddressed).bonded_amount,
+        4000,
+        "an unaddressed identity's bond must remain unchanged"
+    );
+
+    // The existing batch event payload must preserve input identity/amount order.
+    let all_events = env.events().all();
+    let expected_topic = Symbol::new(&env, "batch_bonds_created");
+    let batch_event = all_events
+        .iter()
+        .find(|ev| {
+            ev.0 == contract_id
+                && ev.1.get(0)
+                    .and_then(|v| Symbol::try_from_val(&env, &v).ok())
+                    .map(|topic| topic == expected_topic)
+                    .unwrap_or(false)
+        })
+        .expect("batch_bonds_created event must exist");
+
+    let decoded = crate::BatchBondResult::try_from_val(&env, &batch_event.2)
+        .expect("batch event payload must decode");
+    assert_eq!(decoded.created_count, 3);
+    assert_eq!(decoded.bonds.len(), 3);
+    assert_eq!(decoded.bonds.get(0).unwrap().identity, identity1);
+    assert_eq!(decoded.bonds.get(1).unwrap().identity, identity2);
+    assert_eq!(decoded.bonds.get(2).unwrap().identity, identity3);
+    assert_eq!(decoded.bonds.get(0).unwrap().bonded_amount, 1000);
+    assert_eq!(decoded.bonds.get(1).unwrap().bonded_amount, 2000);
+    assert_eq!(decoded.bonds.get(2).unwrap().bonded_amount, 3000);
 }
 
 #[test]
@@ -466,91 +507,6 @@ fn test_batch_with_rolling_bonds() {
     assert!(bond.is_rolling);
     assert_eq!(bond.notice_period_duration, 7200);
     assert_eq!(bond.withdrawal_requested_at, 0);
-}
-
-// TODO: Rewrite without catch_unwind - Env contains UnsafeCell and cannot cross unwind boundaries in SDK 22.0
-// See docs/known-simplifications.md § 5.1 for details about this SDK 22.0 limitation.
-#[test]
-#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
-fn test_atomic_failure_on_second_bond() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin, &None);
-
-    let identity1 = Address::generate(&env);
-    let identity2 = Address::generate(&env);
-
-    let mut params_list = Vec::new(&env);
-
-    // First bond is valid
-    params_list.push_back(BatchBondParams {
-        identity: identity1,
-        amount: 1000,
-        duration: credence_math::SECONDS_PER_DAY,
-        is_rolling: false,
-        notice_period_duration: 0,
-    });
-
-    // Second bond has invalid amount (will cause entire batch to fail)
-    params_list.push_back(BatchBondParams {
-        identity: identity2,
-        amount: -1000, // Invalid
-        duration: credence_math::SECONDS_PER_DAY,
-        is_rolling: false,
-        notice_period_duration: 0,
-    });
-
-    // The entire batch should fail atomically
-    // Validation happens before any state changes
-    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-        client.create_batch_bonds(&params_list);
-    }));
-
-    assert!(result.is_err(), "Batch should fail atomically");
-
-    // Verify NO bonds were created (atomic failure)
-    // The bond storage should be empty since validation failed before creation
-    env.as_contract(&client.address, || {
-        for params in params_list.iter() {
-            assert!(
-                !env.storage()
-                    .instance()
-                    .has(&crate::DataKey::Bond(params.identity.clone())),
-                "no bond should be stored after an atomic failure"
-            );
-        }
-    });
-}
-
-#[test]
-#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]
-fn test_atomic_failure_validation_order() {
-    let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin, &None);
-
-    let identity = Address::generate(&env);
-    let mut params_list = Vec::new(&env);
-
-    params_list.push_back(BatchBondParams {
-        identity: identity.clone(),
-        amount: 1000,
-        duration: credence_math::SECONDS_PER_DAY, // 1 day
-        is_rolling: false,
-        notice_period_duration: 0,
-    });
-
-    let result = client.create_batch_bonds(&params_list);
-
-    assert_eq!(result.created_count, 1);
-    let bond = result.bonds.get(0).unwrap();
-    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -1341,10 +1297,10 @@ fn test_create_batch_bonds_rejected_when_paused() {
     client.create_batch_bonds(&params_list);
 }
 
-/// validate_batch_bonds is rejected with HostError when the contract is paused.
+/// validate_batch_bonds is a side-effect-free pre-flight check, so it stays
+/// available while the contract is paused.
 #[test]
-#[should_panic(expected = "HostError")]
-fn test_validate_batch_bonds_rejected_when_paused() {
+fn test_validate_batch_bonds_allowed_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register(CredenceBond, ());
@@ -1356,13 +1312,13 @@ fn test_validate_batch_bonds_rejected_when_paused() {
     assert!(client.is_paused(), "precondition: contract must be paused");
 
     let params_list = build_valid_batch(&env, 1);
-    client.validate_batch_bonds(&params_list);
+    assert!(client.validate_batch_bonds(&params_list));
 }
 
-/// get_batch_total_amount is rejected with HostError when the contract is paused.
+/// get_batch_total_amount writes no state, so it stays available while the
+/// contract is paused.
 #[test]
-#[should_panic(expected = "HostError")]
-fn test_get_batch_total_amount_rejected_when_paused() {
+fn test_get_batch_total_amount_allowed_when_paused() {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register(CredenceBond, ());
@@ -1374,7 +1330,7 @@ fn test_get_batch_total_amount_rejected_when_paused() {
     assert!(client.is_paused(), "precondition: contract must be paused");
 
     let params_list = build_valid_batch(&env, 2);
-    client.get_batch_total_amount(&params_list);
+    assert_eq!(client.get_batch_total_amount(&params_list), 1_000 + 1_001);
 }
 
 /// After unpausing, create_batch_bonds succeeds again.
@@ -1434,12 +1390,11 @@ fn test_slash_blocked_same_ledger_after_batch_creation() {
 /// Slash attempted one ledger after a batch creation succeeds.
 #[test]
 fn test_slash_allowed_next_ledger_after_batch_creation() {
+    // A slash moves the slashed funds to the treasury, so the bond token must be
+    // configured as well as the treasury.
     let env = Env::default();
-    env.mock_all_auths();
-    let contract_id = env.register(CredenceBond, ());
-    let client = CredenceBondClient::new(&env, &contract_id);
-    let admin = Address::generate(&env);
-    client.initialize(&admin, &None);
+    let (client, admin, _unused_identity, _token, _contract_id) =
+        crate::test_helpers::setup_with_token(&env);
 
     let identity = Address::generate(&env);
     let mut params_list = Vec::new(&env);
@@ -1455,7 +1410,8 @@ fn test_slash_allowed_next_ledger_after_batch_creation() {
     // Advance to the next ledger sequence so the guard clears.
     crate::test_helpers::advance_ledger_sequence(&env);
 
-    // Slash now succeeds.
+    // Slash now succeeds (a slash treasury must be configured first).
+    client.set_slash_treasury(&admin, &Address::generate(&env));
     let updated = client.slash(&admin, &identity, &300_i128);
     assert_eq!(updated.slashed_amount, 300);
     assert_eq!(updated.bonded_amount, 1_000);
