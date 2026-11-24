@@ -659,6 +659,7 @@ impl TimelockContract {
             }
         }
         page
+        }
     }
 
     fn require_proposer_admin(e: &Env, proposer: &Address) {

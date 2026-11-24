@@ -49,10 +49,10 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
         .storage()
         .instance()
         .get(&crate::DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
     admin.require_auth();
     if *admin != stored_admin {
-        panic!("not admin");
+        panic_with_error!(e, ContractError::NotAdmin);
     }
 
     // Validate token is in accepted tokens set
@@ -76,7 +76,7 @@ pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &Strin
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
     {
-        panic!("unsupported stellar network");
+        panic_with_error!(e, ContractError::UnsupportedStellarNetwork);
     }
     set_token(e, admin, token);
     e.storage().instance().set(&network_key(e), network);
@@ -87,12 +87,12 @@ pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &Strin
 }
 
 /// @notice Returns the configured token address.
-/// @dev Panics if token has not been configured.
+/// @dev Panics with `ContractError::NotInitialized` if token has not been configured.
 pub fn get_token(e: &Env) -> Address {
     e.storage()
         .instance()
         .get(&crate::DataKey::BondToken)
-        .unwrap_or_else(|| panic!("token not configured - contract not properly initialized"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
 }
 
 /// @notice Returns whether a bond token has been configured.
@@ -114,7 +114,7 @@ pub fn get_usdc_network(e: &Env) -> Option<String> {
 ///  - A zero amount is always satisfied (no allowance needed).
 pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
     if amount < 0 {
-        panic!("amount must be non-negative");
+        panic_with_error!(e, ContractError::NegativeAmount);
     }
     if amount == 0 {
         return;
@@ -130,7 +130,7 @@ pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
 /// @param e Environment reference
 /// @param owner Token owner address (must have approved the contract)
 /// @param amount Amount to transfer (must match actual amount received)
-/// @throws panic with UnsupportedToken error (code 213) if transfer amount differs
+/// @throws `ContractError::UnsupportedToken` (code 213) if transfer amount differs
 ///
 ///  Invariants:
 ///  - Negative amounts panic before any token interaction.
@@ -139,7 +139,7 @@ pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
 ///    produce a partial transfer or corrupt accounting.
 pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     if amount < 0 {
-        panic!("amount must be non-negative");
+        panic_with_error!(e, ContractError::NegativeAmount);
     }
     if amount == 0 {
         return;
@@ -155,7 +155,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     let token: TokenClient = TokenClient::new(e, &token_addr);
     let allowance = token.allowance(owner, &contract);
     if allowance < amount {
-        panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE);
+        panic_with_error!(e, ContractError::InsufficientTokenAllowance);
     }
 
     // Delegate to safe_transfer_from which now includes the balance-delta guard.
@@ -169,7 +169,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 /// @param e Environment reference
 /// @param recipient Recipient address
 /// @param amount Amount to transfer (must match actual amount sent)
-/// @throws panic with UnsupportedToken error (code 213) if transfer amount differs
+/// @throws `ContractError::UnsupportedToken` (code 213) if transfer amount differs
 ///
 ///  Invariants:
 ///  - Negative amounts panic before any token interaction.
@@ -178,7 +178,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 ///    transfer or corrupt accounting.
 pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     if amount < 0 {
-        panic!("amount must be non-negative");
+        panic_with_error!(e, ContractError::NegativeAmount);
     }
     if amount == 0 {
         return;

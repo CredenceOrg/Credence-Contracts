@@ -1,8 +1,9 @@
 #![no_std]
+use credence_errors::ContractError;
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Env};
-
 mod error;
 pub use error::DisputeError;
+pub mod pausable;
 
 #[cfg(test)]
 mod test_dispute_error;
@@ -54,6 +55,15 @@ fn bump_persistent_ttl(e: &Env, key: DataKey) {
 pub enum DataKey {
     DisputeCounter,
     Dispute(u64),
+    Admin,
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u64),
+    PauseApproval(u64, Address),
+    PauseApprovalCount(u64),
 }
 
 #[contract]
@@ -64,6 +74,61 @@ impl DisputeResolutionContract {
     // -----------------------------------------------------------------------
     // Write entry points
     // -----------------------------------------------------------------------
+
+    /// Initialize pause administration. This may be called only once.
+    pub fn initialize(env: Env, admin: Address) {
+        bump_instance_ttl(&env);
+        if env.storage().instance().has(&DataKey::Admin) {
+            env.panic_with_error(ContractError::AlreadyInitialized);
+        }
+
+        env.storage().instance().set(&DataKey::Admin, &admin);
+        env.storage().instance().set(&DataKey::Paused, &false);
+        env.storage()
+            .instance()
+            .set(&DataKey::PauseSignerCount, &0_u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::PauseThreshold, &0_u32);
+        env.storage()
+            .instance()
+            .set(&DataKey::PauseProposalCounter, &0_u64);
+    }
+
+    pub fn pause(env: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&env);
+        pausable::pause(&env, &caller)
+    }
+
+    pub fn unpause(env: Env, caller: Address) -> Option<u64> {
+        bump_instance_ttl(&env);
+        pausable::unpause(&env, &caller)
+    }
+
+    pub fn is_paused(env: Env) -> bool {
+        bump_instance_ttl(&env);
+        pausable::is_paused(&env)
+    }
+
+    pub fn set_pause_signer(env: Env, admin: Address, signer: Address, enabled: bool) {
+        bump_instance_ttl(&env);
+        pausable::set_pause_signer(&env, &admin, &signer, enabled)
+    }
+
+    pub fn set_pause_threshold(env: Env, admin: Address, threshold: u32) {
+        bump_instance_ttl(&env);
+        pausable::set_pause_threshold(&env, &admin, threshold)
+    }
+
+    pub fn approve_pause_proposal(env: Env, signer: Address, proposal_id: u64) {
+        bump_instance_ttl(&env);
+        pausable::approve_pause_proposal(&env, &signer, proposal_id)
+    }
+
+    pub fn execute_pause_proposal(env: Env, proposal_id: u64) {
+        bump_instance_ttl(&env);
+        pausable::execute_pause_proposal(&env, proposal_id)
+    }
 
     /// Create a new dispute and return its unique `u64` ID.
     ///
@@ -76,6 +141,7 @@ impl DisputeResolutionContract {
     /// Publishes `("created", id)` → `(creator, resolver)` on success.
     pub fn create_dispute(env: Env, creator: Address, resolver: Address) -> u64 {
         bump_instance_ttl(&env);
+        pausable::require_not_paused(&env);
         creator.require_auth();
 
         let counter_key = DataKey::DisputeCounter;
@@ -123,6 +189,7 @@ impl DisputeResolutionContract {
     /// Publishes `("resolved", id)` → `(creator, caller)` on success.
     pub fn resolve(env: Env, caller: Address, id: u64) -> Result<(), DisputeError> {
         bump_instance_ttl(&env);
+        pausable::require_not_paused(&env);
         caller.require_auth();
 
         let key = DataKey::Dispute(id);
@@ -168,6 +235,7 @@ impl DisputeResolutionContract {
     /// Publishes `("closed", id)` → `(creator, caller)` on success.
     pub fn close(env: Env, caller: Address, id: u64) -> Result<(), DisputeError> {
         bump_instance_ttl(&env);
+        pausable::require_not_paused(&env);
         caller.require_auth();
 
         let key = DataKey::Dispute(id);

@@ -128,6 +128,16 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
     (
+        "ClaimAlreadyProcessed",
+        ContractError::ClaimAlreadyProcessed,
+    ), // 240
+    ("ClaimExpired", ContractError::ClaimExpired), // 241
+    ("ClaimNotFound", ContractError::ClaimNotFound), // 242
+    ("NoPendingClaims", ContractError::NoPendingClaims), // 243
+    (
+        "NoValidClaimsToProcess",
+        ContractError::NoValidClaimsToProcess,
+    ), // 244
         "BondAmountBelowMinimum",
         ContractError::BondAmountBelowMinimum,
     ), // 240

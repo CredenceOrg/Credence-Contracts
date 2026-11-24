@@ -362,6 +362,9 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         };
 
+        let from = dispute.status.clone();
+        require_transition(from, DisputeStatus::Cancelled)?;
+
         // Creator may only cancel before any votes are cast and within the voting window.
         // Admin retains a moderation override to cancel a Voting dispute at any time.
         if role == Symbol::short("creator") {
@@ -375,9 +378,6 @@ impl CredenceArbitration {
                 return Err(ArbitrationError::CancelNotAllowed);
             }
         }
-
-        let from = dispute.status.clone();
-        require_transition(from, DisputeStatus::Cancelled)?;
 
         dispute.status = DisputeStatus::Cancelled;
         dispute.cancellation_reason = reason.clone();
