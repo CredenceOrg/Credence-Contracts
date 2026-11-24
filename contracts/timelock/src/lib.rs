@@ -814,6 +814,9 @@ impl TimelockContract {
 mod test_timelock;
 
 #[cfg(test)]
+mod test_admin_handover;
+
+#[cfg(test)]
 mod test_call_binding;
 
 #[cfg(test)]
