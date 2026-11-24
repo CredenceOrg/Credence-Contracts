@@ -69,6 +69,9 @@ fn bump_instance_ttl(e: &Env) {
 fn bump_persistent_ttl(e: &Env, key: impl core::borrow::Borrow<DataKey>) {
     e.storage().persistent().extend_ttl(
         key.borrow(),
+fn bump_persistent_ttl(e: &Env, key: &DataKey) {
+    e.storage().persistent().extend_ttl(
+        key,
         CALL_BOUND_OPERATION_TTL / 2,
         CALL_BOUND_OPERATION_TTL,
     );
@@ -341,6 +344,62 @@ impl TimelockContract {
             op_ids.push_back(Self::queue_call_internal(&e, &proposer, call));
         }
         op_ids
+
+        let op_id: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::OperationCounter)
+            .unwrap_or(0);
+        let next_op_id = op_id
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        e.storage()
+            .instance()
+            .set(&DataKey::OperationCounter, &next_op_id);
+
+        let now = e.ledger().timestamp();
+        let eta = now
+            .checked_add(delay)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let expires_at = eta
+            .checked_add(GRACE_PERIOD)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+
+        let op = CallBoundOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            target: target.clone(),
+            func: func.clone(),
+            args: args.clone(),
+            salt: salt.clone(),
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+
+        // Store in persistent storage with TTL extension
+        let op_key = DataKey::CallBoundOperation(op_id);
+        e.storage().persistent().set(&op_key, &op);
+        bump_persistent_ttl(&e, &op_key);
+
+        // Also store in instance storage for backward compatibility with get_operation
+        let op_wrapper = QueuedOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+        e.storage()
+            .instance()
+            .set(&DataKey::Operation(op_id), &op_wrapper);
+
+        e.events().publish(
+            (Symbol::new(&e, "operation_queued"), op_id),
+            (proposer, op_hash, eta, expires_at),
+        );
+
+        op_id
     }
 
     /// Compute the hash for a call-bound operation.
@@ -479,7 +538,7 @@ impl TimelockContract {
 
         op.status = OperationStatus::Executed;
         e.storage().persistent().set(&key, &op);
-        bump_persistent_ttl(e, key);
+        bump_persistent_ttl(e, &key);
 
         // Also update the instance storage wrapper
         let op_wrapper = QueuedOperation {
@@ -536,7 +595,7 @@ impl TimelockContract {
 
             op.status = OperationStatus::Cancelled;
             e.storage().persistent().set(&call_bound_key, &op);
-            bump_persistent_ttl(&e, call_bound_key);
+            bump_persistent_ttl(&e, &call_bound_key);
 
             // Update instance storage wrapper
             let op_wrapper = QueuedOperation {
@@ -597,7 +656,7 @@ impl TimelockContract {
         let key = DataKey::CallBoundOperation(op_id);
         let op: Option<CallBoundOperation> = e.storage().persistent().get(&key);
         if let Some(op) = op {
-            bump_persistent_ttl(&e, key);
+            bump_persistent_ttl(&e, &key);
             Some(CallSpec {
                 target: op.target,
                 func: op.func,
@@ -653,7 +712,7 @@ impl TimelockContract {
                 .persistent()
                 .get::<DataKey, QueuedOperation>(&key)
             {
-                bump_persistent_ttl(&e, key);
+                bump_persistent_ttl(&e, &key);
                 page.push_back(op);
             }
         }

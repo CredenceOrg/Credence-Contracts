@@ -24,6 +24,10 @@ pub const MAX_CACHE_AGE_SECS: u64 = 86400;
 /// Default number of attempts for a transient operation.
 pub const DEFAULT_RETRY_ATTEMPTS: u32 = 1;
 
+/// Interface identifier advertised by Credence bond contracts and checked by
+/// the registry before it maps an identity to a bond contract.
+pub const IFACE_CREDENCE_BOND_V1: u32 = 0x4342_5631;
+
 /// Error code returned when a storage key is empty or too short.
 pub const ERR_KEY_TOO_SHORT: &str = "key_too_short";
 

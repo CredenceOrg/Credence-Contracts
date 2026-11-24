@@ -130,6 +130,10 @@ pub enum ArbitrationError {
     /// the voting deadline.
     CancelNotAllowed = 19,
     /// The voter is the creator of the dispute (conflict of interest).
+    /// The creator cannot cancel after votes have been cast or after the
+    /// voting window has closed. Admin moderation overrides this guard.
+    CancelNotAllowed = 19,
+    /// The dispute creator cannot vote on their own dispute.
     ConflictOfInterest = 20,
 }
 

@@ -517,6 +517,11 @@ dependencies = [
  "serde_json",
  "soroban-sdk",
  "timelock",
+ "credence_arbitration",
+ "credence_bond",
+ "credence_registry",
+ "credence_treasury",
+ "soroban-sdk",
 ]
 
 [[package]]
