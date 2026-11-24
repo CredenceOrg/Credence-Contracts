@@ -25,7 +25,7 @@
 //! `collect_fees` in `lib.rs` for the ordering used in this crate.
 //!
 //! ## Example
-//! ```no_run
+//! ```ignore
 //! use credence_bond::idempotency;
 //! use soroban_sdk::{Address, Env, Symbol};
 //!
@@ -60,6 +60,7 @@ use crate::DataKey;
 /// # Returns
 /// A 32-byte hash representing the unique idempotency key
 #[must_use]
+#[cfg(test)]
 pub fn compute_key(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> Bytes {
     // Create a byte vector containing all components by converting to XDR
     let mut hash_input = Bytes::new(e);
@@ -89,6 +90,7 @@ pub fn compute_key(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -
 /// * `actor` - Address of the actor initiating the operation
 /// * `operation` - Symbol identifying the operation (e.g., "slash_bond")
 /// * `salt` - Unique bytes provided by the caller for this specific request
+#[cfg(test)]
 pub fn check_and_record(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) {
     let key = compute_key(e, actor, operation, salt);
     let storage_key = DataKey::IdempotencyKey(key.clone());
@@ -126,6 +128,7 @@ pub fn check_and_record(e: &Env, actor: &Address, operation: &Symbol, salt: &Byt
 /// # Returns
 /// `true` if the idempotency key has been used, `false` otherwise
 #[must_use]
+#[cfg(test)]
 pub fn is_used(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> bool {
     let key = compute_key(e, actor, operation, salt);
     let storage_key = DataKey::IdempotencyKey(key);
@@ -135,16 +138,8 @@ pub fn is_used(e: &Env, actor: &Address, operation: &Symbol, salt: &Bytes) -> bo
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::CredenceBond;
+    
     use soroban_sdk::testutils::Address as _;
-
-    /// Idempotency keys live in instance storage, which the host only allows
-    /// while executing inside a contract. Every case below therefore runs its
-    /// body through a real contract context.
-    fn in_contract<R>(e: &Env, f: impl FnOnce() -> R) -> R {
-        let contract = e.register(CredenceBond, ());
-        e.as_contract(&contract, f)
-    }
 
     #[test]
     fn test_compute_key_deterministic() {

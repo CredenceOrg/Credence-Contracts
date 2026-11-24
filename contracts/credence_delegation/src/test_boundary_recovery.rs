@@ -207,7 +207,8 @@ fn test_invalidate_nonce_range_recovery_old_payload_rejected() {
     assert_eq!(client.get_nonce(&owner), 50);
 
     // Payload with old nonce 0 must fail with InvalidNonce (#501)
-    let old_payload = delegate_payload(&e, DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
+    let old_payload =
+        delegate_payload(&e, DomainTag::Delegate, &owner, &delegate, &contract_id, 0);
     client.execute_delegated_delegate(
         &owner,
         &delegate,
@@ -334,14 +335,7 @@ fn test_delegated_revoke_attest_domain_mismatch_rejects() {
     );
 
     // Wrong DomainTag (Delegate instead of RevokeAttestation)
-    let payload = delegate_payload(
-        &e,
-        DomainTag::Delegate,
-        &attester,
-        &subject,
-        &contract_id,
-        1,
-    );
+    let payload = delegate_payload(&e, DomainTag::Delegate, &attester, &subject, &contract_id, 1);
 
     client.execute_delegated_revoke_attest(&attester, &subject, &payload);
 }
@@ -364,14 +358,8 @@ fn test_delegated_revoke_replay_fails_at_nonce_consumption() {
         &0_u64,
     );
 
-    let payload = delegate_payload(
-        &e,
-        DomainTag::RevokeDelegation,
-        &owner,
-        &delegate,
-        &contract_id,
-        1,
-    );
+    let payload =
+        delegate_payload(&e, DomainTag::RevokeDelegation, &owner, &delegate, &contract_id, 1);
 
     // First revoke succeeds
     client.execute_delegated_revoke(&owner, &delegate, &DelegationType::Attestation, &payload);

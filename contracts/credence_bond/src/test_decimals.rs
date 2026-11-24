@@ -18,6 +18,7 @@ use crate::normalization::{
     get_scale_info, normalize, would_denormalize_to_zero, MAX_SUPPORTED_DECIMALS,
     MIN_SUPPORTED_DECIMALS, NORMALIZED_DECIMALS, Rounding,
 };
+use credence_errors::ContractError;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 
@@ -65,19 +66,18 @@ fn setup_token(e: &Env, decimals: u32) -> Address {
 
 #[test]
 fn test_get_scale_info_all_supported() {
-    assert_eq!(get_scale_info(0), (1_000_000_000_000_000_000_i128, true));
-    assert_eq!(get_scale_info(1), (100_000_000_000_000_000_i128, true));
-    assert_eq!(get_scale_info(6), (1_000_000_000_000_i128, true));
-    assert_eq!(get_scale_info(8), (10_000_000_000_i128, true));
-    assert_eq!(get_scale_info(12), (1_000_000_i128, true));
-    assert_eq!(get_scale_info(17), (10_i128, true));
-    assert_eq!(get_scale_info(18), (1_i128, true));
+    assert_eq!(get_scale_info(0), Ok((1_000_000_000_000_000_000_i128, true)));
+    assert_eq!(get_scale_info(1), Ok((100_000_000_000_000_000_i128, true)));
+    assert_eq!(get_scale_info(6), Ok((1_000_000_000_000_i128, true)));
+    assert_eq!(get_scale_info(8), Ok((10_000_000_000_i128, true)));
+    assert_eq!(get_scale_info(12), Ok((1_000_000_i128, true)));
+    assert_eq!(get_scale_info(17), Ok((10_i128, true)));
+    assert_eq!(get_scale_info(18), Ok((1_i128, true)));
 }
 
 #[test]
-#[should_panic(expected = "exceeds NORMALIZED_DECIMALS")]
 fn test_get_scale_info_rejects_above_18() {
-    get_scale_info(19);
+    assert_eq!(get_scale_info(19), Err(ContractError::UnsupportedDecimals));
 }
 
 // ── normalize: zero amounts ───────────────────────────────────────────────
@@ -134,7 +134,7 @@ fn test_normalize_0_decimals() {
 // ── normalize: negative rejection ─────────────────────────────────────────
 
 #[test]
-#[should_panic(expected = "bond amount cannot be negative")]
+#[should_panic(expected = "#214")]
 fn test_normalize_negative() {
     let e = Env::default();
     let token = setup_token(&e, 6);
@@ -237,7 +237,7 @@ fn test_denormalize_0_decimals_exact_units() {
 // ── denormalize: negative rejection ───────────────────────────────────────
 
 #[test]
-#[should_panic(expected = "cannot denormalize negative amount")]
+#[should_panic(expected = "#214")]
 fn test_denormalize_negative() {
     let e = Env::default();
     let token = setup_token(&e, 6);
