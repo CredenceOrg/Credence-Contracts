@@ -67,6 +67,11 @@ struct Cli {
     command: Commands,
 }
 
+/// Maximum basis-points value accepted on-chain (100%).
+const MAX_BPS: i64 = 10_000;
+/// Maximum attestation weight cap accepted on-chain (`MAX_ATTESTATION_WEIGHT`).
+const MAX_WEIGHT: i64 = 1_000_000;
+
 #[derive(Subcommand)]
 enum Commands {
     /// Set early-exit penalty configuration on a credence_bond contract.
@@ -80,7 +85,7 @@ enum Commands {
         #[arg(long)]
         treasury: String,
         /// Penalty in basis points (0–10 000).
-        #[arg(long)]
+        #[arg(long, value_parser = clap::value_parser!(u32).range(0..=MAX_BPS))]
         bps: u32,
     },
 
@@ -91,11 +96,11 @@ enum Commands {
         /// Admin Stellar address (G…).
         #[arg(long)]
         admin: String,
-        /// Multiplier in basis points.
-        #[arg(long)]
+        /// Multiplier in basis points (0–10 000).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(0..=MAX_BPS))]
         multiplier_bps: u32,
-        /// Maximum attestation weight cap.
-        #[arg(long)]
+        /// Maximum attestation weight cap (0–1 000 000).
+        #[arg(long, value_parser = clap::value_parser!(u32).range(0..=MAX_WEIGHT))]
         max_weight: u32,
     },
 
@@ -567,6 +572,121 @@ mod tests {
         ])
         .unwrap_err();
         assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+    }
+
+    #[test]
+    fn cli_accepts_bps_boundary_values() {
+        for bps in ["0", "10000"] {
+            let cli = parse_cli(&[
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--admin",
+                VALID_G,
+                "--treasury",
+                VALID_G,
+                "--bps",
+                bps,
+            ])
+            .expect("boundary bps should be accepted");
+            match cli.command {
+                Commands::BondSetEarlyExitConfig { bps: parsed, .. } => {
+                    assert_eq!(parsed, bps.parse::<u32>().unwrap());
+                }
+                _ => panic!("wrong command"),
+            }
+        }
+    }
+
+    #[test]
+    fn cli_rejects_out_of_range_bps() {
+        for bps in ["10001", "70000"] {
+            let err = parse_cli(&[
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--admin",
+                VALID_G,
+                "--treasury",
+                VALID_G,
+                "--bps",
+                bps,
+            ])
+            .unwrap_err();
+            assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+            assert!(
+                err.to_string().contains("0..=10000"),
+                "expected range message for bps={bps}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_accepts_weight_boundary_values() {
+        for (mult, max_w) in [("0", "0"), ("10000", "1000000")] {
+            let cli = parse_cli(&[
+                "credence-admin",
+                "bond-set-weights",
+                "--admin",
+                VALID_G,
+                "--multiplier-bps",
+                mult,
+                "--max-weight",
+                max_w,
+            ])
+            .expect("boundary weight config should be accepted");
+            match cli.command {
+                Commands::BondSetWeights {
+                    multiplier_bps,
+                    max_weight,
+                    ..
+                } => {
+                    assert_eq!(multiplier_bps, mult.parse::<u32>().unwrap());
+                    assert_eq!(max_weight, max_w.parse::<u32>().unwrap());
+                }
+                _ => panic!("wrong command"),
+            }
+        }
+    }
+
+    #[test]
+    fn cli_rejects_out_of_range_multiplier_bps() {
+        for mult in ["10001", "70000"] {
+            let err = parse_cli(&[
+                "credence-admin",
+                "bond-set-weights",
+                "--admin",
+                VALID_G,
+                "--multiplier-bps",
+                mult,
+                "--max-weight",
+                "1000",
+            ])
+            .unwrap_err();
+            assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+            assert!(
+                err.to_string().contains("0..=10000"),
+                "expected range message for multiplier_bps={mult}, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn cli_rejects_out_of_range_max_weight() {
+        let err = parse_cli(&[
+            "credence-admin",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "1000001",
+        ])
+        .unwrap_err();
+        assert_eq!(err.kind(), clap::error::ErrorKind::ValueValidation);
+        assert!(
+            err.to_string().contains("0..=1000000"),
+            "expected range message for max_weight=1000001, got: {err}"
+        );
     }
 
     // -----------------------------------------------------------------------
