@@ -199,6 +199,17 @@ Generated directly from `contracts/arbitration/src/status.rs`. Note that `Reason
 - `execute_pause_proposal(proposal_id: u64)` — Executes a pause/unpause proposal once approvals meet `threshold`.
 
 ### Read-Only Views
+#### Unregistration policy
+
+Unregistration is **always permitted**, including while the arbitrator has votes outstanding on unresolved disputes. The policy is snapshot-based:
+
+- **Cast votes keep their weight.** `vote` records the arbitrator's weight into the dispute's tally (`DisputeVotes`) at vote time. After unregistration those recorded weights are unchanged and continue to count toward quorum (`min_total_weight`) and toward the winning outcome in `resolve_dispute`.
+- **No new votes.** An unregistered arbitrator calling `vote` receives `NotArbitrator`, regardless of any votes already cast.
+- **Views reflect registration only.** `get_arbitrator_weight` returns `NotArbitrator` after unregistration and the address disappears from `get_arbitrators_page`; this does not affect tallies or quorum math, which read the per-dispute snapshot.
+- **Re-registration restores voting rights.** If the arbitrator is registered again they may vote on disputes that are still in `Voting` status and where they have not already voted (`AlreadyVoted` still applies per dispute).
+- **Reopen consistency.** `reopen_dispute` clears the `VoterCasted` marker for every address recorded in the dispute's voter list (`DisputeVoters`), not just currently registered arbitrators, so an arbitrator unregistered and later re-registered can vote again on a reopened dispute.
+
+### `create_dispute(creator: Address, description: String, duration: u64) -> Result<u64, ArbitrationError>`
 
 - `get_quorum() -> (i128, u32)` — Returns `(min_total_weight, min_voters)`.
 - `get_dispute(dispute_id: u64) -> Result<Dispute, ArbitrationError>` — Retrieves dispute details. Errors: `DisputeNotFound`.
@@ -413,6 +424,7 @@ The contract includes comprehensive test coverage:
 - Creator cancellation restrictions (before votes, after votes, after deadline)
 - Admin cancellation override after votes
 - Creator cannot vote on own dispute
+- Unregistration with outstanding votes: snapshot weight still counts toward tally and quorum, unregistered arbitrator cannot vote again, re-registration restores voting rights
 - All valid status transitions
 - All invalid status transitions (regression tests)
 - Edge cases (zero/negative weights, outcome validation, etc.)
