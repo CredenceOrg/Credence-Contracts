@@ -189,14 +189,14 @@ fn load_operation(e: &Env, op_id: u64) -> QueuedOperation {
         .persistent()
         .get(&key)
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
-    bump_persistent_ttl(e, &key);
+    bump_persistent_ttl(e, key);
     op
 }
 
 fn store_operation(e: &Env, op: &QueuedOperation) {
     let key = DataKey::Operation(op.id);
     e.storage().persistent().set(&key, op);
-    bump_persistent_ttl(e, &key);
+    bump_persistent_ttl(e, key);
 }
 
 #[contractimpl]
@@ -587,7 +587,7 @@ impl TimelockContract {
         let key = DataKey::Operation(op_id);
         let op: Option<QueuedOperation> = e.storage().persistent().get(&key);
         if op.is_some() {
-            bump_persistent_ttl(&e, &key);
+            bump_persistent_ttl(&e, key);
             return op;
         }
         e.storage().instance().get(&key)
@@ -818,6 +818,9 @@ mod test_call_binding;
 
 #[cfg(test)]
 mod test_events_schema;
+
+#[cfg(test)]
+mod test_delay_boundaries;
 
 #[cfg(test)]
 mod tests {

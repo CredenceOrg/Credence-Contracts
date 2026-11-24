@@ -24,8 +24,8 @@ fn propose_admin_at(
     client.get_pending_admin().unwrap()
 }
 
-fn assert_contract_error<T, I: std::fmt::Debug>(
-    result: Result<Result<T, soroban_sdk::Error>, Result<soroban_sdk::Error, I>>,
+fn assert_contract_error<T, C, I>(
+    result: Result<Result<T, C>, Result<soroban_sdk::Error, I>>,
     expected: ContractError,
 ) {
     match result {
