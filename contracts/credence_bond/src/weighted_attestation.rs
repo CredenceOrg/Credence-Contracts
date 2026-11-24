@@ -81,6 +81,49 @@ pub struct WeightConfig {
     pub max_weight: u32,
 }
 
+#[allow(dead_code)]
+pub const MAX_WEIGHT_CONFIG_MULTIPLIER_BPS: u32 = 10_000;
+#[allow(dead_code)]
+pub const DEFAULT_WEIGHT_CONFIG_MAX_WEIGHT: u32 = MAX_ATTESTATION_WEIGHT;
+const WEIGHT_BASIS_POINTS_DENOMINATOR: i128 = 10_000;
+
+#[allow(dead_code)]
+pub fn set_attester_stake(e: &Env, attester: &Address, amount: i128) {
+    if amount < 0 {
+        panic!("stake cannot be negative");
+//! Weighted attestation system: attestation value depends on attester's credibility.
+/// Sets attester stake (e.g. from bond). Caller must be admin. Rejects negative amount.
+///
+/// # Errors
+/// Panics if amount < 0.
+pub fn set_attester_stake(e: &Env, attester: &soroban_sdk::Address, amount: i128) {
+    if amount < 0 {
+        panic!("attester stake cannot be negative");
+    }
+    e.storage()
+        .instance()
+        .set(&DataKey::AttesterStake(attester.clone()), &amount);
+}
+//!
+//! ## Overview
+//! Attestation weight is derived from the attester's bond (or configured stake), with
+//! a configurable multiplier (basis points) and a protocol cap.
+//!
+//! ## Rounding semantics
+//!
+//! ```text
+//! raw = floor(stake * multiplier_bps / BPS_DENOMINATOR)
+//! weight = clamp(raw, DEFAULT_ATTESTATION_WEIGHT, min(config_max, MAX_ATTESTATION_WEIGHT))
+//! ```
+
+use crate::math;
+use crate::types::attestation::MAX_ATTESTATION_WEIGHT;
+use crate::DataKey;
+use soroban_sdk::Env;
+
+/// Default weight multiplier in basis points (1 = 0.01%).
+pub const DEFAULT_WEIGHT_MULTIPLIER_BPS: u32 = 100;
+
 /// Maximum configurable weight multiplier in basis points (10_000 = 100%).
 ///
 /// Values supplied to [`set_weight_config`] above this ceiling are silently
@@ -137,6 +180,39 @@ pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
     );
 }
 
+fn weight_config_key(e: &Env) -> Symbol {
+    Symbol::new(e, "weight_cfg")
+}
+
+pub fn compute_weight(e: &Env, attester: &Address) -> u32 {
+    let (multiplier_bps, max_weight) = get_weight_config(e);
+    let stake: i128 = e
+        .storage()
+        .instance()
+        .get(&DataKey::AttesterStake(attester.clone()))
+        .unwrap_or(0);
+
+    let raw_weight = stake
+        .saturating_mul(multiplier_bps as i128)
+        .checked_div(WEIGHT_BASIS_POINTS_DENOMINATOR)
+        .unwrap_or(0)
+        .max(0);
+
+    let mut weight = if max_weight == 0 {
+        0
+    } else {
+        raw_weight
+            .max(1)
+            .min(max_weight as i128)
+            .min(MAX_ATTESTATION_WEIGHT as i128)
+    };
+
+    if weight < 0 {
+        weight = 0;
+    }
+    weight as u32
+/// Computes attestation weight from attester stake using config. Capped by config max and
+/// MAX_ATTESTATION_WEIGHT. If stake is 0, returns default weight (1) so attestations are still allowed.
 /// Returns the stake (non-negative token units) recorded for `attester`.
 ///
 /// Returns **0** if no stake has been set, making the absence of a record
