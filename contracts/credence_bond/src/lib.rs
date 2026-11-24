@@ -3694,8 +3694,8 @@ mod test_early_exit_treasury_requirement {
 // [pre-broken on main] mod test_grace_window;
 
 /// Tests for the batch_transfer entrypoint (issue #917).
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_batch_transfer;
+#[cfg(test)]
+mod test_batch_transfer;
 
 /// Tests for batch bond creation operations in batch.rs (issue #1317).
 /// Covers boundary, recovery, retry/stale, and authorization invariants.
