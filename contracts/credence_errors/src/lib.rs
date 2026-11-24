@@ -225,12 +225,6 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     TimestampInFuture = 118,
 
-    /// Signature deadline has expired (even with grace window).
-    /// Replaces: panic!("signature expired")
-    /// Contracts: bond
-    SignatureExpired = 109,
-    /// The target admin is currently suspended (suspended_until > now).
-    /// Contracts: admin
     /// Requested max-pause-signers value is zero or exceeds the hard cap.
     /// Contracts: multisig
     /// Wire-stable: do not renumber this error code.
@@ -407,8 +401,6 @@ pub enum ContractError {
     /// Token address is not in the set of accepted tokens.
     /// Triggered by: initialize called with a token not in the accepted tokens set
     /// Contracts: bond
-    UnauthorizedToken = 218,
-    UnauthorizedToken = 231,
     /// An idempotency key has already been used for this operation.
     /// Contracts: bond
     // --- Shared Bond/Delegation payload mismatch errors (219-225) ---
