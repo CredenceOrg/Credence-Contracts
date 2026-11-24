@@ -215,6 +215,29 @@ New emitters must:
    `contracts/credence_bond/src/test_events.rs` (v1) or
    `test_events_v2.rs` (v2).
 
+## Registry events (`credence_registry`)
+
+Emitted by [`contracts/credence_registry/src/lib.rs`](../../contracts/credence_registry/src/lib.rs)
+and its `pausable` module. Every call that succeeds emits exactly one event;
+a rejected call emits none. Schemas are pinned by
+[`contracts/credence_registry/src/test_events_schema.rs`](../../contracts/credence_registry/src/test_events_schema.rs).
+
+| Event                    | Topics (beyond name)    | Data                                          | Emitted by                                      |
+| ------------------------ | ----------------------- | --------------------------------------------- | ----------------------------------------------- |
+| `registry_initialized`   | —                       | `admin: Address`                              | `initialize`                                    |
+| `identity_registered`    | —                       | `(RegistryEntry, allow_non_interface: bool)`  | `register`                                      |
+| `identity_deactivated`   | —                       | `RegistryEntry` (`active = false`)            | `deactivate`                                    |
+| `identity_reactivated`   | —                       | `RegistryEntry` (`active = true`)             | `reactivate`                                    |
+| `identity_removed`       | —                       | `RegistryEntry` (as it was before removal)    | `remove`                                        |
+| `admin_transferred`      | —                       | `new_admin: Address`                          | `transfer_admin`                                |
+| `bond_code_hash_updated` | —                       | `code_hash: Bytes`                            | `set_bond_code_hash`                            |
+| `bond_registered`        | —                       | `RegistryEntry`                               | `register_trustless` (incl. idempotent replay)  |
+| `pause_signer_set`       | `signer: Address`       | `enabled: bool`                               | `set_pause_signer`                              |
+| `pause_threshold_set`    | —                       | `threshold: u32`                              | `set_pause_threshold`                           |
+| `pause_proposed`         | `proposal_id: u32`      | action `Symbol` (`pause` / `unpause`)         | `pause` / `unpause` when threshold > 0          |
+| `pause_approved`         | `proposal_id: u32`      | `signer: Address`                             | `approve_pause_proposal`                        |
+| `paused`                 | —                       | `(proposal_id: Option<u64>, reason: String)`  | `pause` (admin direct) / `execute_pause_proposal` |
+| `unpaused`               | —                       | `proposal_id: Option<u32>`                    | `unpause` (admin direct) / `execute_pause_proposal` |
 ## Machine-Readable Event Catalog (`docs/event-catalog.json`)
 
 To ensure off-chain indexers stay compatible without documentation drift, the repository maintains a golden JSON event schema catalog at [`docs/event-catalog.json`](event-catalog.json).

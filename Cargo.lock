@@ -615,7 +615,6 @@ dependencies = [
  "interfaces",
  "proptest",
  "soroban-sdk",
- "timelock",
 ]
 
 [[package]]
@@ -826,6 +825,9 @@ dependencies = [
 name = "dispute_resolution"
 version = "0.1.0"
 dependencies = [
+ "credence_errors",
+ "credence_arbitration",
+ "interfaces",
  "soroban-sdk",
 ]
 

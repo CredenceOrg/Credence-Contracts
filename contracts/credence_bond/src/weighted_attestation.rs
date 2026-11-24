@@ -81,9 +81,6 @@ pub struct WeightConfig {
     pub max_weight: u32,
 }
 
-/// Default weight multiplier in basis points (1 = 0.01%).
-pub const DEFAULT_WEIGHT_MULTIPLIER_BPS: u32 = 100;
-
 /// Maximum configurable weight multiplier in basis points (10_000 = 100%).
 ///
 /// Values supplied to [`set_weight_config`] above this ceiling are silently
@@ -138,10 +135,6 @@ pub fn set_weight_config(e: &Env, multiplier_bps: u32, max_weight: u32) {
             max_weight,
         ),
     );
-}
-
-fn weight_config_key(e: &Env) -> Symbol {
-    Symbol::new(e, "weight_cfg")
 }
 
 /// Returns the stake (non-negative token units) recorded for `attester`.
