@@ -143,6 +143,15 @@ mod tests {
     }
 
     #[test]
+    fn test_codes_upgrade_authorization() {
+        assert_eq!(ContractError::UpgradeAuthorizationAlreadyExists as u32, 128);
+        assert_eq!(ContractError::UpgradeAuthorizationNotFound as u32, 129);
+        assert_eq!(ContractError::UpgradeSelfRoleNotAllowed as u32, 130);
+        assert_eq!(ContractError::LastUpgradeAdmin as u32, 131);
+        assert_eq!(ContractError::NotPendingUpgradeAdmin as u32, 132);
+    }
+
+    #[test]
     fn test_codes_bond() {
         assert_eq!(ContractError::BondNotFound as u32, 200);
         assert_eq!(ContractError::BondNotActive as u32, 201);
@@ -312,6 +321,11 @@ mod tests {
             ContractError::LeaseSignerMismatch,
             ContractError::RoleRequired,
             ContractError::OperationExpired,
+            ContractError::UpgradeAuthorizationAlreadyExists,
+            ContractError::UpgradeAuthorizationNotFound,
+            ContractError::UpgradeSelfRoleNotAllowed,
+            ContractError::LastUpgradeAdmin,
+            ContractError::NotPendingUpgradeAdmin,
             ContractError::StaleAdminEpoch,
             ContractError::StaleSignerEpoch,
         ];
@@ -1414,6 +1428,11 @@ mod tests {
             ContractError::LeaseSignerMismatch => true, // re-sign as the lease signer
             ContractError::CrossContractCallerMismatch => false,
             ContractError::RoleRequired => true,
+            ContractError::UpgradeAuthorizationAlreadyExists => true, // choose another address or revoke first
+            ContractError::UpgradeAuthorizationNotFound => true,      // grant authorization first
+            ContractError::UpgradeSelfRoleNotAllowed => true, // choose another address or a lower role
+            ContractError::LastUpgradeAdmin => true, // grant another upgrader before revoking
+            ContractError::NotPendingUpgradeAdmin => true, // sign as the pending admin
             ContractError::StaleAdminEpoch => false,
             ContractError::StaleSignerEpoch => false,
 
@@ -1576,6 +1595,11 @@ mod tests {
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
             ContractError::RoleRequired,
+            ContractError::UpgradeAuthorizationAlreadyExists,
+            ContractError::UpgradeAuthorizationNotFound,
+            ContractError::UpgradeSelfRoleNotAllowed,
+            ContractError::LastUpgradeAdmin,
+            ContractError::NotPendingUpgradeAdmin,
             ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
