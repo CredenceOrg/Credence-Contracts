@@ -252,7 +252,7 @@ fn test_set_early_exit_config_unauthorized() {
 }
 
 #[test]
-#[should_panic(expected = "penalty_bps must be <= 10000")]
+#[should_panic(expected = "Error(Contract, #211)")]
 fn test_set_early_exit_config_invalid_bps() {
     let e = Env::default();
     e.mock_all_auths();

@@ -30,6 +30,7 @@
 
 use crate::test_helpers::{self, advance_ledger_sequence};
 use crate::{CredenceBond, CredenceBondClient};
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
@@ -101,7 +102,7 @@ fn get_liquidation_treasury_unset_returns_none() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn set_liquidation_treasury_unauthorized_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -219,13 +220,14 @@ fn liquidate_without_treasury_still_marks_bond_inactive() {
 // -----------------------------------------------------------------
 // Negative paths (eligibility)
 // -----------------------------------------------------------------
+// Note: eligibility rejections use `#[should_panic(expected = "bond is not eligible for ...")]`
+// and authorization/not-found rejections use `#[should_panic(expected = "Error(Contract, #N)")]`
+// matching the wire-stable `ContractError` discriminant. No bare `#[should_panic]` remains.
 // Note: bare `#[should_panic]` is used for unauthorized/no-bond paths to
 // keep tests independent of the SDK's SCErrorCode format. Eligibility
-// rejections come from a literal `panic!("bond is not eligible for ...")`
-// and are matched by the expected substring below.
+// rejections assert their typed contract error.
 
 #[test]
-#[should_panic(expected = "bond is not eligible for liquidation")]
 fn liquidate_one_second_before_expiry_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -233,33 +235,45 @@ fn liquidate_one_second_before_expiry_rejected() {
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     e.ledger().with_mut(|li| li.timestamp = 87_399);
 
-    client.liquidate(&admin, &identity);
+    assert_eq!(
+        client.try_liquidate(&admin, &identity),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::BondNotEligibleForLiquidation as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "bond is not eligible for liquidation")]
 fn liquidate_healthy_bond_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     // No slash, not past lockup.
-    client.liquidate(&admin, &identity);
+    assert_eq!(
+        client.try_liquidate(&admin, &identity),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::BondNotEligibleForLiquidation as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "bond is not eligible for liquidation")]
 fn liquidate_partially_slashed_bond_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
 
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, false, 0);
     client.slash(&admin, &identity, &500_i128); // partial slash
-    client.liquidate(&admin, &identity);
+    assert_eq!(
+        client.try_liquidate(&admin, &identity),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::BondNotEligibleForLiquidation as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "bond is not eligible for liquidation")]
 fn liquidate_rolling_bond_past_lockup_rejected() {
     // Rolling bonds auto-renew on `renew_if_rolling`. The "expired_unrenewed"
     // path therefore excludes them. The bond below still passes eligibility
@@ -270,11 +284,16 @@ fn liquidate_rolling_bond_past_lockup_rejected() {
     make_bond(&e, &client, &identity, 1_000_i128, 86_400_u64, true, 100);
     e.ledger().with_mut(|li| li.timestamp = 87_500);
 
-    client.liquidate(&admin, &identity);
+    assert_eq!(
+        client.try_liquidate(&admin, &identity),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::BondNotEligibleForLiquidation as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #200)")]
 fn liquidate_no_bond_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -283,7 +302,7 @@ fn liquidate_no_bond_rejected() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn liquidate_non_admin_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -300,7 +319,7 @@ fn liquidate_non_admin_rejected() {
 // -----------------------------------------------------------------
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #201)")]
 fn liquidate_twice_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -330,7 +349,7 @@ fn liquidate_after_withdraw_bond_does_not_set_liquidated_flag() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #201)")]
 fn liquidate_after_withdraw_bond_panics() {
     // Companion to the above: after `withdraw_bond` flips `active = false`,
     // a subsequent `liquidate` is rejected (it cannot differentiate "withdrew"

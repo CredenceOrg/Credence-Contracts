@@ -236,6 +236,8 @@ def scan() -> list:
             continue
         reachable, test_gated = parse_mod_graph(lib)
         for rs in sorted(f for f in reachable if f not in test_gated):
+            masked = mask_cfg_test_blocks(rs.read_text())
+            all_results.extend(find_panics_in_text(masked, rs.relative_to(ROOT).as_posix()))
             masked = mask_cfg_test_blocks(rs.read_text(encoding="utf-8"))
             all_results.extend(
                 find_panics_in_text(masked, rs.relative_to(ROOT).as_posix())

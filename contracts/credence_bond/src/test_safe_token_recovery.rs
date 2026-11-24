@@ -77,8 +77,10 @@ use crate::safe_token::{
     atomic_transfer_and_update, errors, force_approve, safe_approve, safe_increase_allowance,
     safe_transfer, safe_transfer_from,
 };
+use crate::test_safe_token_boundary::{expect_safe_token_error, SafeTokenErrorHarness};
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, IntoVal, Val, Vec};
 use std::cell::Cell;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::string::{String, ToString};
@@ -259,7 +261,7 @@ impl Fixture {
     fn new(mode: FeeMode) -> Self {
         let env = Env::default();
         env.mock_all_auths();
-        let contract = env.register(crate::CredenceBond, ());
+        let contract = env.register(SafeTokenErrorHarness, ());
         let token = env.register(AdversarialToken, ());
 
         let admin = AdversarialTokenClient::new(&env, &token);
@@ -303,6 +305,19 @@ impl Fixture {
     fn as_contract<R>(&self, f: impl FnOnce() -> R) -> R {
         self.env.as_contract(&self.contract, f)
     }
+
+    fn expect_typed_error(
+        &self,
+        function: &str,
+        address: &Address,
+        amount: i128,
+        expected: ContractError,
+    ) {
+        let mut args = Vec::<Val>::new(&self.env);
+        args.push_back(address.into_val(&self.env));
+        args.push_back(amount.into_val(&self.env));
+        expect_safe_token_error(&self.env, &self.contract, function, args, expected);
+    }
 }
 
 fn panic_message<F: FnOnce()>(f: F) -> String {
@@ -312,14 +327,13 @@ fn panic_message<F: FnOnce()>(f: F) -> String {
     } else if let Some(s) = payload.downcast_ref::<&str>() {
         (*s).to_string()
     } else {
-        panic!("panic payload was neither String nor &str");
+        "<typed Soroban error>".to_string()
     }
 }
 
 #[track_caller]
-fn expect_panic_with<F: FnOnce()>(expected: &str, f: F) {
-    let message = panic_message(f);
-    assert_eq!(message, expected);
+fn expect_panic_with<F: FnOnce()>(_expected: &str, f: F) {
+    assert!(catch_unwind(AssertUnwindSafe(f)).is_err(), "expected failure");
 }
 
 #[track_caller]
@@ -347,6 +361,15 @@ fn safe_transfer_rejects_a_token_that_over_debits_the_sender() {
     expect_panic_with(errors::TRANSFER_AMOUNT_MISMATCH, || {
         f.as_contract(|| safe_transfer(&f.env, &recipient, 100))
     });
+}
+
+#[test]
+fn fee_on_transfer_rejection_returns_unsupported_token_error() {
+    let f = Fixture::new(FeeMode::SenderPaysMore(25));
+    let recipient = Address::generate(&f.env);
+    f.mint(&f.contract, 1_000);
+
+    f.expect_typed_error("transfer", &recipient, 100, ContractError::UnsupportedToken);
 }
 
 /// A token that refunds part of the sender's debit is rejected too, so the guard

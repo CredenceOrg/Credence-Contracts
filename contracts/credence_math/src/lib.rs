@@ -1,25 +1,6 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
-#[allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#[allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
 use credence_errors::ContractError;
 use ethnum::U256;
 
@@ -159,9 +140,82 @@ pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
 #[must_use]
 pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
     assert!(b > 0, "{message}");
-    (a + b - 1) / b
+    let quotient = a / b;
+    if a % b > 0 {
+        quotient + 1
+    } else {
+        quotient
+    }
 }
 
+/// Exact `(a * b) / denom` computed with a 256-bit intermediate, rounded
+/// according to `rounding`. Returns `None` when `denom` is zero or the rounded
+/// quotient does not fit in `i128`.
+///
+/// Rounding works on the magnitude, so `Up` and `Nearest` round away from zero.
+fn checked_mul_div(a: i128, b: i128, denom: i128, rounding: Rounding) -> Option<i128> {
+    if denom == 0 {
+        return None;
+    }
+    let product = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let mut quotient = product / divisor;
+    let remainder = product % divisor;
+    match rounding {
+        Rounding::Down => {}
+        Rounding::Up => {
+            if remainder != U256::ZERO {
+                quotient += U256::ONE;
+            }
+        }
+        Rounding::Nearest => {
+            if remainder >= divisor / U256::new(2) {
+                quotient += U256::ONE;
+            }
+        }
+    }
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let limit = if negative {
+        1u128 << 127
+    } else {
+        i128::MAX as u128
+    };
+    if quotient > U256::new(limit) {
+        return None;
+    }
+    let magnitude = quotient.as_u128() as i128;
+    Some(if negative {
+        magnitude.wrapping_neg()
+    } else {
+        magnitude
+    })
+}
+
+/// Exact multiply-divide: `(a * b) / denom` with a 256-bit intermediate, rounded
+/// according to `rounding`.
+///
+/// # Panics
+/// Panics with `msg` when `denom` is zero or the rounded result does not fit in `i128`.
+#[inline]
+#[must_use]
+pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
+    checked_mul_div(a, b, denom, rounding).expect(msg)
+}
+
+/// Saturating multiply-divide: `(a * b) / denom` rounded according to `rounding`.
+///
+/// Returns `0` when `denom` is zero, and clamps to `i128::MIN` or `i128::MAX`
+/// when the rounded result does not fit in `i128`.
+#[inline]
+#[must_use]
+pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i128 {
+    if denom == 0 {
+        return 0;
+    }
+    match checked_mul_div(a, b, denom, rounding) {
+        Some(value) => value,
+        None if (a < 0) ^ (b < 0) ^ (denom < 0) => i128::MIN,
+        None => i128::MAX,
 /// Wrapping multiply-divide: `(a * b) / denom` over a 256-bit intermediate.
 /// Rounds according to `rounding`. Panics with `msg` on `denom == 0` or when
 /// the final rounded result does not fit in `i128`.
