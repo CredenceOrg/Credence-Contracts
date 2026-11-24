@@ -7,6 +7,10 @@ description = "Credence Soroban contract template — canonical starting point f
 [lib]
 crate-type = ["cdylib"]
 
+[[test]]
+name = "template_compile"
+path = "tests/template_compile.rs"
+
 [dependencies]
 credence_errors = { version = "0.1.0", path = "../credence_errors" }
 interfaces = { path = "../../crates/interfaces" }
