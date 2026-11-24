@@ -99,3 +99,30 @@ pub fn is_fee_waived(e: &Env, amount: i128, _identity: &Address) -> bool {
     let (_, fee_bps) = get_config(e);
     fee_bps == 0 || amount <= 0
 }
+
+/// Record fee to the contract's fee pool (for later transfer to treasury).
+/// In full implementation, transfer would happen here; we accumulate and emit event.
+pub fn record_fee(e: &Env, identity: &Address, amount: i128, fee: i128, treasury: &Address) {
+    if fee <= 0 {
+        return;
+    }
+    let key = Symbol::new(e, "fees");
+    let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
+    let new_total = math::unwrap_or_panic_error(e, math::checked_add_i128(current, fee));
+    e.storage().instance().set(&key, &new_total);
+    emit_fee_event(e, identity, amount, fee, treasury);
+}
+
+/// Emit fee collection event.
+pub fn emit_fee_event(
+    e: &Env,
+    identity: &Address,
+    bond_amount: i128,
+    fee_amount: i128,
+    treasury: &Address,
+) {
+    e.events().publish(
+        (Symbol::new(e, "bond_creation_fee"),),
+        (identity.clone(), bond_amount, fee_amount, treasury.clone()),
+    );
+}
