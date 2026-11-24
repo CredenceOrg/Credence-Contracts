@@ -27,6 +27,8 @@ fn propose_admin_at(
 fn assert_contract_error<T, C, I: core::fmt::Debug>(
 fn assert_contract_error<T, C, I>(
     result: Result<Result<T, C>, Result<soroban_sdk::Error, I>>,
+fn assert_contract_error<T, I: core::fmt::Debug>(
+    result: Result<Result<T, soroban_sdk::Error>, Result<soroban_sdk::Error, I>>,
     expected: ContractError,
 ) {
     match result {

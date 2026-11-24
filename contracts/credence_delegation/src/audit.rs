@@ -32,6 +32,7 @@
 
 use crate::domain::DomainTag;
 use crate::{DelegationType, DelegationType as _};
+use crate::{domain::DomainTag, DelegationType};
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, xdr::ToXdr, Bytes, Env, IntoVal};
 

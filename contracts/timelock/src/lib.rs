@@ -66,9 +66,9 @@ fn bump_instance_ttl(e: &Env) {
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
 }
 
-fn bump_persistent_ttl(e: &Env, key: DataKey) {
+fn bump_persistent_ttl(e: &Env, key: impl core::borrow::Borrow<DataKey>) {
     e.storage().persistent().extend_ttl(
-        &key,
+        key.borrow(),
         CALL_BOUND_OPERATION_TTL / 2,
         CALL_BOUND_OPERATION_TTL,
     );
@@ -385,10 +385,12 @@ impl TimelockContract {
         }
 
         // Otherwise, execute as hash-only operation (backward compatibility)
+        let key = DataKey::Operation(op_id);
         let mut op: QueuedOperation = e
             .storage()
-            .instance()
-            .get(&DataKey::Operation(op_id))
+            .persistent()
+            .get(&key)
+            .or_else(|| e.storage().instance().get(&key))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
         if op.status != OperationStatus::Pending {
@@ -552,10 +554,12 @@ impl TimelockContract {
                 .publish(("operation_cancelled", op_id), op.op_hash);
         } else {
             // Hash-only operation
+            let key = DataKey::Operation(op_id);
             let mut op: QueuedOperation = e
                 .storage()
-                .instance()
-                .get(&DataKey::Operation(op_id))
+                .persistent()
+                .get(&key)
+                .or_else(|| e.storage().instance().get(&key))
                 .unwrap_or_else(|| panic_with_error!(&e, ContractError::ProposalNotFound));
 
             if op.status != OperationStatus::Pending {
@@ -563,7 +567,12 @@ impl TimelockContract {
             }
 
             op.status = OperationStatus::Cancelled;
-            e.storage().instance().set(&DataKey::Operation(op_id), &op);
+            if e.storage().persistent().has(&key) {
+                e.storage().persistent().set(&key, &op);
+                bump_persistent_ttl(&e, key);
+            } else {
+                e.storage().instance().set(&key, &op);
+            }
 
             e.events()
                 .publish(("operation_cancelled", op_id), op.op_hash);

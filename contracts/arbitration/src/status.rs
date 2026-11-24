@@ -126,6 +126,11 @@ pub enum ArbitrationError {
     NotAParty = 22,
     /// The arbitrator voted in round one and is excluded from round two.
     ArbitratorVotedInRoundOne = 23,
+    /// The creator may only cancel before any vote is cast and before
+    /// the voting deadline.
+    CancelNotAllowed = 19,
+    /// The voter is the creator of the dispute (conflict of interest).
+    ConflictOfInterest = 20,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.

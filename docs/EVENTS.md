@@ -238,6 +238,51 @@ a rejected call emits none. Schemas are pinned by
 | `pause_approved`         | `proposal_id: u32`      | `signer: Address`                             | `approve_pause_proposal`                        |
 | `paused`                 | —                       | `(proposal_id: Option<u64>, reason: String)`  | `pause` (admin direct) / `execute_pause_proposal` |
 | `unpaused`               | —                       | `proposal_id: Option<u32>`                    | `unpause` (admin direct) / `execute_pause_proposal` |
+## Machine-Readable Event Catalog (`docs/event-catalog.json`)
+
+To ensure off-chain indexers stay compatible without documentation drift, the repository maintains a golden JSON event schema catalog at [`docs/event-catalog.json`](event-catalog.json).
+
+### Scope and Schema Layout
+
+The catalog captures every emitted event across all 7 contracts in the workspace:
+- `admin`
+- `arbitration`
+- `bond`
+- `delegation`
+- `registry`
+- `timelock`
+- `treasury`
+
+The schema matches the conventions used in `contracts/credence_bond/event_schemas/`:
+```json
+{
+  "<contract_name>": {
+    "<event_topic_symbol>": {
+      "topics": ["<event_topic_symbol>", "<TopicType1>", ...],
+      "data": ["<DataType1>", "<DataType2>", ...]
+    }
+  }
+}
+```
+
+- **`topics`**: Topic 0 is always the event `Symbol` name. Subsequent topics indicate indexed parameters (e.g. `Address`, `u64`, `Symbol`).
+- **`data`**: Lists the data payload member types (e.g. `i128`, `u64`, `bool`, `Address`, `Map`, `Vec`). Void/unit payloads are represented as `[]`.
+
+### Drift Detection and Maintenance
+
+The test harness [`tests/event_catalog.rs`](../tests/event_catalog.rs) exercises all contract entrypoints and verifies code against [`docs/event-catalog.json`](event-catalog.json):
+
+- **Continuous Integration**:
+  ```bash
+  cargo test --test event_catalog --locked
+  ```
+  Fails automatically if any event topic, data type, or payload shape in code drifts from the golden catalogue.
+
+- **Updating the Golden Catalog**:
+  When event schemas are intentionally modified, update the fixture by running:
+  ```bash
+  UPDATE_EVENT_CATALOG=1 cargo test --test event_catalog
+  ```
 
 ## See also
 
