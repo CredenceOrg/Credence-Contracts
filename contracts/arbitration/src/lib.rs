@@ -94,6 +94,18 @@ pub enum DataKey {
     MinTotalWeight,
     MinVoters,
     ActiveDispute(Address),
+    /// Appeal window in seconds. Default: 86400 (24 hours).
+    AppealWindow,
+    /// Round-two minimum total weight. Must exceed round-one MinTotalWeight.
+    AppealMinTotalWeight,
+    /// Round-two minimum voter count. Must exceed round-one MinVoters.
+    AppealMinVoters,
+    /// Timestamp when the dispute was resolved/tied/no-quorum (for appeal window).
+    ResolvedAt(u64),
+    /// How many times this dispute has been appealed (max 1).
+    AppealCount(u64),
+    /// Set of round-one voters for this dispute (keyed by voter address → bool).
+    RoundOneVoter(u64, Address),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
@@ -395,14 +407,22 @@ impl CredenceArbitration {
             .get(&DataKey::Dispute(dispute_id))
             .ok_or(ArbitrationError::DisputeNotFound)?;
 
-        // Must be in Voting status
-        if dispute.status != DisputeStatus::Voting {
+        // Must be in Voting or Appealed status
+        if dispute.status != DisputeStatus::Voting && dispute.status != DisputeStatus::Appealed {
             return Err(ArbitrationError::VotingInactive);
         }
 
         let now = e.ledger().timestamp();
         if now < dispute.voting_start || now > dispute.voting_end {
             return Err(ArbitrationError::VotingInactive);
+        }
+
+        // Round-two: reject arbitrators who voted in round one.
+        if dispute.status == DisputeStatus::Appealed {
+            let round_one_key = DataKey::RoundOneVoter(dispute_id, voter.clone());
+            if e.storage().instance().has(&round_one_key) {
+                return Err(ArbitrationError::ArbitratorVotedInRoundOne);
+            }
         }
 
         let voter_casted_key = DataKey::VoterCasted(dispute_id, voter.clone());
@@ -446,6 +466,7 @@ impl CredenceArbitration {
     }
 
     /// Transition Voting → Resolving → Resolved after the voting period ends.
+    /// Also resolves a second round (Appealed → Resolved/Tied/NoQuorum).
     pub fn resolve_dispute(e: Env, dispute_id: u64) -> Result<u32, ArbitrationError> {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -456,21 +477,47 @@ impl CredenceArbitration {
             .get(&DataKey::Dispute(dispute_id))
             .ok_or(ArbitrationError::DisputeNotFound)?;
 
-        // Must be Voting to start resolution
-        require_transition(dispute.status.clone(), DisputeStatus::Resolving)?;
+        // Must be Voting or Appealed to trigger resolution
+        match dispute.status {
+            DisputeStatus::Voting | DisputeStatus::Appealed => {}
+            _ => return Err(ArbitrationError::InvalidTransition),
+        }
+
+        // For the standard (round-one) path, assert the Voting→Resolving transition
+        // is legal before touching anything.
+        if dispute.status == DisputeStatus::Voting {
+            require_transition(DisputeStatus::Voting, DisputeStatus::Resolving)?;
+        }
 
         let now = e.ledger().timestamp();
         if now <= dispute.voting_end {
             return Err(ArbitrationError::VotingNotEnded);
         }
 
-        // --- Quorum check (before Resolving transition) ---
-        let min_total_weight: i128 = e
-            .storage()
-            .instance()
-            .get(&DataKey::MinTotalWeight)
-            .unwrap_or(0);
-        let min_voters: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
+        let is_appeal_round = dispute.status == DisputeStatus::Appealed;
+
+        // --- Quorum check (use appeal quorum when in Appealed round) ---
+        let (min_total_weight, min_voters) = if is_appeal_round {
+            let w: i128 = e
+                .storage()
+                .instance()
+                .get(&DataKey::AppealMinTotalWeight)
+                .unwrap_or(1);
+            let v: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::AppealMinVoters)
+                .unwrap_or(1);
+            (w, v)
+        } else {
+            let w: i128 = e
+                .storage()
+                .instance()
+                .get(&DataKey::MinTotalWeight)
+                .unwrap_or(0);
+            let v: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
+            (w, v)
+        };
 
         if min_total_weight > 0 || min_voters > 0 {
             let votes: Map<u32, i128> = e
@@ -500,20 +547,44 @@ impl CredenceArbitration {
                     (Symbol::new(&e, "quorum_not_met"), dispute_id),
                     (total_weight, min_total_weight, voter_count, min_voters),
                 );
+                // In an appeal round, quorum failure is a final NoQuorum outcome.
+                if is_appeal_round {
+                    let from = dispute.status;
+                    require_transition(from, DisputeStatus::NoQuorum)?;
+                    dispute.status = DisputeStatus::NoQuorum;
+                    dispute.outcome = 0;
+                    e.storage()
+                        .instance()
+                        .set(&DataKey::Dispute(dispute_id), &dispute);
+                    clear_active_dispute(&e, &dispute.creator);
+                    e.storage()
+                        .instance()
+                        .set(&DataKey::ResolvedAt(dispute_id), &now);
+                    e.events().publish(
+                        (Symbol::new(&e, "status_transition"), dispute_id),
+                        (from as u32, DisputeStatus::NoQuorum as u32),
+                    );
+                    e.events().publish(
+                        (Symbol::new(&e, "dispute_no_quorum"), dispute_id),
+                        (),
+                    );
+                    return Ok(0);
+                }
                 return Err(ArbitrationError::QuorumNotMet);
             }
         }
         // --- End quorum check ---
 
-        // Voting → Resolving
-        dispute.status = DisputeStatus::Resolving;
-        e.events().publish(
-            (Symbol::new(&e, "status_transition"), dispute_id),
-            (
-                DisputeStatus::Voting as u32,
-                DisputeStatus::Resolving as u32,
-            ),
-        );
+        let prev_status = dispute.status;
+
+        // For round-one, emit the Voting → Resolving intermediate step.
+        if !is_appeal_round {
+            dispute.status = DisputeStatus::Resolving;
+            e.events().publish(
+                (Symbol::new(&e, "status_transition"), dispute_id),
+                (DisputeStatus::Voting as u32, DisputeStatus::Resolving as u32),
+            );
+        }
 
         // Tally
         let votes_key = DataKey::DisputeVotes(dispute_id);
@@ -543,39 +614,52 @@ impl CredenceArbitration {
         }
 
         if is_tie {
-            // Resolving → Tied (explicit tie state)
-            require_transition(DisputeStatus::Resolving, DisputeStatus::Tied)?;
+            // Resolving/Appealed → Tied
+            let from_for_tie = if is_appeal_round {
+                DisputeStatus::Appealed
+            } else {
+                DisputeStatus::Resolving
+            };
+            require_transition(from_for_tie, DisputeStatus::Tied)?;
             dispute.status = DisputeStatus::Tied;
-            dispute.outcome = 0; // Reserved sentinel for tie; cannot confuse with a valid outcome
+            dispute.outcome = 0;
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
             clear_active_dispute(&e, &dispute.creator);
+            e.storage()
+                .instance()
+                .set(&DataKey::ResolvedAt(dispute_id), &now);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
-                (DisputeStatus::Resolving as u32, DisputeStatus::Tied as u32),
+                (from_for_tie as u32, DisputeStatus::Tied as u32),
             );
             e.events()
                 .publish((Symbol::new(&e, "dispute_tied"), dispute_id), ());
 
             Ok(0)
         } else {
-            // Resolving → Resolved (with a clear winner)
-            require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
+            // Resolving/Appealed → Resolved
+            let from_for_resolved = if is_appeal_round {
+                DisputeStatus::Appealed
+            } else {
+                DisputeStatus::Resolving
+            };
+            require_transition(from_for_resolved, DisputeStatus::Resolved)?;
             dispute.status = DisputeStatus::Resolved;
             dispute.outcome = winning_outcome;
             e.storage()
                 .instance()
                 .set(&DataKey::Dispute(dispute_id), &dispute);
             clear_active_dispute(&e, &dispute.creator);
+            e.storage()
+                .instance()
+                .set(&DataKey::ResolvedAt(dispute_id), &now);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
-                (
-                    DisputeStatus::Resolving as u32,
-                    DisputeStatus::Resolved as u32,
-                ),
+                (from_for_resolved as u32, DisputeStatus::Resolved as u32),
             );
             e.events().publish(
                 (Symbol::new(&e, "dispute_resolved"), dispute_id),
@@ -631,6 +715,310 @@ impl CredenceArbitration {
             .unwrap_or(0);
         let min_voters: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
         (min_total_weight, min_voters)
+    }
+
+    /// Configure the appeal window and round-two quorum.
+    ///
+    /// - `appeal_window_secs`: seconds after resolution during which an appeal is
+    ///   allowed. Must be > 0. Default: 86 400 (24 h).
+    /// - `appeal_min_total_weight`: minimum cumulative vote weight for round two.
+    ///   Must be strictly greater than the current round-one `min_total_weight`.
+    ///   Pass 0 to inherit a permissive default (1 more than round-one, minimum 1).
+    /// - `appeal_min_voters`: minimum distinct voter count for round two. Must be
+    ///   strictly greater than the current round-one `min_voters`.
+    ///   Pass 0 to inherit a permissive default (1 more than round-one, minimum 1).
+    pub fn set_appeal_config(
+        e: Env,
+        admin: Address,
+        appeal_window_secs: u64,
+        appeal_min_total_weight: i128,
+        appeal_min_voters: u32,
+    ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let stored_admin: Address = e
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(ArbitrationError::NotInitialized)?;
+        admin.require_auth();
+        if admin != stored_admin {
+            return Err(ArbitrationError::NotAdmin);
+        }
+        if appeal_window_secs == 0 {
+            return Err(ArbitrationError::InvalidTransition); // repurpose closest available error; window must be > 0
+        }
+        // Round-two quorum must be strictly greater than round-one quorum.
+        let r1_weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MinTotalWeight)
+            .unwrap_or(0);
+        let r1_voters: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
+        if appeal_min_total_weight <= r1_weight {
+            return Err(ArbitrationError::WeightNotPositive);
+        }
+        if appeal_min_voters <= r1_voters {
+            return Err(ArbitrationError::WeightNotPositive);
+        }
+        e.storage()
+            .instance()
+            .set(&DataKey::AppealWindow, &appeal_window_secs);
+        e.storage()
+            .instance()
+            .set(&DataKey::AppealMinTotalWeight, &appeal_min_total_weight);
+        e.storage()
+            .instance()
+            .set(&DataKey::AppealMinVoters, &appeal_min_voters);
+        e.events().publish(
+            (Symbol::new(&e, "appeal_config_set"),),
+            (appeal_window_secs, appeal_min_total_weight, appeal_min_voters),
+        );
+        Ok(())
+    }
+
+    /// Get the current appeal configuration.
+    /// Returns (appeal_window_secs, appeal_min_total_weight, appeal_min_voters).
+    pub fn get_appeal_config(e: Env) -> (u64, i128, u32) {
+        bump_instance_ttl(&e);
+        let window: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::AppealWindow)
+            .unwrap_or(86_400);
+        let weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::AppealMinTotalWeight)
+            .unwrap_or(1);
+        let voters: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::AppealMinVoters)
+            .unwrap_or(1);
+        (window, weight, voters)
+    }
+
+    /// Mark a dispute as NoQuorum when the voting period has ended and quorum
+    /// was not met. This is a one-way transition from Voting to NoQuorum.
+    /// Any caller may invoke this after the voting period expires.
+    pub fn no_quorum_resolve(e: Env, dispute_id: u64) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+
+        let mut dispute: Dispute = e
+            .storage()
+            .instance()
+            .get(&DataKey::Dispute(dispute_id))
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        if dispute.status != DisputeStatus::Voting {
+            return Err(ArbitrationError::InvalidTransition);
+        }
+
+        let now = e.ledger().timestamp();
+        if now <= dispute.voting_end {
+            return Err(ArbitrationError::VotingNotEnded);
+        }
+
+        // Verify quorum was actually NOT met. If quorum is met, caller should
+        // use resolve_dispute instead.
+        let min_total_weight: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::MinTotalWeight)
+            .unwrap_or(0);
+        let min_voters: u32 = e.storage().instance().get(&DataKey::MinVoters).unwrap_or(0);
+
+        if min_total_weight > 0 || min_voters > 0 {
+            let votes: Map<u32, i128> = e
+                .storage()
+                .instance()
+                .get(&DataKey::DisputeVotes(dispute_id))
+                .unwrap_or(Map::new(&e));
+
+            let mut total_weight: i128 = 0;
+            for (_, w) in votes.iter() {
+                total_weight = total_weight
+                    .checked_add(w)
+                    .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+            }
+
+            let voter_count: u32 = e
+                .storage()
+                .instance()
+                .get(&DataKey::VoterCounter(dispute_id))
+                .unwrap_or(0);
+
+            let weight_met = total_weight >= min_total_weight;
+            let voters_met = voter_count >= min_voters;
+
+            if weight_met && voters_met {
+                // Quorum is actually met; this function should not be called.
+                return Err(ArbitrationError::InvalidTransition);
+            }
+        } else {
+            // No quorum configured — cannot reach NoQuorum state.
+            return Err(ArbitrationError::InvalidTransition);
+        }
+
+        require_transition(DisputeStatus::Voting, DisputeStatus::NoQuorum)?;
+        dispute.status = DisputeStatus::NoQuorum;
+        dispute.outcome = 0;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+        clear_active_dispute(&e, &dispute.creator);
+
+        // Record resolution timestamp for appeal window.
+        e.storage()
+            .instance()
+            .set(&DataKey::ResolvedAt(dispute_id), &now);
+
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (DisputeStatus::Voting as u32, DisputeStatus::NoQuorum as u32),
+        );
+        e.events().publish(
+            (Symbol::new(&e, "dispute_no_quorum"), dispute_id),
+            (),
+        );
+        Ok(())
+    }
+
+    /// Appeal a dispute. Allowed only by a party (the dispute creator).
+    ///
+    /// Conditions:
+    /// - Status must be Resolved, Tied, or NoQuorum.
+    /// - Current time must be within the appeal window after resolution.
+    /// - The dispute must not have been appealed before (max one appeal).
+    ///
+    /// Resets voting state for a second round using the larger appeal quorum.
+    /// Records round-one voters so they are excluded from round two.
+    pub fn appeal_dispute(
+        e: Env,
+        appellant: Address,
+        dispute_id: u64,
+        duration: u64,
+    ) -> Result<(), ArbitrationError> {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        appellant.require_auth();
+
+        let mut dispute: Dispute = e
+            .storage()
+            .instance()
+            .get(&DataKey::Dispute(dispute_id))
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+
+        // Only the dispute creator counts as a "party".
+        if appellant != dispute.creator {
+            return Err(ArbitrationError::NotAParty);
+        }
+
+        // Dispute must be in an appealable status.
+        match dispute.status {
+            DisputeStatus::Resolved | DisputeStatus::Tied | DisputeStatus::NoQuorum => {}
+            _ => return Err(ArbitrationError::NotAppealable),
+        }
+
+        // Max one appeal.
+        let appeal_count: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::AppealCount(dispute_id))
+            .unwrap_or(0);
+        if appeal_count > 0 {
+            return Err(ArbitrationError::AlreadyAppealed);
+        }
+
+        // Appeal window check.
+        let resolved_at: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::ResolvedAt(dispute_id))
+            .unwrap_or(0);
+        let appeal_window: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::AppealWindow)
+            .unwrap_or(86_400);
+        let window_end = resolved_at
+            .checked_add(appeal_window)
+            .unwrap_or(u64::MAX);
+        let now = e.ledger().timestamp();
+        // Inclusive upper bound: allowed while now <= window_end.
+        // The window closes one second after window_end.
+        if now > window_end {
+            return Err(ArbitrationError::AppealWindowClosed);
+        }
+
+        // Snapshot round-one voters before clearing vote state.
+        let registry: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&DataKey::ArbitratorRegistry)
+            .unwrap_or_else(|| Vec::new(&e));
+        for addr in registry.iter() {
+            let voter_key = DataKey::VoterCasted(dispute_id, addr.clone());
+            if e.storage().instance().has(&voter_key) {
+                e.storage()
+                    .instance()
+                    .set(&DataKey::RoundOneVoter(dispute_id, addr), &true);
+            }
+        }
+
+        // Transition to Appealed.
+        let from = dispute.status;
+        require_transition(from, DisputeStatus::Appealed)?;
+        dispute.status = DisputeStatus::Appealed;
+
+        // Reset vote state for round two.
+        e.storage()
+            .instance()
+            .remove(&DataKey::VoterCounter(dispute_id));
+        e.storage()
+            .instance()
+            .remove(&DataKey::DisputeVotes(dispute_id));
+        for addr in registry.iter() {
+            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
+            e.storage().instance().remove(&voter_casted_key);
+        }
+
+        // Set new voting window.
+        let new_start = now;
+        let new_end = now
+            .checked_add(duration)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        dispute.voting_start = new_start;
+        dispute.voting_end = new_end;
+        dispute.outcome = 0;
+
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+
+        // Re-establish active dispute guard: the dispute is live again.
+        e.storage().instance().set(
+            &DataKey::ActiveDispute(dispute.creator.clone()),
+            &dispute_id,
+        );
+
+        // Increment appeal count.
+        e.storage()
+            .instance()
+            .set(&DataKey::AppealCount(dispute_id), &(appeal_count + 1));
+
+        let round: u32 = 2;
+        e.events().publish(
+            (Symbol::new(&e, "dispute_appealed"), dispute_id),
+            (appellant, round, now),
+        );
+        e.events().publish(
+            (Symbol::new(&e, "status_transition"), dispute_id),
+            (from as u32, DisputeStatus::Appealed as u32),
+        );
+        Ok(())
     }
 
     /// Get dispute details.
@@ -881,9 +1269,19 @@ impl CredenceArbitration {
             .get(&DataKey::ArbitratorRegistry)
             .unwrap_or_else(|| Vec::new(&e));
         for addr in registry.iter() {
-            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
+            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr.clone());
             e.storage().instance().remove(&voter_casted_key);
+            // Also clear round-one voter markers so the reopened dispute starts clean.
+            let round_one_key = DataKey::RoundOneVoter(dispute_id, addr);
+            e.storage().instance().remove(&round_one_key);
         }
+        // Clear appeal metadata so the reopened dispute can be appealed again.
+        e.storage()
+            .instance()
+            .remove(&DataKey::AppealCount(dispute_id));
+        e.storage()
+            .instance()
+            .remove(&DataKey::ResolvedAt(dispute_id));
         e.events().publish(
             (Symbol::new(&e, "dispute_reopened"), dispute_id),
             from as u32,
@@ -954,3 +1352,6 @@ mod test_auth;
 
 #[cfg(test)]
 mod test_archive_reopen;
+
+#[cfg(test)]
+mod test_appeal;

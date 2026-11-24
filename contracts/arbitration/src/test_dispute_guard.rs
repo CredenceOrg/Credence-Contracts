@@ -25,7 +25,7 @@ use soroban_sdk::{contract, Address, Env, IntoVal, Symbol, TryFromVal, Val};
 
 /// Every declared variant, in wire order. Adding a variant means adding it
 /// here, which is what forces the closed-world cases below to classify it too.
-const ALL_STATUSES: [DisputeStatus; 7] = [
+const ALL_STATUSES: [DisputeStatus; 9] = [
     DisputeStatus::Open,
     DisputeStatus::Voting,
     DisputeStatus::Resolving,
@@ -33,20 +33,24 @@ const ALL_STATUSES: [DisputeStatus; 7] = [
     DisputeStatus::Cancelled,
     DisputeStatus::Tied,
     DisputeStatus::Archived,
+    DisputeStatus::NoQuorum,
+    DisputeStatus::Appealed,
 ];
 
 /// The states that block lease-modifying operations.
-const ACTIVE_STATUSES: [DisputeStatus; 3] = [
+const ACTIVE_STATUSES: [DisputeStatus; 4] = [
     DisputeStatus::Open,
     DisputeStatus::Voting,
     DisputeStatus::Resolving,
+    DisputeStatus::Appealed,
 ];
 
 /// The states in which a dispute has reached a definite, consumer-visible end.
-const TERMINAL_STATUSES: [DisputeStatus; 3] = [
+const TERMINAL_STATUSES: [DisputeStatus; 4] = [
     DisputeStatus::Resolved,
     DisputeStatus::Cancelled,
     DisputeStatus::Tied,
+    DisputeStatus::NoQuorum,
 ];
 
 /// Storage frame for the persistence cases. Deliberately empty: these tests
@@ -223,6 +227,8 @@ fn discriminants_match_the_deployed_layout() {
     assert_eq!(DisputeStatus::Cancelled as u32, 4);
     assert_eq!(DisputeStatus::Tied as u32, 5);
     assert_eq!(DisputeStatus::Archived as u32, 6);
+    assert_eq!(DisputeStatus::NoQuorum as u32, 7);
+    assert_eq!(DisputeStatus::Appealed as u32, 8);
 }
 
 #[test]
@@ -322,10 +328,10 @@ fn a_status_shares_the_ledger_encoding_of_its_discriminant() {
 fn an_out_of_range_status_code_does_not_deserialize_into_a_verdict() {
     // The guards are handed a `DisputeStatus`, never a raw code. A truncated,
     // stale, or hostile u32 has to fail conversion rather than collapse onto a
-    // variant: silently mapping 7 to `Resolved` would admit lease work on a
+    // variant: silently mapping 9 to `Resolved` would admit lease work on a
     // dispute that is still being voted on.
     let (env, _id) = fixture();
-    for bogus in [7_u32, 8, 42, u32::MAX] {
+    for bogus in [9_u32, 10, 42, u32::MAX] {
         let val: Val = bogus.into_val(&env);
         assert!(
             DisputeStatus::try_from_val(&env, &val).is_err(),
@@ -490,4 +496,102 @@ fn require_dispute_inactive_blocks_resolving() {
         require_dispute_inactive(DisputeStatus::Resolving),
         Err(ArbitrationError::DisputeActive)
     );
+}
+
+// ════════════════════════════════════════════════════════════════════════
+//  NoQuorum and Appealed per-variant baselines
+// ════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn is_dispute_active_returns_true_for_appealed() {
+    // Appealed is an ongoing round-two voting state — it must block operations.
+    assert!(is_dispute_active(DisputeStatus::Appealed));
+}
+
+#[test]
+fn is_dispute_active_returns_false_for_no_quorum() {
+    // NoQuorum is a terminal outcome like Tied.
+    assert!(!is_dispute_active(DisputeStatus::NoQuorum));
+}
+
+#[test]
+fn require_dispute_inactive_blocks_appealed() {
+    assert_eq!(
+        require_dispute_inactive(DisputeStatus::Appealed),
+        Err(ArbitrationError::DisputeActive)
+    );
+}
+
+#[test]
+fn require_dispute_inactive_allows_no_quorum() {
+    assert_eq!(require_dispute_inactive(DisputeStatus::NoQuorum), Ok(()));
+}
+
+#[test]
+fn require_dispute_resolved_allows_no_quorum() {
+    // NoQuorum is a valid terminal resolution outcome.
+    assert_eq!(require_dispute_resolved(&DisputeStatus::NoQuorum), Ok(()));
+}
+
+#[test]
+fn require_dispute_resolved_rejects_appealed() {
+    // Appealed is non-terminal: round two is still in progress.
+    assert_eq!(
+        require_dispute_resolved(&DisputeStatus::Appealed),
+        Err(ArbitrationError::DisputeActive)
+    );
+}
+
+#[test]
+fn appealed_is_active_yet_not_resolved() {
+    // Appealed is active (blocks lease work) and is not a ruling.
+    // Its transitions to Resolved/Tied/NoQuorum are the actual rulings.
+    assert!(is_dispute_active(DisputeStatus::Appealed));
+    assert_eq!(
+        require_dispute_resolved(&DisputeStatus::Appealed),
+        Err(ArbitrationError::DisputeActive)
+    );
+    assert_eq!(
+        require_dispute_inactive(DisputeStatus::Appealed),
+        Err(ArbitrationError::DisputeActive)
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Appealed, DisputeStatus::Resolved),
+        Ok(())
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Appealed, DisputeStatus::Tied),
+        Ok(())
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::Appealed, DisputeStatus::NoQuorum),
+        Ok(())
+    );
+}
+
+#[test]
+fn no_quorum_is_appealable_and_archivable() {
+    // NoQuorum can transition to Appealed (within the appeal window) or Archived.
+    assert_eq!(
+        require_transition(DisputeStatus::NoQuorum, DisputeStatus::Appealed),
+        Ok(())
+    );
+    assert_eq!(
+        require_transition(DisputeStatus::NoQuorum, DisputeStatus::Archived),
+        Ok(())
+    );
+    // Cannot go back to Voting directly.
+    assert_eq!(
+        require_transition(DisputeStatus::NoQuorum, DisputeStatus::Voting),
+        Err(ArbitrationError::InvalidTransition)
+    );
+}
+
+#[test]
+fn appeal_error_codes_are_wire_stable() {
+    assert_eq!(ArbitrationError::AppealWindowClosed as u32, 19);
+    assert_eq!(ArbitrationError::AlreadyAppealed as u32, 20);
+    assert_eq!(ArbitrationError::NotAppealable as u32, 21);
+    assert_eq!(ArbitrationError::NotAParty as u32, 22);
+    assert_eq!(ArbitrationError::ArbitratorVotedInRoundOne as u32, 23);
 }
