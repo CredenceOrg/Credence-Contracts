@@ -53,8 +53,7 @@ pub const MAX_TTL: u32 = 3_110_400;
 pub const MAX_NONCE_FUTURE_WINDOW: u64 = 1_000;
 
 use credence_errors::ContractError;
-use soroban_sdk::panic_with_error;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{panic_with_error, Address, Env};
 
 use crate::DataKey;
 
@@ -159,9 +158,10 @@ pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     if current != expected_nonce {
         panic_with_error!(e, ContractError::InvalidNonce);
     }
-    let next = current
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+    let next = match current.checked_add(1) {
+        Some(next) => next,
+        None => panic_with_error!(e, ContractError::Overflow),
+    };
     e.storage().persistent().set(&key, &next);
     bump_nonce_ttl(e, &key, 0);
 }
@@ -213,9 +213,10 @@ pub fn invalidate_nonce_range(
     if new_nonce <= current {
         panic_with_error!(e, ContractError::InvalidNonce);
     }
-    let span = new_nonce
-        .checked_sub(current)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
+    let span = match new_nonce.checked_sub(current) {
+        Some(span) => span,
+        None => panic_with_error!(e, ContractError::Underflow),
+    };
     if span > max_span {
         panic_with_error!(e, ContractError::InvalidNonce);
     }

@@ -49,10 +49,10 @@ pub fn set_token(e: &Env, admin: &Address, token: &Address) {
         .storage()
         .instance()
         .get(&crate::DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
     admin.require_auth();
     if *admin != stored_admin {
-        panic!("not admin");
+        panic_with_error!(e, ContractError::NotAdmin);
     }
 
     // Validate token is in accepted tokens set
@@ -76,7 +76,7 @@ pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &Strin
     if *network != String::from_str(e, STELLAR_MAINNET)
         && *network != String::from_str(e, STELLAR_TESTNET)
     {
-        panic!("unsupported stellar network");
+        panic_with_error!(e, ContractError::UnsupportedStellarNetwork);
     }
     set_token(e, admin, token);
     e.storage().instance().set(&network_key(e), network);
@@ -87,12 +87,12 @@ pub fn set_usdc_token(e: &Env, admin: &Address, token: &Address, network: &Strin
 }
 
 /// @notice Returns the configured token address.
-/// @dev Panics if token has not been configured.
+/// @dev Panics with `ContractError::NotInitialized` if token has not been configured.
 pub fn get_token(e: &Env) -> Address {
     e.storage()
         .instance()
         .get(&crate::DataKey::BondToken)
-        .unwrap_or_else(|| panic!("token not configured - contract not properly initialized"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized))
 }
 
 /// @notice Returns whether a bond token has been configured.
@@ -112,9 +112,10 @@ pub fn get_usdc_network(e: &Env) -> Option<String> {
 ///  Invariants:
 ///  - A negative amount is rejected before any token interaction.
 ///  - A zero amount is always satisfied (no allowance needed).
+#[cfg(test)]
 pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
     if amount < 0 {
-        panic!("amount must be non-negative");
+        panic_with_error!(e, ContractError::NegativeAmount);
     }
     if amount == 0 {
         return;
@@ -130,7 +131,7 @@ pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
 /// @param e Environment reference
 /// @param owner Token owner address (must have approved the contract)
 /// @param amount Amount to transfer (must match actual amount received)
-/// @throws panic with UnsupportedToken error (code 213) if transfer amount differs
+/// @throws `ContractError::UnsupportedToken` (code 213) if transfer amount differs
 ///
 ///  Invariants:
 ///  - Negative amounts panic before any token interaction.
@@ -139,7 +140,7 @@ pub fn require_allowance(e: &Env, owner: &Address, amount: i128) {
 ///    produce a partial transfer or corrupt accounting.
 pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     if amount < 0 {
-        panic!("amount must be non-negative");
+        panic_with_error!(e, ContractError::NegativeAmount);
     }
     if amount == 0 {
         return;
@@ -155,7 +156,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
     let token: TokenClient = TokenClient::new(e, &token_addr);
     let allowance = token.allowance(owner, &contract);
     if allowance < amount {
-        panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE);
+        panic_with_error!(e, ContractError::InsufficientTokenAllowance);
     }
 
     // Delegate to safe_transfer_from which now includes the balance-delta guard.
@@ -169,7 +170,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 /// @param e Environment reference
 /// @param recipient Recipient address
 /// @param amount Amount to transfer (must match actual amount sent)
-/// @throws panic with UnsupportedToken error (code 213) if transfer amount differs
+/// @throws `ContractError::UnsupportedToken` (code 213) if transfer amount differs
 ///
 ///  Invariants:
 ///  - Negative amounts panic before any token interaction.
@@ -178,7 +179,7 @@ pub fn transfer_into_contract(e: &Env, owner: &Address, amount: i128) {
 ///    transfer or corrupt accounting.
 pub fn transfer_from_contract(e: &Env, recipient: &Address, amount: i128) {
     if amount < 0 {
-        panic!("amount must be non-negative");
+        panic_with_error!(e, ContractError::NegativeAmount);
     }
     if amount == 0 {
         return;
@@ -220,7 +221,7 @@ mod tests {
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::testutils::Ledger as _;
     use soroban_sdk::token::{StellarAssetClient, TokenClient};
-    use soroban_sdk::{Address, Env, String, Symbol};
+    use soroban_sdk::{Address, Env, String};
 
     // ------------------------------------------------------------------------
     // Helpers
@@ -241,10 +242,12 @@ mod tests {
         (e, admin, contract_id)
     }
 
-    /// Register the bond contract plus a real Stellar Asset token, and add the
-    /// token to the accepted-tokens set. Returns `(contract_id, token_id)`.
+    /// Register the bond contract plus a real Stellar Asset token, add the
+    /// token to the accepted-tokens set and configure it as the bond token. Returns `(contract_id, token_id)`.
     fn setup_contract_with_token(e: &Env, _admin: &Address) -> (Address, Address) {
-        e.mock_all_auths();
+        // The tests mint and approve from inside the bond contract's frame, so the
+        // token's `require_auth` calls are not root invocations.
+        e.mock_all_auths_allowing_non_root_auth();
         let contract_id = e.register(CredenceBond, ());
         let token_id = e
             .register_stellar_asset_contract_v2(Address::generate(e))
@@ -254,6 +257,8 @@ mod tests {
         accepted.push_back(token_id.clone());
         e.as_contract(&contract_id, || {
             crate::storage::set_accepted_tokens(e, &accepted);
+            // The bond token is configured, as after a successful `set_token`.
+            e.storage().instance().set(&DataKey::BondToken, &token_id);
         });
         (contract_id, token_id)
     }
@@ -294,13 +299,13 @@ mod tests {
     }
 
     /// Add a token to the accepted-tokens set for `contract_id`.
+    /// Must be called inside `e.as_contract(..)`. It writes instance storage
+    /// directly: a nested `as_contract` for the same contract would write to a
+    /// second copy of the instance storage that the outer frame then overwrites.
     fn add_accepted_token(e: &Env, _admin: &Address, token: &Address) {
-        let contract_id = e.current_contract_address();
-        e.as_contract(&contract_id, || {
-            let mut accepted = crate::storage::get_accepted_tokens(e);
-            accepted.push_back(token.clone());
-            crate::storage::set_accepted_tokens(e, &accepted);
-        });
+        let mut accepted = crate::storage::get_accepted_tokens(e);
+        accepted.push_back(token.clone());
+        crate::storage::set_accepted_tokens(e, &accepted);
     }
 
     // ------------------------------------------------------------------------
@@ -310,10 +315,12 @@ mod tests {
     // Boundary: token not configured -> get_token panics, has_token is false.
     #[test]
     fn test_get_token_before_config_panics() {
-        let (e, _admin, _contract_id) = setup();
-        assert!(!has_token(&e));
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_token(&e)));
-        assert!(result.is_err());
+        let (e, _admin, contract_id) = setup();
+        e.as_contract(&contract_id, || {
+            assert!(!has_token(&e));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| get_token(&e)));
+            assert!(result.is_err());
+        });
     }
 
     // Boundary: set_token rejects a token not in the accepted set and
@@ -419,15 +426,17 @@ mod tests {
     // Rejection: allowance below requested amount panics.
     #[test]
     fn test_require_allowance_insufficient_panics() {
-        let (e, _admin, _contract_id, token_id) = setup_with_token();
+        let (e, _admin, contract_id, token_id) = setup_with_token();
         let owner = Address::generate(&e);
-        // No approval -> allowance is 0.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            require_allowance(&e, &owner, 1)
-        }));
-        assert!(result.is_err());
-        // Sanity: token is configured.
-        assert!(has_token(&e));
+        e.as_contract(&contract_id, || {
+            // No approval -> allowance is 0.
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                require_allowance(&e, &owner, 1)
+            }));
+            assert!(result.is_err());
+            // Sanity: token is configured.
+            assert!(has_token(&e));
+        });
         let _ = token_id;
     }
 

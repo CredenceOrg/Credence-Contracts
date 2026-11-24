@@ -101,7 +101,7 @@ fn get_liquidation_treasury_unset_returns_none() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn set_liquidation_treasury_unauthorized_rejected() {
     let e = Env::default();
     e.mock_all_auths();
@@ -219,10 +219,9 @@ fn liquidate_without_treasury_still_marks_bond_inactive() {
 // -----------------------------------------------------------------
 // Negative paths (eligibility)
 // -----------------------------------------------------------------
-// Note: bare `#[should_panic]` is used for unauthorized/no-bond paths to
-// keep tests independent of the SDK's SCErrorCode format. Eligibility
-// rejections come from a literal `panic!("bond is not eligible for ...")`
-// and are matched by the expected substring below.
+// Note: eligibility rejections use `#[should_panic(expected = "bond is not eligible for ...")]`
+// and authorization/not-found rejections use `#[should_panic(expected = "Error(Contract, #N)")]`
+// matching the wire-stable `ContractError` discriminant. No bare `#[should_panic]` remains.
 
 #[test]
 #[should_panic(expected = "bond is not eligible for liquidation")]
@@ -274,7 +273,7 @@ fn liquidate_rolling_bond_past_lockup_rejected() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #200)")]
 fn liquidate_no_bond_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -283,7 +282,7 @@ fn liquidate_no_bond_rejected() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #100)")]
 fn liquidate_non_admin_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -300,7 +299,7 @@ fn liquidate_non_admin_rejected() {
 // -----------------------------------------------------------------
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #201)")]
 fn liquidate_twice_rejected() {
     let e = Env::default();
     let (client, admin, identity, _treasury) = setup_with_treasury(&e);
@@ -330,7 +329,7 @@ fn liquidate_after_withdraw_bond_does_not_set_liquidated_flag() {
 }
 
 #[test]
-#[should_panic]
+#[should_panic(expected = "Error(Contract, #201)")]
 fn liquidate_after_withdraw_bond_panics() {
     // Companion to the above: after `withdraw_bond` flips `active = false`,
     // a subsequent `liquidate` is rejected (it cannot differentiate "withdrew"

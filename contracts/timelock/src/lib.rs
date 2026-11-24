@@ -1,11 +1,11 @@
-#![no_std]
+﻿#![no_std]
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Symbol,
+    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
     Val, Vec,
 };
 
@@ -38,7 +38,9 @@ const CALL_BOUND_OPERATION_TTL: u32 = 3600;
 /// call) must be kept alive for at least as long as the longest execution
 /// window. The limits are kept below the network's maximum entry TTL
 /// (`6_311_520` ledgers) so that `extend_ttl` is always valid.
+#[allow(dead_code, reason = "reserved for future TTL-extension wiring")]
 const PERSISTENT_TTL_THRESHOLD: u32 = 518_400; // ~30 days
+#[allow(dead_code, reason = "reserved for future TTL-extension wiring")]
 const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400; // ~180 days
 
 /// Hard cap on the page size accepted by
@@ -48,6 +50,7 @@ const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400; // ~180 days
 /// single read can never exceed the gas/read budget regardless of the argument.
 /// `limit == 0` selects this maximum, matching the admin contract's pagination.
 const MAX_PAGE_LIMIT: u32 = 200;
+pub const MAX_BATCH_SIZE: u32 = 20;
 
 fn effective_page_limit(limit: u32) -> u32 {
     if limit == 0 {
@@ -106,6 +109,16 @@ pub struct CallSpec {
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CallRequest {
+    pub target: Address,
+    pub func: Symbol,
+    pub args: Vec<Val>,
+    pub salt: BytesN<32>,
+    pub delay: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct QueuedOperation {
     pub id: u64,
     pub op_hash: BytesN<32>,
@@ -122,7 +135,7 @@ pub struct CallBoundOperation {
     pub op_hash: BytesN<32>,
     pub target: Address,
     pub func: Symbol,
-    pub args: Vec<soroban_sdk::Val>,
+    pub args: Vec<Val>,
     pub salt: BytesN<32>,
     pub eta: u64,
     pub expires_at: u64,
@@ -138,6 +151,7 @@ pub struct PendingAdmin {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
     PendingAdmin,
@@ -146,6 +160,8 @@ pub enum DataKey {
     ExecutedOp(BytesN<32>),
     /// Persistent storage key for call-bound operations.
     CallBoundOperation(u64),
+    /// Optional configured grace period; absent entries use `GRACE_PERIOD`.
+    GracePeriod,
 }
 
 #[contract]
@@ -153,6 +169,7 @@ pub struct TimelockContract;
 
 /// Derive the per-operation salt from values that are only known once the
 /// operation id and its execution window have been assigned.
+#[allow(dead_code, reason = "prepared for call-bound operation hashing; not yet wired to an entrypoint")]
 fn derive_salt(e: &Env, op_id: u64, eta: u64) -> BytesN<32> {
     let mut preimage = Bytes::new(e);
     preimage.append(&op_id.to_xdr(e));
@@ -160,11 +177,12 @@ fn derive_salt(e: &Env, op_id: u64, eta: u64) -> BytesN<32> {
     e.crypto().sha256(&preimage).to_bytes()
 }
 
-/// `op_hash = sha256(xdr(network_id ‖ timelock_address ‖ target ‖ func ‖ args ‖ salt))`
+/// `op_hash = sha256(xdr(network_id â€– timelock_address â€– target â€– func â€– args â€– salt))`
 ///
 /// Every field of the pre-image is length-delimited by its XDR encoding, so
 /// changing any byte of `target`, `func`, `args` or `salt` yields a different
 /// hash and therefore a different queued operation.
+#[allow(dead_code, reason = "prepared for call-bound operation hashing; not yet wired to an entrypoint")]
 fn compute_call_hash(
     e: &Env,
     target: &Address,
@@ -182,6 +200,8 @@ fn compute_call_hash(
     e.crypto().sha256(&preimage).to_bytes()
 }
 
+/// Load a queued operation from persistent storage, bumping its TTL.
+#[allow(dead_code, reason = "helper used by test helpers and future entrypoints")]
 fn load_operation(e: &Env, op_id: u64) -> QueuedOperation {
     let key = DataKey::Operation(op_id);
     let op: QueuedOperation = e
@@ -212,6 +232,29 @@ impl TimelockContract {
         e.storage()
             .instance()
             .set(&DataKey::OperationCounter, &0_u64);
+    }
+
+    /// Set the grace period applied to newly queued operations.
+    pub fn set_grace_period(e: Env, admin: Address, grace_period: u64) {
+        bump_instance_ttl(&e);
+        Self::require_proposer_admin(&e, &admin);
+        let previous = Self::get_grace_period(e.clone());
+        e.storage()
+            .instance()
+            .set(&DataKey::GracePeriod, &grace_period);
+        e.events().publish(
+            (Symbol::new(&e, "grace_period_updated"),),
+            (previous, grace_period),
+        );
+    }
+
+    /// Get the grace period used for newly queued operations.
+    pub fn get_grace_period(e: Env) -> u64 {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::GracePeriod)
+            .unwrap_or(GRACE_PERIOD)
     }
 
     /// Queue a new administrative operation to be executed after the delay.
@@ -259,99 +302,45 @@ impl TimelockContract {
         proposer: Address,
         target: Address,
         func: Symbol,
-        args: Vec<soroban_sdk::Val>,
+        args: Vec<Val>,
         salt: BytesN<32>,
         delay: u64,
     ) -> u64 {
         bump_instance_ttl(&e);
-        proposer.require_auth();
-        let admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::NotInitialized));
+        Self::require_proposer_admin(&e, &proposer);
+        Self::queue_call_internal(
+            &e,
+            &proposer,
+            CallRequest {
+                target,
+                func,
+                args,
+                salt,
+                delay,
+            },
+        )
+    }
 
-        if proposer != admin {
-            panic_with_error!(&e, ContractError::NotAdmin);
+    /// Atomically queue a bounded batch of call-bound operations.
+    ///
+    /// Each request supplies its own target, payload, salt, and delay. Any
+    /// invalid request aborts the transaction, including all earlier requests.
+    pub fn queue_calls(e: Env, proposer: Address, calls: Vec<CallRequest>) -> Vec<u64> {
+        bump_instance_ttl(&e);
+        Self::require_proposer_admin(&e, &proposer);
+        if calls.is_empty() {
+            panic_with_error!(&e, ContractError::EmptyBatch);
+        }
+        if calls.len() > MAX_BATCH_SIZE {
+            panic_with_error!(&e, ContractError::BatchTooLarge);
         }
 
-        if delay < min_delay_seconds() {
-            panic_with_error!(&e, ContractError::TimelockNotReady);
+        let mut op_ids = Vec::new(&e);
+        for index in 0..calls.len() {
+            let call = calls.get(index).unwrap();
+            op_ids.push_back(Self::queue_call_internal(&e, &proposer, call));
         }
-
-        // Compute the operation hash on-chain
-        let op_hash = Self::hash_call(
-            e.clone(),
-            target.clone(),
-            func.clone(),
-            args.clone(),
-            salt.clone(),
-        );
-
-        // Replay guard: cannot queue an operation that was already executed
-        if e.storage()
-            .instance()
-            .get(&DataKey::ExecutedOp(op_hash.clone()))
-            .unwrap_or(false)
-        {
-            panic_with_error!(&e, ContractError::ProposalAlreadyExecuted);
-        }
-
-        let op_id: u64 = e
-            .storage()
-            .instance()
-            .get(&DataKey::OperationCounter)
-            .unwrap_or(0);
-        let next_op_id = op_id
-            .checked_add(1)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        e.storage()
-            .instance()
-            .set(&DataKey::OperationCounter, &next_op_id);
-
-        let now = e.ledger().timestamp();
-        let eta = now
-            .checked_add(delay)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        let expires_at = eta
-            .checked_add(GRACE_PERIOD)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-
-        let op = CallBoundOperation {
-            id: op_id,
-            op_hash: op_hash.clone(),
-            target: target.clone(),
-            func: func.clone(),
-            args: args.clone(),
-            salt: salt.clone(),
-            eta,
-            expires_at,
-            status: OperationStatus::Pending,
-        };
-
-        // Store in persistent storage with TTL extension
-        let op_key = DataKey::CallBoundOperation(op_id);
-        e.storage().persistent().set(&op_key, &op);
-        bump_persistent_ttl(&e, op_key);
-
-        // Also store in instance storage for backward compatibility with get_operation
-        let op_wrapper = QueuedOperation {
-            id: op_id,
-            op_hash: op_hash.clone(),
-            eta,
-            expires_at,
-            status: OperationStatus::Pending,
-        };
-        e.storage()
-            .instance()
-            .set(&DataKey::Operation(op_id), &op_wrapper);
-
-        e.events().publish(
-            (Symbol::new(&e, "operation_queued"), op_id),
-            (proposer, op_hash, eta, expires_at),
-        );
-
-        op_id
+        op_ids
     }
 
     /// Compute the hash for a call-bound operation.
@@ -362,13 +351,13 @@ impl TimelockContract {
         e: Env,
         target: Address,
         func: Symbol,
-        args: Vec<soroban_sdk::Val>,
+        args: Vec<Val>,
         salt: BytesN<32>,
     ) -> BytesN<32> {
         let timelock_address = e.current_contract_address();
 
         // Build the pre-image using Bytes and append (following the pattern in credence_bond)
-        let mut preimage = soroban_sdk::Bytes::new(&e);
+        let mut preimage = Bytes::new(&e);
         preimage.append(&timelock_address.to_xdr(&e));
         preimage.append(&target.to_xdr(&e));
         preimage.append(&func.to_xdr(&e));
@@ -376,7 +365,7 @@ impl TimelockContract {
         preimage.append(&salt.to_xdr(&e));
 
         // Compute SHA256 hash using e.crypto().sha256()
-        let hash: soroban_sdk::BytesN<32> = e.crypto().sha256(&preimage).into();
+        let hash: BytesN<32> = e.crypto().sha256(&preimage).into();
         hash
     }
 
@@ -412,7 +401,7 @@ impl TimelockContract {
         }
 
         if now > op.expires_at {
-            panic_with_error!(&e, ContractError::SignatureExpired);
+            panic_with_error!(&e, ContractError::OperationExpired);
         }
 
         // Replay guard check
@@ -469,7 +458,7 @@ impl TimelockContract {
         }
 
         if now > op.expires_at {
-            panic_with_error!(&e, ContractError::SignatureExpired);
+            panic_with_error!(&e, ContractError::OperationExpired);
         }
 
         // Replay guard check
@@ -507,7 +496,7 @@ impl TimelockContract {
             .publish(("operation_executed", op_id), op.op_hash.clone());
 
         // Invoke the target contract
-        e.invoke_contract::<soroban_sdk::Val>(&op.target, &op.func, op.args.clone());
+        e.invoke_contract::<Val>(&op.target, &op.func, op.args.clone());
 
         // Emit post-execution event
         e.events()
@@ -588,6 +577,7 @@ impl TimelockContract {
         let op: Option<QueuedOperation> = e.storage().persistent().get(&key);
         if op.is_some() {
             bump_persistent_ttl(&e, key);
+            bump_persistent_ttl(&e, key.clone());
             return op;
         }
         e.storage().instance().get(&key)
@@ -659,6 +649,7 @@ impl TimelockContract {
             }
         }
         page
+        }
     }
 
     fn require_proposer_admin(e: &Env, proposer: &Address) {
@@ -680,6 +671,56 @@ impl TimelockContract {
         }
     }
 
+    fn queue_call_internal(e: &Env, proposer: &Address, call: CallRequest) -> u64 {
+        Self::require_valid_delay(e, call.delay);
+        let op_hash = Self::hash_call(
+            e.clone(),
+            call.target.clone(),
+            call.func.clone(),
+            call.args.clone(),
+            call.salt.clone(),
+        );
+        if e.storage()
+            .instance()
+            .get(&DataKey::ExecutedOp(op_hash.clone()))
+            .unwrap_or(false)
+        {
+            panic_with_error!(e, ContractError::ProposalAlreadyExecuted);
+        }
+
+        let (op_id, eta, expires_at) = Self::begin_queue(e, call.delay);
+        let op = CallBoundOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            target: call.target.clone(),
+            func: call.func.clone(),
+            args: call.args,
+            salt: call.salt,
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+        let op_key = DataKey::CallBoundOperation(op_id);
+        e.storage().persistent().set(&op_key, &op);
+        bump_persistent_ttl(e, op_key);
+
+        let op_wrapper = QueuedOperation {
+            id: op_id,
+            op_hash: op_hash.clone(),
+            eta,
+            expires_at,
+            status: OperationStatus::Pending,
+        };
+        e.storage()
+            .instance()
+            .set(&DataKey::Operation(op_id), &op_wrapper);
+        e.events().publish(
+            (Symbol::new(e, "operation_queued"), op_id),
+            (proposer.clone(), op_hash, eta, expires_at),
+        );
+        op_id
+    }
+
     /// Allocate the next operation id and compute its execution window.
     fn begin_queue(e: &Env, delay: u64) -> (u64, u64, u64) {
         let op_id: u64 = e
@@ -699,7 +740,7 @@ impl TimelockContract {
             .checked_add(delay)
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
         let expires_at = eta
-            .checked_add(GRACE_PERIOD)
+            .checked_add(Self::get_grace_period(e.clone()))
             .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
 
         (op_id, eta, expires_at)
@@ -742,7 +783,7 @@ impl TimelockContract {
             .checked_add(min_delay_seconds())
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let expires_at = eta
-            .checked_add(GRACE_PERIOD)
+            .checked_add(Self::get_grace_period(e.clone()))
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let pending = PendingAdmin {
             address: new_admin.clone(),
@@ -812,6 +853,9 @@ impl TimelockContract {
 
 #[cfg(test)]
 mod test_timelock;
+
+#[cfg(test)]
+mod test_admin_handover;
 
 #[cfg(test)]
 mod test_call_binding;
@@ -1209,20 +1253,20 @@ mod tests {
 
     #[test]
     fn is_ready_boundary_eta_zero_now_zero() {
-        // eta == 0, now == 0  →  0 >= 0  →  true
+        // eta == 0, now == 0  â†’  0 >= 0  â†’  true
         assert!(is_ready(0, 0));
     }
 
     #[test]
     fn is_ready_boundary_eta_zero_now_nonzero() {
-        // eta == 0, now > 0  →  always ready
+        // eta == 0, now > 0  â†’  always ready
         assert!(is_ready(0, 1));
         assert!(is_ready(0, u64::MAX));
     }
 
     #[test]
     fn is_ready_boundary_now_zero_eta_nonzero() {
-        // now == 0, eta > 0  →  never ready
+        // now == 0, eta > 0  â†’  never ready
         assert!(!is_ready(1, 0));
         assert!(!is_ready(u64::MAX, 0));
     }
@@ -1237,33 +1281,33 @@ mod tests {
 
     #[test]
     fn is_ready_boundary_now_one_before_eta() {
-        // now == eta - 1: one ledger before the ETA — must be false.
+        // now == eta - 1: one ledger before the ETA â€” must be false.
         let eta: u64 = 500;
         assert!(!is_ready(eta, eta - 1));
     }
 
     #[test]
     fn is_ready_boundary_now_one_after_eta() {
-        // now == eta + 1: one ledger after the ETA — must be true.
+        // now == eta + 1: one ledger after the ETA â€” must be true.
         let eta: u64 = 500;
         assert!(is_ready(eta, eta + 1));
     }
 
     #[test]
     fn is_ready_boundary_eta_max_now_max_minus_one() {
-        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  →  false
+        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  â†’  false
         assert!(!is_ready(u64::MAX, u64::MAX - 1));
     }
 
     #[test]
     fn is_ready_boundary_eta_max_now_max() {
-        // eta == u64::MAX, now == u64::MAX  →  true (tie-break at maximum value)
+        // eta == u64::MAX, now == u64::MAX  â†’  true (tie-break at maximum value)
         assert!(is_ready(u64::MAX, u64::MAX));
     }
 
     #[test]
     fn is_ready_boundary_eta_max_minus_one_now_max() {
-        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  →  true
+        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  â†’  true
         assert!(is_ready(u64::MAX - 1, u64::MAX));
     }
 

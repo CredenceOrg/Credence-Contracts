@@ -29,7 +29,10 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger as _}, Address, Env};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger as _},
+    Address, Env,
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,16 +49,7 @@ fn setup() -> (Env, Address, CredenceDelegationClient<'static>) {
 }
 
 fn set_ts(env: &Env, ts: u64) {
-    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
-        timestamp: ts,
-        protocol_version: 22,
-        sequence_number: 1,
-        network_id: [0u8; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 16,
-        min_persistent_entry_ttl: 16,
-        max_entry_ttl: 3_000_000,
-    });
+    env.ledger().set_timestamp(ts);
 }
 
 // ---------------------------------------------------------------------------

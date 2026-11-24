@@ -26,6 +26,7 @@ fn wire_codes_are_stable() {
     assert_eq!(DisputeError::DisputeNotFound as u32, 1);
     assert_eq!(DisputeError::AlreadyClosed as u32, 2);
     assert_eq!(DisputeError::Unauthorized as u32, 3);
+    assert_eq!(DisputeError::Paused as u32, 4);
 }
 
 #[test]
@@ -34,15 +35,14 @@ fn wire_codes_are_unique_nonzero_and_contiguous() {
         DisputeError::DisputeNotFound as u32,
         DisputeError::AlreadyClosed as u32,
         DisputeError::Unauthorized as u32,
+        DisputeError::Paused as u32,
     ];
     // 0 is reserved for success by the host; every variant must be non-zero.
     for code in codes {
         assert_ne!(code, 0);
     }
-    // Distinct...
-    assert!(codes[0] != codes[1] && codes[1] != codes[2] && codes[0] != codes[2]);
-    // ...and contiguous from 1, so adding a variant is a visible, reviewable change.
-    assert_eq!(codes, [1, 2, 3]);
+    // Distinct and contiguous from 1, so adding a variant is reviewable.
+    assert_eq!(codes, [1, 2, 3, 4]);
 }
 
 #[test]
@@ -62,6 +62,7 @@ fn debug_renders_the_variant_name() {
     assert!(std::format!("{:?}", DisputeError::DisputeNotFound).contains("DisputeNotFound"));
     assert!(std::format!("{:?}", DisputeError::AlreadyClosed).contains("AlreadyClosed"));
     assert!(std::format!("{:?}", DisputeError::Unauthorized).contains("Unauthorized"));
+    assert!(std::format!("{:?}", DisputeError::Paused).contains("Paused"));
 }
 
 // ---------------------------------------------------------------------------

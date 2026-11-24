@@ -7,18 +7,10 @@
     dead_code,
     unused_assignments,
     unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
+    mismatched_lifetime_syntaxes
 )]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
+// cargo build --release / WASM build is the only mode where this deny fires
+// (tests stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 //! # Serialization and retry contract

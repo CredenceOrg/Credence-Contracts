@@ -22,6 +22,7 @@
 #[cfg(test)]
 extern crate std;
 
+pub mod arbitration;
 pub mod consts;
 pub mod governable;
 
