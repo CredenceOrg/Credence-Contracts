@@ -30,7 +30,7 @@ extern crate std;
 
 use crate::*;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env, IntoVal, Val, Vec};
+use soroban_sdk::{Address, Env, IntoVal};
 
 fn setup(env: &Env) -> (CredenceRegistryClient<'_>, Address, Address) {
     env.mock_all_auths();
@@ -248,7 +248,7 @@ fn test_exhaustive_uninitialized_rejected() {
 #[test]
 fn test_admin_success_on_all_privileged_entrypoints() {
     let env = Env::default();
-    let (client, admin, _attacker) = setup(&env);
+    let (client, _admin, _attacker) = setup(&env);
 
     // register (admin)
     let identity = Address::generate(&env);

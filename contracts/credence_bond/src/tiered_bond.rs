@@ -87,19 +87,6 @@ pub(crate) fn tier_for_amount_with_thresholds(
     }
 }
 
-/// Comparator for [`BondTier`] values. Returns the rank (Bronze=0, Silver=1,
-/// Gold=2, Platinum=3). Used by the boundary/fuzz test suite to compare tier
-/// transitions in a single integer cell.
-#[must_use]
-pub(crate) fn tier_rank(t: &BondTier) -> u8 {
-    match t {
-        BondTier::Bronze => 0,
-        BondTier::Silver => 1,
-        BondTier::Gold => 2,
-        BondTier::Platinum => 3,
-    }
-}
-
 /// Emits both the v1 `tier_changed` event and the v2 `tier_changed_v2` event
 /// when a bond crosses a tier threshold.
 pub fn emit_tier_change_if_needed(

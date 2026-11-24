@@ -108,12 +108,6 @@ fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
     u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
 }
 
-fn require_matching_operator_epoch(e: &Env, action: PauseAction, ep: u64) {
-    let expected_id = derive_proposal_id(e, action);
-    if ep != expected_id {
-        panic_with_error!(e, ContractError::StaleEpoch);
-    }
-}
 
 fn require_admin_auth(e: &Env, admin: &Address) {
     credence_errors::require_admin!(e, admin, DataKey::Admin);
@@ -253,9 +247,10 @@ fn record_approval(e: &Env, proposal_id: u64, signer: &Address) {
         .instance()
         .get(&DataKey::PauseApprovalCount(proposal_id))
         .unwrap_or(0);
-    let new_count = count
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+    let new_count = match count.checked_add(1) {
+        Some(v) => v,
+        None => panic_with_error!(e, ContractError::Overflow),
+    };
     e.storage()
         .instance()
         .set(&DataKey::PauseApprovalCount(proposal_id), &new_count);
@@ -288,11 +283,10 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
         None
     } else {
         // Admin override: Admin can always unpause without a proposal.
-        let stored_admin: Address = e
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
+        let stored_admin: Address = match e.storage().instance().get(&DataKey::Admin) {
+            Some(admin) => admin,
+            None => panic_with_error!(e, ContractError::NotInitialized),
+        };
 
         if *caller == stored_admin {
             caller.require_auth();
@@ -337,11 +331,10 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     require_pause_signer(e, signer);
 
-    let action: u32 = e
-        .storage()
-        .instance()
-        .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+    let action: u32 = match e.storage().instance().get(&DataKey::PauseProposal(proposal_id)) {
+        Some(action) => action,
+        None => panic_with_error!(e, ContractError::ProposalNotFound),
+    };
 
     let action_enum = match action {
         1 => PauseAction::Pause,
@@ -361,11 +354,10 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
 }
 
 pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
-    let action: u32 = e
-        .storage()
-        .instance()
-        .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+    let action: u32 = match e.storage().instance().get(&DataKey::PauseProposal(proposal_id)) {
+        Some(action) => action,
+        None => panic_with_error!(e, ContractError::ProposalNotFound),
+    };
 
     let action_enum = match action {
         1 => PauseAction::Pause,
@@ -499,14 +491,14 @@ pub fn get_pause_proposal_state(
     // per-signer approval keys (which `execute_pause_proposal` does not remove)
     // as the signal: if the payload is absent yet at least one signer in the
     // supplied candidate set has an approval flag, the proposal was executed.
-    let executed = if !has_payload {
+    let executed = if has_payload {
+        false
+    } else {
         // Legacy path: counter covers the ID.
         let legacy_executed = proposal_id < counter;
         // Hash-derived path: surviving approval key(s) in the supplied set.
         let hash_executed = !approved_by.is_empty();
         legacy_executed || hash_executed
-    } else {
-        false
     };
 
     PauseProposalView {

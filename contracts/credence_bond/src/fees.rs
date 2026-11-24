@@ -24,10 +24,9 @@
 //! the inclusive range; this matches the convention used by
 //! [`crate::parameters`] for `protocol_fee_bps` / `attestation_fee_bps`.
 
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{Address, Env};
 
 use crate::events;
-use crate::math;
 
 // ============================================================================
 // Governance bounds (issue #1027)
@@ -75,7 +74,7 @@ pub fn get_config(e: &Env) -> (Option<Address>, u32) {
 pub fn set_config(e: &Env, admin: &Address, treasury: Address, fee_bps: u32) {
     // ── Range check (issue #1027 governance safety rail) ─────────────────
     if !(MIN_FEE_BPS..=MAX_FEE_BPS).contains(&fee_bps) {
-        panic!("fee_bps out of bounds");
+        e.panic_with_error(credence_errors::ContractError::InvalidFeeBps);
     }
 
     // ── CEI: read previous values before overwriting ────────────────────
@@ -93,54 +92,10 @@ pub fn set_config(e: &Env, admin: &Address, treasury: Address, fee_bps: u32) {
     events::emit_fee_config_updated(e, admin, old_treasury, &treasury, old_fee_bps, fee_bps);
 }
 
-/// Calculate fee for a bond amount. Returns (fee_amount, net_amount).
-/// If fee is waived (e.g. fee_bps is 0 or waiver condition), fee is 0.
-#[must_use]
-pub fn calculate_fee(e: &Env, amount: i128) -> (i128, i128) {
-    let (_treasury, fee_bps) = get_config(e);
-    if fee_bps == 0 || amount <= 0 {
-        return (0, amount);
-    }
-    math::split_bps(
-        amount,
-        fee_bps,
-        "fee calculation overflow",
-        "fee calculation div-by-zero",
-        "fee calculation underflow",
-    )
-}
-
 /// Check if fee is waived for this bond (e.g. zero amount, or future: whitelisted identity).
 #[allow(dead_code)]
 #[must_use]
 pub fn is_fee_waived(e: &Env, amount: i128, _identity: &Address) -> bool {
     let (_, fee_bps) = get_config(e);
     fee_bps == 0 || amount <= 0
-}
-
-/// Record fee to the contract's fee pool (for later transfer to treasury).
-/// In full implementation, transfer would happen here; we accumulate and emit event.
-pub fn record_fee(e: &Env, identity: &Address, amount: i128, fee: i128, treasury: &Address) {
-    if fee <= 0 {
-        return;
-    }
-    let key = Symbol::new(e, "fees");
-    let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
-    let new_total = math::add_i128(current, fee, "fee pool overflow");
-    e.storage().instance().set(&key, &new_total);
-    emit_fee_event(e, identity, amount, fee, treasury);
-}
-
-/// Emit fee collection event.
-pub fn emit_fee_event(
-    e: &Env,
-    identity: &Address,
-    bond_amount: i128,
-    fee_amount: i128,
-    treasury: &Address,
-) {
-    e.events().publish(
-        (Symbol::new(e, "bond_creation_fee"),),
-        (identity.clone(), bond_amount, fee_amount, treasury.clone()),
-    );
 }

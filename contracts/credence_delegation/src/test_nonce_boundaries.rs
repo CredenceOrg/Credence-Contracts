@@ -15,7 +15,6 @@ use crate::{
 };
 use soroban_sdk::testutils::{storage::Persistent as _, Address as _, Events as _, Ledger as _};
 use soroban_sdk::{contract, contractimpl, Error};
-use std::string::ToString;
 
 #[contract]
 struct NonceHarness;
@@ -219,8 +218,6 @@ fn snapshot_reload_preserves_replay_protection_and_allows_next_nonce() {
     // SDK ledger reload models persisted-state recovery, not a network
     // RestoreFootprint transaction. Native function registration is not saved.
     let restored = Env::from_snapshot(e.to_snapshot());
-    let contract = Address::from_str(&restored, &contract.to_string().to_string());
-    let owner = Address::from_str(&restored, &owner.to_string().to_string());
     restored.register_at(&contract, NonceHarness, ());
     let client = NonceHarnessClient::new(&restored, &contract);
     assert_eq!(client.read(&owner), 50);

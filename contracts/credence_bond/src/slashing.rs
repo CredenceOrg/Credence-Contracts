@@ -73,7 +73,6 @@ pub fn slash_bond(e: &Env, admin: &Address, slash_amount: i128) -> IdentityBond 
 /// - **Cumulative**: Multiple slashes accumulate (tracked in slashed_amount)
 /// - **Over-slash Protection**: Slash requests above available balance are REJECTED (not capped)
 /// - **Withdrawals**: Affected by slashing (withdrawable = bonded - slashed)
-use crate::{DataKey, IdentityBond};
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, Address, Env, Symbol};
 

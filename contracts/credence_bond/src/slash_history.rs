@@ -95,13 +95,14 @@ pub fn get_slash_count(e: &Env, identity: &Address) -> u32 {
 /// # Panics
 /// Panics with `"slash record not found"` when `index >= slash_count`.
 #[must_use]
+#[cfg(test)]
 pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord {
     let key = SlashStorageKey::SlashRecord(identity.clone(), index);
     let record = e
         .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("slash record not found"));
+        .unwrap_or_else(|| e.panic_with_error(credence_errors::ContractError::SlashRecordNotFound));
     e.storage().persistent().extend_ttl(
         &key,
         crate::PERSISTENT_TTL_MAX / 2,
@@ -199,7 +200,7 @@ pub mod testutils {
         e.storage()
             .persistent()
             .get(&key)
-            .unwrap_or_else(|| panic!("slash record not found"))
+            .unwrap_or_else(|| e.panic_with_error(credence_errors::ContractError::SlashRecordNotFound))
     }
 
     /// Sum all slash amounts from history. O(n) — use only in tests.
@@ -214,12 +215,6 @@ pub mod testutils {
     }
 }
 
-/// Re-export the full-history helper at module level for test convenience.
-///
-/// This alias allows test code to call `slash_history::get_slash_history(&e, &identity)`
-/// without qualifying through the `testutils` submodule.
-#[cfg(any(test, feature = "testutils"))]
-pub use testutils::get_slash_history;
 
 // ============================================================================
 // Boundary and Recovery Tests (Issue #1349)
@@ -230,7 +225,7 @@ mod boundary_recovery_tests {
     use super::*;
     use crate::parameters::MAX_QUERY_LIMIT;
     use crate::CredenceBond;
-    use soroban_sdk::testutils::{Address as _, Ledger};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env, Symbol, Vec};
     use std::panic::AssertUnwindSafe;
 
@@ -261,7 +256,7 @@ mod boundary_recovery_tests {
 
         e.as_contract(&cid, || {
             let result_0 = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                get_slash_record(&e, &identity, 0);
+                let _ = get_slash_record(&e, &identity, 0);
             }));
             assert!(
                 result_0.is_err(),
@@ -269,7 +264,7 @@ mod boundary_recovery_tests {
             );
 
             let result_max = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                get_slash_record(&e, &identity, u32::MAX);
+                let _ = get_slash_record(&e, &identity, u32::MAX);
             }));
             assert!(
                 result_max.is_err(),
@@ -328,7 +323,7 @@ mod boundary_recovery_tests {
 
             // Off-by-one boundary: index 1 must panic since count is 1
             let out_of_bounds = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                get_slash_record(&e, &identity, 1);
+                let _ = get_slash_record(&e, &identity, 1);
             }));
             assert!(out_of_bounds.is_err(), "reading index == count must panic");
         });
@@ -366,7 +361,7 @@ mod boundary_recovery_tests {
 
             // Off-by-one: index == count must panic
             let past_end = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                get_slash_record(&e, &identity, count_target);
+                let _ = get_slash_record(&e, &identity, count_target);
             }));
             assert!(past_end.is_err(), "index == count must fail");
         });
@@ -623,7 +618,7 @@ mod boundary_recovery_tests {
 
             // Induce panic by requesting out-of-bounds index
             let panic_attempt = std::panic::catch_unwind(AssertUnwindSafe(|| {
-                get_slash_record(&e, &identity, 99);
+                let _ = get_slash_record(&e, &identity, 99);
             }));
             assert!(panic_attempt.is_err());
 
