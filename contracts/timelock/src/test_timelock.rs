@@ -276,7 +276,7 @@ fn test_boundary_expires_at_exact_succeeds() {
 }
 
 /// Boundary test: timestamp at expires_at + 1 (1 second after expiry).
-/// Execution MUST fail with SignatureExpired error.
+/// Execution MUST fail with OperationExpired error.
 #[test]
 fn test_boundary_expires_at_plus_one_fails_expired() {
     let (env, client, admin) = setup_env();
@@ -359,7 +359,7 @@ fn test_boundary_full_lifecycle_window_sweep() {
         OperationStatus::Executed
     );
 
-    // 5. One second after expires_at -> SignatureExpired
+    // 5. One second after expires_at -> OperationExpired
     let hash_5 = BytesN::from_array(&env, &[25; 32]);
     let id_5 = client.queue_operation(&admin, &hash_5, &delay);
     let op_5 = client.get_operation(&id_5).unwrap();

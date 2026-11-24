@@ -73,6 +73,8 @@ fn test_auth_tree_valid() {
             owner.to_val(),
             subject.to_val(),
             String::from_str(&e, "fuzz_data").to_val(),
+            bond_id.to_val(),
+            0_u64.into_val(&e),
             0_u64.into_val(&e),
         ],
         sub_invokes: &[],

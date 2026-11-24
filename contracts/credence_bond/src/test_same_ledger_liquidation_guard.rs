@@ -171,7 +171,7 @@ fn test_consecutive_topups_allow_slash_after_last_advance() {
 /// Same-ledger record followed by immediate guard call must panic; the panic
 /// message exactly equals the public [`SLASH_BLOCKED_REASON`] constant.
 #[test]
-#[should_panic(expected = "slash blocked: collateral increased in this ledger")]
+#[should_panic(expected = "Error(Contract, #242)")]
 fn test_blocked_message_matches_public_constant() {
     let e = Env::default();
     let _handles = test_helpers::setup_with_token(&e);

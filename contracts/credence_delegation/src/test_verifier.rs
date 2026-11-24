@@ -9,10 +9,10 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{String, Env};
+use soroban_sdk::{Env, String};
 use crate::{
-    domain::{DelegatedActionPayload, DomainTag, decode_scheme_safe, verify_scheme_supported},
-    verifier::{SchemeTag, validate_scheme_registered},
+    domain::{decode_scheme_safe, DelegatedActionPayload, DomainTag},
+    verifier::SchemeTag,
 };
 
 #[test]
@@ -33,7 +33,7 @@ fn test_unknown_scheme_rejection() {
     // Unknown scheme tags should not be recognized
     assert_eq!(SchemeTag::try_from_u8(3), None);
     assert_eq!(SchemeTag::try_from_u8(255), None);
-    
+
     // But SchemeTag::is_known should allow known schemes
     assert!(SchemeTag::is_known(0));
     assert!(SchemeTag::is_known(1));
@@ -132,6 +132,7 @@ fn test_scheme_ordering() {
     assert!(SchemeTag::Ed25519 < SchemeTag::Secp256r1);
     assert!(SchemeTag::Secp256r1 < SchemeTag::MLDSA44);
     assert!(SchemeTag::Ed25519 <= SchemeTag::Ed25519);
+    assert!(SchemeTag::MLDSA44 > SchemeTag::Ed25519);
 }
 
 #[test]

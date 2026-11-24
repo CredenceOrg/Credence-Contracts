@@ -22,7 +22,10 @@ fn grace_zero_preserves_hard_cliff_status_and_unlimited_late_revoke() {
     let expires_at = 100_u64;
 
     // Verify the default grace period is non-zero (standard grace window).
-    assert_eq!(client.get_revocation_grace_period(), DEFAULT_REVOCATION_GRACE_PERIOD);
+    assert_eq!(
+        client.get_revocation_grace_period(),
+        DEFAULT_REVOCATION_GRACE_PERIOD
+    );
 
     // Explicitly set grace to 0 to test the legacy hard-cliff behaviour.
     client.set_revocation_grace_period(&admin, &0_u64);
@@ -206,7 +209,10 @@ fn non_admin_cannot_set_grace_period() {
 fn admin_can_update_and_read_grace_period() {
     let (e, client, admin) = setup();
     let _ = e;
-    assert_eq!(client.get_revocation_grace_period(), DEFAULT_REVOCATION_GRACE_PERIOD);
+    assert_eq!(
+        client.get_revocation_grace_period(),
+        DEFAULT_REVOCATION_GRACE_PERIOD
+    );
     client.set_revocation_grace_period(&admin, &120_u64);
     assert_eq!(client.get_revocation_grace_period(), 120_u64);
     client.set_revocation_grace_period(&admin, &0_u64);
@@ -223,7 +229,10 @@ fn default_grace_window_provides_post_expiry_buffer() {
     // With the default grace window, status is InGrace immediately at
     // expires_at (not Expired), and late revocation is allowed within
     // the default window.
-    assert_eq!(client.get_revocation_grace_period(), DEFAULT_REVOCATION_GRACE_PERIOD);
+    assert_eq!(
+        client.get_revocation_grace_period(),
+        DEFAULT_REVOCATION_GRACE_PERIOD
+    );
 
     client.delegate(
         &owner,
