@@ -22,6 +22,7 @@ fn variant_table_length_is_the_canonical_generation() {
         126,
         134,
         129,
+        119,
         "Add one row to `variant_table.rs` per new `ContractError` variant; \
          do not maintain separate manual counts in other test files.",
     );

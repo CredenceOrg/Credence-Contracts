@@ -238,7 +238,7 @@ impl FixedDurationBond {
             .get(&DataKey::AccumulatedFees)
             .unwrap_or(0);
         if fees <= 0 {
-            panic!("no fees to collect");
+            panic_with_error!(&e, ContractError::NoFeesToCollect);
         }
 
         // CEI: zero the accumulator first, then transfer.
@@ -347,7 +347,7 @@ impl FixedDurationBond {
 
         let now = e.ledger().timestamp();
         if now < bond.bond_expiry {
-            panic!("lock period has not elapsed yet");
+            panic_with_error!(&e, ContractError::LockupNotExpired);
         }
 
         // CEI: deactivate bond before external transfer.
@@ -376,11 +376,11 @@ impl FixedDurationBond {
 
         let now = e.ledger().timestamp();
         if now >= bond.bond_expiry {
-            panic!("lock period has already elapsed; use withdraw");
+            panic_with_error!(&e, ContractError::LockupAlreadyElapsed);
         }
 
         if bond.penalty_bps == 0 {
-            panic!("cannot exit early: penalty not configured");
+            panic_with_error!(&e, ContractError::EarlyExitConfigNotSet);
         }
 
         // Snapshot amounts before deactivating.
@@ -787,7 +787,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "lock period has not elapsed yet")]
+    #[should_panic(expected = "HostError: Error(Contract, #204)")]
     fn test_withdraw_before_expiry_panics() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -959,7 +959,7 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════════
 
     #[test]
-    #[should_panic(expected = "cannot exit early: penalty not configured")]
+    #[should_panic(expected = "HostError: Error(Contract, #210)")]
     fn test_early_exit_without_penalty_panics() {
         let (e, _admin, _token, client) = setup();
         let owner = Address::generate(&e);
@@ -1143,7 +1143,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "no fees to collect")]
+    #[should_panic(expected = "HostError: Error(Contract, #240)")]
     fn test_collect_fees_panics_when_no_fees() {
         let (e, admin, _token, client) = setup();
         let collector = Address::generate(&e);
@@ -1172,7 +1172,7 @@ mod tests {
 
     /// Early exit exactly at `bond_expiry` must be rejected (must use withdraw).
     #[test]
-    #[should_panic(expected = "lock period has already elapsed; use withdraw")]
+    #[should_panic(expected = "HostError: Error(Contract, #241)")]
     fn test_early_exit_exactly_at_expiry_rejected() {
         let e = Env::default();
         e.mock_all_auths();

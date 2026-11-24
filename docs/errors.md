@@ -153,6 +153,8 @@ error code instead of an opaque transaction failure.
 | 241 | `BondNotEligibleForLiquidation` | ✓ | Bond is not fully slashed or expired without renewal |
 | 242 | `SameLedgerCooldownBlocked` | ✓ | Cooldown execution is blocked after a collateral increase in this ledger |
 | 243 | `SelfTransferNotAllowed` | ✓ | A contract cannot transfer tokens to itself |
+| 240 | `NoFeesToCollect` | ✓ | No fees available to collect from the contract |
+| 241 | `LockupAlreadyElapsed` | ✓ | Lock period has already elapsed; use normal withdraw instead of early exit |
 
 ### Attestation (300–399)
 

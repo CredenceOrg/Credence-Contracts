@@ -122,6 +122,8 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::BondNotEligibleForLiquidation as u32, 241);
     assert_eq!(ContractError::SameLedgerCooldownBlocked as u32, 242);
     assert_eq!(ContractError::SelfTransferNotAllowed as u32, 243);
+    assert_eq!(ContractError::NoFeesToCollect as u32, 240);
+    assert_eq!(ContractError::LockupAlreadyElapsed as u32, 241);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
