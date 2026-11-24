@@ -7,29 +7,29 @@ pub use attestation::{
     Attestation, AttestationDedupKey, DEFAULT_ATTESTATION_WEIGHT, MAX_ATTESTATION_WEIGHT,
 };
 
-///## Boundary and recovery test coverage
+//## Boundary and recovery test coverage
 
-/// This module exposes the canonical boundary and recovery semantics for the
-/// attestation types re-exported above. The goal is to make determinism explicit
-/// for valid, invalid, duplicate, and boundary-case inputs without changing the
-/// public interface of the attestation module.
-///
-///## Invariants
-///
-/// 1. An attestation weight must always be in the inclusive range
-///    `[0, MAX_ATTESTATION_WEIGHT]`. Values above the maximum are rejected
-///    with a deterministic error and must not mutate any state.
-/// 2. The default weight is always valid and is used when no weight is
-///    supplied by the caller.
-/// 3. Deduplication keys are deterministic functions of the attestation
-///    contents; equal contents produce equal keys and unequal contents produce
-///    distinct keys for the covered fields.
-/// 4. Retries of a failed validation are side-effect free: the same input
-///    always produces the same result, so a retry cannot corrupt state.
-///
-/// The tests below are collocated with the type re-exports so that any future
-/// change to the boundary contract is caught at the same layer that defines
-/// the public surface.
+// This module exposes the canonical boundary and recovery semantics for the
+// attestation types re-exported above. The goal is to make determinism explicit
+// for valid, invalid, duplicate, and boundary-case inputs without changing the
+// public interface of the attestation module.
+//
+//## Invariants
+//
+// 1. An attestation weight must always be in the inclusive range
+//    `[0, MAX_ATTESTATION_WEIGHT]`. Values above the maximum are rejected
+//    with a deterministic error and must not mutate any state.
+// 2. The default weight is always valid and is used when no weight is
+//    supplied by the caller.
+// 3. Deduplication keys are deterministic functions of the attestation
+//    contents; equal contents produce equal keys and unequal contents produce
+//    distinct keys for the covered fields.
+// 4. Retries of a failed validation are side-effect free: the same input
+//    always produces the same result, so a retry cannot corrupt state.
+//
+// The tests below are collocated with the type re-exports so that any future
+// change to the boundary contract is caught at the same layer that defines
+// the public surface.
 
 #[cfg(test)]
 mod tests {
@@ -49,13 +49,13 @@ mod tests {
         }
     }
 
-    ///--------------------------------------------------------------------------
-    /// Success cases: default and explicit weights within bounds.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Success cases: default and explicit weights within bounds.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn default_weight_is_within_bounds() {
-        assert!(DEFAULT_ATTESTATION_WEIGHT <= MAX_ATTESTATION_WEIGHT);
+        const { assert!(DEFAULT_ATTESTATION_WEIGHT <= MAX_ATTESTATION_WEIGHT) };
     }
 
     #[test]
@@ -76,9 +76,9 @@ mod tests {
         assert_eq!(att.weight, MAX_ATTESTATION_WEIGHT);
     }
 
-    ///--------------------------------------------------------------------------
-    /// Boundary cases: zero weight and one above the maximum.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Boundary cases: zero weight and one above the maximum.
+    //--------------------------------------------------------------------------
 
     #[test]
     #[should_panic(expected = "attestation weight must be positive")]
@@ -101,10 +101,10 @@ mod tests {
         Attestation::validate_weight(u32::MAX);
     }
 
-    ///--------------------------------------------------------------------------
-    /// Rejection cases: invalid inputs must not mutate state and must be
-    /// retry-safe.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Rejection cases: invalid inputs must not mutate state and must be
+    // retry-safe.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn rejection_is_deterministic_across_retries() {
@@ -125,9 +125,9 @@ mod tests {
         assert_eq!(att_a.weight, att_b.weight);
     }
 
-    ///--------------------------------------------------------------------------
-    /// Deduplication key invariants.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Deduplication key invariants.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn dedup_key_is_equal_for_equal_attestations() {
@@ -166,9 +166,9 @@ mod tests {
         assert_ne!(key_a, key_b);
     }
 
-    ///--------------------------------------------------------------------------
-    /// Regression: the module must keep re-exporting the canonical symbols.
-    ///--------------------------------------------------------------------------
+    //--------------------------------------------------------------------------
+    // Regression: the module must keep re-exporting the canonical symbols.
+    //--------------------------------------------------------------------------
 
     #[test]
     fn module_reexports_canonical_symbols() {

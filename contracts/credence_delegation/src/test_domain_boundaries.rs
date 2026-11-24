@@ -47,6 +47,28 @@ use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Env, String};
 
+#[allow(clippy::too_many_arguments)]
+fn make_payload(
+    e: &Env,
+    domain: DomainTag,
+    owner: &Address,
+    target: &Address,
+    contract_id: &Address,
+    nonce: u64,
+    ledger_number: u32,
+) -> DelegatedActionPayload {
+    DelegatedActionPayload {
+        domain,
+        owner: owner.clone(),
+        target: target.clone(),
+        contract_id: contract_id.clone(),
+        nonce,
+        scheme: 0,
+        ledger_number,
+        signature_domain: String::from_str(e, crate::domain::SIGNATURE_DOMAIN),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -75,30 +97,6 @@ fn advance_sequence(e: &Env, n: u32) {
 /// `now < expires_at <= now + MAX_DELEGATION_DURATION`.
 fn expiry(e: &Env) -> u64 {
     e.ledger().timestamp() + 86_400
-}
-
-/// Build a payload. `scheme = 0` (Ed25519) is verified implicitly by
-/// `owner.require_auth()` at the call site, so tests do not need a registered
-/// verifier contract.
-fn make_payload(
-    e: &Env,
-    domain: DomainTag,
-    owner: &Address,
-    target: &Address,
-    contract_id: &Address,
-    nonce: u64,
-    ledger_number: u32,
-) -> DelegatedActionPayload {
-    DelegatedActionPayload {
-        domain,
-        owner: owner.clone(),
-        target: target.clone(),
-        contract_id: contract_id.clone(),
-        nonce,
-        scheme: 0,
-        ledger_number,
-        signature_domain: String::from_str(e, crate::domain::SIGNATURE_DOMAIN),
-    }
 }
 
 /// A payload for `execute_delegated_delegate` at the current ledger.
@@ -163,11 +161,7 @@ fn decode_scheme_safe_maps_known_tags() {
         let mut payload =
             make_payload(&e, DomainTag::Delegate, &owner, &target, &contract_id, 0, 0);
         payload.scheme = tag;
-        assert_eq!(
-            decode_scheme_safe(&payload),
-            expected,
-            "scheme tag {tag} must decode to {expected:?}"
-        );
+        assert_eq!(decode_scheme_safe(&payload), expected);
     }
 }
 
@@ -185,11 +179,7 @@ fn decode_scheme_safe_falls_back_to_ed25519_for_unknown_tags() {
         let mut payload =
             make_payload(&e, DomainTag::Delegate, &owner, &target, &contract_id, 0, 0);
         payload.scheme = tag;
-        assert_eq!(
-            decode_scheme_safe(&payload),
-            SchemeTag::Ed25519,
-            "unknown scheme tag {tag} must fall back to Ed25519"
-        );
+        assert_eq!(decode_scheme_safe(&payload), SchemeTag::Ed25519);
     }
 }
 
@@ -793,10 +783,10 @@ fn stale_revoke_attest_is_rejected_and_attestation_remains_active_then_valid_rev
         &0_u64,
     );
     assert_eq!(client.get_nonce(&attester), 1);
-    assert!(matches!(
+    assert_eq!(
         client.get_attestation_status(&attester, &subject),
         AttestationStatus::Active
-    ));
+    );
 
     let signed_at = e.ledger().sequence();
     advance_sequence(&e, MAX_PAYLOAD_AGE_LEDGERS + 1);
@@ -817,10 +807,10 @@ fn stale_revoke_attest_is_rejected_and_attestation_remains_active_then_valid_rev
     assert!(err == ContractError::PayloadTooOld.into());
 
     assert_eq!(client.get_nonce(&attester), 1);
-    assert!(matches!(
+    assert_eq!(
         client.get_attestation_status(&attester, &subject),
         AttestationStatus::Active
-    ));
+    );
 
     let valid = make_payload(
         &e,
@@ -833,10 +823,10 @@ fn stale_revoke_attest_is_rejected_and_attestation_remains_active_then_valid_rev
     );
     client.execute_delegated_revoke_attest(&attester, &subject, &valid);
     assert_eq!(client.get_nonce(&attester), 2);
-    assert!(matches!(
+    assert_eq!(
         client.get_attestation_status(&attester, &subject),
         AttestationStatus::Revoked
-    ));
+    );
 }
 
 /// A future-dated revoke payload is likewise rejected before the transition,

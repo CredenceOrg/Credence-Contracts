@@ -614,11 +614,16 @@ fn set_fee_config_accepts_range_endpoints() {
 }
 
 #[test]
-#[should_panic(expected = "fee_bps out of bounds")]
 fn set_fee_config_rejects_above_max() {
     let e = Env::default();
     let (_id, client, admin) = setup(&e);
-    client.set_fee_config(&admin, &Address::generate(&e), &(MAX_FEE_BPS + 1));
+    let res = client.try_set_fee_config(&admin, &Address::generate(&e), &(MAX_FEE_BPS + 1));
+    assert_eq!(
+        res,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::InvalidFeeBps as u32
+        )))
+    );
 }
 
 /// No data loss: a rejected bounds update must leave the previous treasury and

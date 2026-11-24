@@ -24,6 +24,9 @@ use soroban_sdk::{testutils::Address as _, Address, Env};
 
 use proptest::prelude::*;
 
+/// Maximum number of nonces that can be invalidated in a single call.
+const MAX_NONCE_INVALIDATION_SPAN: u64 = 10_000;
+
 // ---------------------------------------------------------------------------
 // Test environment helpers
 // ---------------------------------------------------------------------------
@@ -67,10 +70,9 @@ fn make_delegate_payload(
 /// Panics if `target == 0` (no advance needed) or if the advance exceeds
 /// `MAX_NONCE_INVALIDATION_SPAN` in one step (splits automatically).
 fn advance_nonce_to(client: &CredenceDelegationClient, identity: &Address, target: u64) {
-    const MAX_SPAN: u64 = 10_000;
     let mut current = client.get_nonce(identity);
     while current < target {
-        let step = (target - current).min(MAX_SPAN);
+        let step = (target - current).min(MAX_NONCE_INVALIDATION_SPAN);
         client.invalidate_nonce_range(identity, &(current + step));
         current += step;
     }
@@ -108,8 +110,8 @@ fn boundary_invalidate_max_span_succeeds() {
     let client = setup_client(&e);
     let identity = Address::generate(&e);
 
-    client.invalidate_nonce_range(&identity, &10_000);
-    assert_eq!(client.get_nonce(&identity), 10_000);
+    client.invalidate_nonce_range(&identity, &MAX_NONCE_INVALIDATION_SPAN);
+    assert_eq!(client.get_nonce(&identity), MAX_NONCE_INVALIDATION_SPAN);
 }
 
 /// Attempting to invalidate by MAX_NONCE_INVALIDATION_SPAN + 1 must fail.
@@ -119,7 +121,7 @@ fn boundary_invalidate_over_max_span_fails() {
     let client = setup_client(&e);
     let identity = Address::generate(&e);
 
-    let result = client.try_invalidate_nonce_range(&identity, &10_001);
+    let result = client.try_invalidate_nonce_range(&identity, &(MAX_NONCE_INVALIDATION_SPAN + 1));
     assert!(
         result.is_err(),
         "span of 10 001 must be rejected (exceeds MAX_NONCE_INVALIDATION_SPAN)"
@@ -265,7 +267,7 @@ fn boundary_post_invalidation_nonce_consumed_once() {
 /// - `span` is the size of the invalidated range (1..=MAX_NONCE_INVALIDATION_SPAN).
 /// - `offset` is the nonce to test — must be in `[current, current + span)`.
 fn nonce_triple() -> impl Strategy<Value = (u64, u64, u64)> {
-    (0u64..1_000u64, 1u64..=10_000u64).prop_flat_map(|(current, span)| {
+    (0u64..1_000u64, 1u64..=MAX_NONCE_INVALIDATION_SPAN).prop_flat_map(|(current, span)| {
         let offset_strat = 0u64..span;
         (Just(current), Just(span), offset_strat)
     })
@@ -291,7 +293,7 @@ proptest! {
         }
 
         let new_nonce = current + span;
-        let test_nonce = current + offset; // offset in [0, span) → test_nonce in [current, new_nonce)
+        let test_nonce = current + offset; // offset in [0, span) -> test_nonce in [current, new_nonce)
 
         // Invalidate [current, new_nonce).
         client.invalidate_nonce_range(&identity, &new_nonce);
@@ -308,7 +310,10 @@ proptest! {
         prop_assert!(
             result.is_err(),
             "nonce {} must be rejected: stored nonce is {} (invalidated range [{}, {}))",
-            test_nonce, new_nonce, current, new_nonce
+            test_nonce,
+            new_nonce,
+            current,
+            new_nonce
         );
     }
 

@@ -37,6 +37,12 @@ fn setup() -> (Env, CredenceDelegationClient<'static>, Address) {
     (e, client, contract_id)
 }
 
+/// Register a second, real `CredenceDelegation` contract and return its
+/// address. Used to exercise the "wrong but valid contract id" boundary.
+fn register_other_contract(e: &Env) -> Address {
+    e.register(CredenceDelegation, ())
+}
+
 fn make_payload(
     e: &Env,
     domain: DomainTag,
@@ -87,7 +93,7 @@ fn delegate_returns_mismatch_for_wrong_contract_id() {
     let delegate = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
 
-    let other_contract_id = e.register(CredenceDelegation, ());
+    let other_contract_id = register_other_contract(&e);
     let payload = make_payload(
         &e,
         DomainTag::Delegate,
@@ -188,7 +194,7 @@ fn revoke_returns_mismatch_for_wrong_contract_id() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
 
-    let other_contract_id = e.register(CredenceDelegation, ());
+    let other_contract_id = register_other_contract(&e);
     let payload = make_payload(
         &e,
         DomainTag::RevokeDelegation,
@@ -273,7 +279,7 @@ fn revoke_attest_returns_mismatch_for_wrong_contract_id() {
     let attester = Address::generate(&e);
     let subject = Address::generate(&e);
 
-    let other_contract_id = e.register(CredenceDelegation, ());
+    let other_contract_id = register_other_contract(&e);
     let payload = make_payload(
         &e,
         DomainTag::RevokeAttestation,
