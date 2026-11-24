@@ -216,16 +216,16 @@ fn run_sequence(actions: &[BondAction]) {
                 );
             }
             BondAction::TopUp { amount } => {
-                client.top_up(&identity, &amount);
+                client.top_up(&identity, amount);
             }
             BondAction::Slash { amount } => {
-                client.slash(&admin, &identity, &amount);
+                client.slash(&admin, &identity, amount);
             }
             BondAction::RollRenew => {
                 client.renew_if_rolling(&identity);
             }
             BondAction::WithdrawEarly { amount } => {
-                client.withdraw_early(&identity, &amount);
+                client.withdraw_early(&identity, amount);
             }
             BondAction::RequestWithdraw => {
                 client.request_withdrawal(&identity);
@@ -322,11 +322,11 @@ fn run_sequence(actions: &[BondAction]) {
     }
 }
 
+// Case count: proptest's default (256), which `PROPTEST_CASES` overrides. A fixed
+// 10,000 cases of up-to-255-action sequences takes far longer than a CI gate can
+// afford in a debug build; run `PROPTEST_CASES=10000 cargo test -p credence_bond
+// --test proptest_tier` for the deep fuzz.
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 10000,
-        .. ProptestConfig::default()
-    })]
     #[test]
     fn test_tier_fuzz(ref actions in prop::collection::vec(any::<BondAction>(), 1..256)) {
         run_sequence(actions);

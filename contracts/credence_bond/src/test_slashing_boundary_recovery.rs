@@ -21,9 +21,9 @@ use crate::same_ledger_liquidation_guard::SLASH_BLOCKED_REASON;
 use crate::test_helpers;
 use crate::{BondTier, CredenceBondClient};
 use credence_errors::ContractError;
-use soroban_sdk::testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke};
+use soroban_sdk::testutils::{Address as _, AuthorizedFunction};
 use soroban_sdk::token::TokenClient;
-use soroban_sdk::{Address, Env, IntoVal, Val};
+use soroban_sdk::{Address, Env};
 
 /// Registers the contract, configures a slash treasury, and returns the client
 /// alongside the admin, identity and contract id.
@@ -126,7 +126,8 @@ fn unslash_partial_leaves_exact_remainder() {
 /// `amount == slashed_amount` is the last accepted value; one unit beyond it
 /// must revert rather than saturate.
 #[test]
-#[should_panic(expected = "unslashing would reduce below 0")]
+// ContractError::Underflow
+#[should_panic(expected = "Error(Contract, #701)")]
 fn unslash_beyond_remaining_reverts() {
     let e = Env::default();
     let (client, admin, identity, contract_id) = deploy_with_bond(&e, 1000_i128);
@@ -147,7 +148,8 @@ fn unslash_beyond_remaining_reverts() {
 /// `bonded - slashed = 1100` for a 1000 bond and let `withdraw(1100)` pay out
 /// more than the contract held.
 #[test]
-#[should_panic(expected = "unslashing would reduce below 0")]
+// ContractError::Underflow
+#[should_panic(expected = "Error(Contract, #701)")]
 fn unslash_far_beyond_remaining_reverts() {
     let e = Env::default();
     let (client, admin, identity, contract_id) = deploy_with_bond(&e, 1000_i128);
@@ -242,7 +244,8 @@ fn contract_balance_covers_reported_collateral() {
 
 /// A negative unslash is rejected up front, before any state is read.
 #[test]
-#[should_panic(expected = "unslash amount must be non-negative")]
+// ContractError::AmountMustBePositive
+#[should_panic(expected = "Error(Contract, #600)")]
 fn unslash_negative_reverts() {
     let e = Env::default();
     let (client, admin, identity, contract_id) = deploy_with_bond(&e, 1000_i128);
@@ -271,7 +274,8 @@ fn unslash_zero_is_accepted_noop() {
 
 /// Unslashing is an admin capability just like slashing.
 #[test]
-#[should_panic(expected = "not admin")]
+// ContractError::NotAdmin
+#[should_panic(expected = "Error(Contract, #100)")]
 fn unslash_requires_admin() {
     let e = Env::default();
     let (client, admin, identity, contract_id) = deploy_with_bond(&e, 1000_i128);
@@ -791,17 +795,22 @@ fn slash_records_single_admin_auth() {
 
     let auths = e.auths();
     assert_eq!(auths.len(), 1, "expected exactly one auth entry");
-    let auth = &auths[0];
-    assert_eq!(auth.address, admin, "auth entry address must be the admin");
-    assert_eq!(
-        auth.invoke.contract, contract_id,
-        "auth entry contract must be this contract"
-    );
-    assert_eq!(
-        auth.invoke.fn_name,
-        soroban_sdk::Symbol::new(&e, "slash"),
-        "auth entry fn_name must be slash"
-    );
+    let (auth_address, invocation) = &auths[0];
+    assert_eq!(auth_address, &admin, "auth entry address must be the admin");
+    match &invocation.function {
+        AuthorizedFunction::Contract((contract, fn_name, _args)) => {
+            assert_eq!(
+                contract, &contract_id,
+                "auth entry contract must be this contract"
+            );
+            assert_eq!(
+                fn_name,
+                &soroban_sdk::Symbol::new(&e, "slash"),
+                "auth entry fn_name must be slash"
+            );
+        }
+        other => panic!("expected a contract invocation, got {:?}", other),
+    }
 }
 
 /// A non-admin caller must receive typed `ContractError::NotAdmin`.
@@ -816,16 +825,13 @@ fn slash_non_admin_typed_error() {
     let err = client.try_slash(&mallory, &identity, &100_i128);
     assert!(err.is_err());
 
-    match err {
-        Err(soroban_sdk::Error::Contract(_, code)) => {
-            assert_eq!(
-                code,
-                ContractError::NotAdmin as u32,
-                "non-admin must get ContractError::NotAdmin"
-            );
-        }
-        other => panic!("expected Contract error, got {:?}", other),
-    }
+    assert_eq!(
+        err,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::NotAdmin as u32
+        ))),
+        "non-admin must get ContractError::NotAdmin"
+    );
 }
 
 /// `amount = 0` and `amount = available + 1` must return typed contract errors,
@@ -840,30 +846,24 @@ fn slash_zero_and_overflow_typed_errors() {
     // Zero amount -> AmountMustBePositive (600)
     let err = client.try_slash(&admin, &identity, &0_i128);
     assert!(err.is_err());
-    match err {
-        Err(soroban_sdk::Error::Contract(_, code)) => {
-            assert_eq!(
-                code,
-                ContractError::AmountMustBePositive as u32,
-                "zero amount must get ContractError::AmountMustBePositive"
-            );
-        }
-        other => panic!("expected Contract error, got {:?}", other),
-    }
+    assert_eq!(
+        err,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::AmountMustBePositive as u32
+        ))),
+        "zero amount must get ContractError::AmountMustBePositive"
+    );
 
     // available + 1 -> SlashExceedsBond (203)
     let err = client.try_slash(&admin, &identity, &1001_i128);
     assert!(err.is_err());
-    match err {
-        Err(soroban_sdk::Error::Contract(_, code)) => {
-            assert_eq!(
-                code,
-                ContractError::SlashExceedsBond as u32,
-                "overflow amount must get ContractError::SlashExceedsBond"
-            );
-        }
-        other => panic!("expected Contract error, got {:?}", other),
-    }
+    assert_eq!(
+        err,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::SlashExceedsBond as u32
+        ))),
+        "overflow amount must get ContractError::SlashExceedsBond"
+    );
 }
 
 /// Configure a slash treasury for tests that need it.
@@ -873,8 +873,8 @@ fn set_slash_treasury(e: &Env, client: &CredenceBondClient, admin: &Address) {
 }
 
 /// Return the slash treasury's token balance via the contract's stored token.
-fn token_balance(e: &Env, contract_id: &Address, client: &CredenceBondClient) -> i128 {
-    use soroban_sdk::token::TokenClient as _;
+fn token_balance(e: &Env, contract_id: &Address, _client: &CredenceBondClient) -> i128 {
+    
     e.as_contract(contract_id, || {
         let token: Address = e
             .storage()

@@ -36,6 +36,7 @@ pub const MIN_SUPPORTED_DECIMALS: u32 = 0;
 
 /// Rounding mode for denormalization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(test)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero (default).
     Down,
@@ -43,47 +44,14 @@ pub enum Rounding {
     Up,
 }
 
-/// Validates that a currency symbol is non-empty and not whitespace-only.
-pub fn require_non_zero_currency(e: &Env, sym: &soroban_sdk::String) {
-    let len = sym.len();
-    if len == 0 {
-        panic_with_error!(e, ContractError::InvalidCurrency);
-    }
-
-    let mut is_whitespace = true;
-    let mut buf = [0u8; 128];
-    let check_len = len.min(128) as usize;
-    sym.copy_into_slice(&mut buf[..check_len]);
-    for i in 0..check_len {
-        if buf[i] != b' ' && buf[i] != b'\t' && buf[i] != b'\n' && buf[i] != b'\r' {
-            is_whitespace = false;
-            break;
-        }
-    }
-    if is_whitespace {
-        panic_with_error!(e, ContractError::InvalidCurrency);
-    }
-}
-
 /// Validates token decimals are within the supported range.
 /// Returns the decimals value on success.
 pub fn validate_supported_decimals(e: &Env, token: &Address) -> u32 {
     let decimals = TokenClient::new(e, token).decimals();
 
-    if decimals < MIN_SUPPORTED_DECIMALS || decimals > MAX_SUPPORTED_DECIMALS {
+    if !(MIN_SUPPORTED_DECIMALS..=MAX_SUPPORTED_DECIMALS).contains(&decimals) {
         panic_with_error!(e, ContractError::UnsupportedDecimals);
     }
-
-    decimals
-}
-
-/// Validates token decimals AND symbol. Combines decimal range check
-/// with currency-symbol sanity check in a single token query pass.
-pub fn validate_supported_decimals_and_symbol(e: &Env, token: &Address) -> u32 {
-    let decimals = validate_supported_decimals(e, token);
-
-    let sym = TokenClient::new(e, token).symbol();
-    require_non_zero_currency(e, &sym);
 
     decimals
 }
@@ -150,145 +118,6 @@ pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     amount
         .checked_mul(scale)
         .expect("normalization overflow: amount * scale exceeds i128")
-}
-
-/// Denormalizes a 18-decimal amount back to the native token scale using
-/// `Rounding::Down` (truncation toward zero).
-///
-/// For tokens with decimals < 18: `amount / 10^(18 - decimals)`
-/// For tokens with decimals == 18: `amount` unchanged
-///
-/// # Truncation Warning
-/// When denormalizing to a token with fewer decimals than the normalized
-/// representation, the fractional part is **truncated** (discarded).
-/// For example, a normalized amount of 1 (representing 10^-18 of a
-/// smallest native unit) denormalizing to a 6-decimal token yields 0
-/// because 1 / 10^12 = 0. Callers should ensure amounts are large enough
-/// to avoid complete truncation loss.
-///
-/// Use `denormalize_with_rounding` for explicit rounding control.
-pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
-    denormalize_with_rounding(e, token, amount, Rounding::Down)
-}
-
-/// Denormalizes with explicit rounding mode.
-///
-/// `Rounding::Down`: truncates toward zero (standard integer division).
-/// `Rounding::Up`: rounds away from zero when there is a remainder.
-///
-/// # Panics
-/// * If `amount` is negative
-/// * If token decimals are outside supported range
-pub fn denormalize_with_rounding(
-    e: &Env,
-    token: &Address,
-    amount: i128,
-    rounding: Rounding,
-) -> i128 {
-    if amount < 0 {
-        panic!("cannot denormalize negative amount");
-    }
-    if amount == 0 {
-        return 0;
-    }
-
-    let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
-
-    if scale == 1 {
-        return amount;
-    }
-
-    match rounding {
-        Rounding::Down => amount
-            .checked_div(scale)
-            .expect("denormalization error: division by zero"),
-        Rounding::Up => {
-            let quotient = amount
-                .checked_div(scale)
-                .expect("denormalization error: division by zero (up)");
-            let remainder = amount % scale;
-            if remainder == 0 {
-                quotient
-            } else {
-                quotient
-                    .checked_add(1)
-                    .expect("denormalization overflow: rounding up exceeds i128")
-            }
-        }
-    }
-}
-
-/// Checks if a normalized amount would lose precision (truncate non-zero
-/// fractional part) when denormalized to the native token precision.
-///
-/// Returns `true` if the amount can be represented exactly in the native
-/// token's precision (i.e., no truncation loss).
-///
-/// # Examples
-/// ```
-/// // 10^18 normalized → 6-decimal token: 10^18 / 10^12 = 10^6, exact
-/// // 10^18 + 1 normalized → 6-decimal token: truncates to 10^6, loss
-/// ```
-pub fn can_denormalize_exactly(e: &Env, token: &Address, amount: i128) -> bool {
-    if amount < 0 {
-        return false;
-    }
-    if amount == 0 {
-        return true;
-    }
-
-    let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
-
-    if scale == 1 {
-        return true;
-    }
-
-    amount % scale == 0
-}
-
-/// Checks if a normalized amount would completely truncate to zero when
-/// denormalized (the amount is smaller than the smallest representable
-/// unit of the native token).
-pub fn would_denormalize_to_zero(e: &Env, token: &Address, amount: i128) -> bool {
-    if amount <= 0 {
-        return true;
-    }
-
-    let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
-
-    if scale == 1 {
-        return false;
-    }
-
-    amount < scale
-}
-
-/// Validates that an amount won't overflow when normalized.
-/// This is a pre-check before calling normalize().
-///
-/// # Arguments
-/// * `e` - Environment
-/// * `token` - Token address
-/// * `amount` - Native token amount to validate
-///
-/// # Returns
-/// true if the amount can be safely normalized
-pub fn can_normalize_safely(e: &Env, token: &Address, amount: i128) -> bool {
-    if amount < 0 {
-        return false;
-    }
-
-    let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
-
-    if scale == 1 {
-        return true;
-    }
-
-    amount.checked_mul(scale).is_some()
 }
 
 #[cfg(test)]

@@ -85,7 +85,7 @@ pub fn verify_stringified_bytes(value: &String) -> Result<(), ContractError> {
 }
 
 fn is_hex(encoded: &[u8]) -> bool {
-    encoded.len() % 2 == 0 && encoded.iter().all(u8::is_ascii_hexdigit)
+    encoded.len().is_multiple_of(2) && encoded.iter().all(u8::is_ascii_hexdigit)
 }
 
 fn is_base64(encoded: &[u8]) -> bool {
@@ -120,8 +120,8 @@ fn is_base64(encoded: &[u8]) -> bool {
             3 => last_value & 0x03 == 0,
             _ => false,
         },
-        1 => encoded.len() % 4 == 0 && remainder == 3 && last_value & 0x03 == 0,
-        2 => encoded.len() % 4 == 0 && remainder == 2 && last_value & 0x0f == 0,
+        1 => encoded.len().is_multiple_of(4) && remainder == 3 && last_value & 0x03 == 0,
+        2 => encoded.len().is_multiple_of(4) && remainder == 2 && last_value & 0x0f == 0,
         _ => false,
     }
 }
