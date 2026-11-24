@@ -126,6 +126,11 @@ error code instead of an opaque transaction failure.
 | 242 | `ClaimNotFound` | ✓ | No pending claim exists for the given user and claim ID |
 | 243 | `NoPendingClaims` | ✓ | User has no pending claims to process |
 | 244 | `NoValidClaimsToProcess` | ✓ | No pending claims match the processing request |
+| 240 | `BondAmountBelowMinimum` | ✓ | Bond amount is below the minimum required normalized bound |
+| 241 | `BondAmountExceedsMaximum` | ✓ | Bond amount exceeds the maximum allowed normalized bound |
+| 242 | `BondDurationTooShort` | ✓ | Bond duration is shorter than the minimum allowed (1 day) |
+| 243 | `BondDurationTooLong` | ✓ | Bond duration exceeds the maximum allowed (365 days) |
+| 244 | `InvalidRecipient` | ✓ | Recipient address is the contract itself; self-transfers are rejected |
 
 ### Attestation (300–399)
 

@@ -573,6 +573,35 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     SameLedgerCooldownBlocked = 243,
+    /// Bond amount is below the minimum required normalized bound.
+    /// Replaces: panic!("bond amount below minimum required: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondAmountBelowMinimum = 240,
+
+    /// Bond amount exceeds the maximum allowed normalized bound.
+    /// Replaces: panic!("bond amount exceeds maximum allowed: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondAmountExceedsMaximum = 241,
+
+    /// Bond duration is shorter than the minimum allowed (1 day).
+    /// Replaces: panic!("bond duration too short: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondDurationTooShort = 242,
+
+    /// Bond duration exceeds the maximum allowed (365 days).
+    /// Replaces: panic!("bond duration too long: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondDurationTooLong = 243,
+
+    /// Recipient address is the contract itself; self-transfers are rejected.
+    /// Replaces: panic!("recipient cannot be the contract itself")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidRecipient = 244,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -1048,6 +1077,11 @@ impl ErrorExt for ContractError {
             | ContractError::SlashRecordNotFound
             | ContractError::SameLedgerSlashBlocked
             | ContractError::SameLedgerCooldownBlocked => ErrorCategory::Bond,
+            | ContractError::BondAmountBelowMinimum
+            | ContractError::BondAmountExceedsMaximum
+            | ContractError::BondDurationTooShort
+            | ContractError::BondDurationTooLong
+            | ContractError::InvalidRecipient => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1271,6 +1305,20 @@ impl ErrorExt for ContractError {
             }
             ContractError::SameLedgerCooldownBlocked => {
                 "Cooldown execution blocked: collateral increased in this ledger"
+            ContractError::BondAmountBelowMinimum => {
+                "Bond amount is below the minimum required normalized bound"
+            }
+            ContractError::BondAmountExceedsMaximum => {
+                "Bond amount exceeds the maximum allowed normalized bound"
+            }
+            ContractError::BondDurationTooShort => {
+                "Bond duration is shorter than the minimum allowed (1 day)"
+            }
+            ContractError::BondDurationTooLong => {
+                "Bond duration exceeds the maximum allowed (365 days)"
+            }
+            ContractError::InvalidRecipient => {
+                "Recipient address is the contract itself; self-transfers are rejected"
             }
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
@@ -1490,6 +1538,11 @@ impl ErrorExt for ContractError {
             | ContractError::SlashRecordNotFound   // query an existing slash record index
             | ContractError::SameLedgerSlashBlocked // retry in a subsequent ledger
             | ContractError::SameLedgerCooldownBlocked // retry in a subsequent ledger
+            | ContractError::BondAmountBelowMinimum // raise the amount to the minimum
+            | ContractError::BondAmountExceedsMaximum // lower the amount to the maximum
+            | ContractError::BondDurationTooShort  // extend duration to at least 1 day
+            | ContractError::BondDurationTooLong   // shorten duration to at most 365 days
+            | ContractError::InvalidRecipient      // supply a non-self recipient
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
