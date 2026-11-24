@@ -1,3 +1,9 @@
+[package]
+name = "credence-contracts"
+version.workspace = true
+edition.workspace = true
+autotests = false
+
 [workspace]
 resolver = "2"
 members = [
@@ -23,6 +29,32 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
+admin = { path = "contracts/admin" }
+credence_arbitration = { path = "contracts/arbitration" }
+credence_bond = { path = "contracts/credence_bond" }
+credence_delegation = { path = "contracts/credence_delegation" }
+credence_registry = { path = "contracts/credence_registry" }
+credence_treasury = { path = "contracts/credence_treasury" }
+timelock = { path = "contracts/timelock" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[test]]
+name = "event_catalog"
+path = "tests/event_catalog.rs"
+
+[[test]]
+name = "cross_contract_pause"
+path = "tests/cross_contract_pause.rs"
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
 
 [profile.release]
 opt-level = "z"

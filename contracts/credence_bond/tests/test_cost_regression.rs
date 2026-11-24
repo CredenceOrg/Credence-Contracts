@@ -111,11 +111,28 @@ fn measure_all() -> BTreeMap<String, EntryCost> {
         let treasury = Address::generate(&env);
         let identity = Address::generate(&env);
         client.initialize(&admin, &None);
+        // With a bond token configured, amounts are in the token's own units
+        // (7 decimals here) and the bond is funded by a real transfer.
+        let token_id = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let mut accepted = soroban_sdk::Vec::new(&env);
+        accepted.push_back(token_id.clone());
+        client.set_accepted_tokens(&admin, &accepted);
+        client.set_token(&admin, &token_id);
+        let token_amount = 1_000_000_000_i128; // 100 tokens
+        soroban_sdk::token::StellarAssetClient::new(&env, &token_id).mint(&identity, &token_amount);
+        soroban_sdk::token::TokenClient::new(&env, &token_id).approve(
+            &identity,
+            &client.address,
+            &token_amount,
+            &1_000_u32,
+        );
         client.set_early_exit_config(&admin, &treasury, &500_u32);
         env.ledger().with_mut(|li| li.timestamp = 0);
-        client.create_bond(&identity, &bond_amount, &duration, &false, &0_u64);
+        client.create_bond(&identity, &token_amount, &duration, &false, &0_u64);
         env.ledger().with_mut(|li| li.timestamp = 100);
-        client.withdraw_early(&identity, &(bond_amount / 10));
+        client.withdraw_early(&identity, &(token_amount / 10));
         out.insert("withdraw_early".into(), measure(&env));
     }
 

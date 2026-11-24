@@ -52,6 +52,7 @@ use crate::same_ledger_liquidation_guard::{
 };
 use crate::test_helpers;
 use crate::{CredenceBond, CredenceBondClient};
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
@@ -299,7 +300,7 @@ fn request_with_zero_period_also_stored_correctly() {
     // immediate once the same-ledger guard is satisfied).
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
-    let (client, _admin, identity) = setup_with_bond(&e, 500);
+    let (client, _admin, identity) = setup_with_bond(&e, 1000);
 
     client.request_cooldown_withdrawal(&identity, &300);
     let req = client.get_cooldown_request(&identity).unwrap();
@@ -673,6 +674,23 @@ fn execute_blocked_when_create_bond_is_in_same_ledger() {
     e.as_contract(&contract_id, || {
         require_cooldown_allowed_after_collateral_increase(&e);
     });
+}
+
+#[test]
+fn execute_entrypoint_returns_typed_same_ledger_error() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _contract_id) = test_helpers::setup_with_token(&e);
+    let treasury = Address::generate(&e);
+    client.set_slash_treasury(&admin, &treasury);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.request_cooldown_withdrawal(&identity, &500_i128);
+
+    assert_eq!(
+        client.try_execute_cooldown_withdrawal(&identity),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::SameLedgerCooldownBlocked as u32
+        )))
+    );
 }
 
 #[test]
@@ -1227,6 +1245,7 @@ fn cooldown_execute_after_slash_respects_available() {
 
     // Slash 900 -> available balance becomes 1000 - 900 = 100 (< 250)
     test_helpers::advance_ledger_sequence(&e);
+    client.set_slash_treasury(&admin, &Address::generate(&e));
     client.slash(&admin, &identity, &900);
 
     let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
@@ -1297,11 +1316,19 @@ impl HostileCooldownToken {
         let client = CredenceBondClient::new(&e, &target);
         // Attempt reentrant call to execute_cooldown_withdrawal
         let res = client.try_execute_cooldown_withdrawal(&to);
+        // The reentrant call must be rejected, either by the contract's own guard
+        // (`ReentrancyDetected`) or by the host, which refuses to re-enter a
+        // contract that is already on the call stack (`Context`/`InvalidAction`)
+        // before the contract code runs.
         let is_reentrancy = match res {
             Err(Ok(err)) => {
                 err == soroban_sdk::Error::from_contract_error(
                     credence_errors::ContractError::ReentrancyDetected as u32,
-                )
+                ) || err
+                    == soroban_sdk::Error::from_type_and_code(
+                        soroban_sdk::xdr::ScErrorType::Context,
+                        soroban_sdk::xdr::ScErrorCode::InvalidAction,
+                    )
             }
             _ => false,
         };
@@ -1349,9 +1376,9 @@ fn cooldown_execute_reentrancy_guarded() {
     e.ledger().with_mut(|li| li.timestamp = 1100);
     client.execute_cooldown_withdrawal(&identity);
 
-    // Verify the inner reentrant call was caught with ReentrancyDetected
+    // Verify the inner reentrant call was rejected
     assert!(
         hostile_client.is_reentrancy_caught(),
-        "inner reentrant execute_cooldown_withdrawal call must be rejected with ReentrancyDetected"
+        "inner reentrant execute_cooldown_withdrawal call must be rejected"
     );
 }

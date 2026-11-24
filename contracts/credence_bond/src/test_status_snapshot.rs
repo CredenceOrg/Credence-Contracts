@@ -327,11 +327,16 @@ fn test_snapshot_timestamp_reflects_ledger() {
 // -- no bond guard -------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "no bond")]
 fn test_snapshot_panics_when_no_bond() {
     let e = Env::default();
     let (client, ..) = setup(&e);
-    client.get_bond_status_snapshot();
+    let res = client.try_get_bond_status_snapshot();
+    assert_eq!(
+        res,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::BondNotFound as u32
+        )))
+    );
 }
 
 // -- combined scenario ---------------------------------------------------------
