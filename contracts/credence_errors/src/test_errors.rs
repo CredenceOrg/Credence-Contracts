@@ -1590,6 +1590,13 @@ mod tests {
             ContractError::GovernanceApprovalExpired => true,
             ContractError::GovernanceApprovalCategoryMismatch => true,
             ContractError::ParameterOutOfBounds => true,
+
+            // Emergency / drain
+            ContractError::InvalidEmergencyFeeBps => true,
+            ContractError::EmergencyConfigNotSet => true,
+            ContractError::EmergencyRecordNotFound => true,
+            ContractError::EmergencyTransitionNotFound => true,
+            ContractError::DrainRecordNotFound => true,
         }
     }
 

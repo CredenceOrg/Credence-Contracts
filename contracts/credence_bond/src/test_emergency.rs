@@ -156,7 +156,7 @@ fn test_emergency_withdraw_rejects_non_positive_amount() {
 }
 
 #[test]
-#[should_panic(expected = "emergency fee bps must be <= 10000")]
+#[should_panic(expected = "Error(Contract, #240)")]
 fn test_set_emergency_config_rejects_invalid_fee_bps() {
     let e = Env::default();
     let (client, admin, governance, treasury, _identity) = setup(&e);

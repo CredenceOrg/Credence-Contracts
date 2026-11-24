@@ -326,7 +326,7 @@ fn test_treasury_guard_allows_exact_matching_recipient() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_drain_fails_with_zero_amount() {
     let e = Env::default();
     e.ledger().with_mut(|l| l.timestamp = 1_000);
@@ -339,7 +339,7 @@ fn test_drain_fails_with_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected = "amount must be positive")]
+#[should_panic(expected = "Error(Contract, #600)")]
 fn test_drain_fails_with_negative_amount() {
     let e = Env::default();
     e.ledger().with_mut(|l| l.timestamp = 1_000);

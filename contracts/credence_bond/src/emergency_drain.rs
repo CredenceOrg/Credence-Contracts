@@ -185,7 +185,7 @@ pub fn execute_drain(
 
     // Gate 3: amount must be positive.
     if amount <= 0 {
-        panic!("amount must be positive");
+        panic_with_error!(e, ContractError::AmountMustBePositive);
     }
 
     // Gate 4: recipient must be treasury.
@@ -243,7 +243,7 @@ pub fn get_drain_record(e: &Env, id: u64) -> DrainRecord {
     e.storage()
         .persistent()
         .get(&DrainDataKey::DrainRecord(id))
-        .unwrap_or_else(|| panic!("drain record not found"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::DrainRecordNotFound))
 }
 
 // ---------------------------------------------------------------------------
