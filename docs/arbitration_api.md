@@ -196,6 +196,30 @@ Reopens an `Archived` dispute, transitioning `Archived → Voting` with a fresh 
 
 ---
 
+## 📋 Summary of Error States
+
+| Error Variant | Code | Cause |
+| --- | ---: | --- |
+| `InvalidTransition` | 1 | Attempted an invalid dispute status transition. |
+| `AlreadyInitialized` | 2 | Attempted to initialize the contract more than once. |
+| `NotInitialized` | 3 | Contract has not been initialized. |
+| `NotAdmin` | 4 | Caller is not the contract admin. |
+| `NotArbitrator` | 5 | Caller is not a registered arbitrator. |
+| `AlreadyVoted` | 6 | Arbitrator has already voted on this dispute. |
+| `VotingInactive` | 7 | Voting period is not active or the dispute is not in Voting state. |
+| `VotingNotEnded` | 8 | Attempted to resolve a dispute before the voting deadline. |
+| `DisputeNotFound` | 9 | The specified dispute ID does not exist. |
+| `InvalidOutcome` | 10 | Outcome must be greater than zero. |
+| `WeightNotPositive` | 11 | Arbitrator weight must be positive. |
+| `NotAuthorized` | 12 | Caller is not authorized for this action. |
+| `QuorumNotMet` | 13 | Quorum requirements were not met. |
+| `ReasonTooLong` | 14 | Cancellation reason exceeds the permitted length. |
+| `PromiseNotKept` | 15 | The actual outcome does not match the promised outcome. |
+| `CursorOutOfRange` | 16 | Pagination cursor is outside the arbitrator registry. |
+| `DisputeActive` | 17 | Dispute is still active and blocks this action. |
+| `OngoingDispute` | 18 | Creator already has an unresolved dispute. |
+| `CancelNotAllowed` | 19 | Creator cannot cancel after votes are cast or the voting window ends. |
+| `ConflictOfInterest` | 20 | Voter is the creator of the dispute. |
 ## 📋 Complete Error Code Reference (`ArbitrationError`)
 
 Generated directly from `contracts/arbitration/src/status.rs`. Note that `ReasonTooLong = 14` is declared before `QuorumNotMet = 13` in source; the table below is ordered by numeric discriminant.

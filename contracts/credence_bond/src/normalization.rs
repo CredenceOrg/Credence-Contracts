@@ -36,6 +36,7 @@ pub const MIN_SUPPORTED_DECIMALS: u32 = 0;
 
 /// Rounding mode for denormalization.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg(test)]
 pub enum Rounding {
     /// Truncate the fractional remainder toward zero (default).
     Down,
@@ -43,47 +44,14 @@ pub enum Rounding {
     Up,
 }
 
-/// Validates that a currency symbol is non-empty and not whitespace-only.
-pub fn require_non_zero_currency(e: &Env, sym: &soroban_sdk::String) {
-    let len = sym.len();
-    if len == 0 {
-        panic_with_error!(e, ContractError::InvalidCurrency);
-    }
-
-    let mut is_whitespace = true;
-    let mut buf = [0u8; 128];
-    let check_len = len.min(128) as usize;
-    sym.copy_into_slice(&mut buf[..check_len]);
-    for i in 0..check_len {
-        if buf[i] != b' ' && buf[i] != b'\t' && buf[i] != b'\n' && buf[i] != b'\r' {
-            is_whitespace = false;
-            break;
-        }
-    }
-    if is_whitespace {
-        panic_with_error!(e, ContractError::InvalidCurrency);
-    }
-}
-
 /// Validates token decimals are within the supported range.
 /// Returns the decimals value on success.
 pub fn validate_supported_decimals(e: &Env, token: &Address) -> u32 {
     let decimals = TokenClient::new(e, token).decimals();
 
-    if decimals < MIN_SUPPORTED_DECIMALS || decimals > MAX_SUPPORTED_DECIMALS {
+    if !(MIN_SUPPORTED_DECIMALS..=MAX_SUPPORTED_DECIMALS).contains(&decimals) {
         panic_with_error!(e, ContractError::UnsupportedDecimals);
     }
-
-    decimals
-}
-
-/// Validates token decimals AND symbol. Combines decimal range check
-/// with currency-symbol sanity check in a single token query pass.
-pub fn validate_supported_decimals_and_symbol(e: &Env, token: &Address) -> u32 {
-    let decimals = validate_supported_decimals(e, token);
-
-    let sym = TokenClient::new(e, token).symbol();
-    require_non_zero_currency(e, &sym);
 
     decimals
 }
@@ -97,23 +65,21 @@ pub fn validate_supported_decimals_and_symbol(e: &Env, token: &Address) -> u32 {
 /// Uses the cached `decimals` parameter instead of re-reading from the token
 /// contract, avoiding an extra host call.
 ///
-/// # Panics
-/// If `decimals > NORMALIZED_DECIMALS` — only tokens with ≤18 decimals are
-/// supported, guaranteed by `validate_supported_decimals`.
-pub fn get_scale_info(decimals: u32) -> (i128, bool) {
+/// # Errors
+/// Returns `ContractError::UnsupportedDecimals` if `decimals > NORMALIZED_DECIMALS`
+/// — only tokens with ≤18 decimals are supported, guaranteed by
+/// `validate_supported_decimals`.
+pub fn get_scale_info(decimals: u32) -> Result<(i128, bool), ContractError> {
     if decimals > NORMALIZED_DECIMALS {
-        panic!(
-            "get_scale_info: decimals {} exceeds NORMALIZED_DECIMALS {}",
-            decimals, NORMALIZED_DECIMALS
-        );
+        return Err(ContractError::UnsupportedDecimals);
     }
 
     if decimals == NORMALIZED_DECIMALS {
-        return (1, true);
+        return Ok((1, true));
     }
 
     let exponent = NORMALIZED_DECIMALS - decimals;
-    (10_i128.pow(exponent), true)
+    Ok((10_i128.pow(exponent), true))
 }
 
 /// Normalizes a native token amount to the 18-decimal scale.
@@ -130,18 +96,20 @@ pub fn get_scale_info(decimals: u32) -> (i128, bool) {
 /// Normalized amount in 18-decimal format
 ///
 /// # Panics
-/// * If token decimals are outside supported range
+/// * `ContractError::InvalidBondAmount` if `amount` is negative
+/// * `ContractError::UnsupportedDecimals` if token decimals are outside supported range
 /// * If normalization causes overflow
 pub fn normalize(e: &Env, token: &Address, amount: i128) -> i128 {
     if amount < 0 {
-        panic!("bond amount cannot be negative");
+        panic_with_error!(e, ContractError::InvalidBondAmount);
     }
     if amount == 0 {
         return 0;
     }
 
     let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
+    let (scale, _is_multiplier) =
+        get_scale_info(decimals).unwrap_or_else(|err| panic_with_error!(e, err));
 
     if scale == 1 {
         return amount;
@@ -177,8 +145,8 @@ pub fn denormalize(e: &Env, token: &Address, amount: i128) -> i128 {
 /// `Rounding::Up`: rounds away from zero when there is a remainder.
 ///
 /// # Panics
-/// * If `amount` is negative
-/// * If token decimals are outside supported range
+/// * `ContractError::InvalidBondAmount` if `amount` is negative
+/// * `ContractError::UnsupportedDecimals` if token decimals are outside supported range
 pub fn denormalize_with_rounding(
     e: &Env,
     token: &Address,
@@ -186,14 +154,15 @@ pub fn denormalize_with_rounding(
     rounding: Rounding,
 ) -> i128 {
     if amount < 0 {
-        panic!("cannot denormalize negative amount");
+        panic_with_error!(e, ContractError::InvalidBondAmount);
     }
     if amount == 0 {
         return 0;
     }
 
     let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
+    let (scale, _is_multiplier) =
+        get_scale_info(decimals).unwrap_or_else(|err| panic_with_error!(e, err));
 
     if scale == 1 {
         return amount;
@@ -239,7 +208,8 @@ pub fn can_denormalize_exactly(e: &Env, token: &Address, amount: i128) -> bool {
     }
 
     let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
+    let (scale, _is_multiplier) =
+        get_scale_info(decimals).unwrap_or_else(|err| panic_with_error!(e, err));
 
     if scale == 1 {
         return true;
@@ -257,7 +227,8 @@ pub fn would_denormalize_to_zero(e: &Env, token: &Address, amount: i128) -> bool
     }
 
     let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
+    let (scale, _is_multiplier) =
+        get_scale_info(decimals).unwrap_or_else(|err| panic_with_error!(e, err));
 
     if scale == 1 {
         return false;
@@ -282,7 +253,8 @@ pub fn can_normalize_safely(e: &Env, token: &Address, amount: i128) -> bool {
     }
 
     let decimals = validate_supported_decimals(e, token);
-    let (scale, _is_multiplier) = get_scale_info(decimals);
+    let (scale, _is_multiplier) =
+        get_scale_info(decimals).unwrap_or_else(|err| panic_with_error!(e, err));
 
     if scale == 1 {
         return true;
@@ -302,36 +274,35 @@ mod tests {
 
     #[test]
     fn test_scale_info_6_decimals() {
-        let (scale, is_mult) = get_scale_info(6);
+        let (scale, is_mult) = get_scale_info(6).unwrap();
         assert_eq!(scale, 1_000_000_000_000); // 10^12
         assert!(is_mult);
     }
 
     #[test]
     fn test_scale_info_8_decimals() {
-        let (scale, is_mult) = get_scale_info(8);
+        let (scale, is_mult) = get_scale_info(8).unwrap();
         assert_eq!(scale, 10_000_000_000); // 10^10
         assert!(is_mult);
     }
 
     #[test]
     fn test_scale_info_18_decimals() {
-        let (scale, is_mult) = get_scale_info(18);
+        let (scale, is_mult) = get_scale_info(18).unwrap();
         assert_eq!(scale, 1);
         assert!(is_mult);
     }
 
     #[test]
     fn test_scale_info_0_decimals() {
-        let (scale, is_mult) = get_scale_info(0);
+        let (scale, is_mult) = get_scale_info(0).unwrap();
         assert_eq!(scale, 1_000_000_000_000_000_000_i128); // 10^18
         assert!(is_mult);
     }
 
     #[test]
-    #[should_panic(expected = "exceeds NORMALIZED_DECIMALS")]
     fn test_scale_info_rejects_above_18() {
-        get_scale_info(19);
+        assert_eq!(get_scale_info(19), Err(ContractError::UnsupportedDecimals));
     }
 
     // ── normalize ─────────────────────────────────────────────────────────
@@ -380,7 +351,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "bond amount cannot be negative")]
+    #[should_panic(expected = "#214")]
     fn test_normalize_negative() {
         normalize_knowing_decimals(18, -1);
     }
@@ -426,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "cannot denormalize negative amount")]
+    #[should_panic(expected = "#214")]
     fn test_denormalize_negative() {
         denormalize_knowing_decimals(18, -1);
     }
@@ -600,12 +571,12 @@ mod tests {
 
     fn normalize_knowing_decimals(decimals: u32, amount: i128) -> i128 {
         if amount < 0 {
-            panic!("bond amount cannot be negative");
+            panic_with_error!(&Env::default(), ContractError::InvalidBondAmount);
         }
         if amount == 0 {
             return 0;
         }
-        let (scale, _) = get_scale_info(decimals);
+        let (scale, _) = get_scale_info(decimals).expect("decimals within supported range");
         if scale == 1 {
             return amount;
         }
@@ -624,12 +595,12 @@ mod tests {
         rounding: Rounding,
     ) -> i128 {
         if amount < 0 {
-            panic!("cannot denormalize negative amount");
+            panic_with_error!(&Env::default(), ContractError::InvalidBondAmount);
         }
         if amount == 0 {
             return 0;
         }
-        let (scale, _) = get_scale_info(decimals);
+        let (scale, _) = get_scale_info(decimals).expect("decimals within supported range");
         if scale == 1 {
             return amount;
         }
@@ -660,7 +631,7 @@ mod tests {
         if amount == 0 {
             return true;
         }
-        let (scale, _) = get_scale_info(decimals);
+        let (scale, _) = get_scale_info(decimals).expect("decimals within supported range");
         if scale == 1 {
             return true;
         }
@@ -671,7 +642,7 @@ mod tests {
         if amount <= 0 {
             return true;
         }
-        let (scale, _) = get_scale_info(decimals);
+        let (scale, _) = get_scale_info(decimals).expect("decimals within supported range");
         if scale == 1 {
             return false;
         }
@@ -682,7 +653,7 @@ mod tests {
         if amount < 0 {
             return false;
         }
-        let (scale, _) = get_scale_info(decimals);
+        let (scale, _) = get_scale_info(decimals).expect("decimals within supported range");
         if scale == 1 {
             return true;
         }

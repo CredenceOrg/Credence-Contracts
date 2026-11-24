@@ -16,13 +16,9 @@
 
 extern crate std;
 
-use crate::pausable::{
-    approve_pause_proposal, execute_pause_proposal, is_paused, pause, require_not_paused,
-    set_pause_signer, set_pause_threshold, unpause,
-};
 use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{Address, Bytes, Env, String, Vec};
+use soroban_sdk::{Address, Env, Vec};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::string::{String as StdString, ToString};
 
@@ -59,11 +55,20 @@ fn panic_message<F: FnOnce()>(f: F) -> StdString {
     }
 }
 
-/// Assert closure panics with exactly `expected`.
+/// Assert closure panics with `expected`.
+///
+/// A panic inside a contract invoked through its client reaches the test as a
+/// host error whose event log records the original text as
+/// `caught panic '<message>'`, so the message is matched there. A panic raised
+/// directly by Rust code (no contract frame) is the bare message.
 #[track_caller]
 fn expect_panic_with<F: FnOnce()>(expected: &str, f: F) {
     let msg = panic_message(f);
-    assert_eq!(msg, expected);
+    let from_contract = std::format!("caught panic '{expected}'");
+    assert!(
+        msg == expected || msg.contains(&from_contract),
+        "expected panic {expected:?}, got: {msg}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -76,7 +81,7 @@ fn expect_panic_with<F: FnOnce()>(expected: &str, f: F) {
 #[test]
 fn failed_execution_leaves_proposal_executable() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 3);
+    let (client, _admin, signers) = setup_with_signers(&e, 3);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap(); // 1 approval
     client.approve_pause_proposal(&signers.get(1).unwrap(), &pid); // 2 approvals
@@ -100,7 +105,7 @@ fn failed_execution_leaves_proposal_executable() {
 #[test]
 fn failed_unpause_execution_leaves_proposal_executable() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 3);
+    let (client, _admin, signers) = setup_with_signers(&e, 3);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
@@ -165,7 +170,7 @@ fn admin_unpause_cannot_be_blocked_by_stale_proposal() {
 #[test]
 fn approvals_do_not_leak_across_proposals() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 2);
+    let (client, _admin, signers) = setup_with_signers(&e, 2);
 
     // Proposal 1: pause
     let pid1 = client.pause(&signers.get(0).unwrap()).unwrap();
@@ -197,7 +202,7 @@ fn approvals_do_not_leak_across_proposals() {
 #[test]
 fn proposal_removed_after_execution() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 1);
+    let (client, _admin, signers) = setup_with_signers(&e, 1);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     client.execute_pause_proposal(&pid);
@@ -229,19 +234,23 @@ fn borrow_freeze_toggle_preserves_pause_state() {
     let e = Env::default();
     let (client, admin) = setup(&e);
 
-    client.pause(&admin);
-    assert!(client.is_paused());
-
-    // Toggle borrow freeze multiple times
+    // `set_borrow_frozen` is gated by the pause, so toggle it while unpaused.
+    client.set_borrow_frozen(&admin, &true);
+    client.set_borrow_frozen(&admin, &false);
     client.set_borrow_frozen(&admin, &true);
     assert!(client.is_borrow_frozen());
-    assert!(client.is_paused());
 
-    client.set_borrow_frozen(&admin, &false);
-    assert!(!client.is_borrow_frozen());
+    client.pause(&admin);
     assert!(client.is_paused());
+    assert!(client.is_borrow_frozen());
 
-    client.set_borrow_frozen(&admin, &true);
+    // While paused the toggle is rejected and leaves both flags untouched.
+    assert_eq!(
+        client.try_set_borrow_frozen(&admin, &false),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::ContractPaused as u32
+        )))
+    );
     assert!(client.is_borrow_frozen());
     assert!(client.is_paused());
 
@@ -273,10 +282,14 @@ fn pause_toggle_preserves_borrow_freeze_state() {
     assert!(client.is_paused());
     assert!(client.is_borrow_frozen());
 
-    // Unfreeze borrow should not affect pause
+    // Unfreezing borrow (possible only while unpaused) should not affect pause
+    client.unpause(&admin);
     client.set_borrow_frozen(&admin, &false);
     assert!(!client.is_borrow_frozen());
+    assert!(!client.is_paused());
+    client.pause(&admin);
     assert!(client.is_paused());
+    assert!(!client.is_borrow_frozen());
 }
 
 // ---------------------------------------------------------------------------
@@ -295,7 +308,7 @@ fn cancel_emergency_drain_idempotent() {
     client.pause(&admin);
     assert!(client.try_cancel_emergency_drain(&admin).is_ok());
 
-    client.try_schedule_emergency_drain(&admin, &86400_u64);
+    let _ = client.try_schedule_emergency_drain(&admin, &86400_u64);
     assert!(client.try_cancel_emergency_drain(&admin).is_ok());
 
     // Cancel again after already cancelled
@@ -342,7 +355,7 @@ fn pause_survives_ledger_advance() {
 #[test]
 fn interleaved_pause_unpause_proposals() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 3);
+    let (client, _admin, signers) = setup_with_signers(&e, 3);
 
     // Start pause proposal
     let pid1 = client.pause(&signers.get(0).unwrap()).unwrap(); // 1
@@ -437,10 +450,13 @@ fn threshold_zero_ignores_signers() {
     client.set_pause_signer(&admin, &s, &true);
     client.set_pause_threshold(&admin, &0u32);
 
-    // Signer cannot propose when threshold is 0
-    expect_panic_with("not pause signer", || {
-        client.pause(&s);
-    });
+    // With threshold 0 pausing is admin-only, so a signer is rejected as a non-admin.
+    assert_eq!(
+        client.try_pause(&s),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            credence_errors::ContractError::NotAdmin as u32
+        )))
+    );
 
     // Admin can pause
     assert_eq!(client.pause(&admin), None);

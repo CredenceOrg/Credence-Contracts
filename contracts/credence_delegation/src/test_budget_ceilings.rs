@@ -11,7 +11,7 @@
 //! # Running
 //!
 //! ```sh
-//! cargo test -p credence_bond budget
+//! cargo test -p credence_delegation budget
 //! ```
 //!
 //! # How ceilings are enforced
@@ -466,7 +466,7 @@ fn budget_slash_then_withdraw_interaction() {
 /// Run it manually to verify the assertion mechanism:
 ///
 /// ```sh
-/// cargo test -p credence_bond budget_regression_guard_fails -- --ignored
+/// cargo test -p credence_delegation budget_regression_guard_fails -- --ignored
 /// ```
 ///
 /// CI output should include a "budget ceiling EXCEEDED" message, confirming
