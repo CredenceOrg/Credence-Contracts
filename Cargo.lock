@@ -599,7 +599,6 @@ dependencies = [
  "interfaces",
  "proptest",
  "soroban-sdk",
- "timelock",
 ]
 
 [[package]]
