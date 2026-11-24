@@ -14,6 +14,11 @@
 
 use std::process::Command;
 
+use stellar_baselib::{
+    address::{Address, AddressTrait},
+    xdr::{HostFunction, Limits, OperationBody, ReadXdr, ScVal, ScVec, TransactionEnvelope},
+};
+
 fn bin() -> &'static str {
     env!("CARGO_BIN_EXE_credence-admin")
 }
@@ -274,4 +279,233 @@ fn different_commands_produce_different_xdr() {
         xdr_early_exit, xdr_pause,
         "early_exit and pause XDR should differ"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Timelock / arbitration dry-run golden tests
+// ---------------------------------------------------------------------------
+
+const SALT: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+const HASH_ARG: &str = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20";
+
+/// Run a dry-run command and parse its JSON report.
+fn dry_run(args: &[&str]) -> serde_json::Value {
+    let mut full_args = vec!["--contract", CONTRACT_ADDR];
+    full_args.extend_from_slice(args);
+
+    let output = Command::new(bin())
+        .args(&full_args)
+        .output()
+        .expect("failed to run credence-admin");
+    assert!(
+        output.status.success(),
+        "expected success; stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let report: serde_json::Value = serde_json::from_str(&stdout)
+        .unwrap_or_else(|_| panic!("output is not valid JSON: {stdout}"));
+    assert_eq!(report["status"], "dry_run");
+    report
+}
+
+/// Decode the envelope back into the invoked function name and its `ScVal` args.
+/// This proves the dry-run emits a real, decodable `InvokeHostFunction` XDR.
+fn decoded_invoke(report: &serde_json::Value) -> (String, Vec<ScVal>) {
+    let xdr = report["envelope_xdr"]
+        .as_str()
+        .expect("envelope_xdr is not a string");
+    let envelope = TransactionEnvelope::from_xdr_base64(xdr, Limits::none())
+        .expect("envelope_xdr must be decodable XDR");
+    let TransactionEnvelope::Tx(v1) = envelope else {
+        panic!("expected a v1 transaction envelope");
+    };
+    let operation = v1
+        .tx
+        .operations
+        .into_iter()
+        .next()
+        .expect("transaction must contain one operation");
+    let OperationBody::InvokeHostFunction(invoke) = operation.body else {
+        panic!("expected an InvokeHostFunction operation");
+    };
+    let HostFunction::InvokeContract(call) = invoke.host_function else {
+        panic!("expected an InvokeContract host function");
+    };
+    let function = String::from_utf8_lossy(call.function_name.as_ref()).to_string();
+    (function, call.args.to_vec())
+}
+
+fn address(address: &str) -> ScVal {
+    Address::new(address)
+        .expect("valid address")
+        .to_sc_val()
+        .expect("address ScVal")
+}
+
+fn bytes(hex_value: &str) -> ScVal {
+    ScVal::Bytes(
+        hex::decode(hex_value)
+            .expect("valid hex")
+            .try_into()
+            .expect("valid ScBytes"),
+    )
+}
+
+fn symbol(name: &str) -> ScVal {
+    ScVal::Symbol(name.as_bytes().to_vec().try_into().expect("valid ScSymbol"))
+}
+
+fn vec_scval(values: Vec<ScVal>) -> ScVal {
+    ScVal::Vec(Some(ScVec::try_from(values).expect("valid ScVec")))
+}
+
+#[test]
+fn timelock_queue_call_dry_run_decodes_to_expected_scvals() {
+    let report = dry_run(&[
+        "timelock-queue-call",
+        "--proposer",
+        ADMIN_ADDR,
+        "--target",
+        CONTRACT_ADDR,
+        "--func",
+        "set_quorum",
+        "--arg",
+        &format!("address:{ADMIN_ADDR}"),
+        "--arg",
+        &format!("bytes32:{HASH_ARG}"),
+        "--arg",
+        "vec:[u32:1,u32:2]",
+        "--salt",
+        SALT,
+        "--delay",
+        "300",
+    ]);
+
+    assert_eq!(
+        report["function"], "queue_call",
+        "unexpected function: {report}"
+    );
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "queue_call");
+    assert_eq!(args.len(), 6);
+    assert_eq!(args[0], address(ADMIN_ADDR));
+    assert_eq!(args[1], address(CONTRACT_ADDR));
+    assert_eq!(args[2], symbol("set_quorum"));
+
+    let ScVal::Vec(Some(call_args)) = &args[3] else {
+        panic!("queue_call args must be ScVal::Vec");
+    };
+    assert_eq!(
+        call_args.to_vec(),
+        vec![
+            address(ADMIN_ADDR),
+            bytes(HASH_ARG),
+            vec_scval(vec![ScVal::U32(1), ScVal::U32(2)]),
+        ]
+    );
+    assert_eq!(args[4], bytes(SALT));
+    assert_eq!(args[5], ScVal::U64(300));
+}
+
+#[test]
+fn timelock_execute_and_cancel_dry_run_decode_expected_args() {
+    let report = dry_run(&["timelock-execute", "--op-id", "42"]);
+    assert_eq!(report["function"], "execute_operation");
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "execute_operation");
+    assert_eq!(args, vec![ScVal::U64(42)]);
+
+    let report = dry_run(&["timelock-cancel", "--admin", ADMIN_ADDR, "--op-id", "42"]);
+    assert_eq!(report["function"], "cancel_operation");
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "cancel_operation");
+    assert_eq!(args, vec![address(ADMIN_ADDR), ScVal::U64(42)]);
+}
+
+#[test]
+fn arbitration_register_and_unregister_dry_run_decode_expected_args() {
+    let report = dry_run(&[
+        "arbitration-register-arbitrator",
+        "--arbitrator",
+        TREASURY_ADDR,
+        "--weight",
+        "-7",
+    ]);
+    assert_eq!(report["function"], "register_arbitrator");
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "register_arbitrator");
+    assert_eq!(args, vec![address(TREASURY_ADDR), ScVal::from(-7_i128)]);
+
+    let report = dry_run(&[
+        "arbitration-unregister-arbitrator",
+        "--arbitrator",
+        TREASURY_ADDR,
+    ]);
+    assert_eq!(report["function"], "unregister_arbitrator");
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "unregister_arbitrator");
+    assert_eq!(args, vec![address(TREASURY_ADDR)]);
+}
+
+#[test]
+fn arbitration_set_quorum_and_pause_dry_run_decode_expected_args() {
+    let report = dry_run(&[
+        "arbitration-set-quorum",
+        "--admin",
+        ADMIN_ADDR,
+        "--min-total-weight",
+        "100",
+        "--min-voters",
+        "3",
+    ]);
+    assert_eq!(report["function"], "set_quorum");
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "set_quorum");
+    assert_eq!(
+        args,
+        vec![address(ADMIN_ADDR), ScVal::from(100_i128), ScVal::U32(3)]
+    );
+
+    let report = dry_run(&["arbitration-pause", "--caller", ADMIN_ADDR]);
+    assert_eq!(report["function"], "pause");
+    let (function, args) = decoded_invoke(&report);
+    assert_eq!(function, "pause");
+    assert_eq!(args, vec![address(ADMIN_ADDR)]);
+}
+
+#[test]
+fn new_commands_reject_invalid_typed_args_offline() {
+    let mut full_args = vec![
+        "--contract",
+        CONTRACT_ADDR,
+        "timelock-queue-call",
+        "--proposer",
+        ADMIN_ADDR,
+        "--target",
+        CONTRACT_ADDR,
+        "--func",
+        "set_quorum",
+        "--arg",
+        "unsupported:1",
+        "--salt",
+        SALT,
+        "--delay",
+        "300",
+    ];
+    let output = Command::new(bin())
+        .args(&full_args)
+        .output()
+        .expect("failed to run credence-admin");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unsupported --arg type"));
+
+    full_args[10] = "bytes32:abcd";
+    let output = Command::new(bin())
+        .args(&full_args)
+        .output()
+        .expect("failed to run credence-admin");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("32 bytes"));
 }

@@ -88,7 +88,7 @@ pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
         .get(&DataKey::PauseSignerCount)
         .unwrap_or(0);
     if threshold > count {
-        panic!("threshold cannot exceed signer count");
+        e.panic_with_error(ContractError::ThresholdExceedsSigners);
     }
     let old_threshold: u32 = e
         .storage()
@@ -114,7 +114,7 @@ fn require_pause_signer(e: &Env, signer: &Address) {
         .get(&DataKey::PauseSigner(signer.clone()))
         .unwrap_or(false);
     if !ok {
-        panic!("not pause signer");
+        e.panic_with_error(ContractError::NotSigner);
     }
 }
 
@@ -180,7 +180,7 @@ pub fn unpause(e: &Env, caller: &Address) -> Option<u64> {
             .storage()
             .instance()
             .get(&DataKey::Admin)
-            .unwrap_or_else(|| panic!("not initialized"));
+            .unwrap_or_else(|| e.panic_with_error(ContractError::NotInitialized));
 
         if *caller == stored_admin {
             caller.require_auth();
@@ -218,7 +218,7 @@ pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_or_else(|| e.panic_with_error(ContractError::ProposalNotFound));
 
     record_approval(e, proposal_id, signer);
 
@@ -233,7 +233,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_or_else(|| e.panic_with_error(ContractError::ProposalNotFound));
 
     let threshold: u32 = e
         .storage()
@@ -247,18 +247,21 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .unwrap_or(0);
 
     if approvals < threshold {
-        panic!("insufficient approvals to execute");
+        e.panic_with_error(ContractError::InsufficientApprovals);
     }
 
     match action {
         1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
-        _ => panic!("invalid pause action"),
+        _ => e.panic_with_error(ContractError::InvalidPauseAction),
     }
 
     e.storage()
         .instance()
         .remove(&DataKey::PauseProposal(proposal_id));
+    e.storage()
+        .instance()
+        .remove(&DataKey::PauseApprovalCount(proposal_id));
 }
 
 fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
@@ -277,18 +280,8 @@ fn do_unpause(e: &Env, proposal_id: Option<u64>) {
 // Governance-Controlled Borrow Freeze Helpers
 // ============================================================================
 
-/// Returns `true` when new borrows/increases are frozen.
-#[must_use]
-pub fn is_borrow_frozen(e: &Env) -> bool {
-    crate::parameters::is_borrow_frozen(e)
-}
-
 /// Panics with `BorrowFrozen` if borrows are currently frozen.
+#[cfg(test)]
 pub fn require_not_borrow_frozen(e: &Env) {
     crate::parameters::require_not_borrow_frozen(e);
-}
-
-/// Freeze or unfreeze new bond creation and top-ups. Governance-only.
-pub fn set_borrow_frozen(e: &Env, admin: &Address, frozen: bool) {
-    crate::parameters::set_borrow_frozen(e, admin, frozen);
 }

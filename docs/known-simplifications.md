@@ -136,17 +136,17 @@ This document consolidates known simplifications, stubs, and limitations across 
 
 ## 5. Test-Only Stubs & Limitations
 
-### 5.1 Batch Tests Cannot Cross Unwind Boundaries (SDK 22.0 Limitation)
+### 5.1 Batch Tests Cannot Cross Unwind Boundaries (SDK 22.0 Limitation) (resolved)
 
-**Location**: `contracts/credence_bond/src/test_batch.rs:465-467`
+**Location**: `contracts/credence_bond/src/test_batch.rs` (Section J)
 
-**Current behavior**: Test marked `#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]`. The Soroban 22.0 SDK's `Env` contains `UnsafeCell` and cannot cross panic unwind boundaries.
+**Previous behavior**: Two tests (`test_atomic_failure_on_second_bond` and `test_atomic_failure_validation_order`) were marked `#[ignore = "Requires rewrite without catch_unwind due to SDK 22.0 Env incompatibility"]` because the Soroban 22.0 SDK's `Env` contains `UnsafeCell` and cannot cross panic unwind boundaries.
 
-**Production behavior**: Not applicable; this is a test harness limitation only.
+**Current behavior**: The two ignored tests have been removed; Section J of `contracts/credence_bond/src/test_batch.rs` verifies the same batch atomicity and validation-order invariants using non-panicking `try_*` client methods (`test_atomic_rejection_leaves_no_bonds_stored_invalid_amount`, `test_successful_batch_stores_exactly_the_created_bonds`, and related tests).
 
-**Impact**: Some batch panic-path tests are skipped.
+**Production behavior**: Not applicable; this was a test harness limitation only.
 
-**Tracking**: Issue #1095 (hypothetical); blocked by SDK upgrade.
+**Tracking**: Resolved; superseded `#[ignore]` tests removed and replaced by Section J `try_*` tests.
 
 ---
 

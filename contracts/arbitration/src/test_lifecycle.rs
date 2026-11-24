@@ -142,8 +142,7 @@ fn test_create_dispute_recovers_from_stale_active_dispute_marker() {
     // resolved, which clears the marker) must not lock the creator out
     // forever: the guard is keyed on the marker, so a marker whose target is
     // gone is treated as no active dispute.
-    let cid = s.client.address.clone();
-    s.env.as_contract(&cid, || {
+    s.env.as_contract(&s.client.address, || {
         s.env
             .storage()
             .instance()
@@ -193,13 +192,14 @@ fn test_invalid_cancel_already_resolved() {
     // Resolved → Cancelled is not valid for any caller.
     advance(&s.env, 3601);
     s.client.resolve_dispute(&id);
-    // Resolved → Cancelled is not valid
+    // After the voting window, a creator's cancel is blocked by the
+    // creator guard (`CancelNotAllowed`) before the transition check runs.
     let err = s
         .client
         .try_cancel_dispute(&s.creator, &id, &None)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ArbitrationError::InvalidTransition);
+    assert_eq!(err, ArbitrationError::CancelNotAllowed);
 }
 
 #[test]
@@ -808,13 +808,13 @@ fn test_invalid_cancel_preserves_state() {
 
     let initial_dispute = s.client.get_dispute(&id);
 
-    // now Resolved
+    // now Resolved; the creator's cancel is blocked by the creator guard.
     let err = s
         .client
         .try_cancel_dispute(&s.creator, &id, &None)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ArbitrationError::InvalidTransition);
+    assert_eq!(err, ArbitrationError::CancelNotAllowed);
 
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, initial_dispute.status);

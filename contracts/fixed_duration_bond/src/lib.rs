@@ -456,6 +456,24 @@ impl FixedDurationBond {
         }
     }
 
+    /// Return the configured creation fee `(treasury, fee_bps)`, or `None` if unset.
+    pub fn get_fee_config(e: Env) -> Option<(Address, u32)> {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get::<_, FeeConfig>(&DataKey::FeeConfig)
+            .map(|cfg| (cfg.treasury, cfg.fee_bps))
+    }
+
+    /// Return the configured early-exit penalty `(treasury, base_penalty_bps)`, or `None` if unset.
+    pub fn get_penalty_config(e: Env) -> Option<(Address, u32)> {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get::<_, PenaltyConfig>(&DataKey::PenaltyConfig)
+            .map(|cfg| (cfg.treasury, cfg.base_penalty_bps))
+    }
+
     pub fn transfer_admin(e: Env, new_admin: Address) {
         bump_instance_ttl(&e);
         let admin: Address = e
@@ -1751,6 +1769,41 @@ mod tests {
         assert_eq!(client.get_admin(), new_admin);
     }
 
+    /// `get_fee_config` returns `None` before configuration and reflects updates after `set_fee_config`.
+    #[test]
+    fn test_get_fee_config_unset_and_set() {
+        let e = Env::default();
+        e.mock_all_auths();
+        let contract_id = e.register(FixedDurationBond, ());
+        let client = FixedDurationBondClient::new(&e, &contract_id);
+        let admin = Address::generate(&e);
+        let token_addr = e.register(MockStellarAsset, ());
+        client.initialize(&admin, &token_addr);
+
+        assert_eq!(client.get_fee_config(), None);
+
+        let treasury_1 = Address::generate(&e);
+        client.set_fee_config(&admin, &treasury_1, &250_u32);
+        assert_eq!(client.get_fee_config(), Some((treasury_1, 250_u32)));
+
+        let treasury_2 = Address::generate(&e);
+        client.set_fee_config(&admin, &treasury_2, &0_u32);
+        assert_eq!(client.get_fee_config(), Some((treasury_2, 0_u32)));
+    }
+
+    /// `get_penalty_config` returns `None` before configuration and reflects updates after `set_penalty_config`.
+    #[test]
+    fn test_get_penalty_config_unset_and_set() {
+        let (e, admin, _token, client) = setup();
+        assert_eq!(client.get_penalty_config(), None);
+
+        let treasury_1 = Address::generate(&e);
+        client.set_penalty_config(&admin, &treasury_1, &1_000_u32);
+        assert_eq!(client.get_penalty_config(), Some((treasury_1, 1_000_u32)));
+
+        let treasury_2 = Address::generate(&e);
+        client.set_penalty_config(&admin, &treasury_2, &0_u32);
+        assert_eq!(client.get_penalty_config(), Some((treasury_2, 0_u32)));
     // ═══════════════════════════════════════════════════════════════════════════
     // Penalty Rounding & Fund Conservation Table Tests
     // ═══════════════════════════════════════════════════════════════════════════
