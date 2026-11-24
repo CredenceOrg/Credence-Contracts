@@ -235,8 +235,6 @@ pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), Arbitratio
 mod tests {
     extern crate std;
     use super::*;
-    use std::vec;
-    use std::vec::Vec;
 
     #[test]
     fn status_error_discriminants_are_wire_stable() {

@@ -36,7 +36,7 @@ pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_transition, ArbitrationError, DisputeStatus};
+use status::{require_transition, DisputeStatus};
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
 
