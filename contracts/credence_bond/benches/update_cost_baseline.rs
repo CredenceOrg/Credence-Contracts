@@ -1,7 +1,7 @@
 // This is an off-chain measurement binary, not deployed WASM. Issue #713
 // disallows `format!`/etc. in production contract code; benches never run on
 // chain, so we silence the lint locally.
-#![allot(clippy::disallowed_macros)]
+#![allow(clippy::disallowed_macros)]
 
 /// Refresh the committed gas baseline for the `credence_bond` contract.
 ///
@@ -28,7 +28,7 @@
 /// `docs/gas-regression.md` for triage steps.
 mod harness;
 
-use std::path::path::PathBuf;
+use std::path::PathBuf;
 
 fn main() {
     // Default target is the in-repo baseline; `--out <path>` overrides it.

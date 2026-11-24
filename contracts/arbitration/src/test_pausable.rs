@@ -1,8 +1,8 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{Address, Env};
 
 fn setup() -> (Env, Address, CredenceArbitrationClient<'static>) {
     let env = Env::default();
@@ -14,6 +14,7 @@ fn setup() -> (Env, Address, CredenceArbitrationClient<'static>) {
     (env, admin, client)
 }
 
+#[allow(dead_code)]
 fn advance(e: &Env, secs: u64) {
     e.ledger().set(soroban_sdk::testutils::LedgerInfo {
         timestamp: e.ledger().timestamp() + secs,
@@ -86,7 +87,6 @@ fn test_pause_does_not_block_existing_tests_flow_when_unpaused() {
     let description = String::from_str(&env, "Dispute");
     let dispute_id = client.create_dispute(&creator, &description, &3600u64);
     let _ = client.get_dispute(&dispute_id);
-    let _ = advance; // suppress unused warning
 }
 
 #[test]

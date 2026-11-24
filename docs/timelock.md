@@ -16,6 +16,10 @@ Admin ──cancel_operation─────────────────�
 
 **Lifecycle of an operation:**
 
+1. Admin calls `queue_operation(proposer, op_hash, delay)` (hash-only) or `queue_call(proposer, target, func, args, salt, delay)` (call-bound). The operation is recorded with an ETA of `now + delay` (where delay >= min_delay) and an `expires_at` grace window. The admin may configure the grace window with `set_grace_period(admin, seconds)`; the default is 86,400 seconds, and a change applies only to operations or admin proposals created afterward.
+2. The operation sits in a pending state until the ETA passes.
+3. After the ETA, anyone can call `execute_operation(op_id)` to execute it, provided it's within the grace window (`now <= expires_at`). A call-bound operation invokes its queued `(target, func, args)`; a hash-only operation only records that it executed. Executing after `expires_at` fails with `ContractError::OperationExpired`.
+4. At any point before execution, including after expiry, the admin can call `cancel_operation(op_id)` to discard it.
 1. Admin calls `queue_call(proposer, target, func, args, salt, delay)` (call-bound) or `queue_operation(proposer, op_hash, delay)` (legacy hash-only). The operation is recorded with an ETA of `now + delay` (where `delay >= min_delay_seconds()`) and an `expires_at` grace window.
 2. The operation sits in a pending state until the ETA passes.
 3. After the ETA, anyone can call `execute_operation(op_id)` to execute it, provided it is within the grace window (`eta <= now <= expires_at`). A call-bound operation invokes its queued `(target, func, args)`; a hash-only operation only records that it executed.
@@ -28,6 +32,10 @@ has to be performed by the admin key directly, and no on-chain link exists
 between the queued hash and that action. Call-bound operations close that gap.
 
 ```
+Admin ──queue_call(target, func, args, salt, delay)──> Timelock
+                                                   │  (wait, then anyone executes)
+                                                   ▼
+                                     target.func(args) as the timelock
 Admin ──queue_call(proposer, target, func, args, salt, delay)──> Timelock
                                                                     │  (wait, then anyone executes)
                                                                     ▼
@@ -96,12 +104,13 @@ Execution time boundaries are deterministic and inclusive across the full lifecy
 | `now = eta + 1` | `now > eta && now < expires_at` | Succeeds | `Executed` |
 | `now = expires_at - 1` | `now < expires_at` | Succeeds | `Executed` |
 | `now = expires_at` | `now == expires_at` | Succeeds (upper inclusive boundary) | `Executed` |
-| `now = expires_at + 1` | `now > expires_at` | Fails: `ContractError::SignatureExpired` | `Pending` |
+| `now = expires_at + 1` | `now > expires_at` | Fails: `ContractError::OperationExpired` | `Pending` |
 
 ### Grace Window Semantics
 
-- **Grace Duration**: `GRACE_PERIOD = 86_400` seconds (24 hours).
-- **Expiration Calculation**: `expires_at = eta + GRACE_PERIOD`.
+- **Default Grace Duration**: `GRACE_PERIOD = 86_400` seconds (24 hours).
+- **Expiration Calculation**: `expires_at = eta + get_grace_period()`.
+- **Configuration**: `set_grace_period(admin, seconds)` affects operations queued afterward; existing expiration timestamps do not change.
 - **Inclusive Range**: An operation is executable on any ledger timestamp `now` satisfying `eta <= now <= expires_at`.
 - **Regression Suite**: Fully tested in `contracts/timelock/src/test_timelock.rs` covering all boundary conditions (`eta - 1`, `eta`, `eta + 1`, `expires_at - 1`, `expires_at`, `expires_at + 1`).
 
@@ -148,7 +157,7 @@ on-chain event log for a single `op_id`:
 | `Cancelled` → `Executed` | `execute_operation` status check | `ContractError::ProposalAlreadyExecuted` |
 | `Cancelled` → `Cancelled` (double cancel) | `cancel_operation` status check | `ContractError::ProposalAlreadyExecuted` |
 | `Pending` → `Executed` before `eta` | `execute_operation` ETA check | `ContractError::TimelockNotReady` |
-| `Pending` → `Executed` after `expires_at` | `execute_operation` expiry check | `ContractError::SignatureExpired` |
+| `Pending` → `Executed` after `expires_at` | `execute_operation` expiry check | `ContractError::OperationExpired` |
 | Re-queueing an already-executed `op_hash` | `queue_operation` replay guard | `ContractError::ProposalAlreadyExecuted` |
 
 Both status checks in `execute_operation` and `cancel_operation` test for
@@ -176,7 +185,7 @@ uses the same minimum delay and grace window as those operations, while
 requiring the proposed admin to authenticate the acceptance.
 
 1. The current admin calls `propose_admin(new_admin)`. The proposal records
-   `eta = now + min_delay_seconds()` and `expires_at = eta + GRACE_PERIOD`.
+   `eta = now + min_delay_seconds()` and `expires_at = eta + get_grace_period()`.
 2. The current admin retains control and may cancel the proposal during the
    delay by calling `cancel_admin_proposal()`.
 3. The proposed admin calls `accept_admin()` at any time in the inclusive
@@ -211,8 +220,25 @@ returned operation and in the `operation_queued` event.
 | `target`   | Address       | Contract to invoke on execution                   |
 | `func`     | Symbol        | Function to call on `target`                      |
 | `args`     | Vec<Val>      | Arguments, encoded exactly as they will be passed |
+| `salt`     | BytesN<32>    | Salt included in the operation hash                |
+| `delay`    | u64           | Seconds to delay (>= min_delay_seconds())         |
 | `salt`     | BytesN<32>    | Caller-supplied 32-byte salt for hash uniqueness  |
 | `delay`    | u64           | Seconds to delay (`>= min_delay_seconds()`)       |
+
+### `queue_calls(proposer, calls) -> Vec<u64>`
+
+Queues a batch of `CallRequest` values, each containing `target`, `func`,
+`args`, `salt`, and `delay`. Batches must contain 1 to 20 requests. The batch
+is atomic: an invalid request reverts all queued operations. Each operation
+emits the usual `operation_queued` event.
+
+### Grace-period configuration
+
+- `get_grace_period() -> u64` returns the configured grace period (86,400
+  seconds by default).
+- `set_grace_period(admin, seconds)` updates the period for future queue
+  operations and emits `grace_period_updated(previous, new)`.
+- Zero is allowed and makes the ETA the only executable timestamp.
 
 ### `hash_call(target, func, args, salt) -> BytesN<32>`
 
@@ -292,12 +318,13 @@ Admin rotation entrypoints:
 | `admin_proposed`      | (tag)            | (current_admin, new_admin, eta, expires_at) |
 | `admin_transferred`   | (tag)            | (old_admin, new_admin)              |
 | `admin_proposal_cancelled` | (tag)       | (current_admin, proposed_admin)     |
+| `grace_period_updated` | (tag)           | (previous, new)                      |
 
 ## Security Considerations
 
 - The minimum delay must be greater than zero, enforced by `min_delay_seconds()`.
 - Operations cannot be executed before the ETA. The contract checks `now >= eta` at execution time.
-- Execution is valid through `expires_at` and invalid strictly after it (`now > expires_at`).
+- Execution is valid through `expires_at` and invalid strictly after it (`now > expires_at`), returning `ContractError::OperationExpired`.
 - Executed operations are tracked by `op_hash` to prevent replay attacks.
 - Cancelled and already-executed operations are permanently locked and cannot be re-used.
 - The contract uses `checked_add` for all arithmetic to prevent overflow.

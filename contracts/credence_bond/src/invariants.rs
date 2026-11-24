@@ -87,23 +87,6 @@ pub fn assert_self_consistent_for_subject(e: &Env, subject: &Address) {
     }
 }
 
-fn check_bond_slashed_within_bonded(e: &Env, bond: &IdentityBond) {
-    if bond.slashed_amount > bond.bonded_amount || bond.bonded_amount < 0 || bond.slashed_amount < 0
-    {
-        fail_drift(
-            e,
-            BondDriftDetails {
-                kind: BondDriftKind::SlashedExceedsBonded,
-                subject: bond.identity.clone(),
-                bonded_amount: bond.bonded_amount,
-                slashed_amount: bond.slashed_amount,
-                attestation_count: 0,
-                attestation_list_len: 0,
-            },
-        );
-    }
-}
-
 fn check_attestation_count_consistent(e: &Env, subject: &Address, bond: &IdentityBond) {
     let list_len = e
         .storage()

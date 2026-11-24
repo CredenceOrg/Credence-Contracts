@@ -20,9 +20,10 @@ use soroban_sdk::xdr::{FromXdr, ToXdr};
 use soroban_sdk::{Address, Bytes, Env};
 
 fn hex(bytes: &Bytes) -> String {
+    use std::fmt::Write as _;
     let mut s = String::with_capacity(bytes.len() as usize * 2);
     for byte in bytes.iter() {
-        s.push_str(&format!("{byte:02x}"));
+        let _ = write!(s, "{byte:02x}");
     }
     s
 }

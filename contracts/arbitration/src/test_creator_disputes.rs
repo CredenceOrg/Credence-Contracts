@@ -18,7 +18,7 @@ fn get_disputes_by_creator_pages_in_creation_order() {
     for _ in 0..3 {
         let id = client.create_dispute(&creator, &String::from_str(&e, "Test"), &3600);
         ids.push_back(id);
-        client.cancel_dispute(&creator, &id);
+        client.cancel_dispute(&creator, &id, &None);
     }
 
     let other_id = client.create_dispute(&other_creator, &String::from_str(&e, "Other"), &3600);
@@ -57,7 +57,7 @@ fn get_disputes_by_creator_rejects_empty_and_out_of_range_cursors() {
     assert_eq!(empty_err, ArbitrationError::CursorOutOfRange);
 
     let id = client.create_dispute(&creator, &String::from_str(&e, "Test"), &3600);
-    client.cancel_dispute(&creator, &id);
+    client.cancel_dispute(&creator, &id, &None);
     let end_err = client
         .try_get_disputes_by_creator(&creator, &1, &10)
         .unwrap_err()

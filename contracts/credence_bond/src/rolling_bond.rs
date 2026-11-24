@@ -1,5 +1,20 @@
 use crate::IdentityBond;
 
+pub fn is_period_ended(now: u64, bond_start: u64, bond_duration: u64) -> bool {
+    bond_start
+        .checked_add(bond_duration)
+        .is_some_and(|end| now >= end)
+}
+
+pub fn apply_renewal(bond: &mut IdentityBond, now: u64) {
+    bond.bond_start = now;
+//! Rolling Bond Type
+//!
+//! Auto-renews at period end unless withdrawal was requested with notice.
+//! Tracks withdrawal request and notice period for scoring.
+
+use crate::IdentityBond;
+
 /// Errors returned by rolling bond operations.
 ///
 /// These are explicit, non-panicking failure modes so callers can
@@ -101,17 +116,17 @@ mod tests {
     #[test]
     fn is_period_ended_boundaries() {
         // Before end.
-        assert_eq!(is_period_ended(99, 100, 100), false);
+        assert!(!is_period_ended(99, 100, 100));
         // Exact end is inclusive.
-        assert_eq!(is_period_ended(200, 100, 100), true);
+        assert!(is_period_ended(200, 100, 100));
         // After end.
-        assert_eq!(is_period_ended(201, 100, 100), true);
+        assert!(is_period_ended(201, 100, 100));
     }
 
     #[test]
     fn is_period_ended_invalid_inputs_return_false() {
-        assert_eq!(is_period_ended(u64::MAX, 0, 0), false);
-        assert_eq!(is_period_ended(u64::MAX, u64::MAX - 1, 2), false);
+        assert!(!is_period_ended(u64::MAX, 0, 0));
+        assert!(!is_period_ended(u64::MAX, u64::MAX - 1, 2));
     }
 
     #[test]
