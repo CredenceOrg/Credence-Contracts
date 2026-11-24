@@ -833,7 +833,7 @@ fn no_quorum_is_terminal() {
             .try_cancel_dispute(&s.creator, &id, &None)
             .unwrap_err()
             .unwrap(),
-        ArbitrationError::InvalidTransition
+        ArbitrationError::CancelNotAllowed
     );
 }
 

@@ -118,7 +118,7 @@ fn test_delegation_ttl_refreshed_on_get() {
     );
 
     let key = DataKey::Delegation(owner.clone(), delegate.clone(), DelegationType::Attestation);
-    let ttl_after_write = delegation_ttl(&e, &contract_id, &key);
+    let _ttl_after_write = delegation_ttl(&e, &contract_id, &key);
 
     // Advance time so TTL would naturally decrease
     advance_time(&e, &contract_id, 10 * 24 * 3600); // +10 days

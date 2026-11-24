@@ -192,13 +192,14 @@ fn test_invalid_cancel_already_resolved() {
     // Resolved → Cancelled is not valid for any caller.
     advance(&s.env, 3601);
     s.client.resolve_dispute(&id);
-    // Resolved → Cancelled is not valid
+    // After the voting window, a creator's cancel is blocked by the
+    // creator guard (`CancelNotAllowed`) before the transition check runs.
     let err = s
         .client
         .try_cancel_dispute(&s.creator, &id, &None)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ArbitrationError::InvalidTransition);
+    assert_eq!(err, ArbitrationError::CancelNotAllowed);
 }
 
 #[test]
@@ -807,13 +808,13 @@ fn test_invalid_cancel_preserves_state() {
 
     let initial_dispute = s.client.get_dispute(&id);
 
-    // now Resolved
+    // now Resolved; the creator's cancel is blocked by the creator guard.
     let err = s
         .client
         .try_cancel_dispute(&s.creator, &id, &None)
         .unwrap_err()
         .unwrap();
-    assert_eq!(err, ArbitrationError::InvalidTransition);
+    assert_eq!(err, ArbitrationError::CancelNotAllowed);
 
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, initial_dispute.status);
