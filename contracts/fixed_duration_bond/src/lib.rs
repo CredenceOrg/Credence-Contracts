@@ -2029,3 +2029,6 @@ mod tests {
         assert_eq!(token_client.balance(&owner), owner_initial);
     }
 }
+
+#[cfg(test)]
+mod test_reentrancy;
