@@ -138,7 +138,7 @@ These compact pages list the main public entrypoints, required roles, and backen
 | [signature-scheme-upgrade.md](signature-scheme-upgrade.md) | Contributor | Ed25519 → secp256k1 migration plan |
 | [status-snapshot.md](status-snapshot.md) | Integrator | On-chain status snapshots |
 | [supported-tokens.md](supported-tokens.md) | Operator | Allowlisted token configuration |
-| [templates.md](templates.md) | Contributor | Code generation templates |
+| [templates.md](templates.md) | Contributor | Contract starter, accrual helper, and accrual test templates |
 | [token-integration.md](token-integration.md) | Integrator | Adding new token types |
 | [verifiers.md](verifiers.md) | Integrator | Verifier registration and stake |
 | [arbitration_api.md](arbitration_api.md) | Integrator | Arbitration contract API |

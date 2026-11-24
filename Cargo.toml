@@ -1,43 +1,14 @@
-[package]
-name = "credence-contracts"
-version.workspace = true
-edition.workspace = true
-publish = false
-autobins = false
-autoexamples = false
-autobenches = false
-autotests = false
-
-[[test]]
-name = "e2e_protocol_lifecycle"
-path = "tests/e2e_protocol_lifecycle.rs"
+test = [{ name = "event_catalog", path = "tests/event_catalog.rs" }, { name = "cross_contract_pause", path = "tests/cross_contract_pause.rs" }, { name = "e2e_protocol_lifecycle", path = "tests/e2e_protocol_lifecycle.rs" }]
 
 [workspace]
 resolver = "2"
-members = [
-    "contracts/admin",
-    "contracts/arbitration",
-    "contracts/bounty-escrow",
-    "contracts/credence_bond",
-    "contracts/credence_delegation",
-    "contracts/credence_errors",
-    "contracts/credence_math",
-    "contracts/credence_multisig",
-    "contracts/credence_registry",
-    "contracts/credence_treasury",
-    "contracts/dispute_resolution",
-    "contracts/fixed_duration_bond",
-    "contracts/templates",
-    "contracts/timelock",
-    "crates/interfaces",
-    "crates/testutils",
-    "crates/credence_admin_cli",
-]
+members = ["contracts/admin", "contracts/arbitration", "contracts/bounty-escrow", "contracts/credence_bond", "contracts/credence_delegation", "contracts/credence_errors", "contracts/credence_math", "contracts/credence_multisig", "contracts/credence_registry", "contracts/credence_treasury", "contracts/dispute_resolution", "contracts/fixed_duration_bond", "contracts/templates", "contracts/timelock", "crates/interfaces", "crates/testutils", "crates/credence_admin_cli"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 
+[profile]
 [profile.release]
 opt-level = "z"
 overflow-checks = true
@@ -48,9 +19,55 @@ panic = "abort"
 codegen-units = 1
 lto = true
 
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0
+
+[package]
+name = "credence-contracts"
+autotests = false
+publish = false
+autobins = false
+autoexamples = false
+autobenches = false
+
+[package.version]
+workspace = true
+
+[package.edition]
+workspace = true
+
 [dev-dependencies]
-credence_arbitration = { path = "contracts/arbitration" }
-credence_bond = { path = "contracts/credence_bond", features = ["testutils"] }
-credence_registry = { path = "contracts/credence_registry" }
-credence_treasury = { path = "contracts/credence_treasury" }
-soroban-sdk = { version = "22.0", features = ["testutils"] }
+serde_json = "1.0"
+
+[dev-dependencies.soroban-sdk]
+version = "22.0"
+features = ["testutils"]
+
+[dev-dependencies.admin]
+path = "contracts/admin"
+
+[dev-dependencies.credence_arbitration]
+path = "contracts/arbitration"
+
+[dev-dependencies.credence_bond]
+path = "contracts/credence_bond"
+features = ["testutils"]
+
+[dev-dependencies.credence_delegation]
+path = "contracts/credence_delegation"
+
+[dev-dependencies.credence_registry]
+path = "contracts/credence_registry"
+
+[dev-dependencies.credence_treasury]
+path = "contracts/credence_treasury"
+
+[dev-dependencies.timelock]
+path = "contracts/timelock"
+
+[dev-dependencies.serde]
+version = "1.0"
+features = ["derive"]

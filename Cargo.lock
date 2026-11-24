@@ -507,6 +507,16 @@ dependencies = [
 name = "credence-contracts"
 version = "0.1.0"
 dependencies = [
+ "admin",
+ "credence_arbitration",
+ "credence_bond",
+ "credence_delegation",
+ "credence_registry",
+ "credence_treasury",
+ "serde",
+ "serde_json",
+ "soroban-sdk",
+ "timelock",
  "credence_arbitration",
  "credence_bond",
  "credence_registry",
@@ -525,6 +535,7 @@ dependencies = [
  "serde_json",
  "soroban-client",
  "stellar-baselib",
+ "stellar-strkey 0.0.15",
  "tokio",
 ]
 
@@ -610,7 +621,6 @@ dependencies = [
  "interfaces",
  "proptest",
  "soroban-sdk",
- "timelock",
 ]
 
 [[package]]
@@ -821,6 +831,9 @@ dependencies = [
 name = "dispute_resolution"
 version = "0.1.0"
 dependencies = [
+ "credence_errors",
+ "credence_arbitration",
+ "interfaces",
  "soroban-sdk",
 ]
 

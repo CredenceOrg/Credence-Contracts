@@ -1,0 +1,1307 @@
+{
+  "admin": {
+    "ROLE_ASSIGNED": {
+      "topics": [
+        "ROLE_ASSIGNED",
+        "Address"
+      ],
+      "data": [
+        "u32",
+        "Address"
+      ]
+    },
+    "ROLE_REVOKED": {
+      "topics": [
+        "ROLE_REVOKED",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "admin_added": {
+      "topics": [
+        "admin_added"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "admin_deactivated": {
+      "topics": [
+        "admin_deactivated"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "admin_initialized": {
+      "topics": [
+        "admin_initialized"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "admin_reactivated": {
+      "topics": [
+        "admin_reactivated"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "admin_removed": {
+      "topics": [
+        "admin_removed"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "admin_role_updated": {
+      "topics": [
+        "admin_role_updated"
+      ],
+      "data": [
+        "Address",
+        "u32",
+        "u32"
+      ]
+    },
+    "admin_rotated": {
+      "topics": [
+        "admin_rotated",
+        "Address",
+        "Address"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "admin_suspended": {
+      "topics": [
+        "admin_suspended"
+      ],
+      "data": [
+        "Address",
+        "u64"
+      ]
+    },
+    "ownership_transfer_accepted": {
+      "topics": [
+        "ownership_transfer_accepted"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "ownership_transfer_initiated": {
+      "topics": [
+        "ownership_transfer_initiated"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "pause_approved": {
+      "topics": [
+        "pause_approved",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "pause_proposed": {
+      "topics": [
+        "pause_proposed",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "pause_signer_set": {
+      "topics": [
+        "pause_signer_set",
+        "Address"
+      ],
+      "data": [
+        "bool"
+      ]
+    },
+    "pause_threshold_set": {
+      "topics": [
+        "pause_threshold_set"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "paused": {
+      "topics": [
+        "paused"
+      ],
+      "data": [
+        "u64",
+        "String"
+      ]
+    },
+    "unpaused": {
+      "topics": [
+        "unpaused"
+      ],
+      "data": [
+        "u64"
+      ]
+    }
+  },
+  "arbitration": {
+    "admin_transferred": {
+      "topics": [
+        "admin_transferred"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "arbitrator_registered": {
+      "topics": [
+        "arbitrator_registered",
+        "Address"
+      ],
+      "data": [
+        "i128"
+      ]
+    },
+    "arbitrator_unregistered": {
+      "topics": [
+        "arbitrator_unregistered",
+        "Address"
+      ],
+      "data": []
+    },
+    "dispute_archived": {
+      "topics": [
+        "dispute_archived",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "dispute_cancelled": {
+      "topics": [
+        "dispute_cancelled",
+        "u64"
+      ],
+      "data": [
+        "Address",
+        "Symbol",
+        "String"
+      ]
+    },
+    "dispute_created": {
+      "topics": [
+        "dispute_created",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "dispute_reopened": {
+      "topics": [
+        "dispute_reopened",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "dispute_resolved": {
+      "topics": [
+        "dispute_resolved",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "dispute_tied": {
+      "topics": [
+        "dispute_tied",
+        "u64"
+      ],
+      "data": []
+    },
+    "pause_approved": {
+      "topics": [
+        "pause_approved",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "pause_proposed": {
+      "topics": [
+        "pause_proposed",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "pause_signer_set": {
+      "topics": [
+        "pause_signer_set",
+        "Address"
+      ],
+      "data": [
+        "bool"
+      ]
+    },
+    "pause_threshold_set": {
+      "topics": [
+        "pause_threshold_set"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "paused": {
+      "topics": [
+        "paused"
+      ],
+      "data": [
+        "u64",
+        "String"
+      ]
+    },
+    "quorum_not_met": {
+      "topics": [
+        "quorum_not_met",
+        "u64"
+      ],
+      "data": [
+        "i128",
+        "i128",
+        "u32",
+        "u32"
+      ]
+    },
+    "quorum_set": {
+      "topics": [
+        "quorum_set"
+      ],
+      "data": [
+        "i128",
+        "u32"
+      ]
+    },
+    "status_transition": {
+      "topics": [
+        "status_transition",
+        "u64"
+      ],
+      "data": [
+        "u32",
+        "u32"
+      ]
+    },
+    "unpaused": {
+      "topics": [
+        "unpaused"
+      ],
+      "data": [
+        "u64"
+      ]
+    },
+    "vote_cast": {
+      "topics": [
+        "vote_cast",
+        "u64",
+        "Address"
+      ],
+      "data": [
+        "u32",
+        "i128"
+      ]
+    }
+  },
+  "bond": {
+    "admin_rotated": {
+      "topics": [
+        "admin_rotated",
+        "Address",
+        "Address"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "admin_transfer_completed": {
+      "topics": [
+        "admin_transfer_completed",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "admin_transfer_started": {
+      "topics": [
+        "admin_transfer_started",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "admin_transferred": {
+      "topics": [
+        "admin_transferred"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "attestation_added": {
+      "topics": [
+        "attestation_added",
+        "Address"
+      ],
+      "data": [
+        "u64",
+        "Address",
+        "Bytes"
+      ]
+    },
+    "attestation_revoked": {
+      "topics": [
+        "attestation_revoked",
+        "Address"
+      ],
+      "data": [
+        "u64",
+        "Address"
+      ]
+    },
+    "attestations_batch_added": {
+      "topics": [
+        "attestations_batch_added",
+        "Address"
+      ],
+      "data": [
+        "Vec"
+      ]
+    },
+    "attester_registered": {
+      "topics": [
+        "attester_registered"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "attester_unregistered": {
+      "topics": [
+        "attester_unregistered"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "batch_transfer": {
+      "topics": [
+        "batch_transfer",
+        "Address"
+      ],
+      "data": [
+        "u32",
+        "i128"
+      ]
+    },
+    "bond_created": {
+      "topics": [
+        "bond_created",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "u64",
+        "bool"
+      ]
+    },
+    "bond_created_v2": {
+      "topics": [
+        "bond_created_v2",
+        "Address",
+        "i128",
+        "u64"
+      ],
+      "data": [
+        "u64",
+        "bool",
+        "u64"
+      ]
+    },
+    "bond_drift_detected": {
+      "topics": [
+        "bond_drift_detected",
+        "Address"
+      ],
+      "data": [
+        "Vec",
+        "i128",
+        "i128",
+        "u32",
+        "u32"
+      ]
+    },
+    "bond_increased": {
+      "topics": [
+        "bond_increased",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "i128"
+      ]
+    },
+    "bond_increased_v2": {
+      "topics": [
+        "bond_increased_v2",
+        "Address",
+        "i128",
+        "i128",
+        "u64"
+      ],
+      "data": [
+        "bool",
+        "Vec"
+      ]
+    },
+    "bond_liquidated": {
+      "topics": [
+        "bond_liquidated",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "Symbol",
+        "u64",
+        "Address"
+      ]
+    },
+    "bond_slashed": {
+      "topics": [
+        "bond_slashed",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "i128"
+      ]
+    },
+    "bond_slashed_v2": {
+      "topics": [
+        "bond_slashed_v2",
+        "Address",
+        "i128",
+        "i128",
+        "u64",
+        "Address"
+      ],
+      "data": [
+        "String",
+        "bool"
+      ]
+    },
+    "bond_withdrawn": {
+      "topics": [
+        "bond_withdrawn",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "i128"
+      ]
+    },
+    "bond_withdrawn_v2": {
+      "topics": [
+        "bond_withdrawn_v2",
+        "Address",
+        "i128",
+        "i128",
+        "u64"
+      ],
+      "data": [
+        "bool",
+        "i128"
+      ]
+    },
+    "claim_added": {
+      "topics": [
+        "claim_added",
+        "Address"
+      ],
+      "data": [
+        "u32",
+        "i128",
+        "u64"
+      ]
+    },
+    "claims_expired": {
+      "topics": [
+        "claims_expired",
+        "Address"
+      ],
+      "data": [
+        "u32",
+        "i128"
+      ]
+    },
+    "claims_processed": {
+      "topics": [
+        "claims_processed",
+        "Address"
+      ],
+      "data": [
+        "u32",
+        "i128",
+        "Vec"
+      ]
+    },
+    "early_exit_config_set": {
+      "topics": [
+        "early_exit_config_set"
+      ],
+      "data": [
+        "Address",
+        "u32"
+      ]
+    },
+    "early_exit_penalty": {
+      "topics": [
+        "early_exit_penalty"
+      ],
+      "data": [
+        "Address",
+        "i128",
+        "i128",
+        "Address"
+      ]
+    },
+    "fee_config_updated": {
+      "topics": [
+        "fee_config_updated",
+        "Address"
+      ],
+      "data": [
+        "Address",
+        "Address",
+        "u32",
+        "u32"
+      ]
+    },
+    "liquidation_treasury_set": {
+      "topics": [
+        "liquidation_treasury_set"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "param_updated": {
+      "topics": [
+        "param_updated",
+        "Symbol",
+        "Symbol",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "i128"
+      ]
+    },
+    "pause_approved": {
+      "topics": [
+        "pause_approved",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "pause_proposed": {
+      "topics": [
+        "pause_proposed",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "pause_signer_set": {
+      "topics": [
+        "pause_signer_set",
+        "Address"
+      ],
+      "data": [
+        "bool"
+      ]
+    },
+    "pause_threshold_set": {
+      "topics": [
+        "pause_threshold_set"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "paused": {
+      "topics": [
+        "paused"
+      ],
+      "data": [
+        "u64",
+        "String"
+      ]
+    },
+    "slash_treasury_set": {
+      "topics": [
+        "slash_treasury_set"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "tier_changed": {
+      "topics": [
+        "tier_changed"
+      ],
+      "data": [
+        "Address",
+        "Vec"
+      ]
+    },
+    "tier_changed_v2": {
+      "topics": [
+        "tier_changed_v2",
+        "Address"
+      ],
+      "data": [
+        "Vec",
+        "Vec",
+        "u64"
+      ]
+    },
+    "unpaused": {
+      "topics": [
+        "unpaused"
+      ],
+      "data": [
+        "u64"
+      ]
+    },
+    "upgrade_admin_transfer_cancelled": {
+      "topics": [
+        "upgrade_admin_transfer_cancelled",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "upgrade_admin_transfer_completed": {
+      "topics": [
+        "upgrade_admin_transfer_completed",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "upgrade_admin_transfer_started": {
+      "topics": [
+        "upgrade_admin_transfer_started",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "upgrade_approved": {
+      "topics": [
+        "upgrade_approved",
+        "Address"
+      ],
+      "data": [
+        "u64"
+      ]
+    },
+    "upgrade_auth_granted": {
+      "topics": [
+        "upgrade_auth_granted",
+        "Address"
+      ],
+      "data": [
+        "Address",
+        "u32"
+      ]
+    },
+    "upgrade_auth_init": {
+      "topics": [
+        "upgrade_auth_init",
+        "Address"
+      ],
+      "data": []
+    },
+    "upgrade_auth_revoked": {
+      "topics": [
+        "upgrade_auth_revoked",
+        "Address"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "upgrade_executed": {
+      "topics": [
+        "upgrade_executed",
+        "Address"
+      ],
+      "data": [
+        "Address",
+        "u64"
+      ]
+    },
+    "upgrade_proposed": {
+      "topics": [
+        "upgrade_proposed",
+        "Address"
+      ],
+      "data": [
+        "u64",
+        "Address"
+      ]
+    }
+  },
+  "delegation": {
+    "delegation_cleaned": {
+      "topics": [
+        "delegation_cleaned",
+        "Address",
+        "Address"
+      ],
+      "data": [
+        "Symbol"
+      ]
+    },
+    "delegation_created": {
+      "topics": [
+        "delegation_created"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "delegation_revoked": {
+      "topics": [
+        "delegation_revoked"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "nonce_invalidated": {
+      "topics": [
+        "nonce_invalidated",
+        "Address"
+      ],
+      "data": [
+        "u64",
+        "u64"
+      ]
+    },
+    "pause_approved": {
+      "topics": [
+        "pause_approved",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "pause_proposed": {
+      "topics": [
+        "pause_proposed",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "pause_signer_set": {
+      "topics": [
+        "pause_signer_set",
+        "Address"
+      ],
+      "data": [
+        "bool"
+      ]
+    },
+    "pause_threshold_set": {
+      "topics": [
+        "pause_threshold_set"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "paused": {
+      "topics": [
+        "paused"
+      ],
+      "data": [
+        "u64",
+        "String"
+      ]
+    },
+    "unpaused": {
+      "topics": [
+        "unpaused"
+      ],
+      "data": [
+        "u64"
+      ]
+    },
+    "verifier": {
+      "topics": [
+        "verifier",
+        "String"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "verifier_registered": {
+      "topics": [
+        "verifier_registered",
+        "u32"
+      ],
+      "data": [
+        "Address"
+      ]
+    }
+  },
+  "registry": {
+    "admin_transferred": {
+      "topics": [
+        "admin_transferred"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "bond_code_hash_updated": {
+      "topics": [
+        "bond_code_hash_updated"
+      ],
+      "data": [
+        "Bytes"
+      ]
+    },
+    "bond_registered": {
+      "topics": [
+        "bond_registered"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "identity_deactivated": {
+      "topics": [
+        "identity_deactivated"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "identity_reactivated": {
+      "topics": [
+        "identity_reactivated"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "identity_registered": {
+      "topics": [
+        "identity_registered"
+      ],
+      "data": [
+        "Map",
+        "bool"
+      ]
+    },
+    "identity_removed": {
+      "topics": [
+        "identity_removed"
+      ],
+      "data": [
+        "Map"
+      ]
+    },
+    "pause_approved": {
+      "topics": [
+        "pause_approved",
+        "u32"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "pause_proposed": {
+      "topics": [
+        "pause_proposed",
+        "u32"
+      ],
+      "data": [
+        "Symbol"
+      ]
+    },
+    "pause_signer_set": {
+      "topics": [
+        "pause_signer_set",
+        "Address"
+      ],
+      "data": [
+        "bool"
+      ]
+    },
+    "pause_threshold_set": {
+      "topics": [
+        "pause_threshold_set"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "paused": {
+      "topics": [
+        "paused"
+      ],
+      "data": [
+        "u64",
+        "String"
+      ]
+    },
+    "registry_initialized": {
+      "topics": [
+        "registry_initialized"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "unpaused": {
+      "topics": [
+        "unpaused"
+      ],
+      "data": [
+        "u32"
+      ]
+    }
+  },
+  "timelock": {
+    "admin_proposal_cancelled": {
+      "topics": [
+        "admin_proposal_cancelled"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "admin_proposed": {
+      "topics": [
+        "admin_proposed"
+      ],
+      "data": [
+        "Address",
+        "Address",
+        "u64",
+        "u64"
+      ]
+    },
+    "admin_transferred": {
+      "topics": [
+        "admin_transferred"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "operation_cancelled": {
+      "topics": [
+        "operation_cancelled",
+        "u64"
+      ],
+      "data": [
+        "Bytes"
+      ]
+    },
+    "operation_executed": {
+      "topics": [
+        "operation_executed",
+        "u64"
+      ],
+      "data": [
+        "Bytes"
+      ]
+    },
+    "operation_queued": {
+      "topics": [
+        "operation_queued",
+        "u64"
+      ],
+      "data": [
+        "Address",
+        "Bytes",
+        "u64",
+        "u64"
+      ]
+    }
+  },
+  "treasury": {
+    "admin_transferred": {
+      "topics": [
+        "admin_transferred"
+      ],
+      "data": [
+        "Address",
+        "Address"
+      ]
+    },
+    "corridor_registered": {
+      "topics": [
+        "corridor_registered"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "corridor_removed": {
+      "topics": [
+        "corridor_removed"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "depositor_added": {
+      "topics": [
+        "depositor_added"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "depositor_removed": {
+      "topics": [
+        "depositor_removed"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "min_liquidity_updated": {
+      "topics": [
+        "min_liquidity_updated"
+      ],
+      "data": [
+        "i128"
+      ]
+    },
+    "native_rescued": {
+      "topics": [
+        "native_rescued"
+      ],
+      "data": [
+        "Address",
+        "i128",
+        "Address"
+      ]
+    },
+    "pause_approved": {
+      "topics": [
+        "pause_approved",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "pause_proposed": {
+      "topics": [
+        "pause_proposed",
+        "u64"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "pause_signer_set": {
+      "topics": [
+        "pause_signer_set",
+        "Address"
+      ],
+      "data": [
+        "bool"
+      ]
+    },
+    "pause_threshold_set": {
+      "topics": [
+        "pause_threshold_set"
+      ],
+      "data": [
+        "u32"
+      ]
+    },
+    "paused": {
+      "topics": [
+        "paused"
+      ],
+      "data": [
+        "u64",
+        "String"
+      ]
+    },
+    "proposal_ttl_updated": {
+      "topics": [
+        "proposal_ttl_updated"
+      ],
+      "data": [
+        "u64"
+      ]
+    },
+    "signer_added": {
+      "topics": [
+        "signer_added"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "signer_removed": {
+      "topics": [
+        "signer_removed"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "threshold_updated": {
+      "topics": [
+        "threshold_updated"
+      ],
+      "data": [
+        "u32",
+        "u32"
+      ]
+    },
+    "token_updated": {
+      "topics": [
+        "token_updated"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "transfer": {
+      "topics": [
+        "transfer",
+        "Address",
+        "Address",
+        "String"
+      ],
+      "data": [
+        "i128"
+      ]
+    },
+    "treasury_deposit": {
+      "topics": [
+        "treasury_deposit",
+        "Address"
+      ],
+      "data": [
+        "i128",
+        "u32"
+      ]
+    },
+    "treasury_initialized": {
+      "topics": [
+        "treasury_initialized"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "treasury_proposal_expired": {
+      "topics": [
+        "treasury_proposal_expired",
+        "u64"
+      ],
+      "data": []
+    },
+    "treasury_withdrawal_approved": {
+      "topics": [
+        "treasury_withdrawal_approved",
+        "u64"
+      ],
+      "data": [
+        "Address"
+      ]
+    },
+    "treasury_withdrawal_executed": {
+      "topics": [
+        "treasury_withdrawal_executed",
+        "u64"
+      ],
+      "data": [
+        "Address",
+        "i128",
+        "i128",
+        "i128"
+      ]
+    },
+    "treasury_withdrawal_proposed": {
+      "topics": [
+        "treasury_withdrawal_proposed",
+        "u64"
+      ],
+      "data": [
+        "Address",
+        "i128",
+        "Address"
+      ]
+    },
+    "unpaused": {
+      "topics": [
+        "unpaused"
+      ],
+      "data": [
+        "u64"
+      ]
+    }
+  }
+}

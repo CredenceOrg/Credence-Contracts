@@ -18,13 +18,10 @@
 
 extern crate std;
 
-use crate::pausable::{
-    approve_pause_proposal, execute_pause_proposal, is_paused, pause, require_not_paused,
-    set_pause_signer, set_pause_threshold, unpause,
-};
 use crate::{CredenceBond, CredenceBondClient};
-use soroban_sdk::testutils::{Address as _, Ledger as _};
-use soroban_sdk::{Address, Bytes, Env, String, Vec};
+use credence_errors::ContractError;
+use soroban_sdk::testutils::Address as _;
+use soroban_sdk::{Address, Env, Vec};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::string::{String as StdString, ToString};
 
@@ -61,11 +58,20 @@ fn panic_message<F: FnOnce()>(f: F) -> StdString {
     }
 }
 
-/// Assert closure panics with exactly `expected`.
+/// Assert closure panics with `expected`.
+///
+/// A panic inside a contract invoked through its client reaches the test as a
+/// host error whose event log records the original text as
+/// `caught panic '<message>'`, so the message is matched there. A panic raised
+/// directly by Rust code (no contract frame) is the bare message.
 #[track_caller]
 fn expect_panic_with<F: FnOnce()>(expected: &str, f: F) {
     let msg = panic_message(f);
-    assert_eq!(msg, expected);
+    let from_contract = std::format!("caught panic '{expected}'");
+    assert!(
+        msg == expected || msg.contains(&from_contract),
+        "expected panic {expected:?}, got: {msg}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -77,7 +83,7 @@ fn expect_panic_with<F: FnOnce()>(expected: &str, f: F) {
 #[test]
 fn proposal_counter_overflow_panics() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 1);
+    let (client, _admin, signers) = setup_with_signers(&e, 1);
 
     // Manually set counter to max
     let max = u64::MAX;
@@ -102,7 +108,7 @@ fn proposal_counter_overflow_panics() {
 #[test]
 fn approval_counter_overflow_panics() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 2);
+    let (client, _admin, signers) = setup_with_signers(&e, 2);
 
     // Create a proposal
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
@@ -128,7 +134,7 @@ fn approval_counter_overflow_panics() {
 #[test]
 fn threshold_boundary_inclusive() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 3);
+    let (client, _admin, signers) = setup_with_signers(&e, 3);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap(); // 1 approval
     assert!(client.try_execute_pause_proposal(&pid).is_err());
@@ -145,7 +151,7 @@ fn threshold_boundary_inclusive() {
 #[test]
 fn threshold_one_is_immediate() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 1);
+    let (client, _admin, signers) = setup_with_signers(&e, 1);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     // Proposer already counted as 1 approval
@@ -161,7 +167,7 @@ fn threshold_one_is_immediate() {
 #[test]
 fn duplicate_approval_is_idempotent() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 2);
+    let (client, _admin, signers) = setup_with_signers(&e, 2);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
 
@@ -207,8 +213,9 @@ fn pause_and_borrow_freeze_can_coexist() {
     let e = Env::default();
     let (client, admin) = setup(&e);
 
-    client.pause(&admin);
+    // `set_borrow_frozen` is itself gated by the pause, so freeze first.
     client.set_borrow_frozen(&admin, &true);
+    client.pause(&admin);
 
     assert!(client.is_paused());
     assert!(client.is_borrow_frozen());
@@ -253,7 +260,7 @@ fn threshold_equal_to_signer_count_accepted() {
 #[test]
 fn proposal_execution_uses_empty_reason() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 1);
+    let (client, _admin, signers) = setup_with_signers(&e, 1);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     client.execute_pause_proposal(&pid);
@@ -302,7 +309,10 @@ fn require_not_paused_surfaces_contract_paused() {
         })
     });
 
-    assert!(msg.contains("ContractPaused"));
+    assert!(msg.contains(&std::format!(
+        "Error(Contract, #{})",
+        ContractError::ContractPaused as u32
+    )));
 }
 
 // ---------------------------------------------------------------------------
@@ -342,9 +352,15 @@ fn pause_signer_count_tracks_changes() {
     // Threshold now exceeds count (1 > 0) -> should be rejected on set
     // Actually threshold is still 1, signer count 0 -> set_pause_signer will adjust
     // But proposing now should fail threshold check
-    let pid2 = client.pause(&s); // s is no longer a signer
-    assert!(pid2.is_none()); // caller not signer -> returns None? No, require_pause_signer panics
-                             // Actually require_pause_signer panics if not a signer
+    // Removing the last signer drops the threshold to 0, so `pause` is admin-only
+    // and the removed signer is rejected as a non-admin.
+    assert_eq!(
+        client.try_pause(&s),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::NotAdmin as u32
+        )))
+    );
+    assert!(!client.is_paused());
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +389,7 @@ fn zero_threshold_admin_only() {
 #[test]
 fn non_signer_cannot_propose() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 2);
+    let (client, _admin, _signers) = setup_with_signers(&e, 2);
     let stranger = Address::generate(&e);
 
     expect_panic_with("not pause signer", || {
@@ -389,7 +405,7 @@ fn non_signer_cannot_propose() {
 #[test]
 fn non_signer_cannot_approve() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 2);
+    let (client, _admin, signers) = setup_with_signers(&e, 2);
     let stranger = Address::generate(&e);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
@@ -407,7 +423,7 @@ fn non_signer_cannot_approve() {
 #[test]
 fn execute_unknown_proposal_panics() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, _admin) = setup(&e);
 
     expect_panic_with("proposal not found", || {
         client.execute_pause_proposal(&999);
@@ -422,7 +438,7 @@ fn execute_unknown_proposal_panics() {
 #[test]
 fn approval_count_equals_unique_signers() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 3);
+    let (client, _admin, signers) = setup_with_signers(&e, 3);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap(); // count = 1
 
@@ -442,7 +458,7 @@ fn approval_count_equals_unique_signers() {
 #[test]
 fn non_admin_unpause_creates_proposal() {
     let e = Env::default();
-    let (client, admin, signers) = setup_with_signers(&e, 2);
+    let (client, _admin, signers) = setup_with_signers(&e, 2);
 
     let pid = client.pause(&signers.get(0).unwrap()).unwrap();
     client.approve_pause_proposal(&signers.get(1).unwrap(), &pid);
@@ -476,8 +492,14 @@ fn borrow_frozen_gate_surfaces_borrow_frozen() {
         })
     });
 
-    assert!(msg.contains("BorrowFrozen"));
-    assert!(!msg.contains("ContractPaused"));
+    assert!(msg.contains(&std::format!(
+        "Error(Contract, #{})",
+        ContractError::BorrowFrozen as u32
+    )));
+    assert!(!msg.contains(&std::format!(
+        "Error(Contract, #{})",
+        ContractError::ContractPaused as u32
+    )));
 }
 
 // ---------------------------------------------------------------------------

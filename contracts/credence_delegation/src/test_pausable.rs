@@ -93,7 +93,7 @@ fn test_pause_multisig_flow() {
 
 #[test]
 fn test_pause_proposal_id_uniqueness_and_scoped_approval_lifecycle() {
-    let (env, admin, contract_id, client) = setup_with_contract_id();
+    let (env, admin, _contract_id, client) = setup_with_contract_id();
 
     let s1 = Address::generate(&env);
     let s2 = Address::generate(&env);
@@ -412,7 +412,7 @@ fn test_cleanup_expired_paused() {
     );
 
     env.ledger()
-        .with_mut(|li| li.timestamp = li.timestamp + 200);
+        .with_mut(|li| li.timestamp += 200);
 
     client.pause(&admin);
     assert!(client
