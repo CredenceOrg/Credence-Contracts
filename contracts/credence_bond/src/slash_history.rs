@@ -101,7 +101,7 @@ pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord 
         .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("slash record not found"));
+        .unwrap_or_else(|| e.panic_with_error(credence_errors::ContractError::SlashRecordNotFound));
     e.storage().persistent().extend_ttl(
         &key,
         crate::PERSISTENT_TTL_MAX / 2,
@@ -199,7 +199,7 @@ pub mod testutils {
         e.storage()
             .persistent()
             .get(&key)
-            .unwrap_or_else(|| panic!("slash record not found"))
+            .unwrap_or_else(|| e.panic_with_error(credence_errors::ContractError::SlashRecordNotFound))
     }
 
     /// Sum all slash amounts from history. O(n) — use only in tests.
