@@ -1,5 +1,5 @@
 use crate::*;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Symbol};
 
 mod pausable_tests {
     use super::*;
@@ -7,7 +7,7 @@ mod pausable_tests {
 
     fn setup() -> (Env, CredenceRegistryClient<'static>, Address) {
         let e = Env::default();
-        let contract_id = e.register_contract(None, CredenceRegistry);
+        let contract_id = e.register(CredenceRegistry, ());
         let client = CredenceRegistryClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
         e.mock_all_auths();
@@ -71,10 +71,10 @@ mod pausable_tests {
 
     #[test]
     fn test_get_pause_state_multisig_flow() {
-        let (_e, client, admin) = setup();
+        let (e, client, admin) = setup();
 
-        let s1 = Address::generate(&_e);
-        let s2 = Address::generate(&_e);
+        let s1 = Address::generate(&e);
+        let s2 = Address::generate(&e);
 
         // Configure multisig pause
         client.set_pause_signer(&admin, &s1, &true);
@@ -88,6 +88,13 @@ mod pausable_tests {
 
         // Propose pause — not yet executed, so contract is still not paused
         let pid = client.pause(&s1).unwrap();
+        let stored_action: Symbol = e.as_contract(&client.address, || {
+            e.storage()
+                .instance()
+                .get(&crate::storage::DataKey::PauseProposal(pid))
+                .unwrap()
+        });
+        assert_eq!(stored_action, Symbol::new(&e, "pause"));
         let state = client.get_pause_state();
         assert!(
             !state.is_paused,
@@ -114,6 +121,111 @@ mod pausable_tests {
         assert!(
             !state.is_paused,
             "contract should be unpaused after execution"
+        );
+    }
+
+    #[test]
+    fn invalid_pause_action_symbol_is_rejected() {
+        let (e, client, admin) = setup();
+        let signer = Address::generate(&e);
+
+        client.set_pause_signer(&admin, &signer, &true);
+        client.set_pause_threshold(&admin, &1_u32);
+        let proposal_id = client.pause(&signer).unwrap();
+
+        e.as_contract(&client.address, || {
+            e.storage().instance().set(
+                &crate::storage::DataKey::PauseProposal(proposal_id),
+                &Symbol::new(&e, "invalid"),
+            );
+        });
+
+        assert!(
+            client.try_execute_pause_proposal(&proposal_id).is_err(),
+            "unknown pause action symbols must be rejected"
+        );
+    }
+
+    #[test]
+    fn test_first_pause_signer_auto_sets_threshold_to_one() {
+        let (e, client, admin) = setup();
+        let signer = Address::generate(&e);
+
+        client.set_pause_signer(&admin, &signer, &true);
+
+        let state = client.get_pause_state();
+        assert_eq!(state.signer_count, 1);
+        assert_eq!(state.threshold, 1);
+    }
+
+    #[test]
+    fn test_zero_threshold_is_rejected_while_signers_are_active() {
+        let (e, client, admin) = setup();
+        let signer = Address::generate(&e);
+
+        client.set_pause_signer(&admin, &signer, &true);
+
+        let result = client.try_set_pause_threshold(&admin, &0_u32);
+        assert!(
+            result.is_err(),
+            "threshold must remain non-zero while signers exist"
+        );
+        assert_eq!(client.get_pause_state().threshold, 1);
+    }
+
+    #[test]
+    fn test_remove_signer_reduces_threshold_without_overshooting() {
+        let (e, client, admin) = setup();
+        let s1 = Address::generate(&e);
+        let s2 = Address::generate(&e);
+
+        client.set_pause_signer(&admin, &s1, &true);
+        client.set_pause_signer(&admin, &s2, &true);
+        client.set_pause_threshold(&admin, &2_u32);
+
+        client.set_pause_signer(&admin, &s2, &false);
+
+        let state = client.get_pause_state();
+        assert_eq!(state.signer_count, 1);
+        assert_eq!(state.threshold, 1);
+    }
+
+    #[test]
+    fn test_admin_can_recover_quickly_from_multisig_pause() {
+        let (e, client, admin) = setup();
+        let s1 = Address::generate(&e);
+        let s2 = Address::generate(&e);
+
+        client.set_pause_signer(&admin, &s1, &true);
+        client.set_pause_signer(&admin, &s2, &true);
+        client.set_pause_threshold(&admin, &2_u32);
+
+        let proposal_id = client.pause(&s1).unwrap();
+        client.approve_pause_proposal(&s2, &proposal_id);
+        client.execute_pause_proposal(&proposal_id);
+        assert!(client.is_paused());
+
+        client.unpause(&admin);
+        assert!(!client.is_paused());
+    }
+
+    #[test]
+    fn test_pause_configuration_changes_are_rejected_while_paused() {
+        let (e, client, admin) = setup();
+        let signer = Address::generate(&e);
+
+        client.pause(&admin);
+
+        let result = client.try_set_pause_signer(&admin, &signer, &true);
+        assert!(
+            result.is_err(),
+            "pause signer updates must be disabled while paused"
+        );
+
+        let result = client.try_set_pause_threshold(&admin, &1_u32);
+        assert!(
+            result.is_err(),
+            "pause threshold updates must be disabled while paused"
         );
     }
 

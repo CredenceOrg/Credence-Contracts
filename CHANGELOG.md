@@ -9,80 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dispute-resolution pause controls**: Added admin-configured pause administration with signer-threshold proposals; `create_dispute`, `resolve`, and `close` now reject writes while paused, while reads remain available (closes #1747).
+- **Appeal round for arbitration disputes** (`credence_arbitration`): parties may now appeal a `Resolved`, `Tied`, or `NoQuorum` outcome within an admin-configurable window (default 86 400 s). `appeal_dispute(creator, id, duration)` transitions the dispute to `Appealed`, resets voting state, records round-one voters (who are excluded from round two), and opens a fresh voting window. Round two resolves under a stricter quorum set via `set_appeal_config`; the second-round outcome is final and cannot be appealed again. New status `NoQuorum` (discriminant 7) is set by `no_quorum_resolve` when voting ends without reaching quorum; `Appealed` (discriminant 8) is the non-terminal round-two state. New errors appended: `AppealWindowClosed = 19`, `AlreadyAppealed = 20`, `NotAppealable = 21`, `NotAParty = 22`, `ArbitratorVotedInRoundOne = 23`. New storage keys: `AppealWindow`, `AppealMinTotalWeight`, `AppealMinVoters`, `ResolvedAt(id)`, `AppealCount(id)`, `RoundOneVoter(id, addr)`. Covered by `test_appeal.rs`; `test_dispute_guard.rs` updated for the two new variants. Documented in `docs/arbitration.md`. (Closes #1775.)
+
+- **Timelock delay boundaries**: Pin minimum delay acceptance/rejection for both queue entrypoints, exact too-short errors, and readiness at ETA (#1724).
+- **Ownership transfer failure boundaries**: Added deterministic coverage for suspended-candidate expiry and configuration-epoch overflow, asserting rejected proposals preserve ownership state, proposal metadata, epoch, and events (closes #1422).
+- **Admin configuration epoch**: Added a monotonic `ConfigEpoch` to the Admin contract that advances exactly once per committed privileged mutation (admin role changes, suspension, ownership transfer, pause configuration, pause state transitions, and pause-proposal approvals). Exposes `get_config_epoch()` so clients can detect concurrent conflicts and retry; rejected, stale, repeated, and failed operations never advance the epoch and leave no partial state. Documented in `docs/CONFIG_EPOCH.md` and covered by `test_concurrency_race_safety.rs` (closes #1297).
 - **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
 - **Expired-lease guard tests**: lock Fresh / Expiring soon / Expired behaviour for `require_no_expired_lease` (Closes #845).
-
-### Fixed
-
-- **Arbitration dispute guard**: Added a typed `ArbitrationError::OngoingDispute` guard to reject new disputes while a creator already has an unresolved dispute in progress, closing a defense-in-depth re-entry gap in the arbitration lifecycle. (Closes #850.)
-
-- **No-dynamic-strings in production contract code** (closes #713). New workspace
-  `clippy.toml` declares `disallowed-macros` for `format`, `format_args`, `write`,
-  `writeln` (and their `std::` / `alloc::` / `core::` qualified forms); every
-  contract crate now denies `clippy::disallowed_macros` under `cfg_attr(not(any(test,
-  feature = "testutils")), ...)` so the lint fires for `cargo build --release` and
-  the WASM build but stays silent during `cargo test` and `cargo build
-  --features testutils`. Production contract code now requires
-  `soroban_sdk::Symbol::new(&e, "fixed")` for on-chain event topics and revert
-  surfaces; see `docs/no-dynamic-strings.md` for the threat model and migration
-  table. (Closes #713.)
-
-- Tighten storage TTL bumps across all contracts to prevent silent archival of hot-path data (closes #570). Adds `bump_instance_ttl` to every public entrypoint in `credence_registry`, `admin`, `credence_treasury`, `arbitration`, `credence_multisig`, `timelock`, and `credence_delegation`; adds `extend_ttl` after every persistent write (and on reads) in `credence_bond` slash history, emergency audit trail, and claims modules.
-
-- **`credence_errors` discriminant & match coverage**: Resolved a build-breaking
-  duplicate discriminant between `NoPendingAdmin = 118` and the recently-added
-  `TimestampInFuture = 118`.  `TimestampInFuture` was moved into the Delegation
-  error block (new code `513`) and the `ErrorCategory::category()` and
-  `ErrorExt::is_recoverable()` match arms were updated accordingly.  The wire-
-  stability assertion in `tests/error_codes_wire.rs` was bumped from `118` to
-  `513`.  These changes are safe because no contract could have been deployed
-  with the broken `118` value (the workspace did not compile prior to this fix).
-
-- **Missing `require_contract_uninitialized` helper**: Added
-  `pub fn require_contract_uninitialized(e: &Env, already_initialized: bool)` to
-  `credence_errors` so the 8 call sites in `timelock`, `credence_delegation`,
-  `credence_bond`, `admin`, `credence_registry`, `credence_treasury`,
-  `credence_multisig`, and `templates` that reference it via
-  `credence_errors::require_contract_uninitialized` resolve.  The helper is the
-  reference implementation tested by `credence_errors::test_errors`.
-
-- **`verify_no_future_ledger` invocation in `domain.rs:249`**: Replaced the
-  function-style call (which the macro form requires `Result`-returning
-  contexts to satisfy) with an inline `panic_with_error!` so
-  `check_payload_age` continues to use its existing panic-based guard.
-
-- **`DelegatedActionPayload` missing `signature_domain` field**: Added the
-  required `signature_domain: String::from_str(&e, "CredenceDelegation")` to the
-  initializers in `contracts/credence_delegation/src/test_payload_staleness.rs`
-  and `contracts/credence_delegation/tests/nonce_replay.rs` so they match the
-  post-#906 struct layout.
-
-- **`credence_bond` duplicate declarations**: Removed duplicate
-  `mod storage;`, `mod idempotency;` declarations and 8 duplicate `DataKey`
-  variants (`Paused`, `PauseSigner`, `PauseSignerCount`, `PauseThreshold`,
-  `PauseProposalCounter`, `PauseApproval`, `PauseApprovalCount`,
-  `PauseProposal`).  The new `IdempotencyKey(Bytes)` and `BorrowFrozen` variants
-  are kept.
-
-### Added
-
 - **Timelock Timeout Test**: Added explicit timeout regression coverage for time-locked operation execution after the grace period (`timelock`).
 - **Pause Signer Invariant**: Added invariant test for PauseSignerCount to prevent drift (`credence_delegation`).
 - **Slash Bond Core**: Implemented admin-only `slash_bond` functionality with partial/full slashing and event emission.
 - **Treasury Guardrails**: Added comprehensive tests and functionality for liquidity floor and slippage protection mechanisms in treasury withdrawals (`credence_treasury`).
 - **Batch Bond Atomicity**: Enhanced batch operations with explicit empty batch handling and `MAX_BATCH_BOND_SIZE` enforcement (`credence_bond`).
-- **Lease-Signature Helper Tests**: Added Valid / Corrupted / Revoked scenario
-  coverage for the `verify_delegated_signature` lease-signature helper in
-  `contracts/credence_delegation/src/test_lease_signature.rs` (closes #854).
-  Coverage includes Ed25519 success path, Secp256r1 / MLDSA44 with registered
-  accepting / rejecting verifiers, unknown-scheme rejection (codes 99, 255),
-  verifier-revocation scenarios (never-registered, register-then-unregister),
-  garbled-bytes corruption cases (zero, all-ones), and a panicking-verifier
-  guard. The new module is wired into `lib.rs` under the existing
-  `#[cfg(test)] mod test_*` block.
+- **Lease-Signature Helper Tests**: Added Valid / Corrupted / Revoked scenario coverage for the `verify_delegated_signature` lease-signature helper in `contracts/credence_delegation/src/test_lease_signature.rs` (closes #854).
+- **Registry idempotency tests**: Added comprehensive test coverage for repeated registration attempts in `credence_registry`, verifying no duplicate records or unexpected state mutations on duplicate `register` calls (closes #1049).
+- **Delegation nonce future-window guard**: Added `MAX_NONCE_FUTURE_WINDOW` defence-in-depth check to `consume_nonce` that rejects nonces more than 1 000 ahead of the current value, preventing a compromised client from jumping the nonce stream by large amounts (closes #1062).
+- **CI linting guide**: Documented all maintainer-expected linter commands in `docs/CI.md` for contract contributors before PR review (closes #1064).
+- **Gas benchmark notes**: Documented hot-path contract call gas profiles, benchmark methodology, and optimization patterns in `docs/gas-benchmark-notes.md` (closes #1057).
+
+### Fixed
+
+- **Credence bond claim errors**: Replaced bare claim panics with typed contract errors, reusing `AmountMustBePositive` and appending wire-stable claim error codes 240–244. Added typed-error regression coverage and updated the error catalogue (closes #1700).
+- **Arbitration cancellation validation**: Check whether the dispute can transition to `Cancelled` before applying creator-only vote-count and deadline restrictions. Terminal disputes now return `InvalidTransition`; creator attempts to cancel an active voting dispute after a vote or deadline still return `CancelNotAllowed`. Fixed the arbitration archive/reopen tests to use their fixture principals, assert successful `try_` calls fully, and verify the admin cancellation event role.
+
+- **Typed bond entrypoint errors**: Replaced bare panics for duplicate batch attestations, withdrawal timing, liquidation eligibility, same-ledger cooldown blocking, and batch-transfer validation with typed contract errors; documented the new wire-stable codes and removed the corresponding panic-baseline entries (closes #1712).
+- **Admin compilation**: Moved the private pause configuration type out of the contract implementation, removed a duplicate address validator, restored the encoded admin epoch tests as Rust source, and repaired test API usage. Routed pause execution tracing through SDK debug logs to preserve the governance-event schema and avoid invalid diagnostic symbols, and preserved the overflow error for the maximum proposal ID. Added a generated-client regression covering all seven pause entry points (closes #1602).
+
+- **Arbitration `Archived` status had no verdict**: `require_dispute_resolved` matched only `Open | Voting | Resolving` and `Resolved | Cancelled | Tied`, so after `Archived` was added the crate did not compile (`error[E0004]: non-exhaustive patterns: &DisputeStatus::Archived not covered`). `Archived` now returns `Err(DisputeActive)`, matching the semantics `contracts/arbitration/src/status.rs` already asserted in `archived_state_is_not_terminal_for_resolution`: an archived dispute is *inactive* for lease work but is not a ruling, because `reopen_dispute` can put it back into voting. `test_dispute_guard.rs` was never declared in `lib.rs`, so its assertions never ran; it is now registered and extended with 17 relational and ledger-level regression cases (guard/predicate complementarity, the deliberate `Archived` divergence, pinned discriminants and error code, storage round-trips, out-of-range status codes, and a transition path that may clear the guard exactly once). (Closes #1454.)
+
+- **Arbitration dispute guard**: Added a typed `ArbitrationError::OngoingDispute` guard to reject new disputes while a creator already has an unresolved dispute in progress, closing a defense-in-depth re-entry gap in the arbitration lifecycle. (Closes #850.)
+
+- **No-dynamic-strings in production contract code** (closes #713). New workspace `clippy.toml` declares `disallowed-macros` for `format`, `format_args`, `write`, `writeln` (and their `std::` / `alloc::` / `core::` qualified forms); every contract crate now denies `clippy::disallowed_macros` under `cfg_attr(not(any(test, feature = "testutils")), ...)` so the lint fires for `cargo build --release` and the WASM build but stays silent during `cargo test` and `cargo build --features testutils`. Production contract code now requires `soroban_sdk::Symbol::new(&e, "fixed")` for on-chain event topics and revert surfaces; see `docs/no-dynamic-strings.md` for the threat model and migration table. (Closes #713.)
+
+- Tighten storage TTL bumps across all contracts to prevent silent archival of hot-path data (closes #570). Adds `bump_instance_ttl` to every public entrypoint in `credence_registry`, `admin`, `credence_treasury`, `arbitration`, `credence_multisig`, `timelock`, and `credence_delegation`; adds `extend_ttl` after every persistent write (and on reads) in `credence_bond` slash history, emergency audit trail, and claims modules.
+
+- **`credence_errors` discriminant & match coverage**: Resolved a build-breaking duplicate discriminant between `NoPendingAdmin = 118` and the recently-added `TimestampInFuture = 118`. `TimestampInFuture` was moved into the Delegation error block (new code `513`) and the `ErrorCategory::category()` and `ErrorExt::is_recoverable()` match arms were updated accordingly. The wire-stability assertion in `tests/error_codes_wire.rs` was bumped from `118` to `513`. These changes are safe because no contract could have been deployed with the broken `118` value (the workspace did not compile prior to this fix).
+
+- **Missing `require_contract_uninitialized` helper**: Added `pub fn require_contract_uninitialized(e: &Env, already_initialized: bool)` to `credence_errors` so the 8 call sites in `timelock`, `credence_delegation`, `credence_bond`, `admin`, `credence_registry`, `credence_treasury`, `credence_multisig`, and `templates` that reference it via `credence_errors::require_contract_uninitialized` resolve. The helper is the reference implementation tested by `credence_errors::test_errors`.
+
+- **`verify_no_future_ledger` invocation in `domain.rs:249`**: Replaced the function-style call (which the macro form requires `Result`-returning contexts to satisfy) with an inline `panic_with_error!` so `check_payload_age` continues to use its existing panic-based guard.
+
+- **`DelegatedActionPayload` missing `signature_domain` field**: Added the required `signature_domain: String::from_str(&e, "CredenceDelegation")` to the initializers in `contracts/credence_delegation/src/test_payload_staleness.rs` and `contracts/credence_delegation/tests/nonce_replay.rs` so they match the post-#906 struct layout.
+
+- **`credence_bond` duplicate declarations**: Removed duplicate `mod storage;`, `mod idempotency;` declarations and 8 duplicate `DataKey` variants (`Paused`, `PauseSigner`, `PauseSignerCount`, `PauseThreshold`, `PauseProposalCounter`, `PauseApproval`, `PauseApprovalCount`, `PauseProposal`). The new `IdempotencyKey(Bytes)` and `BorrowFrozen` variants are kept.
 
 ### Changed
 
 - **SafeERC20 Migration**: Replaced direct `TokenClient` calls with safe wrapper functions to support non-compliant ERC20 tokens across the protocol.
 - **Protocol Fixes**: Resolved compilation errors, completed `top_up` and `extend_duration` with overflow protection.
 - **Event Indexing**: Migrated lifecycle events to V2 for optimized off-chain indexing.
+
+### Removed
+
+- **Superseded ignored batch tests**: Removed `test_atomic_failure_on_second_bond` and `test_atomic_failure_validation_order` from `contracts/credence_bond/src/test_batch.rs` (already replaced by Section J `try_*` atomicity tests) and marked `docs/known-simplifications.md` § 5.1 as resolved.
+
+<!-- a -->

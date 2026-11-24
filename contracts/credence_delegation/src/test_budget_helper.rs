@@ -1,4 +1,4 @@
-/// Per-entrypoint resource budget ceiling assertions for the `credence_bond` contract.
+/// Per-entrypoint resource budget ceiling assertions for the `credence_delegation` contract.
 ///
 /// # Purpose
 ///
@@ -54,7 +54,7 @@ pub struct BudgetCeiling {
     pub mem_max: u64,
 }
 
-/// Pre-defined ceilings for each write-path entrypoint on `CredenceBond`.
+/// Pre-defined ceilings for each write-path entrypoint on `CredenceDelegation`.
 ///
 /// See `docs/budget-ceilings.md` for the full ceiling table and methodology.
 pub mod budget_ceilings {
@@ -168,19 +168,19 @@ pub fn assert_budget_under(e: &Env, ceiling: BudgetCeiling) {
     if cpu > ceiling.cpu_max {
         std::panic!(
             "budget ceiling EXCEEDED for CPU instructions: \
-             actual={cpu} ceiling={max} excess={excess}",
-            cpu = cpu,
-            max = ceiling.cpu_max,
-            excess = cpu - ceiling.cpu_max,
+             actual={} ceiling={} excess={}",
+            cpu,
+            ceiling.cpu_max,
+            cpu - ceiling.cpu_max,
         );
     }
     if mem > ceiling.mem_max {
         std::panic!(
             "budget ceiling EXCEEDED for memory bytes: \
-             actual={mem} ceiling={max} excess={excess}",
-            mem = mem,
-            max = ceiling.mem_max,
-            excess = mem - ceiling.mem_max,
+             actual={} ceiling={} excess={}",
+            mem,
+            ceiling.mem_max,
+            mem - ceiling.mem_max,
         );
     }
 }

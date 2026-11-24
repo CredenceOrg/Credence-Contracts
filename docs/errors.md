@@ -21,6 +21,7 @@ error code instead of an opaque transaction failure.
 | 500–599 | Delegation     | credence\_delegation                              |
 | 600–699 | Treasury       | credence\_treasury                                |
 | 700–799 | Arithmetic     | bond, treasury, and others                        |
+| 800–899 | Escrow         | bounty-escrow                                     |
 
 > **Stability Guarantee** — Error codes are wire-stable and must **never** be renumbered
 > after deployment. Append new variants at the end of their category block only.
@@ -48,7 +49,7 @@ error code instead of an opaque transaction failure.
 | 101 | `NotBondOwner` | ✓ | Caller is not the bond owner |
 | 102 | `UnauthorizedAttester` | ✓ | Caller is not an authorized attester |
 | 103 | `NotOriginalAttester` | ✓ | Only the original attester can revoke |
-| 104 | `NotSigner` | ✓ | Caller is not a registered multi-sig signer |
+| 104 | `NotSigner` | ✓ | Caller is not an authorized multi-sig pause or treasury signer |
 | 105 | `UnauthorizedDepositor` | ✓ | Caller is neither admin nor authorized depositor |
 | 106 | `ContractPaused` | ✓ | Contract is paused; state-mutating operations disallowed |
 | 107 | `InvalidPauseAction` | ✓ | Pause action value is invalid |
@@ -70,6 +71,13 @@ error code instead of an opaque transaction failure.
 | 123 | `CrossContractCallerMismatch` | ✗ | Cross-contract caller does not match the configured partner |
 | 124 | `MigrationInProgress` | ✓ | State migration in progress; retry after it completes |
 | 125 | `MaxPauseSignersExceeded` | ✓ | Adding a pause signer would exceed the configured cap |
+| 126 | `LeaseSignerMismatch` | ✓ | Caller is not the signer bound to the lease |
+| 127 | `RoleRequired` | ✓ | Caller does not hold the role required for the action |
+| 128 | `UpgradeAuthorizationAlreadyExists` | ✓ | Upgrade authorization already exists for the address |
+| 129 | `UpgradeAuthorizationNotFound` | ✓ | No upgrade authorization exists for the address |
+| 130 | `UpgradeSelfRoleNotAllowed` | ✓ | Upgrade admin cannot grant themselves an equal or higher role |
+| 131 | `LastUpgradeAdmin` | ✓ | The last upgrade admin cannot be revoked |
+| 132 | `NotPendingUpgradeAdmin` | ✓ | Caller is not the pending upgrade admin |
 
 ### Bond (200–299)
 
@@ -111,6 +119,42 @@ error code instead of an opaque transaction failure.
 | 233 | `InvariantViolation` | ✗ | Post-write self-check detected bond/attestation accounting drift |
 | 234 | `InvalidCurrency` | ✓ | Empty or whitespace-only currency symbol |
 | 235 | `SnapshotGenerationMismatch` | ✗ | Snapshot generation does not match the current epoch |
+| 236 | `CooldownRequestAlreadyPending` | ✓ | A cooldown request is already pending |
+| 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
+| 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
+| 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `NegativeAmount` | ✓ | Token amount must be non-negative |
+| 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is smaller than the requested transfer amount |
+| 242 | `UnsupportedStellarNetwork` | ✓ | The configured Stellar network label is not supported |
+| 240 | `ClaimAlreadyProcessed` | ✗ | Claim has already been processed and cannot be paid again |
+| 241 | `ClaimExpired` | ✗ | Claim's expiry time has passed |
+| 242 | `ClaimNotFound` | ✓ | No pending claim exists for the given user and claim ID |
+| 243 | `NoPendingClaims` | ✓ | User has no pending claims to process |
+| 244 | `NoValidClaimsToProcess` | ✓ | No pending claims match the processing request |
+| 240 | `BondAmountBelowMinimum` | ✓ | Bond amount is below the minimum required normalized bound |
+| 241 | `BondAmountExceedsMaximum` | ✓ | Bond amount exceeds the maximum allowed normalized bound |
+| 242 | `BondDurationTooShort` | ✓ | Bond duration is shorter than the minimum allowed (1 day) |
+| 243 | `BondDurationTooLong` | ✓ | Bond duration exceeds the maximum allowed (365 days) |
+| 244 | `InvalidRecipient` | ✓ | Recipient address is the contract itself; self-transfers are rejected |
+| 240 | `UpgradeNotAuthorized` | ✗ | Caller is not authorized to propose upgrades |
+| 241 | `UpgradeAuthNotActive` | ✗ | Upgrade authorization is not active |
+| 242 | `UpgradeAuthExpired` | ✗ | Upgrade authorization has expired |
+| 243 | `UpgradeProposalNotPending` | ✗ | Upgrade proposal is not pending |
+| 244 | `UpgradeProposalAlreadyApproved` | ✗ | Approver has already approved this upgrade proposal |
+| 245 | `UpgradeProposalNotApproved` | ✓ | Upgrade proposal has not been approved |
+| 246 | `UpgradeImplementationMismatch` | ✓ | Implementation does not match the upgrade proposal |
+| 247 | `ImplementationNotSet` | ✗ | No implementation address has been set |
+| 248 | `SameImplementation` | ✓ | New implementation is the same as the current implementation |
+| 240 | `InvalidTokenAmount` | ✓ | Token amount must be non-negative |
+| 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is below the requested amount |
+| 242 | `TokenTransferFailed` | ✓ | Token transfer failed |
+| 243 | `TokenApproveFailed` | ✓ | Token approval failed |
+| 240 | `WithdrawalNotRequested` | ✓ | A rolling-bond withdrawal has not been requested |
+| 241 | `BondNotEligibleForLiquidation` | ✓ | Bond is not fully slashed or expired without renewal |
+| 242 | `SameLedgerCooldownBlocked` | ✓ | Cooldown execution is blocked after a collateral increase in this ledger |
+| 243 | `SelfTransferNotAllowed` | ✓ | A contract cannot transfer tokens to itself |
+| 240 | `NoFeesToCollect` | ✓ | No fees available to collect from the contract |
+| 241 | `LockupAlreadyElapsed` | ✓ | Lock period has already elapsed; use normal withdraw instead of early exit |
 
 ### Attestation (300–399)
 
@@ -162,11 +206,11 @@ error code instead of an opaque transaction failure.
 | Code | Variant | Recoverable | Description |
 |------|---------|:-----------:|-------------|
 | 600 | `AmountMustBePositive` | ✓ | Amount must be strictly positive |
-| 601 | `ThresholdExceedsSigners` | ✓ | Threshold cannot exceed the current signer count |
+| 601 | `ThresholdExceedsSigners` | ✓ | Approval threshold cannot exceed the current signer count |
 | 602 | `InsufficientTreasuryBalance` | ✓ | Treasury balance is insufficient for withdrawal |
-| 603 | `ProposalNotFound` | ✓ | Withdrawal proposal not found |
+| 603 | `ProposalNotFound` | ✓ | Governance proposal not found |
 | 604 | `ProposalAlreadyExecuted` | ✓ | Proposal has already been executed |
-| 605 | `InsufficientApprovals` | ✓ | Not enough approvals to execute proposal |
+| 605 | `InsufficientApprovals` | ✓ | Not enough approvals to execute the proposal |
 | 606 | `InvalidFlashLoanCallback` | ✗ | Flashloan callback returned an invalid magic value |
 | 607 | `FlashLoanRepaymentFailed` | ✗ | Flashloan principal plus fee was not fully repaid |
 | 608 | `ProposalExpired` | ✓ | Withdrawal proposal has expired; create a new proposal |
@@ -182,6 +226,19 @@ error code instead of an opaque transaction failure.
 | 701 | `Underflow` | ✗ | Integer underflow in checked arithmetic |
 | 702 | `DivisionByZero` | ✗ | Division by a zero denominator |
 | 703 | `InvalidPercentSplit` | ✓ | Percentage splits do not sum to exactly 10 000 basis points |
+| 704 | `InvalidPeriodCount` | ✓ | Compound period count exceeds the documented maximum |
+
+### Escrow (800–899)
+
+| Code | Variant | Recoverable | Description |
+|------|---------|:-----------:|-------------|
+| 800 | `EscrowNotFound` | ✓ | No escrow exists for the given id |
+| 801 | `EscrowNotReleasable` | ✗ | Escrow is already released or fully refunded and cannot be released |
+| 802 | `EscrowNotRefundable` | ✗ | Escrow is already released or fully refunded and cannot be refunded |
+| 803 | `EscrowNotExpired` | ✓ | Escrow cannot be refunded before its expiry time |
+| 804 | `RefundExceedsRemaining` | ✓ | Refund amount exceeds the escrow's remaining balance |
+| 805 | `InvalidEscrowExpiry` | ✓ | Escrow expiry must be in the future |
+| 806 | `NotEscrowParty` | ✓ | Caller is neither the escrow depositor nor the contract admin |
 
 ---
 

@@ -16,6 +16,10 @@
 //!    ([`record_collateral_increase`]).
 //! 2. Rejects slash entry points whose current ledger sequence still matches
 //!    the recorded one ([`require_slash_allowed_after_collateral_increase`]).
+//! 3. Rejects cooldown-withdrawal execution whose current ledger sequence
+//!    still matches the recorded one ([`require_cooldown_allowed_after_collateral_increase`]).
+//!    This prevents an attacker from collateralizing and then immediately
+//!    draining the cooldown window in the same ledger.
 //!
 //! The check is intentionally one-ledger-only — there is no global throttle
 //! and unrelated flows (attestations, withdrawals, parameter changes) are
@@ -37,6 +41,7 @@
 //! - Unslash, slash history, treasury withdrawals ✅ unaffected
 //! - Attestations, parameter changes ✅ unaffected
 //! - Withdraw (bonded → liquid) ✅ unaffected, even in the same ledger
+//! - Cooldown withdrawal execution ✅ blocked when same-ledger as a collateral increase
 //!
 //! See `../../docs/same-ledger-sequencing.md` for the policy note and the
 //! threat model justification.
@@ -44,11 +49,17 @@
 use crate::DataKey;
 use soroban_sdk::Env;
 
-/// Reason symbol emitted / matched by [`require_slash_allowed_after_collateral_increase`].
+/// Reason symbol emitted / matched by
+/// [`require_slash_allowed_after_collateral_increase`].
 ///
 /// Kept as a module constant so tests can assert on the exact string without
 /// hard-coding it twice.
 pub const SLASH_BLOCKED_REASON: &str = "slash blocked: collateral increased in this ledger";
+
+/// Reason symbol emitted / matched by
+/// [`require_cooldown_allowed_after_collateral_increase`].
+pub const COOLDOWN_BLOCKED_REASON: &str =
+    "cooldown execution blocked: collateral increased in this ledger";
 
 /// Panics if the last collateral increase happened in the current ledger.
 ///
@@ -69,7 +80,33 @@ pub fn require_slash_allowed_after_collateral_increase(e: &Env) {
         .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
     {
         if last == current {
-            panic!("{}", SLASH_BLOCKED_REASON);
+            e.panic_with_error(credence_errors::ContractError::SameLedgerSlashBlocked);
+        }
+    }
+}
+
+/// Panics if the last collateral increase happened in the current ledger
+/// and a cooldown-withdrawal execution is being attempted.
+///
+/// This prevents an attacker from front-running a collateral increase with a
+/// cooldown withdrawal in the same ledger entry.
+///
+/// Reads [`DataKey::LastCollateralIncreaseLedger`]. If the key was never set
+/// the function is a silent no-op, preserving backward compatibility.
+///
+/// # Panics
+/// Panics with [`COOLDOWN_BLOCKED_REASON`] when the recorded ledger sequence
+/// equals the current ledger sequence.
+#[cfg(test)]
+pub fn require_cooldown_allowed_after_collateral_increase(e: &Env) {
+    let current = e.ledger().sequence();
+    if let Some(last) = e
+        .storage()
+        .instance()
+        .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
+    {
+        if last == current {
+            e.panic_with_error(credence_errors::ContractError::SameLedgerCooldownBlocked);
         }
     }
 }
@@ -78,7 +115,9 @@ pub fn require_slash_allowed_after_collateral_increase(e: &Env) {
 ///
 /// Called by [`crate::CredenceBond::create_bond`] and the canonical top-up
 /// entry points so that any subsequent same-ledger slash is rejected by
-/// [`require_slash_allowed_after_collateral_increase`].
+/// [`require_slash_allowed_after_collateral_increase`] and any subsequent
+/// same-ledger cooldown execution is rejected by
+/// [`require_cooldown_allowed_after_collateral_increase`].
 /// The function is infallible: it is a single `set` of a `u32` value and
 /// produces no observable side effect beyond the storage write.
 pub fn record_collateral_increase(e: &Env) {
@@ -94,6 +133,7 @@ pub fn record_collateral_increase(e: &Env) {
 ///
 /// Useful for tests and for off-chain indexers that want to know when the
 /// guard was last tripped without having to call the slashing path.
+#[cfg(test)]
 pub fn last_collateral_increase_ledger(e: &Env) -> Option<u32> {
     e.storage()
         .instance()

@@ -63,18 +63,38 @@ pub const MIN_WITHDRAWAL_COOLDOWN_SECS: u64 = 0;
 /// Maximum withdrawal cooldown period in seconds (30 days)
 pub const MAX_WITHDRAWAL_COOLDOWN_SECS: u64 = 2_592_000;
 /// Default withdrawal cooldown period in seconds (7 days)
-pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = 604_800;
+pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 
 /// Minimum slash cooldown period in seconds (0 = no cooldown)
 pub const MIN_SLASH_COOLDOWN_SECS: u64 = 0;
 /// Maximum slash cooldown period in seconds (7 days)
-pub const MAX_SLASH_COOLDOWN_SECS: u64 = 604_800;
+pub const MAX_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 /// Default slash cooldown period in seconds (24 hours)
-pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = 86_400;
+pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_DAY;
 /// Maximum number of attestations per subject (ledger entry cap)
 pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)
 pub const MAX_SLASH_RECORDS: u32 = 1_000;
+
+// ============================================================================
+// Bond Amount Bounds (governed — replaces compile-time MIN/MAX_BOND_AMOUNT)
+// ============================================================================
+
+/// Absolute lower bound for the governable minimum bond amount (0 = allow any positive).
+pub const MIN_MIN_BOND_AMOUNT: i128 = 0;
+/// Absolute upper bound for the governable minimum bond amount (1M tokens, 18 decimals).
+pub const MAX_MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000_000_000;
+/// Absolute lower bound for the governable maximum bond amount (1 token, 18 decimals).
+pub const MIN_MAX_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
+/// Absolute upper bound for the governable maximum bond amount (100M tokens, 18 decimals).
+pub const MAX_MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
+
+/// Default minimum bond amount: 1 token in normalized 18-decimal format (1 × 10^18).
+/// Matches the previous production constant.
+pub const DEFAULT_MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
+/// Default maximum bond amount: 100M tokens in 18-decimal format (10^8 × 10^18 = 10^26).
+/// Matches the previous production constant; prevents arithmetic overflow downstream.
+pub const DEFAULT_MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
 
 // ============================================================================
 // Pagination Constants
@@ -163,6 +183,12 @@ pub enum ParameterKey {
     GoldThreshold,
     PlatinumThreshold,
     MaxLeverage,
+    /// Governed minimum bond amount (normalized 18-decimal format).
+    /// Replaces the compile-time `MIN_BOND_AMOUNT` constant.
+    MinBondAmount,
+    /// Governed maximum bond amount (normalized 18-decimal format).
+    /// Replaces the compile-time `MAX_BOND_AMOUNT` constant.
+    MaxBondAmount,
 }
 
 // ============================================================================
@@ -279,6 +305,24 @@ pub fn get_max_leverage(e: &Env) -> u32 {
         .unwrap_or(DEFAULT_MAX_LEVERAGE)
 }
 
+/// Get the governed minimum bond amount (normalized 18-decimal format).
+#[must_use]
+pub fn get_min_bond_amount(e: &Env) -> i128 {
+    e.storage()
+        .instance()
+        .get(&ParameterKey::MinBondAmount)
+        .unwrap_or(DEFAULT_MIN_BOND_AMOUNT)
+}
+
+/// Get the governed maximum bond amount (normalized 18-decimal format).
+#[must_use]
+pub fn get_max_bond_amount(e: &Env) -> i128 {
+    e.storage()
+        .instance()
+        .get(&ParameterKey::MaxBondAmount)
+        .unwrap_or(DEFAULT_MAX_BOND_AMOUNT)
+}
+
 // ============================================================================
 // Parameter Setters (Governance-Only)
 // ============================================================================
@@ -319,7 +363,7 @@ pub fn set_protocol_fee_bps_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("fee"));
 
     if !(MIN_PROTOCOL_FEE_BPS..=MAX_PROTOCOL_FEE_BPS).contains(&value) {
-        panic!("protocol_fee_bps out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_protocol_fee_bps(e);
@@ -373,7 +417,7 @@ pub fn set_attestation_fee_bps_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("fee"));
 
     if !(MIN_ATTESTATION_FEE_BPS..=MAX_ATTESTATION_FEE_BPS).contains(&value) {
-        panic!("attestation_fee_bps out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_attestation_fee_bps(e);
@@ -427,7 +471,7 @@ pub fn set_withdrawal_cooldown_secs_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("cooldown"));
 
     if !(MIN_WITHDRAWAL_COOLDOWN_SECS..=MAX_WITHDRAWAL_COOLDOWN_SECS).contains(&value) {
-        panic!("withdrawal_cooldown_secs out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_withdrawal_cooldown_secs(e);
@@ -481,7 +525,7 @@ pub fn set_slash_cooldown_secs_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("cooldown"));
 
     if !(MIN_SLASH_COOLDOWN_SECS..=MAX_SLASH_COOLDOWN_SECS).contains(&value) {
-        panic!("slash_cooldown_secs out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_slash_cooldown_secs(e);
@@ -535,7 +579,7 @@ pub fn set_bronze_threshold_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_BRONZE_THRESHOLD..=MAX_BRONZE_THRESHOLD).contains(&value) {
-        panic!("bronze_threshold out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_bronze_threshold(e);
@@ -589,7 +633,7 @@ pub fn set_silver_threshold_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_SILVER_THRESHOLD..=MAX_SILVER_THRESHOLD).contains(&value) {
-        panic!("silver_threshold out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_silver_threshold(e);
@@ -643,7 +687,7 @@ pub fn set_gold_threshold_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_GOLD_THRESHOLD..=MAX_GOLD_THRESHOLD).contains(&value) {
-        panic!("gold_threshold out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_gold_threshold(e);
@@ -697,7 +741,7 @@ pub fn set_platinum_threshold_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("tier"));
 
     if !(MIN_PLATINUM_THRESHOLD..=MAX_PLATINUM_THRESHOLD).contains(&value) {
-        panic!("platinum_threshold out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_platinum_threshold(e);
@@ -754,7 +798,7 @@ pub fn set_max_leverage_with_approval(
     validate_governance_approval(e, admin, approval, symbol_short!("risk"));
 
     if !(MIN_MAX_LEVERAGE..=MAX_MAX_LEVERAGE).contains(&value) {
-        panic!("max_leverage out of bounds");
+        crate::panic_with_error!(e, credence_errors::ContractError::ParameterOutOfBounds);
     }
 
     let old_value = get_max_leverage(e);
@@ -838,17 +882,19 @@ pub fn set_borrow_frozen_with_approval(
 /// * `caller` - Address to validate as admin
 ///
 /// # Panics
-/// - "not initialized" if contract not initialized
-/// - "not admin" if caller is not the stored admin address
+/// - `ContractError::NotInitialized` if contract not initialized
+/// - `ContractError::NotAdmin` if caller is not the stored admin address
 fn validate_admin(e: &Env, caller: &Address) {
     caller.require_auth();
     let stored_admin: Address = e
         .storage()
         .instance()
         .get(&crate::DataKey::Admin)
-        .unwrap_or_else(|| panic!("not initialized"));
+        .unwrap_or_else(|| {
+            crate::panic_with_error!(e, credence_errors::ContractError::NotInitialized)
+        });
     if caller != &stored_admin {
-        panic!("not admin");
+        crate::panic_with_error!(e, credence_errors::ContractError::NotAdmin);
     }
 }
 
@@ -859,14 +905,93 @@ fn validate_governance_approval(
     expected_category: Symbol,
 ) {
     if approval.approver != *admin {
-        panic!("governance approver mismatch");
+        crate::panic_with_error!(e, credence_errors::ContractError::GovernanceApproverMismatch);
     }
     if approval.expires_at > 0 && e.ledger().timestamp() > approval.expires_at {
-        panic!("governance approval expired");
+        crate::panic_with_error!(e, credence_errors::ContractError::GovernanceApprovalExpired);
     }
     if approval.category != expected_category {
-        panic!("governance approval category mismatch");
+        crate::panic_with_error!(
+            e,
+            credence_errors::ContractError::GovernanceApprovalCategoryMismatch
+        );
     }
 }
 
+// ============================================================================
+// Bond Amount Setters (Governance-Only)
+// ============================================================================
 
+/// Set the governed minimum bond amount. Governance-only.
+///
+/// # Bounds
+/// Must be between [`MIN_MIN_BOND_AMOUNT`] and [`MAX_MIN_BOND_AMOUNT`],
+/// and strictly less than the current maximum bond amount.
+///
+/// # Panics
+/// - "not admin" if caller is not the contract admin
+/// - "min_bond_amount out of bounds" if value is out of range
+/// - "min_bond_amount must be below max_bond_amount" if inverted
+pub fn set_min_bond_amount(e: &Env, admin: &Address, value: i128) {
+    validate_admin(e, admin);
+
+    if !(MIN_MIN_BOND_AMOUNT..=MAX_MIN_BOND_AMOUNT).contains(&value) {
+        panic!("min_bond_amount out of bounds");
+    }
+
+    let max = get_max_bond_amount(e);
+    if value >= max {
+        panic!("min_bond_amount must be below max_bond_amount");
+    }
+
+    let old_value = get_min_bond_amount(e);
+    e.storage()
+        .instance()
+        .set(&ParameterKey::MinBondAmount, &value);
+
+    emit_parameter_updated(
+        e,
+        symbol_short!("bondmin"),
+        symbol_short!("bond"),
+        admin,
+        old_value,
+        value,
+    );
+}
+
+/// Set the governed maximum bond amount. Governance-only.
+///
+/// # Bounds
+/// Must be between [`MIN_MAX_BOND_AMOUNT`] and [`MAX_MAX_BOND_AMOUNT`],
+/// and strictly greater than the current minimum bond amount.
+///
+/// # Panics
+/// - "not admin" if caller is not the contract admin
+/// - "max_bond_amount out of bounds" if value is out of range
+/// - "max_bond_amount must be above min_bond_amount" if inverted
+pub fn set_max_bond_amount(e: &Env, admin: &Address, value: i128) {
+    validate_admin(e, admin);
+
+    if !(MIN_MAX_BOND_AMOUNT..=MAX_MAX_BOND_AMOUNT).contains(&value) {
+        panic!("max_bond_amount out of bounds");
+    }
+
+    let min = get_min_bond_amount(e);
+    if value <= min {
+        panic!("max_bond_amount must be above min_bond_amount");
+    }
+
+    let old_value = get_max_bond_amount(e);
+    e.storage()
+        .instance()
+        .set(&ParameterKey::MaxBondAmount, &value);
+
+    emit_parameter_updated(
+        e,
+        symbol_short!("bondmax"),
+        symbol_short!("bond"),
+        admin,
+        old_value,
+        value,
+    );
+}

@@ -69,7 +69,10 @@ fn test_guard_allows_after_ledger_advance() {
     let _handles = test_helpers::setup_with_token(&e);
 
     record_collateral_increase(&e);
-    assert_eq!(last_collateral_increase_ledger(&e), Some(e.ledger().sequence()));
+    assert_eq!(
+        last_collateral_increase_ledger(&e),
+        Some(e.ledger().sequence())
+    );
 
     test_helpers::advance_ledger_sequence(&e);
 
@@ -168,7 +171,7 @@ fn test_consecutive_topups_allow_slash_after_last_advance() {
 /// Same-ledger record followed by immediate guard call must panic; the panic
 /// message exactly equals the public [`SLASH_BLOCKED_REASON`] constant.
 #[test]
-#[should_panic(expected = "slash blocked: collateral increased in this ledger")]
+#[should_panic(expected = "Error(Contract, #242)")]
 fn test_blocked_message_matches_public_constant() {
     let e = Env::default();
     let _handles = test_helpers::setup_with_token(&e);

@@ -22,7 +22,14 @@ impl AuthProxy {
     ) {
         owner.require_auth();
         let bond_client = CredenceBondClient::new(&e, &bond_id);
-        bond_client.add_attestation(&owner, &subject, &String::from_str(&e, "fuzz_data"), &nonce);
+        bond_client.add_attestation(
+            &owner,
+            &subject,
+            &String::from_str(&e, "fuzz_data"),
+            &bond_id,
+            &nonce,
+            &nonce,
+        );
     }
 }
 
@@ -66,6 +73,8 @@ fn test_auth_tree_valid() {
             owner.to_val(),
             subject.to_val(),
             String::from_str(&e, "fuzz_data").to_val(),
+            bond_id.to_val(),
+            0_u64.into_val(&e),
             0_u64.into_val(&e),
         ],
         sub_invokes: &[],

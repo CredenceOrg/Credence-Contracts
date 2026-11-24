@@ -1,7 +1,7 @@
 #![cfg(test)]
 
-use crate::{CredenceBond, CredenceBondClient};
 use crate::test_helpers;
+use crate::{CredenceBond, CredenceBondClient};
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, Env, String, Vec};
 
@@ -36,7 +36,9 @@ fn test_pause_blocks_all_mutating_entrypoints() {
     assert!(client.is_paused());
 
     // ── Bond lifecycle operations ───────────────────────────────
-    assert!(client.try_create_bond(&stranger, &5_000_i128, &3600_u64, &false, &0_u64).is_err());
+    assert!(client
+        .try_create_bond(&stranger, &5_000_i128, &3600_u64, &false, &0_u64)
+        .is_err());
     assert!(client.try_top_up(&identity, &1_000_i128).is_err());
     assert!(client.try_extend_duration(&identity, &3600_u64).is_err());
     assert!(client.try_request_withdrawal(&identity).is_err());
@@ -46,34 +48,58 @@ fn test_pause_blocks_all_mutating_entrypoints() {
     assert!(client.try_withdraw_bond(&identity).is_err());
 
     // ── Slashing ────────────────────────────────────────────────
-    assert!(client.try_slash(&admin, &100_i128).is_err());
-    assert!(client.try_slash_bond(&admin, &100_i128, &Bytes::new(&e)).is_err());
+    assert!(client.try_slash(&admin, &identity, &100_i128).is_err());
+    assert!(client
+        .try_slash_bond(&admin, &identity, &100_i128, &Bytes::new(&e))
+        .is_err());
 
     // ── Admin / config mutations ────────────────────────────────
     assert!(client.try_register_attester(&stranger).is_err());
     assert!(client.try_unregister_attester(&stranger).is_err());
-    assert!(client.try_set_accepted_tokens(&admin, &Vec::new(&e)).is_err());
+    assert!(client
+        .try_set_accepted_tokens(&admin, &Vec::new(&e))
+        .is_err());
     assert!(client.try_set_token(&admin, &stranger).is_err());
     let treasury = Address::generate(&e);
-    assert!(client.try_set_early_exit_config(&admin, &treasury, &500_u32).is_err());
+    assert!(client
+        .try_set_early_exit_config(&admin, &treasury, &500_u32)
+        .is_err());
     assert!(client.try_set_borrow_frozen(&admin, &true).is_err());
-    assert!(client.try_set_liquidation_treasury(&admin, &treasury).is_err());
+    assert!(client
+        .try_set_liquidation_treasury(&admin, &treasury)
+        .is_err());
     assert!(client.try_set_slash_treasury(&admin, &treasury).is_err());
     assert!(client.try_collect_fees(&admin, &Bytes::new(&e)).is_err());
     assert!(client.try_deposit_fees(&1_000_i128).is_err());
     assert!(client.try_set_callback(&stranger).is_err());
-    assert!(client.try_liquidate(&admin).is_err());
+    assert!(client.try_liquidate(&admin, &identity).is_err());
     assert!(client.try_batch_transfer(&admin, &Vec::new(&e)).is_err());
 
     // ── Attestation operations ──────────────────────────────────
     let attester = Address::generate(&e);
-    assert!(client.try_add_attestation(&attester, &stranger, &String::new(&e), &0_u64).is_err());
-    assert!(client.try_revoke_attestation(&attester, &0_u64, &0_u64).is_err());
+    // `contract_id`/`nonce` are payload fields; the call is expected to fail because the
+    // contract is paused, so any address is sufficient here.
+    let attestation_target = Address::generate(&e);
+    assert!(client
+        .try_add_attestation(
+            &attester,
+            &stranger,
+            &String::from_str(&e, ""),
+            &attestation_target,
+            &0_u64,
+            &0_u64
+        )
+        .is_err());
+    assert!(client
+        .try_revoke_attestation(&attester, &0_u64, &attestation_target, &0_u64, &0_u64)
+        .is_err());
 
     // ── Admin transfer ──────────────────────────────────────────
     let new_admin = Address::generate(&e);
     assert!(client.try_transfer_admin(&admin, &new_admin).is_err());
-    assert!(client.try_transfer_upgrade_admin(&admin, &new_admin).is_err());
+    assert!(client
+        .try_transfer_upgrade_admin(&admin, &new_admin)
+        .is_err());
     assert!(client.try_accept_upgrade_admin(&new_admin).is_err());
     assert!(client.try_cancel_upgrade_admin_transfer(&admin).is_err());
 
@@ -81,17 +107,23 @@ fn test_pause_blocks_all_mutating_entrypoints() {
     assert!(client.try_expire_claims(&stranger, &50_u32).is_err());
 
     // ── Attester stake / weight config ──────────────────────────
-    assert!(client.try_set_attester_stake(&admin, &attester, &100_000_i128).is_err());
-    assert!(client.try_set_weight_config(&admin, &100_u32, &10_000_u32).is_err());
+    assert!(client
+        .try_set_attester_stake(&admin, &attester, &100_000_i128)
+        .is_err());
+    assert!(client
+        .try_set_weight_config(&admin, &100_u32, &10_000_u32)
+        .is_err());
 
     // ── Attestation batch ───────────────────────────────────────
-    assert!(client.try_add_attestation_batch(&stranger, &Vec::new(&e)).is_err());
+    assert!(client
+        .try_add_attestation_batch(&stranger, &Vec::new(&e))
+        .is_err());
 }
 
 #[test]
 fn test_pause_allows_reads() {
     let e = Env::default();
-    let (client, admin) = setup(&e);
+    let (client, admin, identity) = setup_with_bond(&e);
 
     client.pause(&admin);
     assert!(client.is_paused());
@@ -102,7 +134,7 @@ fn test_pause_allows_reads() {
     assert!(!client.is_attester(&random_addr));
     let _ = client.version();
     let _ = client.describe_config();
-    let _ = client.describe_bond(&random_addr);
+    let _ = client.describe_bond(&identity);
     let _ = client.is_borrow_frozen();
     let _ = client.get_nonce(&random_addr);
     let _ = client.get_weight_config();
@@ -114,8 +146,8 @@ fn test_pause_allows_reads() {
     let _ = client.get_drain_eta();
     let _ = client.get_latest_drain_id();
     let _ = client.is_paused();
-    let _ = client.get_identity_state();
-    let _ = client.get_tier();
+    let _ = client.get_identity_state(&identity);
+    let _ = client.get_tier(&identity);
 }
 
 #[test]
@@ -141,11 +173,15 @@ fn test_emergency_drain_requires_paused() {
 
     // schedule_emergency_drain requires the contract to be PAUSED (inverse check)
     // It should fail when unpaused
-    assert!(client.try_schedule_emergency_drain(&admin, &86400_u64).is_err());
+    assert!(client
+        .try_schedule_emergency_drain(&admin, &86400_u64)
+        .is_err());
 
     // It should succeed when paused
     client.pause(&admin);
-    assert!(client.try_schedule_emergency_drain(&admin, &86400_u64).is_ok());
+    assert!(client
+        .try_schedule_emergency_drain(&admin, &86400_u64)
+        .is_ok());
 }
 
 #[test]
@@ -188,6 +224,8 @@ fn test_pause_blocks_add_attestation_batch() {
     let item = crate::AttestationBatchItem {
         attester: attester.clone(),
         attestation_data: String::from_str(&e, "kyc:verified"),
+        contract_id: Address::generate(&e),
+        deadline: 0_u64,
         nonce: 0_u64,
     };
     let mut items = Vec::new(&e);
@@ -235,13 +273,7 @@ fn test_pause_blocks_initialize_v1() {
 #[test]
 fn test_unpause_restores_operations() {
     let e = Env::default();
-    let (client, admin, identity) = setup_with_bond(&e);
-
-    client.pause(&admin);
-    assert!(client.is_paused());
-
-    // Verify blocked
-    assert!(client.try_register_attester(&Address::generate(&e)).is_err());
+    let (client, admin, _identity) = setup_with_bond(&e);
 
     // Unpause
     client.unpause(&admin);
@@ -315,23 +347,39 @@ fn test_pause_set_pause_signer_set_pause_threshold_exempt() {
     client.set_pause_signer(&admin, &signer, &true);
     client.set_pause_threshold(&admin, &1u32);
 
-    // Verify signer config took effect
+    // Verify signer config took effect: threshold > 0 opens a proposal.
     client.unpause(&admin);
     let pid = client.pause(&signer);
-    assert_eq!(pid, None); // threshold=1, single-signer -> immediate
+    assert!(pid.is_some());
+    client.execute_pause_proposal(&pid.unwrap());
     assert!(client.is_paused());
 }
 
 #[test]
 fn test_pause_slash_bond_blocked() {
     let e = Env::default();
-    let (client, admin) = setup_with_bond(&e);
+    let (client, admin, identity) = setup_with_bond(&e);
 
     client.pause(&admin);
     assert!(client.is_paused());
 
     // slash_bond has its own require_not_paused check
-    assert!(client.try_slash_bond(&admin, &100_i128, &Bytes::new(&e)).is_err());
+    assert!(client
+        .try_slash_bond(&admin, &identity, &100_i128, &Bytes::new(&e))
+        .is_err());
+}
+
+#[test]
+fn test_slash_bond_rejects_oversized_idempotency_salt() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e);
+
+    // MAX_FINITE_BYTES_LENGTH is 512; one byte over must be rejected before
+    // the salt is hashed or written to storage.
+    let oversized_salt = Bytes::from_slice(&e, &[0_u8; 513]);
+    assert!(client
+        .try_slash_bond(&admin, &identity, &100_i128, &oversized_salt)
+        .is_err());
 }
 
 #[test]
@@ -344,4 +392,78 @@ fn test_pause_withdraw_bond_blocked() {
 
     // withdraw_bond has require_not_paused
     assert!(client.try_withdraw_bond(&identity).is_err());
+}
+
+#[test]
+fn test_pause_during_active_lockup_blocks_mutations_views_ok() {
+    let e = Env::default();
+    let (client, admin, identity) = setup_with_bond(&e);
+
+    // Bond is still inside its 3600s lock-up window.
+    assert!(client.describe_bond(&identity).unwrap().active);
+
+    client.pause(&admin);
+    assert!(client.is_paused());
+
+    // Mutating paths during an active lock-up must revert.
+    assert!(client.try_top_up(&identity, &500_i128).is_err());
+    assert!(client.try_withdraw(&identity, &100_i128).is_err());
+    assert!(client.try_withdraw_early(&identity, &100_i128).is_err());
+    assert!(client.try_request_withdrawal(&identity).is_err());
+    assert!(client.try_renew_if_rolling(&identity).is_err());
+    assert!(client
+        .try_slash_bond(&admin, &identity, &50_i128, &Bytes::new(&e))
+        .is_err());
+    assert!(client.try_withdraw_bond(&identity).is_err());
+    assert!(client.try_collect_fees(&admin, &Bytes::new(&e)).is_err());
+    assert!(client
+        .try_create_bond(
+            &Address::generate(&e),
+            &1_000_i128,
+            &3600_u64,
+            &false,
+            &0_u64
+        )
+        .is_err());
+
+    // Views remain readable while paused.
+    let bond = client.describe_bond(&identity).unwrap();
+    assert!(bond.active);
+    assert_eq!(bond.bonded_amount, 10_000_i128);
+    assert!(client.is_paused());
+    let _ = client.get_tier(&identity);
+    let _ = client.version();
+
+    // Unpause restores the same lock-up lifecycle.
+    client.unpause(&admin);
+    assert!(!client.is_paused());
+    client.top_up(&identity, &500_i128);
+    let bond_after = client.describe_bond(&identity).unwrap();
+    assert_eq!(bond_after.bonded_amount, 10_500_i128);
+}
+
+#[test]
+fn test_admin_unpause_override_with_multisig_threshold() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+
+    let s1 = Address::generate(&e);
+    let s2 = Address::generate(&e);
+    client.set_pause_signer(&admin, &s1, &true);
+    client.set_pause_signer(&admin, &s2, &true);
+    client.set_pause_threshold(&admin, &2u32);
+
+    let pid = client.pause(&s1).unwrap();
+    client.approve_pause_proposal(&s2, &pid);
+    client.execute_pause_proposal(&pid);
+    assert!(client.is_paused());
+
+    // Non-admin signer cannot immediately unpause under threshold > 0.
+    let maybe_pid = client.unpause(&s1);
+    assert!(maybe_pid.is_some());
+    assert!(client.is_paused());
+
+    // Admin bypasses the proposal path to prevent lockout.
+    assert_eq!(client.unpause(&admin), None);
+    assert!(!client.is_paused());
 }

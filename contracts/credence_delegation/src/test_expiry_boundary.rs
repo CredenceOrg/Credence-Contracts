@@ -37,10 +37,9 @@
 extern crate std;
 
 use super::*;
-use soroban_sdk::Env;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
-    String,
+    Env, String,
 };
 use std::vec::Vec as StdVec;
 
@@ -481,7 +480,7 @@ fn test_expiry_boundary_upper_jump_forward_recalculates_max() {
     let middle = max_at_1000.saturating_add(2000);
     if middle <= max_at_10000 {
         let delegate3 = Address::generate(&e);
-        let d3 = client.delegate(
+        let _ = client.delegate(
             &owner,
             &delegate3,
             &DelegationType::Management,
@@ -508,16 +507,14 @@ fn test_expiry_boundary_upper_backward_forward_uses_latest_for_max() {
     // Try to use 5000 + MAX_DELEGATION_DURATION (which exceeds current max)
     let expires_at = (5000_u64).saturating_add(MAX_DELEGATION_DURATION);
 
-    if expires_at > (3000_u64).saturating_add(MAX_DELEGATION_DURATION) {
-        // This should panic with DelegationExpiryTooLong
-        client.delegate(
-            &owner,
-            &delegate,
-            &DelegationType::Management,
-            &expires_at,
-            &0_u64,
-        );
-    }
+    // This must panic with DelegationExpiryTooLong.
+    client.delegate(
+        &owner,
+        &delegate,
+        &DelegationType::Management,
+        &expires_at,
+        &0_u64,
+    );
 }
 
 // ============================================================================
@@ -653,7 +650,7 @@ fn test_expiry_boundary_delegated_monotonic_advance_valid_sequence() {
 
         let delegate = Address::generate(&e);
         let now = e.ledger().timestamp();
-        let expires_at = now.saturating_add(credence_math::Timestamp::SECONDS_PER_DAY); // +1 day
+        let expires_at = now.saturating_add(credence_math::SECONDS_PER_DAY); // +1 day
         let payload = delegate_payload(&e, &owner, &delegate, &client.address, i);
 
         let d = client.execute_delegated_delegate(
@@ -780,7 +777,7 @@ fn test_expiry_boundary_monotonic_ledger_rejection_set_stable() {
             &(idx as u64),
         );
 
-        assert!(result.is_err(), "Expected rejection for {}", label);
+        assert!(result.is_err(), "Expected rejection for {label}");
     }
 
     // Cases that must always accept at this timestamp
@@ -790,7 +787,7 @@ fn test_expiry_boundary_monotonic_ledger_rejection_set_stable() {
         (now.saturating_add(MAX_DELEGATION_DURATION), "exact max"),
     ];
 
-    for (_idx, (expires_at, label)) in accept_cases.iter().enumerate() {
+    for (expires_at, label) in accept_cases.iter() {
         let owner = Address::generate(&e);
         let delegate = Address::generate(&e);
 
@@ -803,7 +800,7 @@ fn test_expiry_boundary_monotonic_ledger_rejection_set_stable() {
             &0_u64,
         );
 
-        assert!(result.is_ok(), "Expected acceptance for {}", label);
+        assert!(result.is_ok(), "Expected acceptance for {label}");
     }
 }
 
@@ -853,7 +850,7 @@ fn test_expiry_boundary_saturation_at_u64_max_ledger_time() {
 
     // Set ledger to near u64::MAX
     e.ledger()
-        .with_mut(|li| li.timestamp = u64::MAX.saturating_sub(1000));
+        .with_mut(|li| li.timestamp = u64::MAX - 1000);
 
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);

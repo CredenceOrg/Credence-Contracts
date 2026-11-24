@@ -16,6 +16,10 @@ autobenches = false
 autobins = false
 
 [[test]]
+name = "test_bond_pausable"
+path = "tests/test_bond_pausable.rs"
+
+[[test]]
 name = "proptest_tier"
 path = "tests/proptest_tier.rs"
 
@@ -50,6 +54,31 @@ required-features = ["gas-bench"]
 [[test]]
 name = "test_cost_regression"
 path = "tests/test_cost_regression.rs"
+
+# Cost benchmark boundary test coverage (issue #1313).
+[[test]]
+name = "test_cost_boundary"
+path = "tests/test_cost_boundary.rs"
+
+# Cost benchmark recovery test coverage (issue #1313).
+[[test]]
+name = "test_cost_recovery"
+path = "tests/test_cost_recovery.rs"
+
+# slash_bond validation/event/reentrancy-lock coverage (issue #1039).
+[[test]]
+name = "slash_bond_validation"
+path = "tests/slash_bond_validation.rs"
+
+# access_control boundary/recovery coverage (issue #1316).
+[[test]]
+name = "access_control_boundaries"
+path = "tests/access_control_boundaries.rs"
+
+# Normalized bond bounds and leverage checks for non-18-decimal tokens (issue #1612).
+[[test]]
+name = "test_bond_amount_normalization"
+path = "tests/test_bond_amount_normalization.rs"
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }

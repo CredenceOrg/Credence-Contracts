@@ -32,15 +32,8 @@ fn future_ts(env: &Env, secs: u64) -> u64 {
 
 /// Advance the mock ledger timestamp by `secs`.
 fn advance(env: &Env, secs: u64) {
-    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
-        timestamp: env.ledger().timestamp() + secs,
-        protocol_version: 22,
-        sequence_number: 1,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 16,
-        min_persistent_entry_ttl: 16,
-        max_entry_ttl: 3_000_000,
+    env.ledger().with_mut(|li| {
+        li.timestamp += secs;
     });
 }
 
@@ -169,10 +162,10 @@ fn invalidate_nonce_range_succeeds_when_identity_authorizes() {
 #[test]
 fn set_revocation_grace_period_succeeds_when_admin_authorizes() {
     let (env, admin, _owner, client) = setup();
-    client.set_revocation_grace_period(&admin, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.set_revocation_grace_period(&admin, &credence_math::SECONDS_PER_DAY);
     assert_eq!(
         client.get_revocation_grace_period(),
-        credence_math::Timestamp::SECONDS_PER_DAY
+        credence_math::SECONDS_PER_DAY
     );
 }
 
@@ -182,7 +175,7 @@ fn set_revocation_grace_period_succeeds_when_admin_authorizes() {
 fn set_revocation_grace_period_rejected_when_non_admin_calls() {
     let (env, _admin, _owner, client) = setup();
     let stranger = Address::generate(&env);
-    client.set_revocation_grace_period(&stranger, &credence_math::Timestamp::SECONDS_PER_DAY);
+    client.set_revocation_grace_period(&stranger, &credence_math::SECONDS_PER_DAY);
 }
 
 // ---------------------------------------------------------------------------

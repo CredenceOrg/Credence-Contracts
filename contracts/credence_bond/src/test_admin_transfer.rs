@@ -1,6 +1,10 @@
 #![cfg(test)]
 
-use crate::{CredenceBond, CredenceBondClient, DataKey, UpgradeKey};
+use crate::{
+    test_helpers::expect_contract_error_panic, CredenceBond, CredenceBondClient, DataKey,
+    UpgradeKey,
+};
+use credence_errors::ContractError;
 use soroban_sdk::{testutils::Address as _, testutils::Ledger as _, Address, Env};
 
 #[test]
@@ -10,14 +14,17 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
 
     // Initial upgrade admin is correct
     let stored: Address = e.as_contract(&contract_id, || {
-        e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::Admin)).unwrap()
+        e.storage()
+            .instance()
+            .get(&DataKey::Upgrade(UpgradeKey::Admin))
+            .unwrap()
     });
     assert_eq!(stored, admin);
 
@@ -37,7 +44,10 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     // New admin is now the upgrade admin
     let stored: Address = e.as_contract(&contract_id, || {
-        e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::Admin)).unwrap()
+        e.storage()
+            .instance()
+            .get(&DataKey::Upgrade(UpgradeKey::Admin))
+            .unwrap()
     });
     assert_eq!(stored, new_admin);
 
@@ -46,14 +56,14 @@ fn test_upgrade_admin_transfer_full_flow() {
 }
 
 #[test]
-#[should_panic(expected = "timelock not elapsed")]
+#[should_panic(expected = "Error(Contract, #112)")] // TimelockNotReady
 fn test_upgrade_admin_transfer_timelock_enforced() {
     let e = Env::default();
     e.mock_all_auths();
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -69,14 +79,13 @@ fn test_upgrade_admin_transfer_timelock_enforced() {
 }
 
 #[test]
-#[should_panic(expected = "admin transfer proposal expired")]
 fn test_upgrade_admin_transfer_expiry_enforced() {
     let e = Env::default();
     e.mock_all_auths();
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -88,7 +97,9 @@ fn test_upgrade_admin_transfer_expiry_enforced() {
         l.timestamp += 604_801;
     });
 
-    client.accept_upgrade_admin(&new_admin); // Should panic
+    expect_contract_error_panic(ContractError::ProposalExpired as u32, || {
+        client.accept_upgrade_admin(&new_admin);
+    });
 }
 
 #[test]
@@ -98,7 +109,7 @@ fn test_upgrade_admin_transfer_cancel() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -112,7 +123,6 @@ fn test_upgrade_admin_transfer_cancel() {
 }
 
 #[test]
-#[should_panic(expected = "not pending upgrade admin")]
 fn test_upgrade_admin_transfer_wrong_acceptor() {
     let e = Env::default();
     e.mock_all_auths();
@@ -120,7 +130,7 @@ fn test_upgrade_admin_transfer_wrong_acceptor() {
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
     let wrong_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -131,19 +141,22 @@ fn test_upgrade_admin_transfer_wrong_acceptor() {
     });
 
     // Wrong address tries to accept
-    client.accept_upgrade_admin(&wrong_admin);
+    expect_contract_error_panic(ContractError::NotPendingUpgradeAdmin as u32, || {
+        client.accept_upgrade_admin(&wrong_admin);
+    });
 }
 
 #[test]
-#[should_panic(expected = "new admin must be different")]
 fn test_cannot_propose_same_admin() {
     let e = Env::default();
     e.mock_all_auths();
 
     let admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
-    client.transfer_upgrade_admin(&admin, &admin); // Should panic
+    expect_contract_error_panic(ContractError::AdminUnchanged as u32, || {
+        client.transfer_upgrade_admin(&admin, &admin);
+    });
 }

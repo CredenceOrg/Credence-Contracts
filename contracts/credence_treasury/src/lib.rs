@@ -51,6 +51,9 @@ pub use credence_errors::is_expired;
 pub use treasury::*;
 
 #[cfg(test)]
+mod test_access_control;
+
+#[cfg(test)]
 mod test_treasury;
 
 #[cfg(test)]
@@ -85,4 +88,11 @@ mod test_corridor_settlement;
 mod test_accounting_reconciliation;
 
 #[cfg(test)]
+mod test_treasury_token_delta;
+
+#[cfg(test)]
+mod test_withdrawal_recovery_guardrails;
+
+#[cfg(test)]
+mod proptest_invariants;
 mod test_reentrancy;

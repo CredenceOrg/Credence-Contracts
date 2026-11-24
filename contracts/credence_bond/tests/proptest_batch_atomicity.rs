@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-//! # Proptest: Batch Atomicity 
+//! # Proptest: Batch Atomicity
 //!
 
 //! Property-based tests that lock in the **between-batch invariant** for the
@@ -117,6 +117,7 @@ proptest! {
     /// attesters stores exactly `n` items, advances each consumed attester's
     /// nonce by exactly 1, and preserves the I7 invariant
     /// (`count == list_len`).
+    #[test]
     fn prop_attestation_batch_count_matches_n_healthy_items(
         batch_size in 1usize..=20usize,
     ) {
@@ -134,11 +135,13 @@ proptest! {
 
         // Build batch
         let mut items: Vec<AttestationBatchItem> = Vec::new(&env);
-        for i in 0..batch_size {
-            let attester = pool[i].clone();
+        for (i, attester) in pool.iter().enumerate().take(batch_size) {
+            let attester = attester.clone();
             let nonce = client.get_nonce(&attester);
             items.push_back(AttestationBatchItem {
                 attester,
+                contract_id: client.address.clone(),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(&env, &format!("clean-batch-{}", i)),
                 nonce,
             });
@@ -158,7 +161,7 @@ proptest! {
             "subject attestation list did not grow to batch_size");
         // I7: count == list_len (the contract also enforces this internally)
         prop_assert_eq!(
-            list.len() as u32, client.get_subject_attestation_count(&subject),
+            list.len(), client.get_subject_attestation_count(&subject),
             "between-batch invariant I7 VIOLATED: list_len != count"
         );
 
@@ -172,6 +175,7 @@ proptest! {
     /// **Sad path: unregistered attester.** Any batch containing a single
     /// unregistered address MUST revert atomically: no nonce consumed, no
     /// subject count growth, no list growth. This is the split-brain guard.
+    #[test]
     fn prop_attestation_batch_reverts_atomically_on_unregistered_attester(
         batch_size in 2usize..=10usize,
         poison_position in 0usize..=10usize,
@@ -189,11 +193,11 @@ proptest! {
             .collect();
 
         let mut items: Vec<AttestationBatchItem> = Vec::new(&env);
-        for i in 0..batch_size {
+        for (i, pooled) in pool.iter().enumerate().take(batch_size) {
             let attester = if i == poison_idx {
                 poison.clone()
             } else {
-                pool[i].clone()
+                pooled.clone()
             };
             // The poison cannot have its nonce consumed because it isn't
             // registered; reads don't require auth, so this smoke check
@@ -201,6 +205,8 @@ proptest! {
             let nonce = client.get_nonce(&attester);
             items.push_back(AttestationBatchItem {
                 attester,
+                contract_id: client.address.clone(),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("poison-batch-{}", i),
@@ -224,7 +230,7 @@ proptest! {
             "between-batch invariant VIOLATED: subject attestation count drifted after atomic revert"
         );
         let list = client.get_subject_attestations(&subject);
-        prop_assert_eq!(list.len() as u32, pre_count,
+        prop_assert_eq!(list.len(), pre_count,
             "between-batch invariant VIOLATED: subject attestation list grew after atomic revert");
         for (i, a) in pool.iter().enumerate() {
             prop_assert_eq!(
@@ -238,6 +244,7 @@ proptest! {
     /// **Sad path: duplicate attester within the batch.** When two positions
     /// in the batch carry the same attester address, the explicit uniqueness
     /// check panics "duplicate attester in batch". The whole batch MUST revert.
+    #[test]
     fn prop_attestation_batch_reverts_atomically_on_duplicate_attester(
         batch_size in 2usize..=10usize,
     ) {
@@ -254,6 +261,8 @@ proptest! {
             let nonce = client.get_nonce(&pool[0]);
             items.push_back(AttestationBatchItem {
                 attester: pool[0].clone(),
+                contract_id: client.address.clone(),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("dup-{}", i),
@@ -286,6 +295,7 @@ proptest! {
     /// We register `n` attesters with stakes `(max_weight/n) + 1` so each
     /// individual weight fits under the cap, but the sum of N weights
     /// strictly exceeds `max_weight`.
+    #[test]
     fn prop_attestation_batch_reverts_atomically_on_weight_cap_violation(
         n in 2usize..=4usize,
     ) {
@@ -303,10 +313,12 @@ proptest! {
             .collect();
 
         let mut items: Vec<AttestationBatchItem> = Vec::new(&env);
-        for i in 0..n {
-            let nonce = client.get_nonce(&pool[i]);
+        for (i, attester) in pool.iter().enumerate().take(n) {
+            let nonce = client.get_nonce(attester);
             items.push_back(AttestationBatchItem {
-                attester: pool[i].clone(),
+                attester: attester.clone(),
+                contract_id: client.address.clone(),
+                deadline: 0_u64,
                 attestation_data: make_attestation_data(
                     &env,
                     &format!("overweight-{}", i),
@@ -341,6 +353,7 @@ proptest! {
     /// choose between a clean batch and one of three poison modes. After each
     /// call, the observable state must match the running summary of which
     /// batches succeeded and which failed.
+    #[test]
     fn prop_between_batch_invariants_hold_across_sequences(
         // 0 = clean, 1 = unregistered, 2 = duplicate, 3 = overweight
         choices in proptest::collection::vec(0u8..=3u8, 1..=4usize),
@@ -378,6 +391,8 @@ proptest! {
                 let nonce = client.get_nonce(&attester);
                 items.push_back(AttestationBatchItem {
                     attester,
+                    contract_id: client.address.clone(),
+                    deadline: 0_u64,
                     attestation_data: make_attestation_data(
                         &env,
                         &format!("seq-{}-{}", step, i),
@@ -420,7 +435,7 @@ proptest! {
                     step
                 );
                 let list = client.get_subject_attestations(&subject);
-                prop_assert_eq!(list.len() as u32, post_count,
+                prop_assert_eq!(list.len(), post_count,
                     "step {}: I7 VIOLATED in sequence (list_len != count)", step);
                 // Each new attestation id must separately be retrievable
                 // — guards against partial-write bugs that store the count

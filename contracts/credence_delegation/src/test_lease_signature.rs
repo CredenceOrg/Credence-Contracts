@@ -29,11 +29,7 @@
 
 #![cfg(test)]
 
-use soroban_sdk::{
-    contract, contractimpl,
-    testutils::Address as _,
-    Address, Bytes, Env,
-};
+use soroban_sdk::{testutils::Address as _, Address, Bytes, Env};
 
 use crate::{
     verifier::{verify_delegated_signature, SchemeTag},
@@ -88,13 +84,13 @@ mod panicking_verifier {
         // A guest-trapping verifier models real-world crypto libraries that
         // panic on malformed signature lengths rather than returning `false`.
         pub fn verify(_owner: Address, _message: Bytes, _signature: Bytes) -> bool {
-            panic!("simulated verifier guest trap")
+            soroban_sdk::panic_with_error!(&Env::default(), 507u32);
+            false
         }
     }
 }
 
 use invalid_verifier::AlwaysInvalidVerifier;
-use panicking_verifier::PanickingVerifier;
 use valid_verifier::AlwaysValidVerifier;
 
 // -----------------------------------------------------------------------------
@@ -187,13 +183,16 @@ fn verify_delegated_signature_corrupted_unknown_scheme_99_panics_with_unknown_sc
     // `504` = `ContractError::UnknownScheme`.
     let e = fresh_env();
     let owner = Address::generate(&e);
-    verify_delegated_signature(
-        &e,
-        &owner,
-        &Bytes::new(&e),
-        &Bytes::new(&e),
-        99,
-    );
+    verify_delegated_signature(&e, &owner, &Bytes::new(&e), &Bytes::new(&e), 99);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #504)")]
+fn verify_delegated_signature_first_unknown_scheme_panics_with_unknown_scheme() {
+    // 3 is the first tag after the wire-stable supported range 0..=2.
+    let e = fresh_env();
+    let owner = Address::generate(&e);
+    verify_delegated_signature(&e, &owner, &Bytes::new(&e), &Bytes::new(&e), 3);
 }
 
 #[test]
@@ -201,18 +200,13 @@ fn verify_delegated_signature_corrupted_unknown_scheme_99_panics_with_unknown_sc
 fn verify_delegated_signature_corrupted_unknown_scheme_max_panics_with_unknown_scheme() {
     let e = fresh_env();
     let owner = Address::generate(&e);
-    verify_delegated_signature(
-        &e,
-        &owner,
-        &Bytes::new(&e),
-        &Bytes::new(&e),
-        u32::MAX,
-    );
+    verify_delegated_signature(&e, &owner, &Bytes::new(&e), &Bytes::new(&e), u32::MAX);
 }
 
 #[test]
 #[should_panic(expected = "Error(Contract, #507)")]
-fn verify_delegated_signature_corrupted_secp256r1_rejecting_verifier_panics_with_verification_failed() {
+fn verify_delegated_signature_corrupted_secp256r1_rejecting_verifier_panics_with_verification_failed()
+{
     // `507` = `ContractError::VerificationFailed`.
     let e = fresh_env();
     let verifier_id = e.register(AlwaysInvalidVerifier, ());
@@ -230,7 +224,8 @@ fn verify_delegated_signature_corrupted_secp256r1_rejecting_verifier_panics_with
 
 #[test]
 #[should_panic(expected = "Error(Contract, #507)")]
-fn verify_delegated_signature_corrupted_mldsa44_rejecting_verifier_panics_with_verification_failed() {
+fn verify_delegated_signature_corrupted_mldsa44_rejecting_verifier_panics_with_verification_failed()
+{
     let e = fresh_env();
     let verifier_id = e.register(AlwaysInvalidVerifier, ());
     storage_register_verifier(&e, SchemeTag::MLDSA44.to_u32(), &verifier_id);
@@ -296,7 +291,8 @@ fn verify_delegated_signature_corrupted_all_one_message_signature_bytes_rejected
 
 #[test]
 #[should_panic(expected = "Error(Contract, #506)")]
-fn verify_delegated_signature_revoked_secp256r1_never_registered_panics_verifier_not_registered() {
+fn verify_delegated_signature_revoked_secp256r1_never_registered_panics_verifier_not_registered()
+{
     // `506` = `ContractError::VerifierNotRegistered`.
     let e = fresh_env();
     let owner = Address::generate(&e);
@@ -325,7 +321,8 @@ fn verify_delegated_signature_revoked_mldsa44_never_registered_panics_verifier_n
 
 #[test]
 #[should_panic(expected = "Error(Contract, #506)")]
-fn verify_delegated_signature_revoked_secp256r1_after_unregister_panics_verifier_not_registered() {
+fn verify_delegated_signature_revoked_secp256r1_after_unregister_panics_verifier_not_registered()
+{
     // Realistic revocation flow: an admin first registers a verifier, the
     // verifier is later administratively removed, and a new relayed payload
     // arrives during the gap. The dispatcher must still refuse the call.
@@ -346,7 +343,8 @@ fn verify_delegated_signature_revoked_secp256r1_after_unregister_panics_verifier
 
 #[test]
 #[should_panic(expected = "Error(Contract, #506)")]
-fn verify_delegated_signature_revoked_mldsa44_after_unregister_panics_verifier_not_registered() {
+fn verify_delegated_signature_revoked_mldsa44_after_unregister_panics_verifier_not_registered()
+{
     let e = fresh_env();
     let verifier_id = e.register(AlwaysValidVerifier, ());
     storage_register_verifier(&e, SchemeTag::MLDSA44.to_u32(), &verifier_id);

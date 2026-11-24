@@ -2,21 +2,53 @@
 name = "credence-contracts"
 version.workspace = true
 edition.workspace = true
+autotests = false
 
 [workspace]
 resolver = "2"
-members = ["contracts/credence_bond", "contracts/credence_delegation", "contracts/credence_registry", "contracts/credence_treasury", "contracts/timelock", "contracts/arbitration", "contracts/credence_multisig", "contracts/admin", "contracts/credence_errors", "contracts/credence_math", "contracts/fixed_duration_bond", "contracts/templates", "crates/credence_admin_cli", "crates/testutils", "crates/interfaces"]
+members = [
+    "contracts/admin",
+    "contracts/arbitration",
+    "contracts/bounty-escrow",
+    "contracts/credence_bond",
+    "contracts/credence_delegation",
+    "contracts/credence_errors",
+    "contracts/credence_math",
+    "contracts/credence_multisig",
+    "contracts/credence_registry",
+    "contracts/credence_treasury",
+    "contracts/dispute_resolution",
+    "contracts/fixed_duration_bond",
+    "contracts/templates",
+    "contracts/timelock",
+    "crates/interfaces",
+    "crates/testutils",
+    "crates/credence_admin_cli",
+]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
-opt-level = "z"
-lto = "fat"
-codegen-units = 1
-strip = "symbols"
-panic = "abort"
+[dev-dependencies]
+soroban-sdk = { version = "22.0", features = ["testutils"] }
+admin = { path = "contracts/admin" }
+credence_arbitration = { path = "contracts/arbitration" }
+credence_bond = { path = "contracts/credence_bond" }
+credence_delegation = { path = "contracts/credence_delegation" }
+credence_registry = { path = "contracts/credence_registry" }
+credence_treasury = { path = "contracts/credence_treasury" }
+timelock = { path = "contracts/timelock" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[[test]]
+name = "event_catalog"
+path = "tests/event_catalog.rs"
+
+[[test]]
+name = "cross_contract_pause"
+path = "tests/cross_contract_pause.rs"
 
 [profile.dev]
 debug = 0
@@ -24,3 +56,12 @@ debug = 0
 [profile.test]
 debug = 0
 
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0
+strip = "symbols"
+debug-assertions = false
+panic = "abort"
+codegen-units = 1
+lto = true

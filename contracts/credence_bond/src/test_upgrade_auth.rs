@@ -1,20 +1,110 @@
 extern crate std;
+use crate::upgrade_auth::{UpgradeAuthorization, UpgradeProposal, UpgradeRecord};
 use crate::{
+    test_helpers::expect_contract_error_panic,
     upgrade_auth::{self, UpgradeRole, UpgradeStatus},
     CredenceBond, CredenceBondClient,
 };
+use credence_errors::ContractError;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::{Address, Bytes, Env, Vec};
+use crate::test_helpers::expect_contract_error_panic;
+    upgrade_auth::{UpgradeRole, UpgradeStatus},
+    CredenceBond,
+};
+use soroban_sdk::testutils::{Address as _, Ledger as _};
+use soroban_sdk::{Address, Bytes, Env, Vec};
+use std::cell::RefCell;
 use std::panic::AssertUnwindSafe;
 
-// Helper: register contract + admin, return (client, admin, contract_id).
-fn setup_with_contract(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
-    e.mock_all_auths();
-    let contract_id = e.register(CredenceBond, ());
-    let client = CredenceBondClient::new(e, &contract_id);
-    let admin = Address::generate(e);
-    client.initialize(&admin, &None);
-    (client, admin, contract_id)
+std::thread_local! {
+    /// The contract registered by `create_test_env` for the current test.
+    static TEST_CONTRACT: RefCell<Option<Address>> = const { RefCell::new(None) };
+}
+
+/// Runs `f` inside the test contract's frame. The `upgrade_auth` functions read
+/// and write contract storage, which the host only allows from within a contract.
+fn in_contract<T>(e: &Env, f: impl FnOnce() -> T) -> T {
+    let id = TEST_CONTRACT
+        .with(|slot| slot.borrow().clone())
+        .expect("create_test_env must be called first");
+    e.as_contract(&id, f)
+}
+
+/// The `upgrade_auth` module, with each call run through `in_contract`.
+mod upgrade_auth {
+    use super::*;
+
+    pub fn initialize_upgrade_auth(e: &Env, admin: &Address) {
+        in_contract(e, || crate::upgrade_auth::initialize_upgrade_auth(e, admin))
+    }
+    pub fn grant_upgrade_auth(
+        e: &Env,
+        admin: &Address,
+        address: &Address,
+        role: UpgradeRole,
+        expires_at: u64,
+    ) {
+        in_contract(e, || {
+            crate::upgrade_auth::grant_upgrade_auth(e, admin, address, role, expires_at)
+        })
+    }
+    pub fn revoke_upgrade_auth(e: &Env, admin: &Address, address: &Address) {
+        in_contract(e, || crate::upgrade_auth::revoke_upgrade_auth(e, admin, address))
+    }
+    pub fn is_authorized_upgrader(e: &Env, address: &Address) -> bool {
+        in_contract(e, || crate::upgrade_auth::is_authorized_upgrader(e, address))
+    }
+    pub fn get_upgrade_role(e: &Env, address: &Address) -> UpgradeRole {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_role(e, address))
+    }
+    pub fn propose_upgrade(
+        e: &Env,
+        proposer: &Address,
+        new_implementation: &Address,
+        upgrade_data: Bytes,
+        required_approvals: u32,
+    ) -> u64 {
+        in_contract(e, || {
+            crate::upgrade_auth::propose_upgrade(
+                e,
+                proposer,
+                new_implementation,
+                upgrade_data,
+                required_approvals,
+            )
+        })
+    }
+    pub fn approve_upgrade_proposal(e: &Env, approver: &Address, proposal_id: u64) {
+        in_contract(e, || {
+            crate::upgrade_auth::approve_upgrade_proposal(e, approver, proposal_id)
+        })
+    }
+    pub fn execute_upgrade(
+        e: &Env,
+        executor: &Address,
+        new_implementation: &Address,
+        proposal_id: Option<u64>,
+    ) {
+        in_contract(e, || {
+            crate::upgrade_auth::execute_upgrade(e, executor, new_implementation, proposal_id)
+        })
+    }
+    pub fn get_implementation(e: &Env) -> Address {
+        in_contract(e, || crate::upgrade_auth::get_implementation(e))
+    }
+    pub fn get_upgrade_auth(e: &Env, address: &Address) -> UpgradeAuthorization {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_auth(e, address))
+    }
+    pub fn get_upgrade_proposal(e: &Env, proposal_id: u64) -> UpgradeProposal {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_proposal(e, proposal_id))
+    }
+    pub fn get_authorized_upgraders(e: &Env) -> Vec<Address> {
+        in_contract(e, || crate::upgrade_auth::get_authorized_upgraders(e))
+    }
+    pub fn get_upgrade_history(e: &Env) -> Vec<UpgradeRecord> {
+        in_contract(e, || crate::upgrade_auth::get_upgrade_history(e))
+    }
 }
 
 fn create_test_address(e: &Env) -> Address {
@@ -22,7 +112,11 @@ fn create_test_address(e: &Env) -> Address {
 }
 
 fn create_test_env() -> Env {
-    Env::default()
+    let e = Env::default();
+    e.mock_all_auths();
+    let id = e.register(CredenceBond, ());
+    TEST_CONTRACT.with(|slot| *slot.borrow_mut() = Some(id));
+    e
 }
 
 #[test]
@@ -73,11 +167,18 @@ fn test_grant_and_revoke_upgrade_authorization() {
     // Revoke user2's authorization
     upgrade_auth::revoke_upgrade_auth(&env, &admin, &user2);
 
-    // Should panic when trying to get revoked authorization
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
-        upgrade_auth::get_upgrade_role(&env, &user2);
-    }))
-    .expect_err("Should panic when getting revoked authorization");
+    // Revoke sets active=false but does NOT remove the storage record.
+    // get_upgrade_role still returns the role (record exists), but the address
+    // is no longer an active upgrader.
+    assert!(
+        !upgrade_auth::is_authorized_upgrader(&env, &user2),
+        "revoked address must not be an active upgrader"
+    );
+    let revoked_auth = upgrade_auth::get_upgrade_auth(&env, &user2);
+    assert!(
+        !revoked_auth.active,
+        "revoked authorization record must have active == false"
+    );
 }
 
 #[test]
@@ -89,7 +190,9 @@ fn test_upgrade_authorization_expiry() {
     // Initialize
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
-    // Grant authorization with expiry
+    // Grant authorization with expiry in the future. The clock must be past the
+    // one-hour offset below: an `expires_at` of 0 means "never expires".
+    env.ledger().with_mut(|l| l.timestamp = 10_000);
     let now = env.ledger().timestamp();
     let expiry = now + 3600; // 1 hour from now
     upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Upgrader, expiry);
@@ -97,13 +200,18 @@ fn test_upgrade_authorization_expiry() {
     // Should be authorized before expiry
     assert!(upgrade_auth::is_authorized_upgrader(&env, &user));
 
-    // Simulate time passing (in real implementation, you'd need to mock time)
-    // For now, we can't easily test expiry without time manipulation
-
-    // Test with expired authorization (set expiry to past)
-    let past_expiry = now - 3600;
-    upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Upgrader, past_expiry);
-    assert!(!upgrade_auth::is_authorized_upgrader(&env, &user));
+    // Test with expired authorization: use a fresh address to avoid the
+    // "already authorized" guard on the second grant.
+    let user_expired = create_test_address(&env);
+    let past_expiry = now.saturating_sub(3600);
+    upgrade_auth::grant_upgrade_auth(
+        &env,
+        &admin,
+        &user_expired,
+        UpgradeRole::Upgrader,
+        past_expiry,
+    );
+    assert!(!upgrade_auth::is_authorized_upgrader(&env, &user_expired));
 }
 
 #[test]
@@ -157,7 +265,7 @@ fn test_upgrade_execution_with_proposal() {
     let proposer = create_test_address(&env);
     let approver = create_test_address(&env);
     let executor = create_test_address(&env);
-    let _old_impl = create_test_address(&env);
+    let old_impl = create_test_address(&env);
     let new_impl = create_test_address(&env);
 
     // Initialize and setup
@@ -166,8 +274,14 @@ fn test_upgrade_execution_with_proposal() {
     upgrade_auth::grant_upgrade_auth(&env, &admin, &approver, UpgradeRole::Upgrader, 0);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
 
-    // Set initial implementation (in real scenario, this would be done during deployment)
-    // For testing, we'll skip this and assume it's set
+    // Set an initial implementation so execute_upgrade has a "current" value to
+    // compare against and record in history.
+    in_contract(&env, || {
+        env.storage().instance().set(
+            &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+            &old_impl,
+        );
+    });
 
     // Create and approve proposal
     let proposal_id =
@@ -204,16 +318,30 @@ fn test_unauthorized_upgrade_attempts() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to upgrade without authorization - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::RoleRequired as u32, || {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
-    }))
-    .expect_err("Unauthorized upgrade should fail");
+    });
 
-    // Grant proposer role (still can't upgrade)
-    upgrade_auth::grant_upgrade_auth(&env, &admin, &unauthorized, UpgradeRole::Proposer, 0);
+}
 
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+#[test]
+fn test_proposer_cannot_execute_upgrade() {
+    // A separate Env: after a panic is caught inside a contract frame the host's
+    // frame stack can no longer be used, so this scenario cannot share one.
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    // Proposer role (still can't upgrade)
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+
+    expect_contract_error_panic(ContractError::RoleRequired as u32, || {
         upgrade_auth::execute_upgrade(&env, &unauthorized, &new_impl, None);
+    });
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        upgrade_auth::execute_upgrade(&env, &proposer, &new_impl, None);
     }))
     .expect_err("Proposer should not be able to upgrade");
 }
@@ -227,10 +355,9 @@ fn test_cannot_revoke_last_upgrade_admin() {
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
 
     // Try to revoke the only upgrade admin - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(ContractError::LastUpgradeAdmin as u32, || {
         upgrade_auth::revoke_upgrade_auth(&env, &admin, &admin);
-    }))
-    .expect_err("Cannot revoke last upgrade admin");
+    });
 }
 
 #[test]
@@ -238,13 +365,21 @@ fn test_upgrade_history_tracking() {
     let env = create_test_env();
     let admin = create_test_address(&env);
     let executor = create_test_address(&env);
-    let _impl1 = create_test_address(&env);
+    let impl1 = create_test_address(&env);
     let impl2 = create_test_address(&env);
     let impl3 = create_test_address(&env);
 
     // Initialize
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+
+    // Seed the initial implementation so execute_upgrade has an existing value to compare.
+    in_contract(&env, || {
+        env.storage().instance().set(
+            &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+            &impl1,
+        );
+    });
 
     // Execute multiple upgrades
     upgrade_auth::execute_upgrade(&env, &executor, &impl2, None);
@@ -293,31 +428,37 @@ fn test_upgrade_replay_prevention_surfaces_typed_error() {
     let env = create_test_env();
     let admin = create_test_address(&env);
     let executor = create_test_address(&env);
+    let initial_impl = create_test_address(&env);
     let new_impl = create_test_address(&env);
 
     // Initialize and grant upgrader role
     upgrade_auth::initialize_upgrade_auth(&env, &admin);
     upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
 
+    // Seed the initial implementation required by execute_upgrade's "no current implementation" guard.
+    in_contract(&env, || {
+        env.storage().instance().set(
+            &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+            &initial_impl,
+        );
+    });
+
     // First execution should succeed
     upgrade_auth::execute_upgrade(&env, &executor, &new_impl, None);
 
-    // Now, if we try to upgrade to the exact same implementation, it fails with "same implementation" (basic check).
-    // To trigger the replay guard (ExecutedOp) specifically, we need to bypass the "same implementation" check
-    // by upgrading to something else first, and then trying to replay the first upgrade.
-    
+    // To trigger the replay guard (ExecutedOp) we need to bypass the "same implementation"
+    // guard first by upgrading to a third address, then replaying new_impl.
     let another_impl = create_test_address(&env);
     upgrade_auth::execute_upgrade(&env, &executor, &another_impl, None);
 
-    // Now attempt to replay the first upgrade. It should fail with ProposalAlreadyExecuted typed error.
+    // Attempt to replay new_impl — must fail with ProposalAlreadyExecuted typed error.
     let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
         upgrade_auth::execute_upgrade(&env, &executor, &new_impl, None);
     }));
 
-    let err = res.expect_err("Replay should panic with ProposalAlreadyExecuted");
-    // In soroban tests, a typed error panic can be inspected. 
-    // Usually it manifests as an Err with the specific ContractError variant.
-    // If we can't extract the exact ContractError, we at least assert it panicked.
+    res.expect_err(
+        "Replay of an already-executed implementation must panic (ProposalAlreadyExecuted)",
+    );
 }
 
 #[test]
@@ -337,10 +478,9 @@ fn test_execute_upgrade_unapproved_proposal_fails() {
         upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
 
     // Attempt to execute unapproved proposal - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(245, || {
         upgrade_auth::execute_upgrade(&env, &executor, &new_impl, Some(proposal_id));
-    }))
-    .expect_err("Execution of unapproved proposal should fail");
+    });
 }
 
 #[test]
@@ -363,9 +503,826 @@ fn test_execute_upgrade_mismatched_proposal_implementation_fails() {
     upgrade_auth::approve_upgrade_proposal(&env, &approver, proposal_id);
 
     // Attempt to execute proposal with a different implementation address - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
+    expect_contract_error_panic(246, || {
         upgrade_auth::execute_upgrade(&env, &executor, &actual_impl, Some(proposal_id));
-    }))
-    .expect_err("Execution with mismatched implementation should fail");
+    });
 }
 
+// ── Boundary and Recovery Tests (issue #1356) ────────────────────────────────
+//
+// Coverage map:
+//
+//   initialize_upgrade_auth   → double-init guard
+//   grant_upgrade_auth        → already-authorized, non-admin caller
+//   revoke_upgrade_auth       → non-existent target, non-admin caller,
+//                               revoke-one-of-two, revoke-then-regrant
+//   propose_upgrade           → expired-proposer rejection, counter monotonicity
+//   approve_upgrade_proposal  → duplicate approval, nonexistent proposal,
+//                               expired-upgrader rejection
+//   execute_upgrade           → nonexistent proposal, missing implementation
+//   get_upgrade_proposal      → nonexistent id
+//   get_upgrade_auth          → unknown address
+//   get_upgrade_role          → unknown address
+//   get_implementation        → unset
+//   expires_at == 0           → no-expiry sentinel never expires
+//   accept_upgrade_admin      → exact timelock boundary (86_400 s, inclusive),
+//                               one-second-before boundary (83_399 s, exclusive),
+//                               exact expiry boundary (604_800 s, inclusive),
+//                               one-second-past expiry (604_801 s, exclusive),
+//                               new admin already in upgrader list (no duplicate)
+//   cancel_upgrade_admin_transfer → cancel-then-re-propose recovery
+
+/// Calling `initialize_upgrade_auth` a second time must panic.
+///
+/// Invariant: `require_contract_uninitialized` fires when the Admin key is
+/// already present; re-initialization must never overwrite the existing admin.
+#[test]
+fn test_double_init_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    }))
+    .expect_err("second initialize_upgrade_auth must panic");
+}
+
+/// `grant_upgrade_auth` must panic when the target address already holds an
+/// authorization record.
+///
+/// Invariant: each address owns exactly one active authorization; re-granting
+/// without first revoking is prohibited to prevent silent role escalation.
+#[test]
+fn test_grant_to_already_authorized_address_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let user = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Proposer, 0);
+
+    expect_contract_error_panic(
+        ContractError::UpgradeAuthorizationAlreadyExists as u32,
+        || {
+            upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Upgrader, 0);
+        },
+    );
+}
+
+/// A non-admin caller must not be able to grant upgrade authorization.
+///
+/// Invariant: only the address stored under `UpgradeKey::Admin` may extend
+/// the authorization set; any other caller triggers `require_upgrade_admin`.
+#[test]
+fn test_non_admin_cannot_grant() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let impostor = create_test_address(&env);
+    let target = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(ContractError::NotAdmin as u32, || {
+        upgrade_auth::grant_upgrade_auth(&env, &impostor, &target, UpgradeRole::Proposer, 0);
+    });
+}
+
+/// A non-admin caller must not be able to revoke upgrade authorization.
+///
+/// Invariant: only the upgrade admin may shrink the authorization set.
+#[test]
+fn test_non_admin_cannot_revoke() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let user = create_test_address(&env);
+    let impostor = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &user, UpgradeRole::Proposer, 0);
+
+    expect_contract_error_panic(ContractError::NotAdmin as u32, || {
+        upgrade_auth::revoke_upgrade_auth(&env, &impostor, &user);
+    });
+}
+
+/// Revoking an address that was never authorized must panic.
+///
+/// Invariant: revocation is strict; it is not a silent no-op for unknown
+/// addresses.  This prevents misleading success returns from authorization-
+/// management tooling.
+#[test]
+fn test_revoke_nonexistent_auth_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let stranger = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(ContractError::UpgradeAuthorizationNotFound as u32, || {
+        upgrade_auth::revoke_upgrade_auth(&env, &admin, &stranger);
+    });
+}
+
+/// With two upgraders, revoking one must succeed and shrink the list to one.
+///
+/// Invariant: the last-admin guard (`upgraders.len() <= 1`) fires only when
+/// there is exactly one upgrader; it must not fire when two exist.
+#[test]
+fn test_revoke_one_of_two_upgraders_succeeds() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let second = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &second, UpgradeRole::Upgrader, 0);
+
+    // Revocation of the second upgrader must not panic
+    upgrade_auth::revoke_upgrade_auth(&env, &admin, &second);
+
+    assert!(
+        !upgrade_auth::is_authorized_upgrader(&env, &second),
+        "revoked upgrader must not be active"
+    );
+    assert!(
+        upgrade_auth::is_authorized_upgrader(&env, &admin),
+        "remaining upgrader (admin) must still be active"
+    );
+
+    let upgraders = upgrade_auth::get_authorized_upgraders(&env);
+    assert_eq!(
+        upgraders.len(),
+        1,
+        "authorized upgrader list must contain exactly one entry after revocation"
+    );
+}
+
+/// After revoking an address the storage record still exists with
+/// `active = false` (the contract does not remove the key). A subsequent
+/// `grant_upgrade_auth` to the same address therefore still hits the
+/// "already authorized" guard and must panic.
+///
+/// Invariant documents the expected behavior: to re-authorize a previously
+/// revoked address, a new address must be used.
+#[test]
+fn test_revoke_then_regrant_same_address_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let second = create_test_address(&env); // keeps upgrader count above 1
+    let target = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &second, UpgradeRole::Upgrader, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &target, UpgradeRole::Upgrader, 0);
+
+    upgrade_auth::revoke_upgrade_auth(&env, &admin, &target);
+
+    // The storage key still exists (active = false).  grant must still panic.
+    expect_contract_error_panic(
+        ContractError::UpgradeAuthorizationAlreadyExists as u32,
+        || {
+            upgrade_auth::grant_upgrade_auth(&env, &admin, &target, UpgradeRole::Upgrader, 0);
+        },
+    );
+}
+
+/// Approving the same proposal twice from the same address must panic.
+///
+/// Invariant: a single key must not be able to satisfy a multi-sig quorum
+/// alone by submitting duplicate approvals.
+#[test]
+fn test_duplicate_approval_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let approver = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver, UpgradeRole::Upgrader, 0);
+
+    let pid = upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 2);
+    upgrade_auth::approve_upgrade_proposal(&env, &approver, pid);
+
+    expect_contract_error_panic(244, || {
+        upgrade_auth::approve_upgrade_proposal(&env, &approver, pid);
+    });
+}
+
+/// Approving a proposal ID that does not exist must panic.
+///
+/// Invariant: `approve_upgrade_proposal` performs a strict storage lookup;
+/// there is no silent no-op for missing proposals.
+#[test]
+fn test_approve_nonexistent_proposal_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let approver = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver, UpgradeRole::Upgrader, 0);
+
+    expect_contract_error_panic(603, || {
+        upgrade_auth::approve_upgrade_proposal(&env, &approver, 999);
+    });
+}
+
+/// Executing with an explicit proposal ID that does not exist must panic.
+///
+/// Invariant: proposal lookup on the execute path is strict.
+#[test]
+fn test_execute_nonexistent_proposal_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let executor = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+
+    expect_contract_error_panic(603, || {
+        upgrade_auth::execute_upgrade(&env, &executor, &new_impl, Some(999));
+    });
+}
+
+/// `execute_upgrade` must panic when no implementation has been stored.
+///
+/// Invariant: the "no current implementation" guard fires before any proposal
+/// or replay check.  Upgrade execution is only possible after an
+/// implementation has been set by a prior successful `execute_upgrade`.
+#[test]
+fn test_execute_upgrade_without_implementation_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let executor = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+
+    expect_contract_error_panic(247, || {
+        upgrade_auth::execute_upgrade(&env, &executor, &new_impl, None);
+    });
+}
+
+/// `get_upgrade_proposal` must panic for a nonexistent proposal ID.
+///
+/// Invariant: read-only getters must not silently return defaults for
+/// missing entries.
+#[test]
+fn test_get_upgrade_proposal_nonexistent_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(603, || {
+        upgrade_auth::get_upgrade_proposal(&env, 42);
+    });
+}
+
+/// `get_upgrade_auth` must panic for an address that has no authorization
+/// record.
+///
+/// Invariant: callers must check membership before reading; the getter does
+/// not synthesize default entries.
+#[test]
+fn test_get_upgrade_auth_unknown_address_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let stranger = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(ContractError::UpgradeAuthorizationNotFound as u32, || {
+        upgrade_auth::get_upgrade_auth(&env, &stranger);
+    });
+}
+
+/// `get_upgrade_role` must panic for an address that has no authorization
+/// record.
+///
+/// Invariant: same strict lookup as `get_upgrade_auth`.
+#[test]
+fn test_get_upgrade_role_unknown_address_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let stranger = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(ContractError::UpgradeAuthorizationNotFound as u32, || {
+        upgrade_auth::get_upgrade_role(&env, &stranger);
+    });
+}
+
+/// `get_implementation` must panic when the implementation key has not yet
+/// been written.
+///
+/// Invariant: callers must not assume an implementation exists before one has
+/// been set by a successful `execute_upgrade`.
+#[test]
+fn test_get_implementation_unset_panics() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(247, || {
+        upgrade_auth::get_implementation(&env);
+    });
+}
+
+/// An authorization with `expires_at = 0` must remain valid indefinitely,
+/// even at extreme ledger timestamps.
+///
+/// Invariant: `0` is the "no expiry" sentinel, not the Unix epoch.  The
+/// check `expires_at > 0 && timestamp > expires_at` must evaluate to false
+/// when `expires_at == 0`, so the authorization is always considered active.
+#[test]
+fn test_no_expiry_zero_never_expires() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let upgrader = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &upgrader, UpgradeRole::Upgrader, 0);
+
+    assert!(
+        upgrade_auth::is_authorized_upgrader(&env, &upgrader),
+        "upgrader with expires_at=0 must be authorized at grant time"
+    );
+
+    // Advance ledger to an extreme value
+    env.ledger().with_mut(|l| {
+        l.timestamp = u64::MAX / 2;
+    });
+
+    assert!(
+        upgrade_auth::is_authorized_upgrader(&env, &upgrader),
+        "upgrader with expires_at=0 must still be authorized at extreme timestamp"
+    );
+}
+
+/// An authorization whose `expires_at` is in the past must be rejected by
+/// `is_authorized_upgrader`.
+///
+/// Invariant: `is_authorized_upgrader` consults `expires_at` against the
+/// current ledger timestamp.
+#[test]
+fn test_past_expiry_is_not_authorized() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let upgrader = create_test_address(&env);
+
+    // Start at a non-zero timestamp so we can form a past value
+    env.ledger().with_mut(|l| {
+        l.timestamp = 10_000;
+    });
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    // expires_at is one second in the past
+    let past = env.ledger().timestamp() - 1;
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &upgrader, UpgradeRole::Upgrader, past);
+
+    assert!(
+        !upgrade_auth::is_authorized_upgrader(&env, &upgrader),
+        "upgrader with past expires_at must not be authorized"
+    );
+}
+
+/// A proposer with an expired authorization must not be able to create a new
+/// proposal.
+///
+/// Invariant: `propose_upgrade` checks `expires_at` before writing the
+/// proposal record.
+#[test]
+fn test_expired_proposer_cannot_propose() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = 10_000;
+    });
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    let past = env.ledger().timestamp() - 1;
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, past);
+
+    let new_impl = create_test_address(&env);
+
+    expect_contract_error_panic(242, || {
+        upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+    });
+}
+
+/// An upgrader with an expired authorization must not be able to approve a
+/// proposal.
+///
+/// Invariant: `approve_upgrade_proposal` calls `require_upgrade_auth`, which
+/// checks both `active` and `expires_at`.
+#[test]
+fn test_expired_upgrader_cannot_approve() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let approver = create_test_address(&env);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = 10_000;
+    });
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+
+    let past = env.ledger().timestamp() - 1;
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver, UpgradeRole::Upgrader, past);
+
+    let new_impl = create_test_address(&env);
+    let pid = upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        upgrade_auth::approve_upgrade_proposal(&env, &approver, pid);
+    }))
+    .expect_err("expired upgrader must not be able to approve a proposal");
+}
+
+/// The proposal counter must start at 1 and produce unique, strictly
+/// increasing IDs for consecutive proposals.
+///
+/// Invariant: the next-proposal-id counter increments by exactly one per
+/// `propose_upgrade` call; IDs are never reused.
+#[test]
+fn test_proposal_counter_increments_monotonically() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+
+    let impl_a = create_test_address(&env);
+    let impl_b = create_test_address(&env);
+    let impl_c = create_test_address(&env);
+
+    let id1 = upgrade_auth::propose_upgrade(&env, &proposer, &impl_a, Bytes::new(&env), 1);
+    let id2 = upgrade_auth::propose_upgrade(&env, &proposer, &impl_b, Bytes::new(&env), 1);
+    let id3 = upgrade_auth::propose_upgrade(&env, &proposer, &impl_c, Bytes::new(&env), 1);
+
+    assert!(id1 < id2, "second proposal id must exceed first");
+    assert!(id2 < id3, "third proposal id must exceed second");
+    assert_eq!(id2, id1 + 1, "ids must increment by exactly one");
+    assert_eq!(id3, id2 + 1, "ids must increment by exactly one");
+
+    // Each proposal is independently stored and retrievable
+    assert_eq!(
+        upgrade_auth::get_upgrade_proposal(&env, id1).new_implementation,
+        impl_a
+    );
+    assert_eq!(
+        upgrade_auth::get_upgrade_proposal(&env, id2).new_implementation,
+        impl_b
+    );
+    assert_eq!(
+        upgrade_auth::get_upgrade_proposal(&env, id3).new_implementation,
+        impl_c
+    );
+}
+
+// ── Admin-transfer boundary tests using the contract client ─────────────────
+//
+// These tests require the full contract environment (`CredenceBondClient`)
+// because `accept_upgrade_admin` is an entrypoint that calls
+// `e.ledger().timestamp()` inside the contract execution context.
+
+/// Helper: register a bare `CredenceBond` and return its address.
+fn register_bond(env: &Env) -> Address {
+    env.register(crate::CredenceBond, ())
+}
+
+/// `accept_upgrade_admin` at exactly `proposed_at + 86_400` must succeed
+/// (timelock boundary is inclusive).
+///
+/// Invariant: `now >= proposed_at + timelock` — the boundary second is
+/// valid; accepting one second earlier is rejected.
+#[test]
+fn test_accept_at_exact_timelock_boundary_succeeds() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let contract_id = register_bond(&env);
+    let client = crate::CredenceBondClient::new(&env, &contract_id);
+    client.initialize(&admin, &None);
+
+    let proposed_at = env.ledger().timestamp();
+    client.transfer_upgrade_admin(&admin, &new_admin);
+
+    // Advance to exactly the timelock boundary (inclusive)
+    env.ledger().with_mut(|l| {
+        l.timestamp = proposed_at + 86_400;
+    });
+
+    client.accept_upgrade_admin(&new_admin); // must not panic
+
+    assert_eq!(
+        client.get_pending_upgrade_admin(),
+        None,
+        "pending admin must be cleared after acceptance at exact timelock boundary"
+    );
+}
+
+/// `accept_upgrade_admin` at `proposed_at + 86_399` (one second before the
+/// timelock boundary) must panic.
+///
+/// Invariant: off-by-one — the boundary second at `86_400` is the first
+/// valid moment; `86_399` is still inside the forbidden window.
+#[test]
+fn test_accept_one_second_before_timelock_panics() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let contract_id = register_bond(&env);
+    let client = crate::CredenceBondClient::new(&env, &contract_id);
+    client.initialize(&admin, &None);
+
+    let proposed_at = env.ledger().timestamp();
+    client.transfer_upgrade_admin(&admin, &new_admin);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = proposed_at + 86_399;
+    });
+
+    std::panic::catch_unwind(AssertUnwindSafe(|| {
+        client.accept_upgrade_admin(&new_admin);
+    }))
+    .expect_err("accepting one second before the timelock must panic");
+}
+
+/// `accept_upgrade_admin` at exactly `proposed_at + 604_800` must succeed
+/// (expiry boundary is inclusive).
+///
+/// Invariant: `now <= proposed_at + expiry` — the last valid second is
+/// `604_800`; one second later is past the window.
+#[test]
+fn test_accept_at_exact_expiry_boundary_succeeds() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let contract_id = register_bond(&env);
+    let client = crate::CredenceBondClient::new(&env, &contract_id);
+    client.initialize(&admin, &None);
+
+    let proposed_at = env.ledger().timestamp();
+    client.transfer_upgrade_admin(&admin, &new_admin);
+
+    // Advance to the last valid second (604_800 is both ≥ timelock and ≤ expiry)
+    env.ledger().with_mut(|l| {
+        l.timestamp = proposed_at + 604_800;
+    });
+
+    client.accept_upgrade_admin(&new_admin); // must not panic
+
+    assert_eq!(
+        client.get_pending_upgrade_admin(),
+        None,
+        "pending admin must be cleared after acceptance at exact expiry boundary"
+    );
+}
+
+/// `accept_upgrade_admin` at `proposed_at + 604_801` (one second past the
+/// expiry boundary) must panic.
+///
+/// Invariant: `now > proposed_at + 604_800` triggers the typed
+/// `ContractError::ProposalExpired` error.
+#[test]
+fn test_accept_one_second_past_expiry_panics() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let contract_id = register_bond(&env);
+    let client = crate::CredenceBondClient::new(&env, &contract_id);
+    client.initialize(&admin, &None);
+
+    let proposed_at = env.ledger().timestamp();
+    client.transfer_upgrade_admin(&admin, &new_admin);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = proposed_at + 604_801;
+    });
+
+    expect_contract_error_panic(ContractError::ProposalExpired as u32, || {
+        client.accept_upgrade_admin(&new_admin);
+    });
+}
+
+/// When `accept_upgrade_admin` is called and `new_admin` already holds the
+/// `Upgrader` role, the authorized-upgraders list must not gain a duplicate
+/// entry.
+///
+/// Invariant: `accept_upgrade_admin` contains an `already_in` guard that
+/// skips `push_back` when the caller is already present.
+#[test]
+fn test_accept_upgrade_admin_no_duplicate_when_already_upgrader() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let new_admin = Address::generate(&env);
+    let contract_id = register_bond(&env);
+    let client = crate::CredenceBondClient::new(&env, &contract_id);
+    client.initialize(&admin, &None);
+
+    // Grant new_admin the Upgrader role before the admin transfer completes
+    env.as_contract(&contract_id, || {
+        crate::upgrade_auth::grant_upgrade_auth(&env, &admin, &new_admin, UpgradeRole::Upgrader, 0);
+    });
+
+    client.transfer_upgrade_admin(&admin, &new_admin);
+
+    env.ledger().with_mut(|l| {
+        l.timestamp += 86_401;
+    });
+
+    client.accept_upgrade_admin(&new_admin);
+
+    let upgraders = env.as_contract(&contract_id, || {
+        crate::upgrade_auth::get_authorized_upgraders(&env)
+    });
+
+    let count = (0..upgraders.len())
+        .filter(|&i| upgraders.get(i).unwrap() == new_admin)
+        .count();
+
+    assert_eq!(
+        count, 1,
+        "new admin already in upgrader list must appear exactly once after accept"
+    );
+}
+
+/// After cancelling a pending admin transfer, a fresh transfer to a new
+/// address can be proposed and completed successfully.
+///
+/// Invariant: `cancel_upgrade_admin_transfer` removes the
+/// `UpgradeKey::PndgUpgrAdmin` key completely; the two-step state machine
+/// can be restarted without residual state.
+#[test]
+fn test_cancel_then_repropose_and_complete() {
+    use soroban_sdk::testutils::Ledger as _;
+
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let abandoned = Address::generate(&env);
+    let final_admin = Address::generate(&env);
+    let contract_id = register_bond(&env);
+    let client = crate::CredenceBondClient::new(&env, &contract_id);
+    client.initialize(&admin, &None);
+
+    // First attempt: propose then cancel
+    client.transfer_upgrade_admin(&admin, &abandoned);
+    assert_eq!(client.get_pending_upgrade_admin(), Some(abandoned.clone()));
+    client.cancel_upgrade_admin_transfer(&admin);
+    assert_eq!(
+        client.get_pending_upgrade_admin(),
+        None,
+        "pending admin must be None after cancel"
+    );
+
+    // Second attempt: propose to a different address and complete
+    let proposed_at = env.ledger().timestamp();
+    client.transfer_upgrade_admin(&admin, &final_admin);
+    assert_eq!(
+        client.get_pending_upgrade_admin(),
+        Some(final_admin.clone())
+    );
+
+    env.ledger().with_mut(|l| {
+        l.timestamp = proposed_at + 86_401;
+    });
+
+    client.accept_upgrade_admin(&final_admin);
+
+    assert_eq!(
+        client.get_pending_upgrade_admin(),
+        None,
+        "pending admin must be cleared after second transfer completes"
+    );
+
+    // final_admin is now the upgrade admin
+    let stored: Address = env.as_contract(&contract_id, || {
+        env.storage()
+            .instance()
+            .get(&crate::DataKey::Upgrade(crate::UpgradeKey::Admin))
+            .unwrap()
+    });
+    assert_eq!(stored, final_admin);
+}
+
+// ── Typed errors for proposal lifecycle (issue #1710) ────────────────────────
+
+/// An address with no upgrade authorization record cannot propose.
+#[test]
+fn test_propose_without_authorization_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let stranger = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+
+    expect_contract_error_panic(240, || {
+        upgrade_auth::propose_upgrade(&env, &stranger, &new_impl, Bytes::new(&env), 1);
+    });
+}
+
+/// A revoked (inactive) authorization record cannot propose.
+#[test]
+fn test_propose_with_revoked_authorization_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::revoke_upgrade_auth(&env, &admin, &proposer);
+
+    expect_contract_error_panic(241, || {
+        upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+    });
+}
+
+/// Approving a proposal that already left `Pending` is rejected.
+#[test]
+fn test_approve_non_pending_proposal_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let proposer = create_test_address(&env);
+    let approver_a = create_test_address(&env);
+    let approver_b = create_test_address(&env);
+    let new_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &proposer, UpgradeRole::Proposer, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver_a, UpgradeRole::Upgrader, 0);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &approver_b, UpgradeRole::Upgrader, 0);
+
+    let pid = upgrade_auth::propose_upgrade(&env, &proposer, &new_impl, Bytes::new(&env), 1);
+    upgrade_auth::approve_upgrade_proposal(&env, &approver_a, pid);
+
+    expect_contract_error_panic(243, || {
+        upgrade_auth::approve_upgrade_proposal(&env, &approver_b, pid);
+    });
+}
+
+/// Upgrading to the implementation that is already current is rejected.
+#[test]
+fn test_execute_upgrade_same_implementation_fails_typed() {
+    let env = create_test_env();
+    let admin = create_test_address(&env);
+    let executor = create_test_address(&env);
+    let current_impl = create_test_address(&env);
+
+    upgrade_auth::initialize_upgrade_auth(&env, &admin);
+    upgrade_auth::grant_upgrade_auth(&env, &admin, &executor, UpgradeRole::Upgrader, 0);
+    env.storage().instance().set(
+        &crate::DataKey::Upgrade(crate::UpgradeKey::Implementation),
+        &current_impl,
+    );
+
+    expect_contract_error_panic(248, || {
+        upgrade_auth::execute_upgrade(&env, &executor, &current_impl, None);
+    });
+}

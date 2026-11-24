@@ -67,7 +67,7 @@ impl Arbitrary for BondAction {
             // Durations must be valid: [MIN_BOND_DURATION (86_400), MAX_BOND_DURATION (31_536_000)]
             (
                 amount_strategy.clone(),
-                credence_math::Timestamp::SECONDS_PER_DAYu64..31536000u64,
+                credence_math::SECONDS_PER_DAY..31536000u64,
                 any::<bool>()
             )
                 .prop_flat_map(|(amount, duration, is_rolling)| {
@@ -154,7 +154,7 @@ fn run_sequence(actions: &[BondAction]) {
     let identity = Address::generate(&e);
 
     // Initialize the contract
-    client.initialize(&admin);
+    client.initialize(&admin, &None);
 
     for (step_idx, action) in actions.iter().enumerate() {
         // 1. Advance sequence and timestamp slightly before every action
@@ -216,19 +216,19 @@ fn run_sequence(actions: &[BondAction]) {
                 );
             }
             BondAction::TopUp { amount } => {
-                client.top_up(amount);
+                client.top_up(&identity, amount);
             }
             BondAction::Slash { amount } => {
-                client.slash(&admin, amount);
+                client.slash(&admin, &identity, amount);
             }
             BondAction::RollRenew => {
-                client.renew_if_rolling();
+                client.renew_if_rolling(&identity);
             }
             BondAction::WithdrawEarly { amount } => {
-                client.withdraw_early(amount);
+                client.withdraw_early(&identity, amount);
             }
             BondAction::RequestWithdraw => {
-                client.request_withdrawal();
+                client.request_withdrawal(&identity);
             }
             BondAction::Settle => {
                 client.withdraw_bond(&identity);
@@ -277,7 +277,7 @@ fn run_sequence(actions: &[BondAction]) {
                     after.available_amount
                 );
 
-                let calculated_tier = client.get_tier();
+                let calculated_tier = client.get_tier(&identity);
                 assert_eq!(
                     after.tier, calculated_tier,
                     "[Step {}] Invariant violation: described tier does not match get_tier()",
@@ -322,11 +322,11 @@ fn run_sequence(actions: &[BondAction]) {
     }
 }
 
+// Case count: proptest's default (256), which `PROPTEST_CASES` overrides. A fixed
+// 10,000 cases of up-to-255-action sequences takes far longer than a CI gate can
+// afford in a debug build; run `PROPTEST_CASES=10000 cargo test -p credence_bond
+// --test proptest_tier` for the deep fuzz.
 proptest! {
-    #![proptest_config(ProptestConfig {
-        cases: 10000,
-        .. ProptestConfig::default()
-    })]
     #[test]
     fn test_tier_fuzz(ref actions in prop::collection::vec(any::<BondAction>(), 1..256)) {
         run_sequence(actions);

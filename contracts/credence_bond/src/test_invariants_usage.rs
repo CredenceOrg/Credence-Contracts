@@ -12,9 +12,9 @@ use crate::test_invariants::{
     assert_slashed_within_bonded, assert_withdrawal_request_requires_rolling, load_bond,
 };
 use crate::{CredenceBond, CredenceBondClient, IdentityBond};
+use proptest::prelude::*;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, String};
-use proptest::prelude::*;
 
 struct Ctx<'a> {
     env: Env,
@@ -311,18 +311,18 @@ proptest! {
     #[test]
     fn prop_random_deposit_withdraw_invariants(actions in proptest::collection::vec(action_strategy(), 1..20)) {
         let ctx = setup();
-        
+
         // Initial bond creation so we can deposit/withdraw
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            ctx.client.create_bond(&ctx.identity, &1000, &credence_math::Timestamp::SECONDS_PER_DAY, &false, &0);
+            ctx.client.create_bond(&ctx.identity, &1000, &credence_math::SECONDS_PER_DAY, &false, &0);
         }));
-        
+
         assert_all_invariants(&ctx.env, &ctx.contract);
-        
+
         for action in actions {
-            // Advance ledger to allow withdrawals (since bond_duration is credence_math::Timestamp::SECONDS_PER_DAY)
+            // Advance ledger to allow withdrawals (since bond_duration is credence_math::SECONDS_PER_DAY)
             advance(&ctx.env, 100_000);
-            
+
             match action {
                 Action::Deposit(amount) => {
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -335,10 +335,9 @@ proptest! {
                     }));
                 }
             }
-            
+
             // The invariant must hold regardless of whether the action succeeded or panicked
             assert_all_invariants(&ctx.env, &ctx.contract);
         }
     }
 }
-
