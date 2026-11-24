@@ -58,7 +58,19 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("MigrationInProgress", ContractError::MigrationInProgress), // 125
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
     ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
-    ("RoleRequired", ContractError::RoleRequired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    (
+        "GovernanceApproverMismatch",
+        ContractError::GovernanceApproverMismatch,
+    ), // 128
+    (
+        "GovernanceApprovalExpired",
+        ContractError::GovernanceApprovalExpired,
+    ), // 129
+    (
+        "GovernanceApprovalCategoryMismatch",
+        ContractError::GovernanceApprovalCategoryMismatch,
+    ), // 130
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201
@@ -127,6 +139,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    ("ParameterOutOfBounds", ContractError::ParameterOutOfBounds), // 240
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301

@@ -280,6 +280,24 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     RoleRequired = 127,
 
+    /// Governance approval `approver` does not match the calling admin.
+    /// Replaces: panic!("governance approver mismatch")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    GovernanceApproverMismatch = 128,
+
+    /// Governance approval has passed its `expires_at` timestamp.
+    /// Replaces: panic!("governance approval expired")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    GovernanceApprovalExpired = 129,
+
+    /// Governance approval `category` does not match the parameter category.
+    /// Replaces: panic!("governance approval category mismatch")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    GovernanceApprovalCategoryMismatch = 130,
+
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
     /// Replaces: panic!("no bond")
@@ -507,6 +525,13 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
+
+    /// Protocol parameter value is outside its allowed `[min, max]` bounds.
+    /// Replaces: panic!("*_bps out of bounds"), panic!("*_cooldown_secs out of bounds"),
+    ///           panic!("*_threshold out of bounds"), panic!("max_leverage out of bounds")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ParameterOutOfBounds = 240,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -928,7 +953,10 @@ impl ErrorExt for ContractError {
             | ContractError::CrossContractCallerMismatch
             | ContractError::MigrationInProgress
             | ContractError::MaxPauseSignersExceeded
-            | ContractError::RoleRequired => ErrorCategory::Authorization,
+            | ContractError::RoleRequired
+            | ContractError::GovernanceApproverMismatch
+            | ContractError::GovernanceApprovalExpired
+            | ContractError::GovernanceApprovalCategoryMismatch => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -969,7 +997,8 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::ParameterOutOfBounds => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1281,6 +1310,16 @@ impl ErrorExt for ContractError {
             ContractError::RefundExceedsRemaining => "Refund amount exceeds the escrow's remaining balance",
             ContractError::InvalidEscrowExpiry => "Escrow expiry must be in the future",
             ContractError::NotEscrowParty => "Caller is neither the escrow depositor nor the contract admin",
+            ContractError::GovernanceApproverMismatch => {
+                "Governance approval approver does not match the calling admin"
+            }
+            ContractError::GovernanceApprovalExpired => "Governance approval has expired",
+            ContractError::GovernanceApprovalCategoryMismatch => {
+                "Governance approval category does not match the target parameter category"
+            }
+            ContractError::ParameterOutOfBounds => {
+                "Protocol parameter value is outside its allowed bounds"
+            }
         }
     }
 
@@ -1331,6 +1370,9 @@ impl ErrorExt for ContractError {
             | ContractError::LeaseSignerMismatch
             | ContractError::OutsideBusinessHours
             | ContractError::MigrationInProgress
+            | ContractError::GovernanceApproverMismatch
+            | ContractError::GovernanceApprovalExpired
+            | ContractError::GovernanceApprovalCategoryMismatch
             => true, // retry after business hours
 
 
@@ -1380,6 +1422,7 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::ParameterOutOfBounds  // supply a value within [min, max]
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.

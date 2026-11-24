@@ -40,6 +40,9 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::MaxPauseSignersExceeded as u32, 125);
     assert_eq!(ContractError::LeaseSignerMismatch as u32, 126);
     assert_eq!(ContractError::RoleRequired as u32, 127);
+    assert_eq!(ContractError::GovernanceApproverMismatch as u32, 128);
+    assert_eq!(ContractError::GovernanceApprovalExpired as u32, 129);
+    assert_eq!(ContractError::GovernanceApprovalCategoryMismatch as u32, 130);
 
     // Bond (200-299)
     assert_eq!(ContractError::BondNotFound as u32, 200);
@@ -82,6 +85,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
     assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
     assert_eq!(ContractError::BytesTooLarge as u32, 239);
+    assert_eq!(ContractError::ParameterOutOfBounds as u32, 240);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
