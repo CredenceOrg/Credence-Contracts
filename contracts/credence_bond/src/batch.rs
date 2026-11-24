@@ -14,8 +14,7 @@
 #![allow(dead_code)]
 
 use crate::{tiered_bond, BondTier, DataKey, IdentityBond};
-use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Conservative upper bound to keep batch execution below Soroban budget limits.
 pub const MAX_BATCH_BOND_SIZE: u32 = 20;
@@ -139,15 +138,19 @@ pub fn create_batch_bonds(e: &Env, params_list: Vec<BatchBondParams>) -> BatchBo
     // repeat the same storage read and deserialization N times.
     let tier_thresholds = tiered_bond::get_tier_thresholds(e);
 
-    // Step 2: Check for existing bonds (before creating any)
+    // Step 2: Check for existing bonds (before creating any), including an
+    // identity that appears twice in this batch: step 3 would otherwise store
+    // the second entry over the first and silently drop its bond.
+    let mut seen: Map<Address, bool> = Map::new(e);
     for i in 0..params_list.len() {
         let params = params_list.get(i).unwrap();
         // Per-identity bond key: each identity owns its own bond slot.
         let bond_key = DataKey::Bond(params.identity.clone());
 
-        if e.storage().instance().has(&bond_key) {
+        if e.storage().instance().has(&bond_key) || seen.contains_key(params.identity.clone()) {
             panic!("bond already exists");
         }
+        seen.set(params.identity.clone(), true);
     }
 
     // Step 3: Create all bonds (atomic - all or nothing)

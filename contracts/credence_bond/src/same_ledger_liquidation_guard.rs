@@ -80,7 +80,7 @@ pub fn require_slash_allowed_after_collateral_increase(e: &Env) {
         .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
     {
         if last == current {
-            panic!("{}", SLASH_BLOCKED_REASON);
+            e.panic_with_error(credence_errors::ContractError::SameLedgerSlashBlocked);
         }
     }
 }
@@ -97,6 +97,7 @@ pub fn require_slash_allowed_after_collateral_increase(e: &Env) {
 /// # Panics
 /// Panics with [`COOLDOWN_BLOCKED_REASON`] when the recorded ledger sequence
 /// equals the current ledger sequence.
+#[cfg(test)]
 pub fn require_cooldown_allowed_after_collateral_increase(e: &Env) {
     let current = e.ledger().sequence();
     if let Some(last) = e
@@ -105,7 +106,7 @@ pub fn require_cooldown_allowed_after_collateral_increase(e: &Env) {
         .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
     {
         if last == current {
-            panic!("{}", COOLDOWN_BLOCKED_REASON);
+            e.panic_with_error(credence_errors::ContractError::SameLedgerCooldownBlocked);
         }
     }
 }
@@ -132,6 +133,7 @@ pub fn record_collateral_increase(e: &Env) {
 ///
 /// Useful for tests and for off-chain indexers that want to know when the
 /// guard was last tripped without having to call the slashing path.
+#[cfg(test)]
 pub fn last_collateral_increase_ledger(e: &Env) -> Option<u32> {
     e.storage()
         .instance()

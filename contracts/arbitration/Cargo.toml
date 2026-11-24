@@ -14,3 +14,9 @@ interfaces = { path = "../../crates/interfaces" }
 
 [dev-dependencies]
 soroban-sdk = { version = "22.0", features = ["testutils"] }
+
+[features]
+default = []
+# Enable testutils APIs for off-chain tooling and integration tests. Must NOT be
+# enabled when building the release WASM.
+testutils = ["soroban-sdk/testutils"]

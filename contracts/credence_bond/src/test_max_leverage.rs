@@ -55,7 +55,7 @@ fn test_set_max_leverage_by_admin() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_max_leverage_non_admin_rejected() {
     let e = Env::default();
     let (client, _admin) = setup_no_token(&e);
@@ -87,7 +87,7 @@ fn test_set_max_leverage_max_bound() {
 }
 
 #[test]
-#[should_panic(expected = "max_leverage out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_max_leverage_zero_rejected() {
     let e = Env::default();
     let (client, admin) = setup_no_token(&e);
@@ -96,7 +96,7 @@ fn test_set_max_leverage_zero_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "max_leverage out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_max_leverage_above_hard_ceiling_rejected() {
     let e = Env::default();
     let (client, admin) = setup_no_token(&e);

@@ -18,16 +18,17 @@ pub mod access_control;
 mod batch;
 #[cfg(test)]
 pub use batch::{BatchBondParams, BatchBondResult};
-mod claims;
+pub mod claims;
 mod cooldown;
 mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
-mod events;
+pub mod events;
 mod fees;
 mod guards;
+#[cfg(test)]
 mod idempotency;
-mod invariants;
+pub mod invariants;
 pub mod iter_chunks;
 mod leverage;
 mod lifecycle;
@@ -46,7 +47,7 @@ mod status_snapshot;
 mod storage;
 mod tiered_bond;
 mod token_integration;
-mod upgrade_auth;
+pub mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
 
@@ -64,6 +65,14 @@ mod weighted_attestation;
 #[path = "types/mod.rs"]
 pub mod types;
 
+#[cfg(test)]
+mod test_unauthorized_token;
+/// Shared test setup utilities (mock token, bond registration).
+#[cfg(test)]
+mod test_unauthorized_token;
+#[cfg(test)]
+mod test_events_schema;
+/// Reusable bond-invariant assertion library (test-only).
 #[cfg(test)]
 // [pre-broken on main] the `fork_divergent` module it exercises is disabled in lib.rs.
 // mod test_fork_divergent;
@@ -93,17 +102,17 @@ mod test_describe;
 /// Shared test setup utilities (mock token, bond registration).
 #[cfg(test)]
 pub mod test_helpers;
-/// Shared test setup utilities (mock token, bond registration).
+// Shared test setup utilities (mock token, bond registration).
 // [pre-broken on main] mod test_unauthorized_token;
-/// Real on-chain USDC transfer integration tests for create_bond/top_up/
-/// withdraw/withdraw_early, plus the custody invariant test.
+// Real on-chain USDC transfer integration tests for create_bond/top_up/
+// withdraw/withdraw_early, plus the custody invariant test.
 // [pre-broken on main] mod test_bond_token_transfers;
 // [pre-broken on main] mod test_events_schema;
 // [pre-broken on main] mod test_events_v2;
 // [pre-broken on main] mod test_events;
 // [pre-broken on main] mod test_validation;
 // [pre-broken on main] mod test_zero_address;
-/// Reusable bond-invariant assertion library (test-only).
+// Reusable bond-invariant assertion library (test-only).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] pub mod test_invariants;
 // [pre-broken on main] #[cfg(test)]
@@ -117,16 +126,16 @@ pub mod test_helpers;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_fork_divergent;
 
-/// Chaos testing suite for simulating host and token failures.
+// Chaos testing suite for simulating host and token failures.
 // [pre-broken on main] mod chaos_token;
 // [pre-broken on main] mod test_chaos;
 // [pre-broken on main] mod test_reentrancy_hostile_token;
 
-/// Tests for the liquidate entrypoint (issue #366).
+// Tests for the liquidate entrypoint (issue #366).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_liquidate;
 
-/// Tests for slashing bounds enforcement and normalized slash history schema (issue #995).
+// Tests for slashing bounds enforcement and normalized slash history schema (issue #995).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_slashing;
 
@@ -147,26 +156,26 @@ mod test_safe_token_boundary;
 #[cfg(test)]
 mod test_safe_token_recovery;
 
-/// Authentication boundary tests — every non-view fn must require an auth'd address.
+// Authentication boundary tests — every non-view fn must require an auth'd address.
 // [pre-broken on main] mod test_auth;
-/// Tests for paginated reads — attestations, slash history, and pending claims.
+// Tests for paginated reads — attestations, slash history, and pending claims.
 // [pre-broken on main] mod test_pagination;
 
-/// Regression tests codifying the deterministic-ordering guarantee for every
-/// list-returning read (no duplicates, no omissions, stable key order).
+// Regression tests codifying the deterministic-ordering guarantee for every
+// list-returning read (no duplicates, no omissions, stable key order).
 // [pre-broken on main] mod test_ordering_guarantees;
 
-/// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
+// State-machine tests for rolling-bond notice-period request/renew/settle sequencing.
 // [pre-broken on main] mod test_rolling_notice;
 
-/// Tests for `fee.rs`: get_protocol_fee_bps default, MAX_FEE_BPS accept/reject boundary,
-/// setter round-trip and event payload verification (issue #665).
+// Tests for `fee.rs`: get_protocol_fee_bps default, MAX_FEE_BPS accept/reject boundary,
+// setter round-trip and event payload verification (issue #665).
 // [pre-broken on main] mod fee_tests;
 
-/// Tests for `parameters.rs`: governance access control, bounds, event emission, approval invariants.
+// Tests for `parameters.rs`: governance access control, bounds, event emission, approval invariants.
 // [pre-broken on main] mod test_parameters;
 
-/// Tests for max-leverage parameter: bounds enforcement, admin access, bond-creation integration.
+// Tests for max-leverage parameter: bounds enforcement, admin access, bond-creation integration.
 // [pre-broken on main] mod test_max_leverage;
 
 /// Boundary and recovery tests for `leverage.rs`: unit, integration, and
@@ -184,7 +193,7 @@ mod test_migration_guard;
 #[cfg(test)]
 mod test_migration;
 
-/// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
+// Tests for the same-ledger sequencing guard (#996 — anti-sandwich).
 // [pre-broken on main] mod test_same_ledger_liquidation_guard;
 
 /// Tests for `verify_stringified_bytes` in validation.rs: valid, malformed,
@@ -202,18 +211,18 @@ mod test_lib_boundary_recovery;
 #[cfg(test)]
 mod test_attestation_dedup_cap;
 
-/// Boundary and edge-case tests for event emissions (#1324).
-/// Validates numeric boundaries, invalid inputs, empty values, and large collections.
+// Boundary and edge-case tests for event emissions (#1324).
+// Validates numeric boundaries, invalid inputs, empty values, and large collections.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_boundary;
 
-/// Recovery and idempotence tests for event emissions (#1324).
-/// Validates duplicate emissions, retries, sequence consistency, and no-loss guarantees.
+// Recovery and idempotence tests for event emissions (#1324).
+// Validates duplicate emissions, retries, sequence consistency, and no-loss guarantees.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_recovery;
 
-/// Invariant and correctness tests for event emissions (#1324).
-/// Validates event data correctness, invariant preservation, and schema immutability.
+// Invariant and correctness tests for event emissions (#1324).
+// Validates event data correctness, invariant preservation, and schema immutability.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_invariants;
 use credence_errors::ContractError;
@@ -223,27 +232,6 @@ use soroban_sdk::{
 };
 
 pub use soroban_sdk;
-
-/// Signature domain identifier for the CredenceBond contract.
-///
-/// This constant binds signatures to this specific contract, preventing
-/// cross-contract replay attacks where a signature intended for one contract
-/// could be replayed against another. Each contract in the Credence system
-/// has a unique signature domain constant.
-///
-/// # Security
-///
-/// Without domain separation, a signature created for contract A could be
-/// replayed against contract B if both contracts share the same nonce namespace
-/// and signature verification logic. By including this domain in the signed
-/// payload hash, we ensure signatures are only valid for their intended contract.
-///
-/// # Value
-///
-/// The domain is a human-readable string that uniquely identifies this contract
-/// within the Credence system. It should be included in the signed payload hash
-/// along with other payload fields (nonce, deadline, etc.).
-pub(crate) const SIGNATURE_DOMAIN: &str = "CredenceBond";
 
 /// Identity tier based on bonded amount.
 #[contracttype]
@@ -269,6 +257,210 @@ pub struct IdentityBond {
     pub notice_period_duration: u64,
 }
 
+#[contract]
+pub struct CredenceBond;
+
+#[contractimpl]
+impl CredenceBond {
+    pub fn initialize(e: Env, admin: Address) {
+        if storage::get_admin(&e).is_some() {
+            panic!("already initialized");
+        }
+        storage::set_admin(&e, &admin);
+    }
+
+    /// Set the set of accepted token addresses.
+    /// Only callable by admin.
+    pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
+        credence_errors::require_contract_uninitialized(&e, storage::get_admin(&e).is_some());
+        storage::set_admin(&e, &admin);
+    }
+
+    fn require_not_paused(e: &Env) {
+        pausable::require_not_paused(e);
+    }
+
+    /// Set the set of accepted token addresses.
+    /// Only callable by admin.
+    pub fn set_accepted_tokens(e: Env, admin: Address, accepted_tokens: Vec<Address>) {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        if Some(admin) != storage::get_admin(&e) {
+            panic_with_error!(e, ContractError::NotAdmin);
+        }
+        crate::validation::require_non_empty_vec(&e, &accepted_tokens);
+        storage::set_accepted_tokens(&e, &accepted_tokens);
+    }
+
+    /// Creates and persists a new bond for an identity.
+    pub fn create_bond(
+        e: Env,
+        identity: Address,
+        amount: i128,
+        duration: u64,
+        is_rolling: bool,
+        notice_period_duration: u64,
+    ) -> Result<Bond, ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+
+        if storage::has_bond(&e, &identity) {
+            return Err(ContractError::BondAlreadyExists);
+        }
+
+        let bond = validate_and_create_bond_struct(
+            &e,
+            identity.clone(),
+            amount,
+            duration,
+            is_rolling,
+            notice_period_duration,
+        )?;
+
+        // Safe token transfer in from the user
+        safe_token::transfer_in(&e, &identity, amount);
+
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_bond_created_v2(&e, &identity, amount, duration, is_rolling, e.ledger().timestamp());
+
+        Ok(bond)
+    }
+
+    /// Increases the bonded amount for an existing bond.
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        if !is_valid_bond(amount) {
+            return Err(ContractError::InvalidBondAmount);
+        }
+
+        let mut bond = storage::get_bond(&e, &identity)?;
+        
+        safe_token::transfer_in(&e, &identity, amount);
+
+        bond.amount = bond.amount.checked_add(amount)
+            .ok_or(ContractError::Overflow)?;
+        
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_bond_increased_v2(&e, &identity, amount, bond.amount, e.ledger().timestamp());
+        Ok(())
+    }
+
+    /// Extends the duration of an existing bond.
+    pub fn extend_duration(e: Env, identity: Address, extra_duration: u64) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let mut bond = storage::get_bond(&e, &identity)?;
+        
+        bond.duration = bond.duration.checked_add(extra_duration)
+            .ok_or(ContractError::Overflow)?;
+            
+        storage::set_bond(&e, &identity, &bond);
+        events::emit_duration_extended_v2(&e, &identity, bond.duration, e.ledger().timestamp());
+        Ok(())
+    }
+
+    pub fn request_withdrawal(e: Env, identity: Address) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        let mut bond = storage::get_bond(&e, &identity)?;
+        if !bond.is_rolling {
+            return Err(ContractError::NotRollingBond);
+        }
+        if bond.withdrawal_requested_at != 0 {
+            return Err(ContractError::WithdrawalAlreadyRequested);
+        }
+        bond.withdrawal_requested_at = e.ledger().timestamp();
+        storage::set_bond(&e, &identity, &bond);
+        Ok(())
+    }
+
+    pub fn withdraw(e: Env, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        identity.require_auth();
+        acquire_lock(&e);
+        
+        let mut bond = storage::get_bond(&e, &identity)?;
+        let now = e.ledger().timestamp();
+
+        if bond.is_rolling {
+            if bond.withdrawal_requested_at == 0 { panic!("notice not started"); }
+            if now < bond.withdrawal_requested_at + bond.notice_period_duration {
+                panic!("notice period not elapsed");
+            }
+        } else if now < bond.bond_start + bond.duration {
+            return Err(ContractError::LockupNotExpired);
+        }
+
+        let available = bond.amount - bond.slashed_amount;
+        if amount > available { return Err(ContractError::InsufficientBalance); }
+
+        bond.amount = bond.amount.checked_sub(amount).ok_or(ContractError::Underflow)?;
+        storage::set_bond(&e, &identity, &bond);
+        
+        safe_token::transfer_out(&e, &identity, amount);
+        events::emit_withdrawal_v2(&e, &identity, amount, bond.amount, now);
+        
+        release_lock(&e);
+        Ok(())
+    }
+
+    pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> Result<(), ContractError> {
+        Self::require_not_paused(&e);
+        admin.require_auth();
+        if Some(admin) != storage::get_admin(&e) { return Err(ContractError::NotAdmin); }
+
+        let mut bond = storage::get_bond(&e, &identity)?;
+        let new_slashed = bond.slashed_amount.checked_add(amount).ok_or(ContractError::Overflow)?;
+        
+        bond.slashed_amount = if new_slashed > bond.amount { bond.amount } else { new_slashed };
+        storage::set_bond(&e, &identity, &bond);
+        
+        events::emit_bond_slashed_v2(&e, &identity, amount, bond.slashed_amount, e.ledger().timestamp());
+        Ok(())
+    }
+}
+
+fn acquire_lock(e: &Env) {
+    if storage::is_locked(e) { panic_with_error!(e, ContractError::ReentrancyDetected); }
+    storage::set_lock(e, true);
+}
+
+fn release_lock(e: &Env) {
+    storage::set_lock(e, false);
+}
+
+/// Internal validator for bond construction.
+fn validate_and_create_bond_struct(
+    e: &Env,
+    identity: Address,
+    amount: i128,
+    duration: u64,
+    is_rolling: bool,
+    notice_period_duration: u64,
+) -> Result<Bond, ContractError> {
+    if !is_valid_bond(amount) {
+        return Err(ContractError::InvalidBondAmount);
+    }
+
+    if duration == 0 {
+        return Err(ContractError::InvalidBondDuration);
+    }
+
+    if is_rolling && (notice_period_duration == 0 || notice_period_duration > duration) {
+        return Err(ContractError::InvalidNoticePeriod);
+    }
+
+    e.ledger().timestamp()
+        .checked_add(duration)
+        .ok_or(ContractError::Overflow)?;
+    let bond_start = e.ledger().timestamp();
+    let bond = create_bond(amount, bond_start, duration, is_rolling, notice_period_duration)?;
+    Ok(bond)
+}
+
+/// Maximum number of attestations allowed in a single batch operation.
+/// Enforces a safe upper bound on CPU/memory resource usage to prevent exceeding Soroban transaction limits.
 pub const MAX_BATCH_ATTESTATION_SIZE: u32 = 64;
 
 /// Input item for a batch attestation operation.
@@ -1290,7 +1482,7 @@ impl CredenceBond {
             for j in (i + 1)..n {
                 let item_j = items.get(j).unwrap();
                 if item_i.attester == item_j.attester {
-                    panic!("duplicate attester in batch");
+                    panic_with_error!(e, ContractError::DuplicateAttestation);
                 }
             }
         }
@@ -1664,6 +1856,8 @@ impl CredenceBond {
     /// - `InvalidBondAmount` when `amount <= 0`.
     /// - `LockupNotExpired` when called before the bond's lock-up end (use
     ///   `withdraw_early` instead to exit early with a penalty).
+    /// - `WithdrawalNotRequested` when a rolling bond has no pending withdrawal.
+    /// - `CooldownPeriodNotElapsed` when a rolling bond's notice period is active.
     /// - `InsufficientBalance` when `amount > bonded_amount - slashed_amount`.
     /// - `SlashExceedsBond` when the subtraction would leave
     ///   `slashed_amount > bonded_amount`.
@@ -1687,19 +1881,19 @@ impl CredenceBond {
             .checked_add(bond.bond_duration)
             .expect("bond end timestamp overflow");
         if now < end {
-            panic!("lock-up not expired; use withdraw_early");
+            panic_with_error!(e, ContractError::LockupNotExpired);
         }
 
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
-                panic!("withdrawal not requested");
+                panic_with_error!(e, ContractError::WithdrawalNotRequested);
             }
             let earliest = bond
                 .withdrawal_requested_at
                 .checked_add(bond.notice_period_duration)
                 .expect("notice period overflow");
             if e.ledger().timestamp() < earliest {
-                panic!("notice period not elapsed");
+                panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
             }
         } else if e.ledger().timestamp() < bond.bond_start.saturating_add(bond.bond_duration) {
             panic_with_error!(e, ContractError::LockupNotExpired);
@@ -1940,7 +2134,11 @@ impl CredenceBond {
         if !rolling_bond::is_period_ended(now, bond.bond_start, bond.bond_duration) {
             return bond;
         }
-        rolling_bond::apply_renewal(&mut bond, now);
+        // A failed renewal (overflow or zero duration) leaves the bond unchanged:
+        // do not store it again or announce a renewal that did not happen.
+        if rolling_bond::apply_renewal(&mut bond, now).is_err() {
+            return bond;
+        }
         e.storage().instance().set(&key, &bond);
         bump_instance_ttl(&e);
         e.events().publish(
@@ -2143,6 +2341,8 @@ impl CredenceBond {
     /// - `ContractError::BondNotFound` when no bond exists.
     /// - `ContractError::NotBondOwner` when `identity` does not match the bond owner.
     /// - `ContractError::BondNotActive` when the bond is already inactive.
+    /// - `ContractError::WithdrawalNotRequested` for a rolling bond without a request.
+    /// - `ContractError::CooldownPeriodNotElapsed` before its notice period elapses.
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     ///
     /// See also: [`docs/withdrawal.md`](../../../docs/withdrawal.md),
@@ -2171,7 +2371,7 @@ impl CredenceBond {
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
                 Self::release_lock(&e);
-                panic!("withdrawal not requested");
+                panic_with_error!(e, ContractError::WithdrawalNotRequested);
             }
             let earliest = bond
                 .withdrawal_requested_at
@@ -2179,7 +2379,7 @@ impl CredenceBond {
                 .expect("notice period overflow");
             if e.ledger().timestamp() < earliest {
                 Self::release_lock(&e);
-                panic!("notice period not elapsed");
+                panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
             }
         }
 
@@ -2298,11 +2498,11 @@ impl CredenceBond {
     /// to prevent same-ledger sandwich attacks where an attacker increases
     /// collateral and then immediately drains the cooldown window.
     ///
-    /// # Panics
-    /// - If no cooldown request exists for `identity`.
-    /// - If `identity` is not the requester.
-    /// - If the cooldown period has not yet elapsed.
-    /// - If the cooldown execution happens in the same ledger as a collateral increase.
+    /// # Errors
+    /// - `ContractError::CooldownRequestNotFound` if no cooldown request exists.
+    /// - `ContractError::NotBondOwner` if `identity` is not the requester.
+    /// - `ContractError::CooldownPeriodNotElapsed` before the cooldown elapses.
+    /// - `ContractError::SameLedgerCooldownBlocked` if collateral increased in this ledger.
     pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         identity.require_auth();
@@ -2349,7 +2549,7 @@ impl CredenceBond {
         {
             if last == current_seq {
                 Self::release_lock(&e);
-                panic!("{}", same_ledger_liquidation_guard::COOLDOWN_BLOCKED_REASON);
+                panic_with_error!(e, ContractError::SameLedgerCooldownBlocked);
             }
         }
 
@@ -2745,6 +2945,8 @@ impl CredenceBond {
     /// - `ContractError::NotAdmin` when caller is not the configured admin.
     /// - `ContractError::BondNotActive` when the bond has already been
     ///   finalized (idempotency / replay resistance).
+    /// - `ContractError::BondNotEligibleForLiquidation` unless fully slashed or
+    ///   expired without renewal.
     /// - `ContractError::ReentrancyDetected` on re-entrant invocation.
     ///
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
@@ -2800,7 +3002,7 @@ impl CredenceBond {
         let expired_unrenewed = !bond.is_rolling && now >= lockup_end;
         if !fully_slashed && !expired_unrenewed {
             Self::release_lock(&e);
-            panic!("bond is not eligible for liquidation: must be fully slashed or expired (non-rolling) without renewal");
+            panic_with_error!(e, ContractError::BondNotEligibleForLiquidation);
         }
 
         let residual = bond.bonded_amount.saturating_sub(bond.slashed_amount);
@@ -3191,8 +3393,8 @@ impl CredenceBond {
     /// - `ContractError::NotAdmin` when `admin` is not the configured admin
     /// - `ContractError::EmptyBatch` when `items` is empty
     /// - `ContractError::BatchTooLarge` when `items.len() > MAX_BATCH_TRANSFER_SIZE`
-    /// - Panics with `"amount must be positive"` for any item with `amount <= 0`
-    /// - Panics with `"recipient cannot be the contract itself"` for any self-transfer
+    /// - `ContractError::AmountMustBePositive` for any item with `amount <= 0`
+    /// - `ContractError::SelfTransferNotAllowed` for any self-transfer
     pub fn batch_transfer(e: Env, admin: Address, items: Vec<BatchTransferItem>) -> u32 {
         Self::require_not_paused(&e);
         admin.require_auth();
@@ -3215,10 +3417,10 @@ impl CredenceBond {
         for i in 0..items.len() {
             let item = items.get(i).unwrap();
             if item.amount <= 0 {
-                panic!("amount must be positive");
+                panic_with_error!(e, ContractError::AmountMustBePositive);
             }
             if item.recipient == contract {
-                panic!("recipient cannot be the contract itself");
+                panic_with_error!(e, ContractError::SelfTransferNotAllowed);
             }
             total_amount = total_amount
                 .checked_add(item.amount)
@@ -3657,21 +3859,21 @@ mod test_early_exit_treasury_requirement {
 
 // [pre-broken on main] mod test_bond_drift;
 
-/// Precision-loss regression tests for the early-exit penalty time-decay
-/// formula (dust-amount zero-penalty exploit).
+// Precision-loss regression tests for the early-exit penalty time-decay
+// formula (dust-amount zero-penalty exploit).
 // [pre-broken on main] mod test_early_exit_precision;
 
 // [pre-broken on main] mod test_early_exit_penalty;
 
-/// Cross-module tests that verify consistent BPS_DENOMINATOR usage across fee and penalty math.
+// Cross-module tests that verify consistent BPS_DENOMINATOR usage across fee and penalty math.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_bps_denominator;
-/// Deliberately-divergent contract used by `test_differential` to verify the
-/// harness detects behavioural divergence.  Never shipped to mainnet.
+// Deliberately-divergent contract used by `test_differential` to verify the
+// harness detects behavioural divergence.  Never shipped to mainnet.
 // [pre-broken on main] pub mod fork_divergent;
 
-/// Access-control test helpers used by integration test modules.
-/// Excluded from release WASM.
+// Access-control test helpers used by integration test modules.
+// Excluded from release WASM.
 // The in-crate `test_access_control` module is still disabled: it is part of
 // the 266-error `--lib` test target left broken on `main`, so it cannot be
 // compiled or run even with its two stale call sites fixed here. Its coverage
@@ -3679,21 +3881,24 @@ mod test_early_exit_treasury_requirement {
 // the production build and therefore actually executes.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] pub mod test_access_control;
-/// Regression guard: canonical lifecycle scenarios with pinned expected states,
-/// plus a cross-contract divergence-detection smoke test.
+// Regression guard: canonical lifecycle scenarios with pinned expected states,
+// plus a cross-contract divergence-detection smoke test.
 // [pre-broken on main] mod test_differential;
 
 // [pre-broken on main] mod test_attestation_batch;
 
 // [pre-broken on main] mod test_admin_transfer;
 
-/// Regression tests for storage TTL bumps (issue #570).
+// Regression tests for storage TTL bumps (issue #570).
 // [pre-broken on main] mod test_storage_ttl;
 
-/// Tests for the grace-window read view and admin-gated setter (issue #655).
+// Tests for the grace-window read view and admin-gated setter (issue #655).
 // [pre-broken on main] mod test_grace_window;
 
 /// Tests for the batch_transfer entrypoint (issue #917).
+#[cfg(test)]
+mod test_batch_transfer;
+// Tests for the batch_transfer entrypoint (issue #917).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_batch_transfer;
 
@@ -3708,19 +3913,19 @@ mod test_create_bond;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_increase_bond;
 
-/// Authorization-boundary regression tests for the bond lifecycle (creation,
-/// increase, cooldown, exit, liquidation). Uses selective `mock_auths` so the
-/// host-level `require_auth` guards are genuinely exercised, proving that
-/// allowed, denied, forged-identity, and cross-tenant calls behave correctly
-/// and leave no partial/unauthorized state (issue #1272).
+// Authorization-boundary regression tests for the bond lifecycle (creation,
+// increase, cooldown, exit, liquidation). Uses selective `mock_auths` so the
+// host-level `require_auth` guards are genuinely exercised, proving that
+// allowed, denied, forged-identity, and cross-tenant calls behave correctly
+// and leave no partial/unauthorized state (issue #1272).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_lifecycle_auth;
 
-/// Lifecycle state-transition invariant regression tests (issue #1273).
+// Lifecycle state-transition invariant regression tests (issue #1273).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_lifecycle_invariants;
 
-/// Emergency pause gating tests (issue #1042).
+// Emergency pause gating tests (issue #1042).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_pausable;
 

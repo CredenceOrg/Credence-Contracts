@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, Address, Env, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 
 use crate::math::BPS_DENOMINATOR;
 use crate::DataKey;
@@ -24,7 +24,7 @@ pub struct EarlyExitConfig {
 /// overwrite the previous config.
 pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
     if penalty_bps > BPS_DENOMINATOR as u32 {
-        panic!("penalty_bps must be <= 10000");
+        panic_with_error!(e, ContractError::InvalidPenaltyBps);
     }
     let key = DataKey::EarlyExitConfig;
     e.storage().instance().set(
@@ -43,7 +43,7 @@ pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
 /// Return the current early exit configuration.
 ///
 /// Returns `EarlyExitConfigNotSet` when no config has been stored. This is
-
+///
 /// a recoverable error: callers may call `set_config` and retry.
 pub fn get_config(e: &Env) -> Result<EarlyExitConfig, ContractError> {
     let key = DataKey::EarlyExitConfig;
@@ -255,7 +255,6 @@ mod tests {
         // Large inputs must not panic or wrap; the result is clamped.
         let penalty = calculate_penalty(i128::MAX, 10, 10, BPS_DENOMINATOR as u32);
         assert!(penalty >= 0);
-        assert!(penalty <= i128::MAX);
     }
 
     #[test]
@@ -315,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Error(Contract, #211)")]
     fn test_set_config_rejects_bps_above_max() {
         let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 4);

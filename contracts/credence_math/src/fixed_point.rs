@@ -402,10 +402,6 @@ mod tests {
         ];
         for &(a, b) in inputs {
             let r = sat_mul_wad(a, b);
-            assert!(
-                r >= i128::MIN && r <= i128::MAX,
-                "out of range for ({a},{b})"
-            );
             // Second call must be identical (determinism).
             assert_eq!(sat_mul_wad(a, b), r, "non-deterministic for ({a},{b})");
         }
@@ -494,10 +490,8 @@ mod tests {
     /// WAD is positive and strictly less than i128::MAX.
     #[test]
     fn wad_is_positive_and_fits_in_i128() {
-        assert!(WAD > 0);
-        assert!(WAD < i128::MAX);
-        // 2 * WAD must also fit.
-        assert!(2 * WAD > WAD);
+        // Checked at compile time; 2 * WAD must also fit.
+        const _: () = assert!(WAD > 0 && WAD < i128::MAX && 2 * WAD > WAD);
     }
 
     // ── Combined boundary sweep ───────────────────────────────────────────────

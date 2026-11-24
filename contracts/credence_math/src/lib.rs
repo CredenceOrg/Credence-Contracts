@@ -1,25 +1,6 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
-#[allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#[allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
 use credence_errors::ContractError;
 use ethnum::U256;
 use soroban_sdk::{panic_with_error, Env};
@@ -237,6 +218,40 @@ pub fn checked_div_i128(a: i128, b: i128) -> Result<i128, ContractError> {
 /// Prefer [`checked_div_i128`]. The `_message` parameter is ignored.
 #[inline]
 #[must_use]
+pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
+    assert!(b > 0, "{message}");
+    let quotient = a / b;
+    if a % b > 0 {
+        quotient + 1
+    } else {
+        quotient
+    }
+}
+
+/// Exact `(a * b) / denom` computed with a 256-bit intermediate, rounded
+/// according to `rounding`. Returns `None` when `denom` is zero or the rounded
+/// quotient does not fit in `i128`.
+///
+/// Rounding works on the magnitude, so `Up` and `Nearest` round away from zero.
+fn checked_mul_div(a: i128, b: i128, denom: i128, rounding: Rounding) -> Option<i128> {
+    if denom == 0 {
+        return None;
+    }
+    let product = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let mut quotient = product / divisor;
+    let remainder = product % divisor;
+    match rounding {
+        Rounding::Down => {}
+        Rounding::Up => {
+            if remainder != U256::ZERO {
+                quotient += U256::ONE;
+            }
+        }
+        Rounding::Nearest => {
+            if remainder >= divisor / U256::new(2) {
+                quotient += U256::ONE;
+            }
 #[deprecated(note = "use checked_div_i128 instead")]
 pub fn div_i128(a: i128, b: i128, _message: &str) -> i128 {
     unwrap_legacy(checked_div_i128(a, b))
@@ -307,6 +322,38 @@ pub fn checked_mul_div_i128(
             .checked_add(U256::ONE)
             .ok_or(ContractError::Overflow)?;
     }
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let limit = if negative {
+        1u128 << 127
+    } else {
+        i128::MAX as u128
+    };
+    if quotient > U256::new(limit) {
+        return None;
+    }
+    let magnitude = quotient.as_u128() as i128;
+    Some(if negative {
+        magnitude.wrapping_neg()
+    } else {
+        magnitude
+    })
+}
+
+/// Exact multiply-divide: `(a * b) / denom` with a 256-bit intermediate, rounded
+/// according to `rounding`.
+///
+/// # Panics
+/// Panics with `msg` when `denom` is zero or the rounded result does not fit in `i128`.
+#[inline]
+#[must_use]
+pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
+    checked_mul_div(a, b, denom, rounding).expect(msg)
+}
+
+/// Saturating multiply-divide: `(a * b) / denom` rounded according to `rounding`.
+///
+/// Returns `0` when `denom` is zero, and clamps to `i128::MIN` or `i128::MAX`
+/// when the rounded result does not fit in `i128`.
 
     let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
     if negative {
@@ -347,18 +394,119 @@ pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i1
     if denom == 0 {
         return 0;
     }
+    match checked_mul_div(a, b, denom, rounding) {
+        Some(value) => value,
+        None if (a < 0) ^ (b < 0) ^ (denom < 0) => i128::MIN,
+        None => i128::MAX,
+/// Wrapping multiply-divide: `(a * b) / denom` over a 256-bit intermediate.
+/// Rounds according to `rounding`. Panics with `msg` on `denom == 0` or when
+/// the final rounded result does not fit in `i128`.
+#[inline]
+#[must_use]
+pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
+    if denom == 0 {
+        panic!("{msg}");
+    }
+
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let numerator = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let quotient = numerator / divisor;
+    let remainder = numerator % divisor;
+
+    let rounded = match rounding {
+        Rounding::Down => quotient,
+        Rounding::Up => {
+            if remainder == U256::ZERO {
+                quotient
+            } else {
+                quotient + U256::ONE
+            }
+        }
+        Rounding::Nearest => {
+            if remainder * U256::new(2) >= divisor {
+                quotient + U256::ONE
     match checked_mul_div_i128(a, b, denom, rounding) {
         Ok(v) => v,
         Err(_) => {
             if (a < 0) ^ (b < 0) ^ (denom < 0) {
                 i128::MIN
             } else {
-                i128::MAX
+                quotient
             }
         }
     }
 }
 
+    let positive_limit = U256::new(i128::MAX as u128);
+    let negative_limit = U256::new(i128::MAX as u128 + 1);
+    if negative {
+        if rounded > negative_limit {
+            panic!("{msg}");
+        }
+        if rounded == negative_limit {
+            i128::MIN
+        } else {
+            -i128::try_from(rounded.as_u128()).unwrap_or_else(|_| panic!("{msg}"))
+        }
+    } else {
+        if rounded > positive_limit {
+            panic!("{msg}");
+        }
+        i128::try_from(rounded.as_u128()).unwrap_or_else(|_| panic!("{msg}"))
+    }
+}
+
+/// Saturating multiply-divide: `(a * b) / denom` over a 256-bit intermediate.
+/// Rounds according to `rounding`. Clamps on overflow and returns `0` when
+/// `denom == 0`.
+#[inline]
+#[must_use]
+pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i128 {
+    if denom == 0 {
+        return 0;
+    }
+
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    let numerator = U256::new(a.unsigned_abs()) * U256::new(b.unsigned_abs());
+    let divisor = U256::new(denom.unsigned_abs());
+    let quotient = numerator / divisor;
+    let remainder = numerator % divisor;
+
+    let rounded = match rounding {
+        Rounding::Down => quotient,
+        Rounding::Up => {
+            if remainder == U256::ZERO {
+                quotient
+            } else {
+                quotient + U256::ONE
+            }
+        }
+        Rounding::Nearest => {
+            if remainder * U256::new(2) >= divisor {
+                quotient + U256::ONE
+            } else {
+                quotient
+            }
+        }
+    };
+
+    let positive_limit = U256::new(i128::MAX as u128);
+    let negative_limit = U256::new(i128::MAX as u128 + 1);
+    if negative {
+        if rounded >= negative_limit {
+            i128::MIN
+        } else {
+            -(rounded.as_u128() as i128)
+        }
+    } else {
+        if rounded >= positive_limit {
+            i128::MAX
+        } else {
+            rounded.as_u128() as i128
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -442,5 +590,126 @@ mod tests {
     fn unwrap_or_panic_error_returns_ok_value() {
         let env = Env::default();
         assert_eq!(unwrap_or_panic_error(&env, checked_add_i128(2, 3)), 5);
+    }
+}
+
+#[cfg(test)]
+mod wad_boundary_tests {
+    use super::*;
+    use credence_errors::ContractError;
+
+    #[test]
+    fn checked_mul_wad_exact_boundaries() {
+        // Identity and exact products.
+        assert_eq!(checked_mul_wad(WAD, WAD), Ok(WAD));
+        assert_eq!(checked_mul_wad(2 * WAD, 3 * WAD), Ok(6 * WAD));
+        assert_eq!(checked_mul_wad(0, i128::MAX), Ok(0));
+        assert_eq!(checked_mul_wad(i128::MAX, 0), Ok(0));
+        assert_eq!(checked_mul_wad(0, i128::MIN), Ok(0));
+        // Largest operand whose scaled product still fits: result is
+        // (MAX / WAD) * 1 / WAD.
+        assert_eq!(
+            checked_mul_wad(i128::MAX / WAD, 1),
+            Ok(i128::MAX / WAD / WAD)
+        );
+        // (MIN / WAD) * 1 / WAD stays in range (truncation toward zero).
+        assert_eq!(
+            checked_mul_wad(i128::MIN / WAD, 1),
+            Ok(i128::MIN / WAD / WAD)
+        );
+    }
+
+    #[test]
+    fn checked_mul_wad_overflow_boundaries() {
+        // i128::MAX * WAD and i128::MIN * WAD both overflow the intermediate.
+        assert_eq!(checked_mul_wad(i128::MAX, WAD), Err(ContractError::Overflow));
+        assert_eq!(checked_mul_wad(i128::MIN, WAD), Err(ContractError::Overflow));
+        assert_eq!(checked_mul_wad(WAD, i128::MAX), Err(ContractError::Overflow));
+        assert_eq!(checked_mul_wad(WAD, i128::MIN), Err(ContractError::Overflow));
+        // MIN * -1 overflows on its own.
+        assert_eq!(checked_mul_wad(i128::MIN, -1), Err(ContractError::Overflow));
+        // One past the largest fitting positive product.
+        assert_eq!(checked_mul_wad(i128::MAX / WAD + 1, WAD), Err(ContractError::Overflow));
+        // Negative operands with mixed signs that still overflow.
+        assert_eq!(checked_mul_wad(i128::MAX, -WAD), Err(ContractError::Overflow));
+        assert_eq!(checked_mul_wad(i128::MIN, WAD), Err(ContractError::Overflow));
+    }
+
+    #[test]
+    fn checked_mul_wad_sign_and_rounding() {
+        // Positive product truncates toward zero: 1.5 -> 1.
+        assert_eq!(checked_mul_wad(3, WAD / 2), Ok(1));
+        // Negative product truncates toward zero: -1.5 -> -1 (not -2).
+        assert_eq!(checked_mul_wad(-3, WAD / 2), Ok(-1));
+        // Opposite signs yield a negative result.
+        assert_eq!(checked_mul_wad(-WAD, WAD), Ok(-WAD));
+        assert_eq!(checked_mul_wad(WAD, -WAD), Ok(-WAD));
+        // Same signs yield a positive result.
+        assert_eq!(checked_mul_wad(-WAD, -WAD), Ok(WAD * WAD / WAD));
+        // -MAX * 1 fits and stays negative.
+        assert_eq!(
+            checked_mul_wad(i128::MIN + 1, 1),
+            Ok((i128::MIN + 1) / WAD)
+        );
+        // Exact halfway is impossible with WAD=1e18 scale on these inputs,
+        // but an exact negative result must not be rounded away from zero.
+        assert_eq!(checked_mul_wad(-2 * WAD, WAD / 2), Ok(-WAD));
+    }
+
+    #[test]
+    fn checked_div_wad_exact_boundaries() {
+        assert_eq!(checked_div_wad(WAD, WAD), Ok(WAD));
+        assert_eq!(checked_div_wad(2 * WAD, WAD), Ok(2 * WAD));
+        assert_eq!(checked_div_wad(WAD, 2 * WAD), Ok(WAD / 2));
+        assert_eq!(checked_div_wad(0, WAD), Ok(0));
+        // Largest dividend whose scaled product still fits.
+        let a = i128::MAX / WAD;
+        assert_eq!(checked_div_wad(a, 1), Ok(a * WAD));
+        // Smallest (most negative) dividend that still fits.
+        let b = i128::MIN / WAD;
+        assert_eq!(checked_div_wad(b, 1), Ok(b * WAD));
+        // Divisor of -1 with a large negative quotient stays in range.
+        assert_eq!(checked_div_wad(-WAD, -1), Ok(WAD * WAD));
+    }
+
+    #[test]
+    fn checked_div_wad_overflow_and_zero_divisor() {
+        // Zero divisor always maps to Overflow, even for a = 0.
+        assert_eq!(checked_div_wad(WAD, 0), Err(ContractError::Overflow));
+        assert_eq!(checked_div_wad(0, 0), Err(ContractError::Overflow));
+        assert_eq!(checked_div_wad(i128::MAX, 0), Err(ContractError::Overflow));
+        assert_eq!(checked_div_wad(i128::MIN, 0), Err(ContractError::Overflow));
+        // a * WAD overflows before the division is attempted.
+        assert_eq!(checked_div_wad(i128::MAX, 1), Err(ContractError::Overflow));
+        assert_eq!(checked_div_wad(i128::MIN, 1), Err(ContractError::Overflow));
+        assert_eq!(checked_div_wad(i128::MAX, WAD), Err(ContractError::Overflow));
+        assert_eq!(checked_div_wad(i128::MIN, WAD), Err(ContractError::Overflow));
+        // One past the largest fitting dividend.
+        assert_eq!(
+            checked_div_wad(i128::MAX / WAD + 1, 1),
+            Err(ContractError::Overflow)
+        );
+        assert_eq!(
+            checked_div_wad(i128::MIN / WAD - 1, 1),
+            Err(ContractError::Overflow)
+        );
+    }
+
+    #[test]
+    fn checked_div_wad_sign_and_rounding() {
+        // Positive quotient truncates: WAD / 3 -> WAD/3.
+        assert_eq!(checked_div_wad(WAD, 3 * WAD), Ok(WAD / 3));
+        // Negative quotient truncates toward zero: -(WAD/3), not -(WAD/3)-1.
+        assert_eq!(checked_div_wad(-WAD, 3 * WAD), Ok(-(WAD / 3)));
+        // Negative divisor flips the sign.
+        assert_eq!(checked_div_wad(WAD, -WAD), Ok(-WAD));
+        assert_eq!(checked_div_wad(-WAD, -WAD), Ok(WAD));
+        // Exact negative result stays exact.
+        assert_eq!(checked_div_wad(-2 * WAD, WAD), Ok(-2 * WAD));
+        // i128::MIN / -1 cannot be produced here (num is a multiple of WAD
+        // and never equals MIN), but the nearest reachable negative extreme
+        // divided by -1 stays in range.
+        let b = i128::MIN / WAD;
+        assert_eq!(checked_div_wad(b, -1), Ok(-(b * WAD)));
     }
 }
