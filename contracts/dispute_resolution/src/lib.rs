@@ -7,6 +7,9 @@ pub use error::DisputeError;
 #[cfg(test)]
 mod test_dispute_error;
 
+#[cfg(test)]
+mod test_events_schema;
+
 /// Lifecycle state of a dispute.
 ///
 /// Invariants:
