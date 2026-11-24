@@ -63,6 +63,9 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | Tied      | 5     | Votes resulted in a tie (equal highest weights)   |
 | Archived  | 6     | Finalized dispute archived by an admin             |
 | NoQuorum  | 7     | Voting ended without meeting quorum; outcome is 0   |
+| Archived  | 6     | Dispute archived by admin (can be reopened)       |
+| NoQuorum  | 7     | Voting ended but quorum was not met               |
+| Appealed  | 8     | Second voting round in progress (non-terminal)    |
 
 ### Dispute
 
@@ -100,6 +103,31 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | OngoingDispute     | 18   | Creator already has an unresolved dispute |
 | CancelNotAllowed   | 19   | Creator cannot cancel after votes or after voting_end |
 | ConflictOfInterest | 20   | Voter is the creator of the dispute       |
+| Error                    | Code | Description                                      |
+| ------------------------ | ---- | ------------------------------------------------ |
+| InvalidTransition        | 1    | Attempted an invalid status transition           |
+| AlreadyInitialized       | 2    | Contract already initialized                     |
+| NotInitialized           | 3    | Contract not initialized                         |
+| NotAdmin                 | 4    | Caller is not the admin                          |
+| NotArbitrator            | 5    | Voter is not a registered arbitrator             |
+| AlreadyVoted             | 6    | Arbitrator already voted on this dispute         |
+| VotingInactive           | 7    | Voting period is not active                      |
+| VotingNotEnded           | 8    | Voting period has not ended yet                  |
+| DisputeNotFound          | 9    | Dispute ID does not exist                        |
+| InvalidOutcome           | 10   | Outcome must be > 0                              |
+| WeightNotPositive        | 11   | Arbitrator weight must be positive               |
+| NotAuthorized            | 12   | Caller not authorized for this action            |
+| QuorumNotMet             | 13   | Round-one quorum requirements were not met       |
+| ReasonTooLong            | 14   | Cancellation reason exceeds the limit            |
+| PromiseNotKept           | 15   | The promise outcome did not match reality        |
+| CursorOutOfRange         | 16   | Pagination cursor is out of range                |
+| DisputeActive            | 17   | Dispute is still active and blocks this action   |
+| OngoingDispute           | 18   | Creator already has an unresolved dispute        |
+| AppealWindowClosed       | 19   | Appeal window has passed                         |
+| AlreadyAppealed          | 20   | Dispute has already been appealed once           |
+| NotAppealable            | 21   | Dispute status is not appealable                 |
+| NotAParty                | 22   | Caller is not the dispute creator                |
+| ArbitratorVotedInRoundOne | 23  | Arbitrator voted in round one; excluded from round two |
 
 ## Contract Functions
 
@@ -157,6 +185,141 @@ Returns the current total weight for a specific outcome.
 - `dispute_resolved` — Emitted when a dispute is resolved with a clear winner
 - `dispute_tied` — Emitted when a dispute resolution results in a tie
 
+## Appeals
+
+Parties may challenge a first-round outcome by filing an appeal. An appeal opens a fresh voting window governed by stricter quorum rules.
+
+### Who may appeal
+
+Only the dispute **creator** (the address that called `create_dispute`) may appeal. Third parties receive `NotAParty`.
+
+### Appealable statuses
+
+A dispute is appealable when it is in `Resolved`, `Tied`, or `NoQuorum` status. Any other status returns `NotAppealable`.
+
+### Appeal window
+
+The appeal window is set by `set_appeal_config` (default **86 400 s / 24 h**). A party may appeal while:
+
+```
+ledger_timestamp <= resolved_at + appeal_window_secs
+```
+
+The boundary is **inclusive**: an appeal submitted at exactly `resolved_at + window` is accepted; one submitted at `resolved_at + window + 1` returns `AppealWindowClosed`.
+
+`resolved_at` is recorded when `resolve_dispute`, `no_quorum_resolve`, or round-two resolution writes the terminal status.
+
+### Maximum appeals
+
+Each dispute may be appealed **at most once**. A second attempt returns `AlreadyAppealed`. A second-round result (`Resolved`, `Tied`, or `NoQuorum` from the `Appealed` state) is **final**.
+
+### Round-two quorum
+
+Round-two quorum is configured via `set_appeal_config`:
+
+| Parameter | Storage key | Description |
+|---|---|---|
+| `appeal_window_secs` | `AppealWindow` | Seconds after resolution the appeal is open |
+| `appeal_min_total_weight` | `AppealMinTotalWeight` | Minimum cumulative vote weight for round two |
+| `appeal_min_voters` | `AppealMinVoters` | Minimum distinct voter count for round two |
+
+Validation at set time: `appeal_min_total_weight` must be strictly greater than the current `MinTotalWeight`, and `appeal_min_voters` must be strictly greater than the current `MinVoters`. This guarantees round two is always harder to satisfy than round one.
+
+Default values (before `set_appeal_config` is called): `appeal_window_secs = 86 400`, `appeal_min_total_weight = 1`, `appeal_min_voters = 1`.
+
+If round-two quorum is not met, `resolve_dispute` stores `NoQuorum` as the final outcome (it does **not** return `QuorumNotMet` for a round-two call; that error is reserved for round one).
+
+### Round-one voter exclusion
+
+When `appeal_dispute` is called, every arbitrator who cast a vote in round one is recorded under `RoundOneVoter(dispute_id, address)`. Any such arbitrator who attempts to vote in round two receives `ArbitratorVotedInRoundOne`. Arbitrators who did not vote in round one may participate freely.
+
+### Status transition table (complete)
+
+| From | To | Trigger |
+|------|----|---------|
+| Open | Voting | `create_dispute` |
+| Open | Cancelled | `cancel_dispute` |
+| Voting | Resolving | `resolve_dispute` (round one, quorum met) |
+| Voting | Cancelled | `cancel_dispute` |
+| Voting | NoQuorum | `no_quorum_resolve` (voting ended, quorum not met) |
+| Resolving | Resolved | tally: clear winner |
+| Resolving | Tied | tally: tie or no votes |
+| Resolved | Archived | `archive_dispute` |
+| Resolved | Appealed | `appeal_dispute` (within window, first appeal) |
+| Tied | Archived | `archive_dispute` |
+| Tied | Appealed | `appeal_dispute` (within window, first appeal) |
+| Cancelled | Archived | `archive_dispute` |
+| NoQuorum | Archived | `archive_dispute` |
+| NoQuorum | Appealed | `appeal_dispute` (within window, first appeal) |
+| Archived | Voting | `reopen_dispute` (admin) |
+| Appealed | Resolved | round-two tally: clear winner |
+| Appealed | Tied | round-two tally: tie or no votes |
+| Appealed | NoQuorum | round-two `resolve_dispute`: quorum not met (final) |
+
+All other transitions return `InvalidTransition`.
+
+`Appealed` is **non-terminal**: `is_dispute_active` returns `true` for it, blocking new disputes by the same creator until round two concludes. `NoQuorum` is terminal like `Tied`.
+
+### Events
+
+| Event | Topics | Data | When |
+|-------|--------|------|------|
+| `dispute_appealed` | `(dispute_id,)` | `(appellant, round: u32, timestamp: u64)` | `appeal_dispute` succeeds |
+| `status_transition` | `(dispute_id,)` | `(from: u32, to: u32)` | every accepted transition, including appeal transitions |
+
+### New storage keys
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `AppealWindow` | `u64` | Appeal window in seconds (default 86 400) |
+| `AppealMinTotalWeight` | `i128` | Round-two minimum total vote weight (default 1) |
+| `AppealMinVoters` | `u32` | Round-two minimum voter count (default 1) |
+| `ResolvedAt(dispute_id)` | `u64` | Ledger timestamp when the first-round outcome was stored |
+| `AppealCount(dispute_id)` | `u32` | Number of times this dispute has been appealed (max 1) |
+| `RoundOneVoter(dispute_id, address)` | `bool` | Marks an arbitrator as having voted in round one |
+
+### New and updated DisputeStatus discriminants
+
+| Status | Discriminant | Notes |
+|--------|-------------|-------|
+| Open | 0 | unchanged |
+| Voting | 1 | unchanged |
+| Resolving | 2 | unchanged |
+| Resolved | 3 | unchanged |
+| Cancelled | 4 | unchanged |
+| Tied | 5 | unchanged |
+| Archived | 6 | unchanged |
+| NoQuorum | **7** | new — voting ended, quorum not met |
+| Appealed | **8** | new — second voting round in progress |
+
+### New error variants (append-only)
+
+| Error | Discriminant | Meaning |
+|-------|-------------|---------|
+| `AppealWindowClosed` | **19** | Ledger time is past `resolved_at + appeal_window_secs` |
+| `AlreadyAppealed` | **20** | This dispute has already been appealed once |
+| `NotAppealable` | **21** | Dispute status is not `Resolved`, `Tied`, or `NoQuorum` |
+| `NotAParty` | **22** | Caller is not the dispute creator |
+| `ArbitratorVotedInRoundOne` | **23** | Arbitrator is excluded from round two |
+
+### New contract functions
+
+#### `set_appeal_config(admin, appeal_window_secs, appeal_min_total_weight, appeal_min_voters) -> Result<(), ArbitrationError>`
+
+Admin-only. Sets the appeal window and round-two quorum. `appeal_window_secs` must be > 0. Both quorum values must be strictly greater than the corresponding round-one values.
+
+#### `get_appeal_config() -> (u64, i128, u32)`
+
+Returns `(appeal_window_secs, appeal_min_total_weight, appeal_min_voters)`.
+
+#### `no_quorum_resolve(dispute_id) -> Result<(), ArbitrationError>`
+
+Transitions a `Voting` dispute to `NoQuorum` when the voting period has ended and quorum was not met. Callable by anyone. Records `resolved_at` for the appeal window.
+
+#### `appeal_dispute(appellant, dispute_id, duration) -> Result<(), ArbitrationError>`
+
+Appeals a `Resolved`, `Tied`, or `NoQuorum` dispute within the appeal window. Only the creator may call this. Resets vote state, records round-one voters, transitions to `Appealed`, and starts a new voting window of `duration` seconds. Emits `dispute_appealed`.
+
 ## Security
 
 - Admin-only functions for arbitrator management
@@ -168,6 +331,8 @@ Returns the current total weight for a specific outcome.
 - Result-based error handling for all state-changing operations
 - Creator cancellation is bounded by vote count and voting deadline to prevent discarding a losing tally
 - Conflict-of-interest check prevents a creator from voting on their own dispute
+- Appeal limited to one per dispute; round-one voters excluded from round two
+- Appeal window enforced by ledger timestamp comparison
 
 ## Testing
 

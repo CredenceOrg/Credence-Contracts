@@ -15,10 +15,24 @@ use soroban_sdk::contracterror;
 ///   NoQuorum  → Archived    (admin archives a dispute that missed quorum)
 ///   Cancelled → Archived    (admin archives a cancelled dispute)
 ///   Archived  → Voting      (admin reopens an archived dispute for new voting)
+///   Voting    → NoQuorum    (voting period expired, quorum was not met)
+///   Resolved  → Appealed    (party appeals within the appeal window)
+///   Tied      → Appealed    (party appeals within the appeal window)
+///   NoQuorum  → Appealed    (party appeals within the appeal window)
+///   Appealed  → Resolved    (round-two tally produces a clear winner)
+///   Appealed  → Tied        (round-two tally produces a tie)
+///   Appealed  → NoQuorum    (round-two quorum not met — final, no further appeal)
 ///
 /// Tied state indicates the voting outcome was ambiguous (two or more outcomes
 /// tied for the highest weight). This is distinct from a definite ruling and must
 /// be handled separately by consumers, as outcome = 0 is reserved as invalid.
+///
+/// NoQuorum state indicates the voting period ended but the minimum quorum
+/// (weight or voter count) was not satisfied. Set by no_quorum_resolve().
+///
+/// Appealed state is non-terminal: the dispute enters a second voting round.
+/// A second-round result (Resolved, Tied, or NoQuorum from Appealed) is final
+/// and cannot be appealed again (appeal_count guards this).
 ///
 /// All other transitions are rejected with InvalidTransition.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -37,6 +51,12 @@ pub enum DisputeStatus {
     Archived = 6,
     /// Voting ended without meeting the configured quorum; outcome is 0.
     NoQuorum = 7,
+    /// Voting period ended but quorum (weight or voter count) was not met.
+    /// Set by no_quorum_resolve(). Appealable within the appeal window.
+    NoQuorum = 7,
+    /// Dispute has been appealed and is in a second voting round.
+    /// Non-terminal: transitions to Resolved, Tied, or NoQuorum after round two.
+    Appealed = 8,
 }
 
 #[contracterror]
@@ -96,6 +116,16 @@ pub enum ArbitrationError {
     CancelNotAllowed = 19,
     /// A dispute's creator cannot vote on their own dispute.
     ConflictOfInterest = 20,
+    /// The appeal window has closed; the dispute can no longer be appealed.
+    AppealWindowClosed = 19,
+    /// The dispute has already been appealed once; a second appeal is not allowed.
+    AlreadyAppealed = 20,
+    /// The dispute is not in an appealable status (must be Resolved, Tied, or NoQuorum).
+    NotAppealable = 21,
+    /// The caller is not a party to the dispute (creator or appellant).
+    NotAParty = 22,
+    /// The arbitrator voted in round one and is excluded from round two.
+    ArbitratorVotedInRoundOne = 23,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.
@@ -106,6 +136,7 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
             | (DisputeStatus::Open, DisputeStatus::Cancelled)
             | (DisputeStatus::Voting, DisputeStatus::Resolving)
             | (DisputeStatus::Voting, DisputeStatus::Cancelled)
+            | (DisputeStatus::Voting, DisputeStatus::NoQuorum)
             | (DisputeStatus::Resolving, DisputeStatus::Resolved)
             | (DisputeStatus::Resolving, DisputeStatus::Tied)
             | (DisputeStatus::Resolving, DisputeStatus::NoQuorum)
@@ -113,7 +144,14 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
             | (DisputeStatus::Tied, DisputeStatus::Archived)
             | (DisputeStatus::NoQuorum, DisputeStatus::Archived)
             | (DisputeStatus::Cancelled, DisputeStatus::Archived)
+            | (DisputeStatus::NoQuorum, DisputeStatus::Archived)
             | (DisputeStatus::Archived, DisputeStatus::Voting)
+            | (DisputeStatus::Resolved, DisputeStatus::Appealed)
+            | (DisputeStatus::Tied, DisputeStatus::Appealed)
+            | (DisputeStatus::NoQuorum, DisputeStatus::Appealed)
+            | (DisputeStatus::Appealed, DisputeStatus::Resolved)
+            | (DisputeStatus::Appealed, DisputeStatus::Tied)
+            | (DisputeStatus::Appealed, DisputeStatus::NoQuorum)
     );
     if valid {
         Ok(())
@@ -126,7 +164,7 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
 pub fn is_dispute_active(status: DisputeStatus) -> bool {
     matches!(
         status,
-        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving
+        DisputeStatus::Open | DisputeStatus::Voting | DisputeStatus::Resolving | DisputeStatus::Appealed
     )
 }
 
@@ -161,6 +199,8 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
 /// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`, and
 /// `NoQuorum`) mean
 /// the dispute has concluded and downstream operations (e.g. lease/bond
+/// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`, `NoQuorum`)
+/// mean the dispute has concluded and downstream operations (e.g. lease/bond
 /// actions) may proceed.
 ///
 /// # Returns
@@ -181,6 +221,8 @@ pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), Arbitratio
         // deliberately stricter than `require_dispute_inactive`, which lets
         // archived disputes through for lease work.
         DisputeStatus::Archived => Err(ArbitrationError::DisputeActive),
+        // `Appealed` is non-terminal: a second voting round is in progress.
+        DisputeStatus::Appealed => Err(ArbitrationError::DisputeActive),
     }
 }
 
@@ -922,12 +964,14 @@ mod tests {
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
                 DisputeStatus::Archived,
+                DisputeStatus::NoQuorum,
+                DisputeStatus::Appealed,
             ]
             .iter()
             .filter(|s| is_dispute_active(**s))
             .count();
 
-            assert_eq!(active_count, 3, "Exactly 3 states should be active");
+            assert_eq!(active_count, 4, "Exactly 4 states should be active (Open, Voting, Resolving, Appealed)");
         }
     }
 
@@ -1177,6 +1221,7 @@ mod tests {
         #[test]
         fn all_status_values_covered() {
             // Ensure all 8 states are defined
+            // Ensure all 9 states are defined (7 original + NoQuorum + Appealed)
             let states = vec![
                 DisputeStatus::Open,
                 DisputeStatus::Voting,
@@ -1189,6 +1234,10 @@ mod tests {
             ];
 
             assert_eq!(states.len(), 8, "All 8 dispute states should be tested");
+                DisputeStatus::Appealed,
+            ];
+
+            assert_eq!(states.len(), 9, "All 9 dispute states should be tested");
         }
 
         #[test]
@@ -1205,6 +1254,10 @@ mod tests {
             ];
 
             // Test all 64 possible transitions (8x8)
+                DisputeStatus::Appealed,
+            ];
+
+            // Test all 81 possible transitions (9x9)
             for from in &states {
                 for to in &states {
                     let result = require_transition(*from, *to);
