@@ -77,6 +77,26 @@ pub const MAX_ATTESTATIONS: u32 = 1_000;
 pub const MAX_SLASH_RECORDS: u32 = 1_000;
 
 // ============================================================================
+// Bond Amount Bounds (governed — replaces compile-time MIN/MAX_BOND_AMOUNT)
+// ============================================================================
+
+/// Absolute lower bound for the governable minimum bond amount (0 = allow any positive).
+pub const MIN_MIN_BOND_AMOUNT: i128 = 0;
+/// Absolute upper bound for the governable minimum bond amount (1M tokens, 18 decimals).
+pub const MAX_MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000_000_000;
+/// Absolute lower bound for the governable maximum bond amount (1 token, 18 decimals).
+pub const MIN_MAX_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
+/// Absolute upper bound for the governable maximum bond amount (100M tokens, 18 decimals).
+pub const MAX_MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
+
+/// Default minimum bond amount: 1 token in normalized 18-decimal format (1 × 10^18).
+/// Matches the previous production constant.
+pub const DEFAULT_MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
+/// Default maximum bond amount: 100M tokens in 18-decimal format (10^8 × 10^18 = 10^26).
+/// Matches the previous production constant; prevents arithmetic overflow downstream.
+pub const DEFAULT_MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
+
+// ============================================================================
 // Pagination Constants
 // ============================================================================
 
@@ -163,6 +183,12 @@ pub enum ParameterKey {
     GoldThreshold,
     PlatinumThreshold,
     MaxLeverage,
+    /// Governed minimum bond amount (normalized 18-decimal format).
+    /// Replaces the compile-time `MIN_BOND_AMOUNT` constant.
+    MinBondAmount,
+    /// Governed maximum bond amount (normalized 18-decimal format).
+    /// Replaces the compile-time `MAX_BOND_AMOUNT` constant.
+    MaxBondAmount,
 }
 
 // ============================================================================
@@ -277,6 +303,24 @@ pub fn get_max_leverage(e: &Env) -> u32 {
         .instance()
         .get(&ParameterKey::MaxLeverage)
         .unwrap_or(DEFAULT_MAX_LEVERAGE)
+}
+
+/// Get the governed minimum bond amount (normalized 18-decimal format).
+#[must_use]
+pub fn get_min_bond_amount(e: &Env) -> i128 {
+    e.storage()
+        .instance()
+        .get(&ParameterKey::MinBondAmount)
+        .unwrap_or(DEFAULT_MIN_BOND_AMOUNT)
+}
+
+/// Get the governed maximum bond amount (normalized 18-decimal format).
+#[must_use]
+pub fn get_max_bond_amount(e: &Env) -> i128 {
+    e.storage()
+        .instance()
+        .get(&ParameterKey::MaxBondAmount)
+        .unwrap_or(DEFAULT_MAX_BOND_AMOUNT)
 }
 
 // ============================================================================
@@ -867,4 +911,82 @@ fn validate_governance_approval(
     if approval.category != expected_category {
         panic!("governance approval category mismatch");
     }
+}
+
+// ============================================================================
+// Bond Amount Setters (Governance-Only)
+// ============================================================================
+
+/// Set the governed minimum bond amount. Governance-only.
+///
+/// # Bounds
+/// Must be between [`MIN_MIN_BOND_AMOUNT`] and [`MAX_MIN_BOND_AMOUNT`],
+/// and strictly less than the current maximum bond amount.
+///
+/// # Panics
+/// - "not admin" if caller is not the contract admin
+/// - "min_bond_amount out of bounds" if value is out of range
+/// - "min_bond_amount must be below max_bond_amount" if inverted
+pub fn set_min_bond_amount(e: &Env, admin: &Address, value: i128) {
+    validate_admin(e, admin);
+
+    if !(MIN_MIN_BOND_AMOUNT..=MAX_MIN_BOND_AMOUNT).contains(&value) {
+        panic!("min_bond_amount out of bounds");
+    }
+
+    let max = get_max_bond_amount(e);
+    if value >= max {
+        panic!("min_bond_amount must be below max_bond_amount");
+    }
+
+    let old_value = get_min_bond_amount(e);
+    e.storage()
+        .instance()
+        .set(&ParameterKey::MinBondAmount, &value);
+
+    emit_parameter_updated(
+        e,
+        symbol_short!("bondmin"),
+        symbol_short!("bond"),
+        admin,
+        old_value,
+        value,
+    );
+}
+
+/// Set the governed maximum bond amount. Governance-only.
+///
+/// # Bounds
+/// Must be between [`MIN_MAX_BOND_AMOUNT`] and [`MAX_MAX_BOND_AMOUNT`],
+/// and strictly greater than the current minimum bond amount.
+///
+/// # Panics
+/// - "not admin" if caller is not the contract admin
+/// - "max_bond_amount out of bounds" if value is out of range
+/// - "max_bond_amount must be above min_bond_amount" if inverted
+pub fn set_max_bond_amount(e: &Env, admin: &Address, value: i128) {
+    validate_admin(e, admin);
+
+    if !(MIN_MAX_BOND_AMOUNT..=MAX_MAX_BOND_AMOUNT).contains(&value) {
+        panic!("max_bond_amount out of bounds");
+    }
+
+    let min = get_min_bond_amount(e);
+    if value <= min {
+        panic!("max_bond_amount must be above min_bond_amount");
+    }
+
+    let old_value = get_max_bond_amount(e);
+    e.storage()
+        .instance()
+        .set(&ParameterKey::MaxBondAmount, &value);
+
+    emit_parameter_updated(
+        e,
+        symbol_short!("bondmax"),
+        symbol_short!("bond"),
+        admin,
+        old_value,
+        value,
+    );
 }

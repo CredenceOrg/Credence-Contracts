@@ -85,6 +85,7 @@ pub enum DataKey {
     ActiveDispute(Address),
     CreatorDispute(Address, u32),
     CreatorDisputeCount(Address),
+    DisputeWeightSnapshot(u64),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
@@ -133,6 +134,73 @@ fn clear_active_dispute(e: &Env, creator: &Address) {
     e.storage()
         .instance()
         .remove(&DataKey::ActiveDispute(creator.clone()));
+}
+
+/// Capture a frozen snapshot of all currently registered arbitrators and their
+/// voting weights for `dispute_id` in persistent storage.
+///
+/// Storing the snapshot in persistent storage keeps instance storage bounded
+/// across disputes. Gas cost scales linearly (`O(N)`) with the number of
+/// registered arbitrators in `ArbitratorRegistry`.
+fn snapshot_arbitrator_weights(e: &Env, dispute_id: u64) {
+    let registry: Vec<Address> = e
+        .storage()
+        .instance()
+        .get(&DataKey::ArbitratorRegistry)
+        .unwrap_or_else(|| Vec::new(e));
+
+    let mut snapshot: Map<Address, i128> = Map::new(e);
+    for addr in registry.iter() {
+        if let Some(weight) = e
+            .storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Arbitrator(addr.clone()))
+        {
+            snapshot.set(addr, weight);
+        }
+    }
+
+    let key = DataKey::DisputeWeightSnapshot(dispute_id);
+    e.storage().persistent().set(&key, &snapshot);
+    e.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_TTL_THRESHOLD,
+        PERSISTENT_TTL_EXTEND_TO,
+    );
+}
+
+/// Resolve the effective voting weight of `voter` for `dispute_id`.
+///
+/// - If a frozen weight snapshot exists for `dispute_id`, only arbitrators
+///   present in that snapshot may vote and their snapshotted weight is used.
+/// - If no snapshot exists (legacy disputes created before snapshotting was
+///   introduced), falls back to the live arbitrator registry for
+///   migration-safe backwards compatibility.
+fn get_effective_voter_weight(
+    e: &Env,
+    dispute_id: u64,
+    voter: &Address,
+) -> Result<i128, ArbitrationError> {
+    let snapshot_key = DataKey::DisputeWeightSnapshot(dispute_id);
+    if let Some(snapshot) = e
+        .storage()
+        .persistent()
+        .get::<DataKey, Map<Address, i128>>(&snapshot_key)
+    {
+        e.storage().persistent().extend_ttl(
+            &snapshot_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+        snapshot
+            .get(voter.clone())
+            .ok_or(ArbitrationError::NotArbitrator)
+    } else {
+        e.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Arbitrator(voter.clone()))
+            .ok_or(ArbitrationError::NotArbitrator)
+    }
 }
 
 #[contract]
@@ -289,6 +357,35 @@ impl CredenceArbitration {
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
         bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .set(&DataKey::ActiveDispute(creator.clone()), &id);
+        snapshot_arbitrator_weights(&e, id);
+
+        let creator_dispute_count_key = DataKey::CreatorDisputeCount(creator.clone());
+        let creator_dispute_count: u32 = e
+            .storage()
+            .persistent()
+            .get(&creator_dispute_count_key)
+            .unwrap_or(0);
+        let next_creator_dispute_count = creator_dispute_count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let creator_dispute_key = DataKey::CreatorDispute(creator.clone(), creator_dispute_count);
+        e.storage().persistent().set(&creator_dispute_key, &id);
+        e.storage().persistent().extend_ttl(
+            &creator_dispute_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+        e.storage()
+            .persistent()
+            .set(&creator_dispute_count_key, &next_creator_dispute_count);
+        e.storage().persistent().extend_ttl(
+            &creator_dispute_count_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
 
         // Lifecycle events: created + status transition
         e.events()
@@ -339,6 +436,9 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         };
 
+        let from = dispute.status.clone();
+        require_transition(from, DisputeStatus::Cancelled)?;
+
         // Creator may only cancel before any votes are cast and within the voting window.
         // Admin retains a moderation override to cancel a Voting dispute at any time.
         if role == Symbol::short("creator") {
@@ -352,9 +452,6 @@ impl CredenceArbitration {
                 return Err(ArbitrationError::CancelNotAllowed);
             }
         }
-
-        let from = dispute.status.clone();
-        require_transition(from, DisputeStatus::Cancelled)?;
 
         dispute.status = DisputeStatus::Cancelled;
         dispute.cancellation_reason = reason.clone();
@@ -391,11 +488,7 @@ impl CredenceArbitration {
             return Err(ArbitrationError::InvalidOutcome);
         }
 
-        let weight: i128 = e
-            .storage()
-            .instance()
-            .get(&DataKey::Arbitrator(voter.clone()))
-            .ok_or(ArbitrationError::NotArbitrator)?;
+        let weight: i128 = get_effective_voter_weight(&e, dispute_id, &voter)?;
 
         let dispute: Dispute = e
             .storage()
@@ -906,6 +999,9 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        e.storage()
+            .persistent()
+            .remove(&DataKey::DisputeWeightSnapshot(dispute_id));
         e.events().publish(
             (Symbol::new(&e, "dispute_archived"), dispute_id),
             from as u32,
@@ -982,6 +1078,9 @@ impl CredenceArbitration {
             let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
             e.storage().instance().remove(&voter_casted_key);
         }
+
+        // Refresh the frozen arbitrator weight snapshot for the new voting period
+        snapshot_arbitrator_weights(&e, dispute_id);
         e.events().publish(
             (Symbol::new(&e, "dispute_reopened"), dispute_id),
             from as u32,

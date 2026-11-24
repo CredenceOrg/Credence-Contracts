@@ -78,7 +78,7 @@ proptest! {
 }
 
 #[test]
-#[should_panic(expected = "bond amount cannot be negative")]
+#[should_panic(expected = "#214")]
 fn test_normalize_rejects_negative() {
     let e = Env::default();
     let token = setup_token(&e, 6);
@@ -86,7 +86,7 @@ fn test_normalize_rejects_negative() {
 }
 
 #[test]
-#[should_panic(expected = "cannot denormalize negative amount")]
+#[should_panic(expected = "#214")]
 fn test_denormalize_rejects_negative() {
     let e = Env::default();
     let token = setup_token(&e, 6);

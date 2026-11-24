@@ -1,4 +1,5 @@
 # Packages gated by contracts-ci.yml.
+# Re-enable checklist: see the "Gated packages" section in ../docs/CI.md.
 # Each line is a Cargo package name (as declared in that crate's Cargo.toml
 # `[package] name` field).  The CI workflow reads this file to drive the
 # fmt, test, clippy, wasm, and no-bare-panic jobs.

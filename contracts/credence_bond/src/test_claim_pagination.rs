@@ -5,10 +5,10 @@ extern crate std;
 
 use crate::{
     claims::{self, ClaimResult, ClaimType, PendingClaim},
-    CredenceBondClient,
+    test_helpers::expect_contract_error_panic, CredenceBond, CredenceBondClient, DataKey,
 };
-use std::panic::AssertUnwindSafe;
-use soroban_sdk::testutils::Address as _;
+use credence_errors::ContractError;
+use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env, Vec};
 use core::fmt::Write;
 
@@ -76,32 +76,130 @@ fn test_claim_pagination_bounds_gas_usage() {
 #[test]
 fn test_claim_by_id_prevents_duplicates() {
     let env = create_test_env();
-    let user = create_test_address(&env);
+    let (_client, _admin, user, _token, contract_id) =
+        crate::test_helpers::setup_with_token(&env);
 
     // Create a claim
-    let claim_id = claims::add_pending_claim(
-        &env,
-        &user,
-        ClaimType::VerifierReward,
-        1000,
-        1,
-        Some(soroban_sdk::Symbol::new(&env, "test_claim")),
-    );
+    let claim_id = env.as_contract(&contract_id, || {
+        claims::add_pending_claim(
+            &env,
+            &user,
+            ClaimType::VerifierReward,
+            1000,
+            1,
+            Some(soroban_sdk::Symbol::new(&env, "test_claim")),
+        )
+    });
 
     // Process the claim by ID
-    let result = claims::process_claim_by_id(&env, &user, claim_id);
+    let result =
+        env.as_contract(&contract_id, || claims::process_claim_by_id(&env, &user, claim_id));
     assert_eq!(result.processed_count, 1);
     assert_eq!(result.total_amount, 1000);
 
     // Try to process the same claim again - should fail
-    std::panic::catch_unwind(AssertUnwindSafe(|| {
-        claims::process_claim_by_id(&env, &user, claim_id);
-    }))
-    .expect_err("Should panic when processing already processed claim");
+    env.as_contract(&contract_id, || {
+        expect_contract_error_panic(ContractError::ClaimNotFound as u32, || {
+            claims::process_claim_by_id(&env, &user, claim_id);
+        });
+    });
 
     // Verify claim is marked as processed
-    let claim = claims::get_claim_by_id(&env, claim_id);
+    let claim = env.as_contract(&contract_id, || claims::get_claim_by_id(&env, claim_id));
     assert!(claim.processed);
+}
+
+#[test]
+fn test_claim_errors_use_typed_contract_errors() {
+    let env = create_test_env();
+    env.mock_all_auths();
+    let user = create_test_address(&env);
+    let other_user = create_test_address(&env);
+    let contract_id = env.register(CredenceBond, ());
+
+    env.as_contract(&contract_id, || {
+        expect_contract_error_panic(ContractError::AmountMustBePositive as u32, || {
+            claims::add_pending_claim(
+                &env,
+                &user,
+                ClaimType::VerifierReward,
+                0,
+                1,
+                None,
+            );
+        });
+        expect_contract_error_panic(ContractError::AmountMustBePositive as u32, || {
+            claims::add_pending_claim(
+                &env,
+                &user,
+                ClaimType::VerifierReward,
+                -1,
+                1,
+                None,
+            );
+        });
+        expect_contract_error_panic(ContractError::NoPendingClaims as u32, || {
+            claims::process_claims(&env, &user, Vec::new(&env), 0);
+        });
+
+        let claim_id = claims::add_pending_claim(
+            &env,
+            &user,
+            ClaimType::VerifierReward,
+            100,
+            2,
+            None,
+        );
+        expect_contract_error_panic(ContractError::ClaimNotFound as u32, || {
+            claims::process_claim_by_id(&env, &other_user, claim_id);
+        });
+        expect_contract_error_panic(ContractError::NoValidClaimsToProcess as u32, || {
+            claims::process_claims(
+                &env,
+                &user,
+                Vec::from_array(&env, [ClaimType::SlashingReward]),
+                0,
+            );
+        });
+
+        let mut pending = claims::get_pending_claims(&env, &user);
+        let mut claim = pending.get(0).unwrap();
+        claim.processed = true;
+        pending.set(0, claim.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::PendingClaims(user.clone()), &pending);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ClaimById(claim_id), &claim);
+        expect_contract_error_panic(ContractError::ClaimAlreadyProcessed as u32, || {
+            claims::process_claim_by_id(&env, &user, claim_id);
+        });
+
+        let mut ledger_info = env.ledger().get();
+        ledger_info.timestamp = ledger_info.timestamp.saturating_add(2);
+        env.ledger().set(ledger_info);
+        let mut pending = claims::get_pending_claims(&env, &user);
+        let mut claim = pending.get(0).unwrap();
+        claim.processed = false;
+        claim.expires_at = env.ledger().timestamp().saturating_sub(1);
+        pending.set(0, claim.clone());
+        env.storage()
+            .persistent()
+            .set(&DataKey::PendingClaims(user.clone()), &pending);
+        env.storage()
+            .persistent()
+            .set(&DataKey::ClaimById(claim_id), &claim);
+        expect_contract_error_panic(ContractError::ClaimExpired as u32, || {
+            claims::process_claim_by_id(&env, &user, claim_id);
+        });
+    });
+
+    env.as_contract(&contract_id, || {
+        expect_contract_error_panic(ContractError::ClaimNotFound as u32, || {
+            claims::get_claim_by_id(&env, u64::MAX);
+        });
+    });
 }
 
 #[test]

@@ -42,7 +42,7 @@ fn test_create_bond_success() {
 /// minimum (`validation::MIN_BOND_AMOUNT`) and is rejected. Previously this
 /// test asserted the (now removed) "no validation exists" behaviour.
 #[test]
-#[should_panic(expected = "bond amount below minimum required")]
+#[should_panic(expected = "#240")]
 fn test_create_bond_zero_amount() {
     let e = Env::default();
     e.mock_all_auths();
@@ -65,9 +65,9 @@ fn test_create_bond_zero_amount() {
 /// Test bond creation with negative amount.
 ///
 /// Updated for current behaviour: `validate_bond_amount` rejects negative
-/// amounts outright ("bond amount cannot be negative").
+/// amounts outright (`ContractError::InvalidBondAmount`, code 214).
 #[test]
-#[should_panic(expected = "bond amount cannot be negative")]
+#[should_panic(expected = "#214")]
 fn test_create_bond_negative_amount() {
     let e = Env::default();
     e.mock_all_auths();
@@ -92,7 +92,7 @@ fn test_create_bond_negative_amount() {
 /// Updated for current behaviour: `i128::MAX` exceeds
 /// `validation::MAX_BOND_AMOUNT` and is rejected rather than stored.
 #[test]
-#[should_panic(expected = "bond amount exceeds maximum allowed")]
+#[should_panic(expected = "#241")]
 fn test_create_bond_max_amount() {
     let e = Env::default();
     e.mock_all_auths();
@@ -496,7 +496,7 @@ fn test_create_bond_one_above_max_duration_accepted() {
 
 /// Amount one below MIN is rejected.
 #[test]
-#[should_panic(expected = "bond amount below minimum required")]
+#[should_panic(expected = "#240")]
 fn test_create_bond_one_below_min_amount_rejected() {
     let e = Env::default();
     let (client, _) = setup(&e);
@@ -512,7 +512,7 @@ fn test_create_bond_one_below_min_amount_rejected() {
 
 /// Amount one above MAX is rejected.
 #[test]
-#[should_panic(expected = "bond amount exceeds maximum allowed")]
+#[should_panic(expected = "#241")]
 fn test_create_bond_one_above_max_amount_rejected() {
     let e = Env::default();
     let (client, _) = setup(&e);

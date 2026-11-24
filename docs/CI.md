@@ -23,14 +23,66 @@ for every PR and push to `main`/`master`:
 
 ### Gated packages (scripts/ci-gated-packages.txt)
 
-The gated packages as of this writing are:
+The currently enabled packages are:
+This file is the single source of truth for the gated package list. The current
+gated packages are:
 
 ```
-credence_arbitration
-timelock
 dispute_resolution
 testutils
 ```
+
+`credence_arbitration` and `timelock` are currently commented out in the
+authoritative list with their existing test/Clippy blockers. Read that file for
+the current gate; this validator does not enable or disable packages.
+
+### Validate the gated package list
+
+Before submitting a change to the list, run:
+
+```bash
+python3 scripts/check_gated_packages.py
+python3 -m unittest discover -s scripts/tests -v
+```
+
+The checker reads `Cargo.toml` workspace members (including globs and exclusions)
+and each member's `[package] name`. It rejects unknown or duplicate gated names,
+leading/trailing whitespace, and multiple names or inline comments on an entry.
+Blank lines and full-line comments are ignored. For example, use
+`credence_arbitration`, not its directory name `arbitration`.
+
+Gated libraries with `cdylib` in `[lib].crate-type` also need a positive integer
+KiB entry under `[contracts]` in `scripts/wasm-size-budget.toml`. Budget keys match
+the Wasm artifact name: the explicit `[lib].name`, or the package name with
+hyphens replaced by underscores (`bounty-escrow` → `bounty_escrow`). A default
+budget does not replace this explicit entry. Helper libraries without `cdylib`,
+including `testutils`, do not need a Wasm budget.
+
+The script is read-only and uses only Python's standard library; it does not run
+Cargo, build contracts, fetch dependencies or need credentials. Python 3.11+
+uses `tomllib`; Python 3.10 supports the simple string/array/integer TOML subset
+used by these manifests through a conservative regex fallback. Unsupported
+relevant TOML syntax fails with instructions to use Python 3.11+.
+Use `--root <workspace>` to validate a temporary workspace. Errors include the
+gate line number; success exits 0, and invalid input exits 1. Example:
+
+```text
+OK: 2 gated packages validated: dispute_resolution, testutils
+ERROR: scripts/ci-gated-packages.txt:2: unknown workspace package arbitration; use [package] name
+```
+
+This is a local preflight check. Existing CI workflows are unchanged; passing it
+does not replace the Rust test, Clippy or Wasm build/size checks below.
+`credence_arbitration` and `timelock` are temporarily excluded. Their entries
+remain commented out in the list with TODO notes describing the current
+compilation and lint failures. Re-enable either crate after its tests compile
+and pass, its clippy checks pass (including dependency crates), and, for
+contract crates, its WASM build and size check pass. Add the package name back
+to `scripts/ci-gated-packages.txt` when those checks are met.
+`credence_delegation` is being brought up to the gate bar (see
+[Gate-readiness: `credence_delegation`](#gate-readiness-credence_delegation)
+below) and will be added to this list by maintainers once it passes.
+=======
 
 ### How to add a crate to the gate
 
@@ -50,20 +102,81 @@ testutils
    `docs/wasm-size-budget.md` in the same PR.
 4. Add the crate's `[package] name` (one line, no trailing whitespace) to
    `scripts/ci-gated-packages.txt`.
-5. Open a PR — the CI picks up the new entry automatically.
+5. Run `python3 scripts/check_gated_packages.py` and
+   `python3 -m unittest discover -s scripts/tests -v`.
+6. Open a PR — the CI picks up the new entry automatically.
+
+### Gate-readiness: `credence_delegation`
+
+`credence_delegation` (`contracts/credence_delegation`) is not yet in
+`scripts/ci-gated-packages.txt`; maintainers add it after the crate meets the
+bar below. Contributors working on the crate must satisfy all of the following
+locally before requesting the gate entry:
+
+1. **Tests** — `cargo test -p credence_delegation --locked` exits 0. This
+   includes the nonce, domain-separation, pause, lease-signature and
+   epoch-guard test modules.
+2. **Clippy** — `cargo clippy -p credence_delegation --all-targets --locked -- -D warnings`
+   exits 0. Fix root causes; do not add blanket `#![allow]` (see
+   [Common Issues](#blanket-allowclippyall-is-not-allowed)).
+3. **WASM build** — the crate is a contract (`#![no_std]` + `cdylib`), so it
+   must build for `wasm32v1-none`:
+   ```bash
+   rustup target add wasm32v1-none
+   cargo build -p credence_delegation --target wasm32v1-none --release --locked
+   ```
+4. **Size budget** — the release WASM must stay within its entry in
+   `scripts/wasm-size-budget.toml`:
+   ```bash
+   WASM_DIR=target/wasm32v1-none/release bash scripts/check_wasm_size.sh
+   ```
+   If a higher budget is genuinely required, update
+   `scripts/wasm-size-budget.toml` and `docs/wasm-size-budget.md` in the same
+   PR.
+
+Any residual issue that belongs in a dependency crate (rather than
+`credence_delegation` itself) should be noted in the PR description instead of
+being worked around in this crate.
 
 ---
 
 ## Quick Reference — Run All Checks Locally
+
+A `Makefile` at the repo root mirrors the five CI jobs. Run everything in one
+command:
+
+```bash
+make ci-local
+```
+
+Individual targets:
+
+| Target | Equivalent CI job |
+|---|---|
+| `make fmt` | `fmt` — `cargo fmt --all -- --check` |
+| `make test` | `test` — `cargo test -p <pkg> --locked` per gated package |
+| `make clippy` | `clippy` — `cargo clippy -p <pkg> --all-targets --locked -- -D warnings` per gated package |
+| `make wasm` | `wasm` — wasm32v1-none build + `scripts/check_wasm_size.sh` |
+| `make panic-check` | `no-bare-panic` — `python3 scripts/check_no_panic.py` |
+| `make fmt-fix` | *(not in CI)* — auto-fix formatting |
+
+Both `make ci-local` and the workflow read package names exclusively from
+`scripts/ci-gated-packages.txt`, so they stay in sync automatically.
+
+---
+
+### Manual commands (reference)
 
 ```bash
 # 1. Formatting
 cargo fmt --all -- --check
 
 # 2. Per-package clippy (gated packages)
-for pkg in credence_arbitration timelock dispute_resolution testutils; do
+for pkg in dispute_resolution testutils; do
   cargo clippy -p "$pkg" --all-targets --locked -- -D warnings
 done
+# 2b. Gate-readiness check for credence_delegation (not yet gated)
+cargo clippy -p credence_delegation --all-targets --locked -- -D warnings
 
 # 3. Security-focused clippy (security.yml; run on whole workspace)
 cargo clippy --all-targets -- \
@@ -79,9 +192,11 @@ cargo clippy --all-targets -- \
   -D warnings
 
 # 4. Per-package tests (gated packages)
-for pkg in credence_arbitration timelock dispute_resolution testutils; do
+for pkg in dispute_resolution testutils; do
   cargo test -p "$pkg" --locked
 done
+# 4b. Gate-readiness check for credence_delegation (not yet gated)
+cargo test -p credence_delegation --locked
 
 # 5. Coverage (per-crate, ≥ 95%) — see section 5 below
 cargo llvm-cov --package credence_bond --fail-under-lines 95
@@ -99,9 +214,11 @@ cargo geiger
 
 # 9. WASM build + size check (gated contract crates)
 rustup target add wasm32v1-none
-for pkg in credence_arbitration timelock dispute_resolution; do
+for pkg in dispute_resolution; do
   cargo build -p "$pkg" --target wasm32v1-none --release --locked
 done
+# Gate-readiness check for credence_delegation (not yet gated)
+cargo build -p credence_delegation --target wasm32v1-none --release --locked
 WASM_DIR=target/wasm32v1-none/release bash scripts/check_wasm_size.sh
 
 # 10. No bare panic!()
@@ -196,6 +313,8 @@ Run once per gated package. Expected baselines:
 - `timelock` — several dozen tests
 - `dispute_resolution` — several tests
 - `testutils` — several tests
+- `credence_delegation` — not yet gated; must pass before it is added (see
+  [Gate-readiness: `credence_delegation`](#gate-readiness-credence_delegation))
 
 **CI job:** `contracts-ci.yml` (`test` matrix job)
 

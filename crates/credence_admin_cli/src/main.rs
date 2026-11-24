@@ -316,6 +316,9 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
 mod tests {
     use super::*;
     use clap::Parser;
+    use std::{env, ffi::OsString, sync::Mutex};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     // -----------------------------------------------------------------------
     // Helpers
@@ -326,7 +329,43 @@ mod tests {
     /// A well-formed C-address (Soroban contract id) used across tests.
     const VALID_C: &str = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
 
+    struct EnvVarGuard(Vec<(&'static str, Option<OsString>)>);
+
+    impl EnvVarGuard {
+        fn clear() -> Self {
+            let vars = [
+                "CREDENCE_RPC_URL",
+                "CREDENCE_NETWORK",
+                "CREDENCE_CONTRACT",
+                "CREDENCE_SIGNER",
+            ]
+            .into_iter()
+            .map(|name| (name, env::var_os(name)))
+            .collect::<Vec<_>>();
+
+            for (name, _) in &vars {
+                env::remove_var(name);
+            }
+
+            Self(vars)
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            for (name, value) in self.0.drain(..) {
+                if let Some(value) = value {
+                    env::set_var(name, value);
+                } else {
+                    env::remove_var(name);
+                }
+            }
+        }
+    }
+
     fn parse_cli(args: &[&str]) -> Result<Cli, clap::Error> {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = EnvVarGuard::clear();
         Cli::try_parse_from(args)
     }
 
@@ -469,6 +508,105 @@ mod tests {
     }
 
     #[test]
+    fn cli_parses_bond_set_early_exit_config() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "bond-set-early-exit-config",
+            "--admin",
+            VALID_G,
+            "--treasury",
+            VALID_C,
+            "--bps",
+            "250",
+        ])
+        .expect("parse ok");
+
+        assert!(matches!(
+            cli.command,
+            Commands::BondSetEarlyExitConfig {
+                admin,
+                treasury,
+                bps: 250,
+            } if admin == VALID_G && treasury == VALID_C
+        ));
+    }
+
+    #[test]
+    fn cli_parses_bond_set_weights() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        assert!(matches!(
+            cli.command,
+            Commands::BondSetWeights {
+                admin,
+                multiplier_bps: 500,
+                max_weight: 10000,
+            } if admin == VALID_G
+        ));
+    }
+
+    #[test]
+    fn cli_parses_delegation_set_pause_signer() {
+        let cli = parse_cli(&[
+            "credence-admin",
+            "delegation-set-pause-signer",
+            "--admin",
+            VALID_G,
+            "--pause-signer",
+            VALID_C,
+            "--enabled",
+            "false",
+        ])
+        .expect("parse ok");
+
+        assert!(matches!(
+            cli.command,
+            Commands::DelegationSetPauseSigner {
+                admin,
+                pause_signer,
+                enabled: false,
+            } if admin == VALID_G && pause_signer == VALID_C
+        ));
+    }
+
+    #[test]
+    fn cli_uses_environment_fallbacks() {
+        let _lock = ENV_LOCK.lock().unwrap_or_else(|err| err.into_inner());
+        let _env = EnvVarGuard::clear();
+        env::set_var("CREDENCE_RPC_URL", "https://rpc.example.test");
+        env::set_var("CREDENCE_NETWORK", "Example Network");
+        env::set_var("CREDENCE_CONTRACT", VALID_C);
+        env::set_var("CREDENCE_SIGNER", "S-example-secret");
+
+        let cli = Cli::try_parse_from([
+            "credence-admin",
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        assert_eq!(cli.rpc_url, "https://rpc.example.test");
+        assert_eq!(cli.network, "Example Network");
+        assert_eq!(cli.contract.as_deref(), Some(VALID_C));
+        assert_eq!(cli.signer.as_deref(), Some("S-example-secret"));
+    }
+
+    #[test]
     fn cli_submit_flag_parses() {
         let cli = parse_cli(&[
             "credence-admin",
@@ -522,18 +660,78 @@ mod tests {
     }
 
     #[test]
-    fn cli_rejects_missing_required_admin() {
-        let err = parse_cli(&[
-            "credence-admin",
-            "bond-set-early-exit-config",
-            "--treasury",
-            VALID_G,
-            "--bps",
-            "100",
-        ])
-        .unwrap_err();
-        // clap exits with code 2 for missing required args.
-        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    fn cli_rejects_missing_required_flags() {
+        let missing_required_flags = [
+            vec![
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--treasury",
+                VALID_G,
+                "--bps",
+                "100",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--admin",
+                VALID_G,
+                "--bps",
+                "100",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-early-exit-config",
+                "--admin",
+                VALID_G,
+                "--treasury",
+                VALID_G,
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-weights",
+                "--admin",
+                VALID_G,
+                "--max-weight",
+                "10000",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-weights",
+                "--admin",
+                VALID_G,
+                "--multiplier-bps",
+                "500",
+            ],
+            vec![
+                "credence-admin",
+                "bond-set-weights",
+                "--multiplier-bps",
+                "500",
+                "--max-weight",
+                "10000",
+            ],
+            vec![
+                "credence-admin",
+                "delegation-set-pause-signer",
+                "--pause-signer",
+                VALID_G,
+            ],
+            vec![
+                "credence-admin",
+                "delegation-set-pause-signer",
+                "--admin",
+                VALID_G,
+            ],
+        ];
+
+        for args in missing_required_flags {
+            let err = parse_cli(&args).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::MissingRequiredArgument,
+                "arguments should be rejected: {args:?}"
+            );
+        }
     }
 
     #[test]
