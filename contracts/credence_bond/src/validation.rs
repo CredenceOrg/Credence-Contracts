@@ -142,11 +142,12 @@ fn base64_value(byte: u8) -> Option<u8> {
 /// Validates that a recipient address is valid for token transfers.
 ///
 /// # Arguments
+/// * `e` - Soroban environment, used to abort with a typed `ContractError`
 /// * `recipient` - The address to validate
 /// * `contract` - The contract's own address (to prevent self-transfers)
 ///
 /// # Panics
-/// * `"recipient cannot be the contract itself"` if recipient equals the contract
+/// * `ContractError::InvalidRecipient` if recipient equals the contract
 ///
 /// # Security Note
 /// Transferring tokens to an invalid or inappropriate recipient can result in
@@ -161,11 +162,11 @@ fn base64_value(byte: u8) -> Option<u8> {
 /// The primary validation is that recipients should be able to receive tokens.
 /// This function provides explicit checking at transfer call sites.
 #[allow(dead_code)]
-pub fn validate_recipient(recipient: &Address, contract: &Address) {
+pub fn validate_recipient(e: &Env, recipient: &Address, contract: &Address) {
     // Prevent self-transfers: the contract should not transfer tokens to itself
     // as this could cause accounting issues or be a sign of a logic error.
     if recipient == contract {
-        panic!("recipient cannot be the contract itself");
+        panic_with_error!(e, ContractError::InvalidRecipient);
     }
 
     // Note: In Soroban, addresses are validated through the auth system.
@@ -199,80 +200,89 @@ pub const MAX_STRINGIFIED_BYTES_LEN: u32 = 512;
 ///    preventing unbounded ledger writes and instruction-budget exhaustion.
 ///
 /// # Arguments
-/// * `_e` — Soroban environment (reserved for future host-function use; currently
-///   unused because validation is pure computation over the byte slice).
+/// * `e` — Soroban environment, used to abort with a typed `ContractError`.
 /// * `data` — The `Bytes` value to validate.
 ///
 /// # Panics
-/// | Condition | Panic message |
-/// |-----------|---------------|
-/// | `data.len() > MAX_STRINGIFIED_BYTES_LEN` | `"stringified bytes too long"` |
-/// | Any byte is `\x00` | `"stringified bytes contain a null byte"` |
-/// | Any byte is outside `0x20..=0x7E` | `"stringified bytes contain a non-printable byte"` |
+/// | Condition | Error |
+/// |-----------|-------|
+/// | `data.len() > MAX_STRINGIFIED_BYTES_LEN` | `ContractError::BytesTooLarge` |
+/// | Any byte is `\x00` | `ContractError::InvalidStringifiedBytes` |
+/// | Any byte is outside `0x20..=0x7E` | `ContractError::InvalidStringifiedBytes` |
 ///
 /// # Example
 /// ```ignore
 /// verify_stringified_bytes_bytes(&e, &Bytes::from_slice(&e, b"QmXoypiz..."));
 /// ```
-pub fn verify_stringified_bytes_bytes(_e: &Env, data: &Bytes) {
+pub fn verify_stringified_bytes_bytes(e: &Env, data: &Bytes) {
     if data.len() > MAX_STRINGIFIED_BYTES_LEN {
-        panic!("stringified bytes too long");
+        panic_with_error!(e, ContractError::BytesTooLarge);
     }
     for byte in data.iter() {
         if byte == 0x00 {
-            panic!("stringified bytes contain a null byte");
+            panic_with_error!(e, ContractError::InvalidStringifiedBytes);
         }
         if !(0x20..=0x7e).contains(&byte) {
-            panic!("stringified bytes contain a non-printable byte");
+            panic_with_error!(e, ContractError::InvalidStringifiedBytes);
         }
     }
 }
 
-#[cfg(not(test))]
-/// Minimum bond amount in normalized 18-decimal format (1 token = 10^18).
-/// This ensures consistent validation regardless of underlying token decimals.
-pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000; // 1 * 10^18 (1 token)
+/// Default minimum bond amount (1 token in normalized 18-decimal format).
+/// Kept as a re-export for callers that need the default without an Env.
+pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
 
-#[cfg(test)]
-/// Minimum bond amount in tests. Set to 1000 to match legacy tests.
-/// See docs/known-simplifications.md § 4.2 for production vs test bounds.
-pub const MIN_BOND_AMOUNT: i128 = 1_000;
+/// Default maximum bond amount (100M tokens in 18-decimal format).
+/// Kept as a re-export for callers that need the default without an Env.
+pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
 
-#[cfg(not(test))]
-/// Maximum bond amount in normalized 18-decimal format (100 million tokens = 10^8 * 10^18 = 10^26).
-/// This prevents overflow in accounting calculations.
-pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000; // 100M * 10^18
-
-#[cfg(test)]
-/// Maximum bond amount in tests. Set to 100_000_000_000_000 to match legacy tests.
-/// See docs/known-simplifications.md § 4.3 for production vs test bounds.
-pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000;
-
-/// Validates that a bond amount is within acceptable bounds.
+/// Validates that a bond amount is within the governed bounds.
+///
+/// Reads the current minimum and maximum from the governance-controlled
+/// parameters (see [`crate::parameters`]) rather than compile-time constants,
+/// so tokens with different decimals can be tuned without redeploying.
 ///
 /// # Arguments
+/// * `e` - Soroban environment, used to abort with a typed `ContractError`
 /// * `amount` - The bond amount to validate
 ///
 /// # Panics
-/// * If amount is less than MIN_BOND_AMOUNT
-/// * If amount is greater than MAX_BOND_AMOUNT
+/// * `ContractError::InvalidBondAmount` if amount is negative
+/// * `ContractError::BondAmountBelowMinimum` if amount is less than MIN_BOND_AMOUNT
+/// * `ContractError::BondAmountExceedsMaximum` if amount is greater than MAX_BOND_AMOUNT
+pub fn validate_bond_amount(e: &Env, amount: i128) {
+/// * `e` - Soroban environment (used to read governed parameters)
+/// * `amount` - The bond amount to validate
+///
+/// # Panics
+/// * If amount is less than the governed minimum
+/// * If amount is greater than the governed maximum
 /// * If amount is negative
-pub fn validate_bond_amount(amount: i128) {
+pub fn validate_bond_amount(e: &Env, amount: i128) {
+    let min = crate::parameters::get_min_bond_amount(e);
+    let max = crate::parameters::get_max_bond_amount(e);
+
     if amount < 0 {
-        panic!("bond amount cannot be negative");
+        panic_with_error!(e, ContractError::InvalidBondAmount);
     }
 
     if amount < MIN_BOND_AMOUNT {
-        panic!(
-            "bond amount below minimum required: {} (minimum: {})",
-            amount, MIN_BOND_AMOUNT
-        );
+        panic_with_error!(e, ContractError::BondAmountBelowMinimum);
     }
 
     if amount > MAX_BOND_AMOUNT {
+        panic_with_error!(e, ContractError::BondAmountExceedsMaximum);
+    if amount < min {
+        panic!(
+            "bond amount below minimum required: {} (minimum: {})",
+            amount, min
+        );
+    }
+
+    if amount > max {
         panic!(
             "bond amount exceeds maximum allowed: {} (maximum: {})",
-            amount, MAX_BOND_AMOUNT
+            amount, max
         );
     }
 }
@@ -288,9 +298,9 @@ pub fn validate_bond_amount(amount: i128) {
 pub fn validate_bond_amount_for_token(e: &Env, amount: i128) {
     if token_integration::has_token(e) {
         let token = token_integration::get_token(e);
-        validate_bond_amount(normalization::normalize(e, &token, amount));
+        validate_bond_amount(e, normalization::normalize(e, &token, amount));
     } else {
-        validate_bond_amount(amount);
+        validate_bond_amount(e, amount);
     }
 }
 
@@ -314,19 +324,18 @@ pub const MAX_BOND_DURATION: u64 = 31_536_000;
 /// Validate that a bond duration falls within the allowed range.
 ///
 /// # Arguments
+/// * `e` - Soroban environment, used to abort with a typed `ContractError`.
 /// * `duration` - The bond duration in seconds to validate.
 ///
 /// # Panics
-/// * `"bond duration too short: minimum is credence_math::SECONDS_PER_DAY seconds (1 day)"` if `duration` < `MIN_BOND_DURATION`
-/// * `"bond duration too long: maximum is 31536000 seconds (365 days)"` if `duration` > `MAX_BOND_DURATION`
-pub fn validate_bond_duration(duration: u64) {
+/// * `ContractError::BondDurationTooShort` if `duration` < `MIN_BOND_DURATION` (1 day)
+/// * `ContractError::BondDurationTooLong` if `duration` > `MAX_BOND_DURATION` (365 days)
+pub fn validate_bond_duration(e: &Env, duration: u64) {
     if duration < MIN_BOND_DURATION {
-        panic!(
-            "bond duration too short: minimum is credence_math::SECONDS_PER_DAY seconds (1 day)"
-        );
+        panic_with_error!(e, ContractError::BondDurationTooShort);
     }
     if duration > MAX_BOND_DURATION {
-        panic!("bond duration too long: maximum is 31536000 seconds (365 days)");
+        panic_with_error!(e, ContractError::BondDurationTooLong);
     }
 }
 
@@ -431,46 +440,121 @@ mod tests {
 
     #[test]
     fn test_validate_bond_amount_valid() {
+        let env = Env::default();
         // Test valid amounts within range
-        validate_bond_amount(MIN_BOND_AMOUNT);
-        validate_bond_amount(MAX_BOND_AMOUNT);
-        validate_bond_amount((MIN_BOND_AMOUNT + MAX_BOND_AMOUNT) / 2);
+        validate_bond_amount(&env, MIN_BOND_AMOUNT);
+        validate_bond_amount(&env, MAX_BOND_AMOUNT);
+        validate_bond_amount(&env, (MIN_BOND_AMOUNT + MAX_BOND_AMOUNT) / 2);
+        let e = Env::default();
+        // Production defaults: MIN = 1e18, MAX = 1e26
+        validate_bond_amount(&e, MIN_BOND_AMOUNT);
+        validate_bond_amount(&e, MAX_BOND_AMOUNT);
+        validate_bond_amount(&e, (MIN_BOND_AMOUNT + MAX_BOND_AMOUNT) / 2);
     }
 
     #[test]
-    #[should_panic(expected = "bond amount below minimum required")]
+    #[should_panic(expected = "#240")]
     fn test_validate_bond_amount_below_minimum() {
-        validate_bond_amount(MIN_BOND_AMOUNT - 1);
+        let env = Env::default();
+        validate_bond_amount(&env, MIN_BOND_AMOUNT - 1);
+        let e = Env::default();
+        validate_bond_amount(&e, MIN_BOND_AMOUNT - 1);
     }
 
     #[test]
-    #[should_panic(expected = "bond amount below minimum required")]
+    #[should_panic(expected = "#240")]
     fn test_validate_bond_amount_zero() {
-        validate_bond_amount(0);
+        let env = Env::default();
+        validate_bond_amount(&env, 0);
+        let e = Env::default();
+        validate_bond_amount(&e, 0);
     }
 
     #[test]
-    #[should_panic(expected = "bond amount cannot be negative")]
+    #[should_panic(expected = "#214")]
     fn test_validate_bond_amount_negative() {
-        validate_bond_amount(-1);
+        let env = Env::default();
+        validate_bond_amount(&env, -1);
+        let e = Env::default();
+        validate_bond_amount(&e, -1);
     }
 
     #[test]
-    #[should_panic(expected = "bond amount exceeds maximum allowed")]
+    #[should_panic(expected = "#241")]
     fn test_validate_bond_amount_above_maximum() {
-        validate_bond_amount(MAX_BOND_AMOUNT + 1);
+        let env = Env::default();
+        validate_bond_amount(&env, MAX_BOND_AMOUNT + 1);
+        let e = Env::default();
+        validate_bond_amount(&e, MAX_BOND_AMOUNT + 1);
     }
 
     #[test]
     fn test_validate_bond_amount_min_boundary_accepts() {
+        let env = Env::default();
         // Exact minimum boundary must be accepted.
-        validate_bond_amount(MIN_BOND_AMOUNT);
+        validate_bond_amount(&env, MIN_BOND_AMOUNT);
+        let e = Env::default();
+        validate_bond_amount(&e, MIN_BOND_AMOUNT);
     }
 
     #[test]
     fn test_validate_bond_amount_max_boundary_accepts() {
+        let env = Env::default();
         // Exact maximum boundary must be accepted.
-        validate_bond_amount(MAX_BOND_AMOUNT);
+        validate_bond_amount(&env, MAX_BOND_AMOUNT);
+        let e = Env::default();
+        validate_bond_amount(&e, MAX_BOND_AMOUNT);
+    }
+
+    #[test]
+    fn test_min_bond_amount_settable_via_governance() {
+        let e = Env::default();
+        let admin = Address::generate(&e);
+        e.mock_all_auths();
+        e.storage().instance().set(&crate::DataKey::Admin, &admin);
+
+        // Set a custom minimum for a 7-decimal token (0.1 tokens = 1_000_000 raw)
+        crate::parameters::set_min_bond_amount(&e, &admin, 100_000_000_000_000_000);
+        assert_eq!(
+            crate::parameters::get_min_bond_amount(&e),
+            100_000_000_000_000_000
+        );
+
+        // Amount below the new minimum must now fail.
+        let result = std::panic::catch_unwind(|| {
+            validate_bond_amount(&e, 50_000_000_000_000_000);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_bond_amount_settable_via_governance() {
+        let e = Env::default();
+        let admin = Address::generate(&e);
+        e.mock_all_auths();
+        e.storage().instance().set(&crate::DataKey::Admin, &admin);
+
+        // Set a custom maximum (1M tokens)
+        crate::parameters::set_max_bond_amount(&e, &admin, 1_000_000_000_000_000_000_000_000);
+        assert_eq!(
+            crate::parameters::get_max_bond_amount(&e),
+            1_000_000_000_000_000_000_000_000
+        );
+    }
+
+    #[test]
+    fn test_seven_decimal_amounts_validate() {
+        let e = Env::default();
+        // 0.1 tokens at 7 decimals = 1_000_000 raw. Normalized to 18 decimals
+        // this is 100_000_000_000_000_000 (1e17). With default MIN of 1e18,
+        // a 0.1-token bond is below the minimum — governed value can lower it.
+        let admin = Address::generate(&e);
+        e.mock_all_auths();
+        e.storage().instance().set(&crate::DataKey::Admin, &admin);
+        crate::parameters::set_min_bond_amount(&e, &admin, 10_000_000_000_000_000);
+
+        // 0.1 tokens normalized (1e17) must pass the lowered minimum.
+        validate_bond_amount(&e, 100_000_000_000_000_000);
     }
 
     // ─── Address Validation Tests ─────────────────────────────────────────
@@ -481,42 +565,46 @@ mod tests {
         let recipient = Address::generate(&env);
         let contract = Address::generate(&env);
         // Should not panic for valid, different addresses
-        validate_recipient(&recipient, &contract);
+        validate_recipient(&env, &recipient, &contract);
     }
 
     #[test]
-    #[should_panic(expected = "recipient cannot be the contract itself")]
+    #[should_panic(expected = "#244")]
     fn test_validate_recipient_self_transfer() {
         let env = Env::default();
         let address = Address::generate(&env);
         // Should panic when recipient equals contract
-        validate_recipient(&address, &address);
+        validate_recipient(&env, &address, &address);
     }
 
     // ─── Duration Boundary Tests ──────────────────────────────────────────
 
     #[test]
     fn test_validate_bond_duration_min_boundary_accepts() {
+        let env = Env::default();
         // Exact minimum duration must be accepted.
-        validate_bond_duration(MIN_BOND_DURATION);
+        validate_bond_duration(&env, MIN_BOND_DURATION);
     }
 
     #[test]
     fn test_validate_bond_duration_max_boundary_accepts() {
+        let env = Env::default();
         // Exact maximum duration must be accepted.
-        validate_bond_duration(MAX_BOND_DURATION);
+        validate_bond_duration(&env, MAX_BOND_DURATION);
     }
 
     #[test]
-    #[should_panic(expected = "bond duration too short")]
+    #[should_panic(expected = "#242")]
     fn test_validate_bond_duration_below_minimum() {
-        validate_bond_duration(MIN_BOND_DURATION - 1);
+        let env = Env::default();
+        validate_bond_duration(&env, MIN_BOND_DURATION - 1);
     }
 
     #[test]
-    #[should_panic(expected = "bond duration too long")]
+    #[should_panic(expected = "#243")]
     fn test_validate_bond_duration_above_maximum() {
-        validate_bond_duration(MAX_BOND_DURATION + 1);
+        let env = Env::default();
+        validate_bond_duration(&env, MAX_BOND_DURATION + 1);
     }
 
     // ─── Batch Size Boundary Tests ────────────────────────────────────────
@@ -560,7 +648,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "stringified bytes too long")]
+    #[should_panic(expected = "#239")]
     fn test_verify_stringified_bytes_bytes_rejects_oversized() {
         let env = Env::default();
         let data = Bytes::from_slice(&env, &[b'a'; MAX_STRINGIFIED_BYTES_LEN as usize + 1]);
@@ -568,7 +656,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "stringified bytes contain a null byte")]
+    #[should_panic(expected = "#230")]
     fn test_verify_stringified_bytes_bytes_rejects_null() {
         let env = Env::default();
         let data = Bytes::from_slice(&env, &[0x00_u8]);
@@ -576,7 +664,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "stringified bytes contain a non-printable byte")]
+    #[should_panic(expected = "#230")]
     fn test_verify_stringified_bytes_bytes_rejects_non_printable() {
         let env = Env::default();
         let data = Bytes::from_slice(&env, &[0x1f_u8]);

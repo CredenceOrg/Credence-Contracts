@@ -5,9 +5,8 @@
 #![cfg(test)]
 
 use soroban_sdk::{
-    contract, contractimpl,
     testutils::{Address as _, Ledger as _},
-    Address, Bytes, Env, String,
+    Address, Env, String,
 };
 
 use crate::{
@@ -79,6 +78,16 @@ fn setup() -> (Env, CredenceDelegationClient<'static>, Address) {
     let admin = Address::generate(&e);
     client.initialize(&admin);
     (e, client, admin)
+}
+
+/// Build a client bound to the environment's lifetime.
+///
+/// `CredenceDelegationClient::new` borrows the `Env`; returning it from a
+/// helper requires the borrow to outlive the returned client. The `'static`
+/// bound is satisfied because the test `Env` is leaked for the duration of
+/// the test process, which is the standard pattern for Soroban test helpers.
+fn client_for(e: &Env, cid: &Address) -> CredenceDelegationClient<'static> {
+    CredenceDelegationClient::new(e, cid)
 }
 
 fn make_payload(

@@ -30,6 +30,8 @@
 //! `domain`, `nonce`, `scheme`, `ledger_number`, `signature_domain` fields
 //! that were actually passed to the entry point).
 
+use crate::domain::DomainTag;
+use crate::{DelegationType, DelegationType as _};
 use credence_errors::ContractError;
 use soroban_sdk::{panic_with_error, xdr::ToXdr, Bytes, Env, IntoVal};
 
@@ -188,7 +190,6 @@ fn domain_tag_as_u32(d: DomainTag) -> u32 {
 mod test {
     use super::*;
     use crate::{domain::DomainTag, DelegationType};
-    use credence_math;
     use soroban_sdk::{testutils::Address as _, Address, Bytes, Env};
 
     fn setup() -> Env {
@@ -339,7 +340,7 @@ mod test {
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
         let delegation_type = DelegationType::Attestation;
-        let expires_at = credence_math::SECONDS_PER_DAY;
+        let expires_at = 86_400_u64;
         let domain = DomainTag::Delegate;
         let nonce = 0_u64;
         let scheme = 0_u32;
@@ -678,7 +679,7 @@ mod test {
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
         let delegation_type = DelegationType::Attestation;
-        let expires_at = credence_math::SECONDS_PER_DAY;
+        let expires_at = 86_400_u64;
         let domain = DomainTag::Delegate;
         let nonce = 0_u64;
         let scheme = 0_u32;
@@ -722,7 +723,7 @@ mod test {
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
         let delegation_type = DelegationType::Attestation;
-        let expires_at = credence_math::SECONDS_PER_DAY;
+        let expires_at = 86_400_u64;
         let nonce = 0_u64;
         let scheme = 0_u32;
         let ledger_number = 100_u32;
@@ -762,7 +763,7 @@ mod test {
         let e = setup();
         let owner = Address::generate(&e);
         let target = Address::generate(&e);
-        let expires_at = credence_math::SECONDS_PER_DAY;
+        let expires_at = 86_400_u64;
         let domain = DomainTag::Delegate;
         let nonce = 0_u64;
         let scheme = 0_u32;

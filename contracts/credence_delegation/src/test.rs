@@ -17,7 +17,7 @@ fn setup() -> (Env, CredenceDelegationClient<'static>) {
 }
 
 fn delegate_payload(
-    e: &Env,
+    _e: &Env,
     domain: DomainTag,
     owner: &Address,
     target: &Address,
@@ -35,8 +35,9 @@ fn delegate_payload(
     }
 }
 
+#[allow(dead_code)]
 fn delegate_payload_with_scheme(
-    e: &Env,
+    _e: &Env,
     domain: DomainTag,
     owner: &Address,
     target: &Address,
@@ -128,13 +129,7 @@ fn test_revoke_delegation() {
         &credence_math::SECONDS_PER_DAY,
         &0_u64,
     );
-    client.revoke_delegation(
-        &owner,
-        &delegate,
-        &DelegationType::Attestation,
-        &1_u64,
-        &1_u64,
-    );
+    client.revoke_delegation(&owner, &delegate, &DelegationType::Attestation, &1_u64);
 
     let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
     assert!(d.revoked);
