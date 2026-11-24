@@ -514,6 +514,7 @@ dependencies = [
  "serde_json",
  "soroban-client",
  "stellar-baselib",
+ "stellar-strkey 0.0.15",
  "tokio",
 ]
 
