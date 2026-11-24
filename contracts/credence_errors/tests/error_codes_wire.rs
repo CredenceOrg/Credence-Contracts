@@ -46,6 +46,9 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::UpgradeSelfRoleNotAllowed as u32, 130);
     assert_eq!(ContractError::LastUpgradeAdmin as u32, 131);
     assert_eq!(ContractError::NotPendingUpgradeAdmin as u32, 132);
+    assert_eq!(ContractError::GovernanceApproverMismatch as u32, 128);
+    assert_eq!(ContractError::GovernanceApprovalExpired as u32, 129);
+    assert_eq!(ContractError::GovernanceApprovalCategoryMismatch as u32, 130);
 
     // Bond (200-299)
     assert_eq!(ContractError::BondNotFound as u32, 200);
@@ -110,6 +113,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::UpgradeImplementationMismatch as u32, 246);
     assert_eq!(ContractError::ImplementationNotSet as u32, 247);
     assert_eq!(ContractError::SameImplementation as u32, 248);
+    assert_eq!(ContractError::ParameterOutOfBounds as u32, 240);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);

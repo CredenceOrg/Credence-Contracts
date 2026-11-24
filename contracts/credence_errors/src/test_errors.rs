@@ -1580,6 +1580,10 @@ mod tests {
             ContractError::RefundExceedsRemaining => true,
             ContractError::InvalidEscrowExpiry => true,
             ContractError::NotEscrowParty => true,
+            ContractError::GovernanceApproverMismatch => true,
+            ContractError::GovernanceApprovalExpired => true,
+            ContractError::GovernanceApprovalCategoryMismatch => true,
+            ContractError::ParameterOutOfBounds => true,
         }
     }
 
