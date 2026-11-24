@@ -5,7 +5,7 @@ edition = "2021"
 description = "Credence multi-signature contract — governance and administrative actions with configurable threshold"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "22.0"
