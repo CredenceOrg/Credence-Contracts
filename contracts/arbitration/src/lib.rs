@@ -71,6 +71,7 @@ pub enum DataKey {
     Dispute(u64),
     DisputeCounter,
     DisputeVotes(u64),
+    DisputeVoters(u64),
     VoterCasted(u64, Address),
     VoterCounter(u64),
     ArbitratorRegistry,
@@ -204,6 +205,12 @@ impl CredenceArbitration {
     }
 
     /// Remove an arbitrator.
+    ///
+    /// Unregistration is always permitted, including while the arbitrator has
+    /// votes outstanding on unresolved disputes. Votes already cast keep their
+    /// snapshot weight in each dispute's tally and continue to count toward
+    /// quorum and resolution; the arbitrator simply cannot cast new votes.
+    /// See `docs/arbitration.md` for the full policy.
     pub fn unregister_arbitrator(e: Env, arbitrator: Address) -> Result<(), ArbitrationError> {
         bump_instance_ttl(&e);
         pausable::require_not_paused(&e);
@@ -445,6 +452,18 @@ impl CredenceArbitration {
             return Err(ArbitrationError::AlreadyVoted);
         }
         e.storage().instance().set(&voter_casted_key, &true);
+
+        // Record the voter so reopen_dispute can clear VoterCasted for every
+        // actual voter — including arbitrators later unregistered — rather
+        // than only iterating the current registry.
+        let voters_key = DataKey::DisputeVoters(dispute_id);
+        let mut voters: Vec<Address> = e
+            .storage()
+            .instance()
+            .get(&voters_key)
+            .unwrap_or_else(|| Vec::new(&e));
+        voters.push_back(voter.clone());
+        e.storage().instance().set(&voters_key, &voters);
 
         // Track distinct voter count for quorum
         let voter_counter_key = DataKey::VoterCounter(dispute_id);
@@ -994,16 +1013,21 @@ impl CredenceArbitration {
         let votes_key = DataKey::DisputeVotes(dispute_id);
         e.storage().instance().remove(&votes_key);
 
-        // Clear VoterCasted entries for all registered arbitrators
-        let registry: Vec<Address> = e
+        // Clear VoterCasted entries for every voter who actually cast a vote.
+        // Iterating the registry would miss arbitrators who were unregistered
+        // after voting and later re-registered, leaving stale AlreadyVoted
+        // markers that permanently block them from voting again.
+        let voters_key = DataKey::DisputeVoters(dispute_id);
+        let voters: Vec<Address> = e
             .storage()
             .instance()
-            .get(&DataKey::ArbitratorRegistry)
+            .get(&voters_key)
             .unwrap_or_else(|| Vec::new(&e));
-        for addr in registry.iter() {
-            let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
+        for voter in voters.iter() {
+            let voter_casted_key = DataKey::VoterCasted(dispute_id, voter);
             e.storage().instance().remove(&voter_casted_key);
         }
+        e.storage().instance().remove(&voters_key);
         e.events().publish(
             (Symbol::new(&e, "dispute_reopened"), dispute_id),
             from as u32,
@@ -1080,3 +1104,6 @@ mod test_events_schema;
 
 #[cfg(test)]
 mod test_creator_disputes;
+
+#[cfg(test)]
+mod test_unregister;
