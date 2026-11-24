@@ -35,7 +35,7 @@ pub mod pausable;
 pub mod status;
 
 use status::ArbitrationError as Error;
-use status::{require_transition, ArbitrationError, DisputeStatus};
+use status::{require_transition, DisputeStatus};
 
 use interfaces::governable::Governable;
 

@@ -21,7 +21,7 @@ use super::status::{
     is_dispute_active, require_dispute_inactive, require_dispute_resolved, require_transition,
     ArbitrationError, DisputeStatus,
 };
-use soroban_sdk::{contract, Address, Env, IntoVal, Symbol, TryFromVal, Val};
+use soroban_sdk::{contract, Address, Env, Symbol, TryFromVal, Val};
 
 /// Every declared variant, in wire order. Adding a variant means adding it
 /// here, which is what forces the closed-world cases below to classify it too.

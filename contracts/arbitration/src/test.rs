@@ -1259,17 +1259,8 @@ fn admin_cancel_after_votes_ok() {
     );
 
     // The cancellation event reports the admin role.
-    let events = s.env.events().all();
-    let mut found_admin_role = false;
-    for ev in events.iter() {
-        let (_, topics, data) = ev;
-        let _ = topics;
-        let _ = data;
-    }
     // Event role assertion is covered by the contract's event payload; we
     // verify the state transition above and that the admin path succeeded.
-    found_admin_role = true;
-    assert!(found_admin_role);
 }
 
 #[test]

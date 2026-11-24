@@ -142,8 +142,7 @@ fn test_create_dispute_recovers_from_stale_active_dispute_marker() {
     // resolved, which clears the marker) must not lock the creator out
     // forever: the guard is keyed on the marker, so a marker whose target is
     // gone is treated as no active dispute.
-    let cid = s.client.address.clone();
-    s.env.as_contract(&cid, || {
+    s.env.as_contract(&s.client.address, || {
         s.env
             .storage()
             .instance()
