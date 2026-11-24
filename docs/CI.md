@@ -79,6 +79,10 @@ compilation and lint failures. Re-enable either crate after its tests compile
 and pass, its clippy checks pass (including dependency crates), and, for
 contract crates, its WASM build and size check pass. Add the package name back
 to `scripts/ci-gated-packages.txt` when those checks are met.
+`credence_delegation` is being brought up to the gate bar (see
+[Gate-readiness: `credence_delegation`](#gate-readiness-credence_delegation)
+below) and will be added to this list by maintainers once it passes.
+=======
 
 ### How to add a crate to the gate
 
@@ -102,6 +106,38 @@ to `scripts/ci-gated-packages.txt` when those checks are met.
    `python3 -m unittest discover -s scripts/tests -v`.
 6. Open a PR — the CI picks up the new entry automatically.
 
+### Gate-readiness: `credence_delegation`
+
+`credence_delegation` (`contracts/credence_delegation`) is not yet in
+`scripts/ci-gated-packages.txt`; maintainers add it after the crate meets the
+bar below. Contributors working on the crate must satisfy all of the following
+locally before requesting the gate entry:
+
+1. **Tests** — `cargo test -p credence_delegation --locked` exits 0. This
+   includes the nonce, domain-separation, pause, lease-signature and
+   epoch-guard test modules.
+2. **Clippy** — `cargo clippy -p credence_delegation --all-targets --locked -- -D warnings`
+   exits 0. Fix root causes; do not add blanket `#![allow]` (see
+   [Common Issues](#blanket-allowclippyall-is-not-allowed)).
+3. **WASM build** — the crate is a contract (`#![no_std]` + `cdylib`), so it
+   must build for `wasm32v1-none`:
+   ```bash
+   rustup target add wasm32v1-none
+   cargo build -p credence_delegation --target wasm32v1-none --release --locked
+   ```
+4. **Size budget** — the release WASM must stay within its entry in
+   `scripts/wasm-size-budget.toml`:
+   ```bash
+   WASM_DIR=target/wasm32v1-none/release bash scripts/check_wasm_size.sh
+   ```
+   If a higher budget is genuinely required, update
+   `scripts/wasm-size-budget.toml` and `docs/wasm-size-budget.md` in the same
+   PR.
+
+Any residual issue that belongs in a dependency crate (rather than
+`credence_delegation` itself) should be noted in the PR description instead of
+being worked around in this crate.
+
 ---
 
 ## Quick Reference — Run All Checks Locally
@@ -114,6 +150,8 @@ cargo fmt --all -- --check
 for pkg in dispute_resolution testutils; do
   cargo clippy -p "$pkg" --all-targets --locked -- -D warnings
 done
+# 2b. Gate-readiness check for credence_delegation (not yet gated)
+cargo clippy -p credence_delegation --all-targets --locked -- -D warnings
 
 # 3. Security-focused clippy (security.yml; run on whole workspace)
 cargo clippy --all-targets -- \
@@ -132,6 +170,8 @@ cargo clippy --all-targets -- \
 for pkg in dispute_resolution testutils; do
   cargo test -p "$pkg" --locked
 done
+# 4b. Gate-readiness check for credence_delegation (not yet gated)
+cargo test -p credence_delegation --locked
 
 # 5. Coverage (per-crate, ≥ 95%) — see section 5 below
 cargo llvm-cov --package credence_bond --fail-under-lines 95
@@ -152,6 +192,8 @@ rustup target add wasm32v1-none
 for pkg in dispute_resolution; do
   cargo build -p "$pkg" --target wasm32v1-none --release --locked
 done
+# Gate-readiness check for credence_delegation (not yet gated)
+cargo build -p credence_delegation --target wasm32v1-none --release --locked
 WASM_DIR=target/wasm32v1-none/release bash scripts/check_wasm_size.sh
 
 # 10. No bare panic!()
@@ -246,6 +288,8 @@ Run once per gated package. Expected baselines:
 - `timelock` — several dozen tests
 - `dispute_resolution` — several tests
 - `testutils` — several tests
+- `credence_delegation` — not yet gated; must pass before it is added (see
+  [Gate-readiness: `credence_delegation`](#gate-readiness-credence_delegation))
 
 **CI job:** `contracts-ci.yml` (`test` matrix job)
 
