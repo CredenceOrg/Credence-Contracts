@@ -792,13 +792,18 @@ fn slash_records_single_admin_auth() {
     let auths = e.auths();
     assert_eq!(auths.len(), 1, "expected exactly one auth entry");
     let auth = &auths[0];
-    assert_eq!(auth.address, admin, "auth entry address must be the admin");
+    assert_eq!(auth.0, admin, "auth entry address must be the admin");
+    let soroban_sdk::testutils::AuthorizedFunction::Contract((contract, fn_name, _)) =
+        &auth.1.function
+    else {
+        panic!("expected a contract invocation");
+    };
     assert_eq!(
-        auth.invoke.contract, contract_id,
+        *contract, contract_id,
         "auth entry contract must be this contract"
     );
     assert_eq!(
-        auth.invoke.fn_name,
+        *fn_name,
         soroban_sdk::Symbol::new(&e, "slash"),
         "auth entry fn_name must be slash"
     );
@@ -816,16 +821,12 @@ fn slash_non_admin_typed_error() {
     let err = client.try_slash(&mallory, &identity, &100_i128);
     assert!(err.is_err());
 
-    match err {
-        Err(soroban_sdk::Error::Contract(_, code)) => {
-            assert_eq!(
-                code,
-                ContractError::NotAdmin as u32,
-                "non-admin must get ContractError::NotAdmin"
-            );
-        }
-        other => panic!("expected Contract error, got {:?}", other),
-    }
+    assert_eq!(
+        err,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::NotAdmin as u32
+        )))
+    );
 }
 
 /// `amount = 0` and `amount = available + 1` must return typed contract errors,
@@ -840,30 +841,22 @@ fn slash_zero_and_overflow_typed_errors() {
     // Zero amount -> AmountMustBePositive (600)
     let err = client.try_slash(&admin, &identity, &0_i128);
     assert!(err.is_err());
-    match err {
-        Err(soroban_sdk::Error::Contract(_, code)) => {
-            assert_eq!(
-                code,
-                ContractError::AmountMustBePositive as u32,
-                "zero amount must get ContractError::AmountMustBePositive"
-            );
-        }
-        other => panic!("expected Contract error, got {:?}", other),
-    }
+    assert_eq!(
+        err,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::AmountMustBePositive as u32
+        )))
+    );
 
     // available + 1 -> SlashExceedsBond (203)
     let err = client.try_slash(&admin, &identity, &1001_i128);
     assert!(err.is_err());
-    match err {
-        Err(soroban_sdk::Error::Contract(_, code)) => {
-            assert_eq!(
-                code,
-                ContractError::SlashExceedsBond as u32,
-                "overflow amount must get ContractError::SlashExceedsBond"
-            );
-        }
-        other => panic!("expected Contract error, got {:?}", other),
-    }
+    assert_eq!(
+        err,
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::SlashExceedsBond as u32
+        )))
+    );
 }
 
 /// Configure a slash treasury for tests that need it.

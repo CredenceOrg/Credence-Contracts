@@ -170,16 +170,7 @@ fn test_operator_epoch_guard_unpause_off_by_one_fails() {
     let s1 = signers.get(0).unwrap();
     let s2 = signers.get(1).unwrap();
 
-    // Pause first
-    client.pause(&s1).unwrap();
-    client.approve_pause_proposal(&s2, &0); // approve prior pause proposal
-                                            // ... actually pause directly since it was admin in setup
-                                            // Let's re-setup with proper pause
-    drop(signers);
-    let signers = add_signers(&env, &client, &admin, 2, 2);
-    let s1 = signers.get(0).unwrap();
-    let s2 = signers.get(1).unwrap();
-
+    // Pause first so the contract is in the paused state before unpausing.
     let pause_id = client.pause(&s1).unwrap();
     client.approve_pause_proposal(&s2, &pause_id);
     client.execute_pause_proposal(&pause_id);

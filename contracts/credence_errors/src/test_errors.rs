@@ -183,6 +183,16 @@ mod tests {
         assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
         assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
         assert_eq!(ContractError::BytesTooLarge as u32, 239);
+        assert_eq!(ContractError::ClaimAlreadyProcessed as u32, 240);
+        assert_eq!(ContractError::ClaimExpired as u32, 241);
+        assert_eq!(ContractError::ClaimNotFound as u32, 242);
+        assert_eq!(ContractError::NoPendingClaims as u32, 243);
+        assert_eq!(ContractError::NoValidClaimsToProcess as u32, 244);
+        assert_eq!(ContractError::BondAmountBelowMinimum as u32, 240);
+        assert_eq!(ContractError::BondAmountExceedsMaximum as u32, 241);
+        assert_eq!(ContractError::BondDurationTooShort as u32, 242);
+        assert_eq!(ContractError::BondDurationTooLong as u32, 243);
+        assert_eq!(ContractError::InvalidRecipient as u32, 244);
     }
 
     #[test]
@@ -355,6 +365,16 @@ mod tests {
             ContractError::CooldownRequestNotFound,
             ContractError::CooldownPeriodNotElapsed,
             ContractError::BytesTooLarge,
+            ContractError::ClaimAlreadyProcessed,
+            ContractError::ClaimExpired,
+            ContractError::ClaimNotFound,
+            ContractError::NoPendingClaims,
+            ContractError::NoValidClaimsToProcess,
+            ContractError::BondAmountBelowMinimum,
+            ContractError::BondAmountExceedsMaximum,
+            ContractError::BondDurationTooShort,
+            ContractError::BondDurationTooLong,
+            ContractError::InvalidRecipient,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -1427,6 +1447,16 @@ mod tests {
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::ClaimAlreadyProcessed => false,
+            ContractError::ClaimExpired => false,
+            ContractError::ClaimNotFound => true,
+            ContractError::NoPendingClaims => true,
+            ContractError::NoValidClaimsToProcess => true,
+            ContractError::BondAmountBelowMinimum => true, // raise the amount to the minimum
+            ContractError::BondAmountExceedsMaximum => true, // lower the amount to the maximum
+            ContractError::BondDurationTooShort => true,  // extend duration to at least 1 day
+            ContractError::BondDurationTooLong => true,   // shorten duration to at most 365 days
+            ContractError::InvalidRecipient => true,      // supply a non-self recipient
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -1627,10 +1657,15 @@ mod tests {
             ContractError::StaleEpoch,
             ContractError::MigrationInProgress,
             ContractError::OutsideBusinessHours,
+            ContractError::BondAmountBelowMinimum,
+            ContractError::BondAmountExceedsMaximum,
+            ContractError::BondDurationTooShort,
+            ContractError::BondDurationTooLong,
+            ContractError::InvalidRecipient,
         ];
         assert_eq!(
             cases.len(),
-            105,
+            110,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \

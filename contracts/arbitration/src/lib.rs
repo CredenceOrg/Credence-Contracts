@@ -37,7 +37,13 @@ pub mod status;
 use status::ArbitrationError as Error;
 use status::{require_transition, ArbitrationError, DisputeStatus};
 
-use interfaces::governable::Governable;
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -282,6 +288,7 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .set(&DataKey::ActiveDispute(creator.clone()), &id);
@@ -360,6 +367,9 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         };
 
+        let from = dispute.status.clone();
+        require_transition(from, DisputeStatus::Cancelled)?;
+
         // Creator may only cancel before any votes are cast and within the voting window.
         // Admin retains a moderation override to cancel a Voting dispute at any time.
         if role == Symbol::short("creator") {
@@ -374,16 +384,13 @@ impl CredenceArbitration {
             }
         }
 
-        let from = dispute.status.clone();
-        require_transition(from, DisputeStatus::Cancelled)?;
-
         dispute.status = DisputeStatus::Cancelled;
         dispute.cancellation_reason = reason.clone();
         dispute.cancelled_by_role = Some(role.clone());
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
-        clear_active_dispute(&e, &dispute.creator);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -600,15 +607,14 @@ impl CredenceArbitration {
             is_tie = true;
         }
 
-        if is_tie {
-            // Resolving → Tied (explicit tie state)
-            require_transition(DisputeStatus::Resolving, DisputeStatus::Tied)?;
-            dispute.status = DisputeStatus::Tied;
-            dispute.outcome = 0; // Reserved sentinel for tie; cannot confuse with a valid outcome
-            e.storage()
-                .instance()
-                .set(&DataKey::Dispute(dispute_id), &dispute);
-            clear_active_dispute(&e, &dispute.creator);
+        // Resolving → Resolved
+        require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
+        dispute.status = DisputeStatus::Resolved;
+        dispute.outcome = winning_outcome;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
@@ -693,11 +699,13 @@ impl CredenceArbitration {
 
     /// Get dispute details.
     pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
-        bump_instance_ttl(&e);
-        e.storage()
+        let dispute: Dispute = e
+            .storage()
             .instance()
             .get(&DataKey::Dispute(dispute_id))
-            .ok_or(ArbitrationError::DisputeNotFound)
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+        bump_instance_ttl(&e);
+        Ok(dispute)
     }
 
     /// Get current total weight for an outcome.

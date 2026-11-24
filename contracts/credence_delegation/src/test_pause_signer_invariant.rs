@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, Vec};
 
 fn setup() -> (Env, Address, CredenceDelegationClient<'static>) {
     let env = Env::default();
@@ -14,7 +14,7 @@ fn setup() -> (Env, Address, CredenceDelegationClient<'static>) {
     (env, admin, client)
 }
 
-fn assert_pause_invariant(env: &Env, client: &CredenceDelegationClient<'_>, addrs: &[Address]) {
+fn assert_pause_invariant(env: &Env, client: &CredenceDelegationClient<'_>, addrs: &Vec<Address>) {
     env.as_contract(&client.address, || {
         let mut counted: u32 = 0;
         for a in addrs.iter() {
@@ -44,44 +44,55 @@ fn test_idempotent_add_remove_pause_signer_invariant() {
 
     let s1 = Address::generate(&env);
 
+    let mut addrs: Vec<Address> = Vec::new(&env);
+    addrs.push_back(s1.clone());
+
     // add twice
     client.set_pause_signer(&admin, &s1, &true);
-    assert_pause_invariant(&env, &client, &[s1.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 
     client.set_pause_signer(&admin, &s1, &true);
-    assert_pause_invariant(&env, &client, &[s1.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 
     // remove twice
     client.set_pause_signer(&admin, &s1, &false);
-    assert_pause_invariant(&env, &client, &[s1.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 
     client.set_pause_signer(&admin, &s1, &false);
-    assert_pause_invariant(&env, &client, &[s1.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 }
 
 #[test]
 fn test_alternating_sequence_pause_signer_invariant() {
     let (env, admin, client) = setup();
 
-    let signers: Vec<Address> = (0..5).map(|_| Address::generate(&env)).collect();
+    let mut signers: Vec<Address> = Vec::new(&env);
+    for _ in 0..5 {
+        signers.push_back(Address::generate(&env));
+    }
 
     // Alternating add/remove across set
-    client.set_pause_signer(&admin, &signers[0], &true);
+    let s0 = signers.get(0).unwrap();
+    let s1 = signers.get(1).unwrap();
+    let s2 = signers.get(2).unwrap();
+    let s3 = signers.get(3).unwrap();
+
+    client.set_pause_signer(&admin, &s0, &true);
     assert_pause_invariant(&env, &client, &signers);
 
-    client.set_pause_signer(&admin, &signers[1], &true);
+    client.set_pause_signer(&admin, &s1, &true);
     assert_pause_invariant(&env, &client, &signers);
 
-    client.set_pause_signer(&admin, &signers[0], &false);
+    client.set_pause_signer(&admin, &s0, &false);
     assert_pause_invariant(&env, &client, &signers);
 
-    client.set_pause_signer(&admin, &signers[2], &true);
+    client.set_pause_signer(&admin, &s2, &true);
     assert_pause_invariant(&env, &client, &signers);
 
-    client.set_pause_signer(&admin, &signers[1], &false);
+    client.set_pause_signer(&admin, &s1, &false);
     assert_pause_invariant(&env, &client, &signers);
 
-    client.set_pause_signer(&admin, &signers[3], &true);
+    client.set_pause_signer(&admin, &s3, &true);
     assert_pause_invariant(&env, &client, &signers);
 }
 
@@ -93,13 +104,17 @@ fn test_edge_cases_adding_removing_nonexistent() {
     let s2 = Address::generate(&env);
 
     // removing non-existent signer should be fine
+    let mut addrs: Vec<Address> = Vec::new(&env);
+    addrs.push_back(s1.clone());
+    addrs.push_back(s2.clone());
+
     client.set_pause_signer(&admin, &s1, &false);
-    assert_pause_invariant(&env, &client, &[s1.clone(), s2.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 
     // add then remove
     client.set_pause_signer(&admin, &s2, &true);
-    assert_pause_invariant(&env, &client, &[s1.clone(), s2.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 
     client.set_pause_signer(&admin, &s2, &false);
-    assert_pause_invariant(&env, &client, &[s1.clone(), s2.clone()]);
+    assert_pause_invariant(&env, &client, &addrs);
 }

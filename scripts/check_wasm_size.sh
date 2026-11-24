@@ -46,13 +46,20 @@ get_contract_limit_kb() {
   fi
 
   local limit
+  # Entries are written as `name = 64` (with spaces), so compare the whole
+  # assignment rather than $1 of a whitespace-split line.
   limit=$(awk -v name="$contract" '
     /^\[contracts\]/ { in_section=1; next }
     /^\[/ { in_section=0 }
-    in_section && $1 == name "=" {
-      gsub(/[^0-9]/, "", $3)
-      print $3
-      exit
+    in_section {
+      line = $0
+      sub(/#.*/, "", line)
+      gsub(/[[:space:]]/, "", line)
+      split(line, parts, "=")
+      if (parts[1] == name && parts[2] ~ /^[0-9]+$/) {
+        print parts[2]
+        exit
+      }
     }
   ' "$BUDGET_FILE")
 
