@@ -2,8 +2,9 @@
 #![cfg(test)]
 
 use credence_bond::soroban_sdk::testutils::Address as _;
-use credence_bond::soroban_sdk::{Address, Bytes, Env, String, Vec};
-use credence_bond::{CredenceBond, CredenceBondClient};
+use credence_bond::soroban_sdk::{Address, Bytes, Env, IntoVal, String, Symbol, Val, Vec};
+use credence_bond::{CredenceBond, CredenceBondClient, DataKey};
+use credence_errors::ContractError;
 
 fn setup(e: &Env) -> (CredenceBondClient<'_>, Address) {
     let contract_id = e.register(CredenceBond, ());
@@ -23,6 +24,19 @@ fn setup_with_bond(e: &Env) -> (CredenceBondClient<'_>, Address, Address) {
     let treasury = Address::generate(e);
     client.set_slash_treasury(&admin, &treasury);
     (client, admin, identity)
+}
+
+fn expect_contract_error(
+    env: &Env,
+    contract: &Address,
+    func: &str,
+    args: Vec<Val>,
+) -> ContractError {
+    match env.try_invoke_contract::<(), ContractError>(contract, &Symbol::new(env, func), args) {
+        Err(Ok(error)) => error,
+        Err(Err(invoke)) => panic!("{func} failed without a ContractError: {invoke:?}"),
+        Ok(_) => panic!("{func} unexpectedly succeeded"),
+    }
 }
 
 #[test]
@@ -120,6 +134,100 @@ fn multisig_pause_and_unpause_flow() {
     client.approve_pause_proposal(&s2, &pid2);
     client.execute_pause_proposal(&pid2);
     assert!(!client.is_paused());
+}
+
+#[test]
+fn pause_management_errors_are_typed() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let signer = Address::generate(&e);
+    client.set_pause_signer(&admin, &signer, &true);
+
+    let mut args = Vec::new(&e);
+    args.push_back(admin.clone().into_val(&e));
+    args.push_back(2_u32.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "set_pause_threshold", args),
+        ContractError::ThresholdExceedsSigners
+    );
+
+    client.set_pause_threshold(&admin, &1_u32);
+    let stranger = Address::generate(&e);
+    let mut args = Vec::new(&e);
+    args.push_back(stranger.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "pause", args),
+        ContractError::NotSigner
+    );
+
+    let mut args = Vec::new(&e);
+    args.push_back(signer.clone().into_val(&e));
+    args.push_back(99_u64.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "approve_pause_proposal", args),
+        ContractError::ProposalNotFound
+    );
+
+    let mut args = Vec::new(&e);
+    args.push_back(99_u64.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "execute_pause_proposal", args),
+        ContractError::ProposalNotFound
+    );
+}
+
+#[test]
+fn unpause_without_stored_admin_returns_typed_not_initialized() {
+    let e = Env::default();
+    let (client, caller) = setup(&e);
+    e.as_contract(&client.address, || {
+        e.storage().instance().set(&DataKey::PauseThreshold, &1_u32);
+        e.storage().instance().remove(&DataKey::Admin);
+    });
+
+    let mut args = Vec::new(&e);
+    args.push_back(caller.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "unpause", args),
+        ContractError::NotInitialized
+    );
+}
+
+#[test]
+fn executing_pause_proposal_without_quorum_returns_typed_error() {
+    let e = Env::default();
+    let (client, admin) = setup(&e);
+    let signer1 = Address::generate(&e);
+    let signer2 = Address::generate(&e);
+    client.set_pause_signer(&admin, &signer1, &true);
+    client.set_pause_signer(&admin, &signer2, &true);
+    client.set_pause_threshold(&admin, &2_u32);
+    let proposal_id = client.pause(&signer1).unwrap();
+
+    let mut args = Vec::new(&e);
+    args.push_back(proposal_id.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "execute_pause_proposal", args),
+        ContractError::InsufficientApprovals
+    );
+}
+
+#[test]
+fn executing_pause_proposal_with_invalid_action_returns_typed_error() {
+    let e = Env::default();
+    let (client, _) = setup(&e);
+    e.as_contract(&client.address, || {
+        e.storage()
+            .instance()
+            .set(&DataKey::PauseProposal(7), &3_u32);
+    });
+
+    let mut args = Vec::new(&e);
+    args.push_back(7_u64.into_val(&e));
+    assert_eq!(
+        expect_contract_error(&e, &client.address, "execute_pause_proposal", args),
+        ContractError::InvalidPauseAction
+    );
 }
 
 #[test]

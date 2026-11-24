@@ -3,8 +3,10 @@
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
+use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol, Vec,
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Symbol,
+    Val, Vec,
 };
 
 /// Signature domain identifier for the Timelock contract.
@@ -112,7 +114,7 @@ pub struct QueuedOperation {
     pub status: OperationStatus,
 }
 
-/// Call-bound operation that stores the target contract, function, and arguments.
+/// Call-bound operation that stores its target, function, arguments, and hash salt.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CallBoundOperation {
@@ -121,6 +123,7 @@ pub struct CallBoundOperation {
     pub target: Address,
     pub func: Symbol,
     pub args: Vec<soroban_sdk::Val>,
+    pub salt: BytesN<32>,
     pub eta: u64,
     pub expires_at: u64,
     pub status: OperationStatus,
@@ -320,6 +323,7 @@ impl TimelockContract {
             target: target.clone(),
             func: func.clone(),
             args: args.clone(),
+            salt: salt.clone(),
             eta,
             expires_at,
             status: OperationStatus::Pending,
@@ -361,8 +365,6 @@ impl TimelockContract {
         args: Vec<soroban_sdk::Val>,
         salt: BytesN<32>,
     ) -> BytesN<32> {
-        use soroban_sdk::xdr::ToXdr;
-
         let timelock_address = e.current_contract_address();
 
         // Build the pre-image using Bytes and append (following the pattern in credence_bond)
@@ -586,8 +588,26 @@ impl TimelockContract {
         let op: Option<QueuedOperation> = e.storage().persistent().get(&key);
         if op.is_some() {
             bump_persistent_ttl(&e, &key);
+            return op;
         }
-        op
+        e.storage().instance().get(&key)
+    }
+
+    /// Get the concrete call associated with a call-bound operation.
+    pub fn get_call(e: Env, op_id: u64) -> Option<CallSpec> {
+        let key = DataKey::CallBoundOperation(op_id);
+        let op: Option<CallBoundOperation> = e.storage().persistent().get(&key);
+        if let Some(op) = op {
+            bump_persistent_ttl(&e, key);
+            Some(CallSpec {
+                target: op.target,
+                func: op.func,
+                args: op.args,
+                salt: op.salt,
+            })
+        } else {
+            None
+        }
     }
 
     /// Number of operation ids allocated so far.
@@ -639,6 +659,7 @@ impl TimelockContract {
             }
         }
         page
+        }
     }
 
     fn require_proposer_admin(e: &Env, proposer: &Address) {

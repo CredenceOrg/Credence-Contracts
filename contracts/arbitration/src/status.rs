@@ -42,19 +42,36 @@ pub enum DisputeStatus {
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArbitrationError {
+    /// The requested dispute status transition is not allowed.
     InvalidTransition = 1,
+    /// The contract has already been initialized.
     AlreadyInitialized = 2,
+    /// The contract has not been initialized.
     NotInitialized = 3,
+    /// The caller is not the admin.
     NotAdmin = 4,
+    /// The caller is not a registered arbitrator.
     NotArbitrator = 5,
+    /// The voter has already cast a vote on this dispute.
     AlreadyVoted = 6,
+    /// The dispute is not in `Voting`, or the current ledger time is outside
+    /// the voting window (before `voting_start` or after `voting_end`).
     VotingInactive = 7,
+    /// The voting window has not yet ended.
     VotingNotEnded = 8,
+    /// The dispute id does not exist.
     DisputeNotFound = 9,
+    /// The supplied outcome is invalid (outcome 0 is reserved for tied or
+    /// no-quorum results).
     InvalidOutcome = 10,
+    /// The supplied arbitrator weight must be greater than zero.
     WeightNotPositive = 11,
+    /// The caller is not authorized for this action.
     NotAuthorized = 12,
+    /// The supplied reason exceeds the maximum length (256 bytes).
     ReasonTooLong = 14,
+    /// Quorum was not met. Currently unused: an unmet quorum finalizes the
+    /// dispute as `DisputeStatus::NoQuorum` instead of returning this error.
     QuorumNotMet = 13,
     /// The actual outcome does not match the promised outcome.
     PromiseNotKept = 15,
