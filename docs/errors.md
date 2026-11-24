@@ -136,6 +136,15 @@ error code instead of an opaque transaction failure.
 | 242 | `BondDurationTooShort` | ✓ | Bond duration is shorter than the minimum allowed (1 day) |
 | 243 | `BondDurationTooLong` | ✓ | Bond duration exceeds the maximum allowed (365 days) |
 | 244 | `InvalidRecipient` | ✓ | Recipient address is the contract itself; self-transfers are rejected |
+| 240 | `UpgradeNotAuthorized` | ✗ | Caller is not authorized to propose upgrades |
+| 241 | `UpgradeAuthNotActive` | ✗ | Upgrade authorization is not active |
+| 242 | `UpgradeAuthExpired` | ✗ | Upgrade authorization has expired |
+| 243 | `UpgradeProposalNotPending` | ✗ | Upgrade proposal is not pending |
+| 244 | `UpgradeProposalAlreadyApproved` | ✗ | Approver has already approved this upgrade proposal |
+| 245 | `UpgradeProposalNotApproved` | ✓ | Upgrade proposal has not been approved |
+| 246 | `UpgradeImplementationMismatch` | ✓ | Implementation does not match the upgrade proposal |
+| 247 | `ImplementationNotSet` | ✗ | No implementation address has been set |
+| 248 | `SameImplementation` | ✓ | New implementation is the same as the current implementation |
 
 ### Attestation (300–399)
 

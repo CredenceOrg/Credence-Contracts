@@ -171,6 +171,15 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ), // 242
     ("BondDurationTooLong", ContractError::BondDurationTooLong), // 243
     ("InvalidRecipient", ContractError::InvalidRecipient), // 244
+    ("UpgradeNotAuthorized", ContractError::UpgradeNotAuthorized), // 240
+    ("UpgradeAuthNotActive", ContractError::UpgradeAuthNotActive), // 241
+    ("UpgradeAuthExpired", ContractError::UpgradeAuthExpired), // 242
+    ("UpgradeProposalNotPending", ContractError::UpgradeProposalNotPending), // 243
+    ("UpgradeProposalAlreadyApproved", ContractError::UpgradeProposalAlreadyApproved), // 244
+    ("UpgradeProposalNotApproved", ContractError::UpgradeProposalNotApproved), // 245
+    ("UpgradeImplementationMismatch", ContractError::UpgradeImplementationMismatch), // 246
+    ("ImplementationNotSet", ContractError::ImplementationNotSet), // 247
+    ("SameImplementation", ContractError::SameImplementation), // 248
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301

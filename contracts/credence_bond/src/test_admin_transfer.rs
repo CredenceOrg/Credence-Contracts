@@ -56,7 +56,7 @@ fn test_upgrade_admin_transfer_full_flow() {
 }
 
 #[test]
-#[should_panic(expected = "timelock not elapsed")]
+#[should_panic(expected = "Error(Contract, #112)")] // TimelockNotReady
 fn test_upgrade_admin_transfer_timelock_enforced() {
     let e = Env::default();
     e.mock_all_auths();

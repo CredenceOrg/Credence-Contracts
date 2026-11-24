@@ -458,15 +458,15 @@ pub fn propose_upgrade(
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Auth(proposer.clone())))
-        .unwrap_or_else(|| panic!("not authorized to propose upgrade"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::UpgradeNotAuthorized));
 
     if !auth.active {
-        panic!("authorization not active");
+        panic_with_error!(e, ContractError::UpgradeAuthNotActive);
     }
 
     // Check expiry
     if auth.expires_at > 0 && e.ledger().timestamp() > auth.expires_at {
-        panic!("authorization expired");
+        panic_with_error!(e, ContractError::UpgradeAuthExpired);
     }
 
     // Validate new implementation (basic checks)
@@ -526,16 +526,16 @@ pub fn approve_upgrade_proposal(e: &Env, approver: &Address, proposal_id: u64) {
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Proposal(proposal_id)))
-        .unwrap_or_else(|| panic!("proposal not found"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
     if proposal.status != UpgradeStatus::Pending {
-        panic!("proposal not pending");
+        panic_with_error!(e, ContractError::UpgradeProposalNotPending);
     }
 
     // Check if already approved
     for i in 0..proposal.approvals.len() {
         if proposal.approvals.get(i).unwrap() == *approver {
-            panic!("already approved");
+            panic_with_error!(e, ContractError::UpgradeProposalAlreadyApproved);
         }
     }
 
@@ -583,14 +583,14 @@ pub fn execute_upgrade(
             .storage()
             .instance()
             .get(&DataKey::Upgrade(UpgradeKey::Proposal(pid)))
-            .unwrap_or_else(|| panic!("proposal not found"));
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
 
         if proposal.status != UpgradeStatus::Approved {
-            panic!("proposal not approved");
+            panic_with_error!(e, ContractError::UpgradeProposalNotApproved);
         }
 
         if proposal.new_implementation != *new_implementation {
-            panic!("implementation does not match proposal");
+            panic_with_error!(e, ContractError::UpgradeImplementationMismatch);
         }
 
         // Mark proposal as executed
@@ -607,11 +607,11 @@ pub fn execute_upgrade(
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Implementation))
-        .unwrap_or_else(|| panic!("no current implementation"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ImplementationNotSet));
 
     // Validate new implementation (basic compatibility check)
     if *new_implementation == current_impl {
-        panic!("same implementation");
+        panic_with_error!(e, ContractError::SameImplementation);
     }
 
     // Replay guard check: Ensure this new implementation hash hasn't been executed before
@@ -626,6 +626,7 @@ pub fn execute_upgrade(
         .unwrap_or(false)
     {
         panic_with_error!(e, credence_errors::ContractError::ProposalAlreadyExecuted);
+        panic_with_error!(e, ContractError::ProposalAlreadyExecuted);
     }
 
     // Record upgrade in history
@@ -672,7 +673,7 @@ pub fn get_implementation(e: &Env) -> Address {
     e.storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Implementation))
-        .unwrap_or_else(|| panic!("no implementation set"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ImplementationNotSet))
 }
 
 /// Get upgrade authorization info for an address
@@ -702,7 +703,7 @@ pub fn get_upgrade_proposal(e: &Env, proposal_id: u64) -> UpgradeProposal {
     e.storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Proposal(proposal_id)))
-        .unwrap_or_else(|| panic!("proposal not found"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound))
 }
 
 /// Get all authorized upgraders
@@ -784,7 +785,7 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
     let expiry: u64 = 604_800; // 7 days
 
     if now < pending.proposed_at + timelock {
-        panic!("timelock not elapsed");
+        panic_with_error!(e, ContractError::TimelockNotReady);
     }
 
     if now > pending.proposed_at + expiry {

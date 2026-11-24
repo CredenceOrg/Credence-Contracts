@@ -636,6 +636,59 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     InvalidRecipient = 244,
+    /// Caller holds no upgrade authorization and may not propose an upgrade.
+    /// Replaces: panic!("not authorized to propose upgrade")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeNotAuthorized = 240,
+
+    /// The caller's upgrade authorization exists but has been deactivated.
+    /// Replaces: panic!("authorization not active")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeAuthNotActive = 241,
+
+    /// The caller's upgrade authorization has passed its expiry timestamp.
+    /// Replaces: panic!("authorization expired")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeAuthExpired = 242,
+
+    /// The upgrade proposal is not in `Pending` status.
+    /// Replaces: panic!("proposal not pending")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeProposalNotPending = 243,
+
+    /// The approver has already approved this upgrade proposal.
+    /// Replaces: panic!("already approved")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeProposalAlreadyApproved = 244,
+
+    /// The upgrade proposal has not reached `Approved` status.
+    /// Replaces: panic!("proposal not approved")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeProposalNotApproved = 245,
+
+    /// The implementation passed to execute does not match the proposal.
+    /// Replaces: panic!("implementation does not match proposal")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeImplementationMismatch = 246,
+
+    /// No current implementation address is recorded for the contract.
+    /// Replaces: panic!("no implementation set") and panic!("no current implementation")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ImplementationNotSet = 247,
+
+    /// The new implementation equals the current implementation.
+    /// Replaces: panic!("same implementation")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SameImplementation = 248,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -1122,6 +1175,15 @@ impl ErrorExt for ContractError {
             | ContractError::BondDurationTooShort
             | ContractError::BondDurationTooLong
             | ContractError::InvalidRecipient => ErrorCategory::Bond,
+            | ContractError::UpgradeNotAuthorized
+            | ContractError::UpgradeAuthNotActive
+            | ContractError::UpgradeAuthExpired
+            | ContractError::UpgradeProposalNotPending
+            | ContractError::UpgradeProposalAlreadyApproved
+            | ContractError::UpgradeProposalNotApproved
+            | ContractError::UpgradeImplementationMismatch
+            | ContractError::ImplementationNotSet
+            | ContractError::SameImplementation => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1374,6 +1436,15 @@ impl ErrorExt for ContractError {
             ContractError::InvalidRecipient => {
                 "Recipient address is the contract itself; self-transfers are rejected"
             }
+            ContractError::UpgradeNotAuthorized => "Caller is not authorized to propose upgrades",
+            ContractError::UpgradeAuthNotActive => "Upgrade authorization is not active",
+            ContractError::UpgradeAuthExpired => "Upgrade authorization has expired",
+            ContractError::UpgradeProposalNotPending => "Upgrade proposal is not pending",
+            ContractError::UpgradeProposalAlreadyApproved => "Approver has already approved this upgrade proposal",
+            ContractError::UpgradeProposalNotApproved => "Upgrade proposal has not been approved",
+            ContractError::UpgradeImplementationMismatch => "Implementation does not match the upgrade proposal",
+            ContractError::ImplementationNotSet => "No implementation address has been set",
+            ContractError::SameImplementation => "New implementation is the same as the current implementation",
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
             }
@@ -1609,6 +1680,19 @@ impl ErrorExt for ContractError {
             ContractError::ClaimAlreadyProcessed
             | ContractError::ClaimExpired
             | ContractError::ReentrancyDetected => false, // terminal state or SECURITY HALT
+            | ContractError::UpgradeProposalNotApproved  // wait for approvals then retry
+            | ContractError::UpgradeImplementationMismatch  // resubmit with the proposed implementation
+            | ContractError::SameImplementation  // supply a different implementation
+            => true,
+
+            // FATAL Bond: caller cannot directly fix any of these.
+            ContractError::ReentrancyDetected => false,       // SECURITY HALT: investigate, do not retry
+            ContractError::UpgradeNotAuthorized => false, // admin must grant upgrade authorization
+            ContractError::UpgradeAuthNotActive => false, // admin must reactivate authorization
+            ContractError::UpgradeAuthExpired => false, // admin must renew authorization
+            ContractError::UpgradeProposalNotPending => false, // proposal already left Pending
+            ContractError::UpgradeProposalAlreadyApproved => false, // approval already recorded
+            ContractError::ImplementationNotSet => false, // implementation must be initialized first
             ContractError::InvariantViolation => false,        // post-write drift detection; code bug
             ContractError::StorageCapReached => false,         // system capacity; only operator prune fixes it => false, // state-epoch mismatch; retry from fresh scan
 
