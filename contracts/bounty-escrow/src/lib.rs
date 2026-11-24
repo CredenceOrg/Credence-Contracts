@@ -41,6 +41,15 @@ pub enum DataKey {
     NextId,
     EscrowIndex,
     Escrow(u64),
+    // pause‑governance keys (mirrored from credence_registry)
+    Paused,
+    PauseSigner(Address),
+    PauseSignerCount,
+    PauseThreshold,
+    PauseProposalCounter,
+    PauseProposal(u32),
+    PauseApproval(u32, Address),
+    PauseApprovalCount(u32),
 }
 
 #[contracttype]
