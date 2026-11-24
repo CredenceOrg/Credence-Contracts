@@ -49,7 +49,7 @@ error code instead of an opaque transaction failure.
 | 101 | `NotBondOwner` | ✓ | Caller is not the bond owner |
 | 102 | `UnauthorizedAttester` | ✓ | Caller is not an authorized attester |
 | 103 | `NotOriginalAttester` | ✓ | Only the original attester can revoke |
-| 104 | `NotSigner` | ✓ | Caller is not a registered multi-sig signer |
+| 104 | `NotSigner` | ✓ | Caller is not an authorized multi-sig pause or treasury signer |
 | 105 | `UnauthorizedDepositor` | ✓ | Caller is neither admin nor authorized depositor |
 | 106 | `ContractPaused` | ✓ | Contract is paused; state-mutating operations disallowed |
 | 107 | `InvalidPauseAction` | ✓ | Pause action value is invalid |
@@ -123,6 +123,19 @@ error code instead of an opaque transaction failure.
 | 237 | `CooldownRequestNotFound` | ✓ | No cooldown request exists for this bond |
 | 238 | `CooldownPeriodNotElapsed` | ✓ | The cooldown period has not elapsed yet |
 | 239 | `BytesTooLarge` | ✓ | Caller-supplied `Bytes` input exceeds the accepted length |
+| 240 | `NegativeAmount` | ✓ | Token amount must be non-negative |
+| 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is smaller than the requested transfer amount |
+| 242 | `UnsupportedStellarNetwork` | ✓ | The configured Stellar network label is not supported |
+| 240 | `ClaimAlreadyProcessed` | ✗ | Claim has already been processed and cannot be paid again |
+| 241 | `ClaimExpired` | ✗ | Claim's expiry time has passed |
+| 242 | `ClaimNotFound` | ✓ | No pending claim exists for the given user and claim ID |
+| 243 | `NoPendingClaims` | ✓ | User has no pending claims to process |
+| 244 | `NoValidClaimsToProcess` | ✓ | No pending claims match the processing request |
+| 240 | `BondAmountBelowMinimum` | ✓ | Bond amount is below the minimum required normalized bound |
+| 241 | `BondAmountExceedsMaximum` | ✓ | Bond amount exceeds the maximum allowed normalized bound |
+| 242 | `BondDurationTooShort` | ✓ | Bond duration is shorter than the minimum allowed (1 day) |
+| 243 | `BondDurationTooLong` | ✓ | Bond duration exceeds the maximum allowed (365 days) |
+| 244 | `InvalidRecipient` | ✓ | Recipient address is the contract itself; self-transfers are rejected |
 
 ### Attestation (300–399)
 
@@ -174,11 +187,11 @@ error code instead of an opaque transaction failure.
 | Code | Variant | Recoverable | Description |
 |------|---------|:-----------:|-------------|
 | 600 | `AmountMustBePositive` | ✓ | Amount must be strictly positive |
-| 601 | `ThresholdExceedsSigners` | ✓ | Threshold cannot exceed the current signer count |
+| 601 | `ThresholdExceedsSigners` | ✓ | Approval threshold cannot exceed the current signer count |
 | 602 | `InsufficientTreasuryBalance` | ✓ | Treasury balance is insufficient for withdrawal |
-| 603 | `ProposalNotFound` | ✓ | Withdrawal proposal not found |
+| 603 | `ProposalNotFound` | ✓ | Governance proposal not found |
 | 604 | `ProposalAlreadyExecuted` | ✓ | Proposal has already been executed |
-| 605 | `InsufficientApprovals` | ✓ | Not enough approvals to execute proposal |
+| 605 | `InsufficientApprovals` | ✓ | Not enough approvals to execute the proposal |
 | 606 | `InvalidFlashLoanCallback` | ✗ | Flashloan callback returned an invalid magic value |
 | 607 | `FlashLoanRepaymentFailed` | ✗ | Flashloan principal plus fee was not fully repaid |
 | 608 | `ProposalExpired` | ✓ | Withdrawal proposal has expired; create a new proposal |

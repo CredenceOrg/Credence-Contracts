@@ -11,10 +11,9 @@
 //! - legacy-default: `revoked_at = 0`, `scheme = 0` when fields absent (v1 entry)
 
 use super::*;
-use soroban_sdk::Env;
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
-    String,
+    Env, String,
 };
 
 fn setup() -> (Env, CredenceDelegationClient<'static>) {
@@ -234,13 +233,14 @@ fn test_scheme_defaults_to_zero_for_direct_delegate() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
 
-    let d = client.delegate(
+    client.delegate(
         &owner,
         &delegate,
         &DelegationType::Attestation,
         &credence_math::SECONDS_PER_DAY,
         &0_u64,
     );
+    let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
     assert_eq!(d.scheme, 0);
 
     let summary = client.get_delegation_summary(&owner, &delegate, &DelegationType::Attestation);
@@ -264,13 +264,14 @@ fn test_scheme_stored_from_payload_scheme_field() {
         0,
         1,
     );
-    let d = client.execute_delegated_delegate(
+    client.execute_delegated_delegate(
         &owner,
         &delegate,
         &DelegationType::Management,
         &credence_math::SECONDS_PER_DAY,
         &payload,
     );
+    let d = client.get_delegation(&owner, &delegate, &DelegationType::Management);
     assert_eq!(d.scheme, 1);
 
     let summary = client.get_delegation_summary(&owner, &delegate, &DelegationType::Management);
@@ -293,13 +294,14 @@ fn test_scheme_zero_via_payload() {
         0,
         0,
     );
-    let d = client.execute_delegated_delegate(
+    client.execute_delegated_delegate(
         &owner,
         &delegate,
         &DelegationType::Attestation,
         &credence_math::SECONDS_PER_DAY,
         &payload,
     );
+    let d = client.get_delegation(&owner, &delegate, &DelegationType::Attestation);
     assert_eq!(d.scheme, 0);
 }
 

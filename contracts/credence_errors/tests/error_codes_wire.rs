@@ -40,6 +40,7 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::MaxPauseSignersExceeded as u32, 125);
     assert_eq!(ContractError::LeaseSignerMismatch as u32, 126);
     assert_eq!(ContractError::RoleRequired as u32, 127);
+    assert_eq!(ContractError::OperationExpired as u32, 128);
     assert_eq!(ContractError::UpgradeAuthorizationAlreadyExists as u32, 128);
     assert_eq!(ContractError::UpgradeAuthorizationNotFound as u32, 129);
     assert_eq!(ContractError::UpgradeSelfRoleNotAllowed as u32, 130);
@@ -87,6 +88,19 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
     assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
     assert_eq!(ContractError::BytesTooLarge as u32, 239);
+    assert_eq!(ContractError::NegativeAmount as u32, 240);
+    assert_eq!(ContractError::InsufficientTokenAllowance as u32, 241);
+    assert_eq!(ContractError::UnsupportedStellarNetwork as u32, 242);
+    assert_eq!(ContractError::ClaimAlreadyProcessed as u32, 240);
+    assert_eq!(ContractError::ClaimExpired as u32, 241);
+    assert_eq!(ContractError::ClaimNotFound as u32, 242);
+    assert_eq!(ContractError::NoPendingClaims as u32, 243);
+    assert_eq!(ContractError::NoValidClaimsToProcess as u32, 244);
+    assert_eq!(ContractError::BondAmountBelowMinimum as u32, 240);
+    assert_eq!(ContractError::BondAmountExceedsMaximum as u32, 241);
+    assert_eq!(ContractError::BondDurationTooShort as u32, 242);
+    assert_eq!(ContractError::BondDurationTooLong as u32, 243);
+    assert_eq!(ContractError::InvalidRecipient as u32, 244);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
