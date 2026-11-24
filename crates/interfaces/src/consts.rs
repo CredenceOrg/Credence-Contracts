@@ -1,4 +1,4 @@
-/// Shared constants for Credence Contracts
+//! Shared constants for Credence Contracts
 
 /// The storage key used to hold the administrative address.
 pub const ADMIN_KEY: &str = "admin";
@@ -54,7 +54,7 @@ pub const ERR_INVALID_INPUT: &str = "invalid_input";
 /// long keys before they touch persistent state. It is deterministic
 /// and has no side effects.
 pub fn is_valid_key_len(len: usize) -> bool {
-    len >= MIN_KEY_LEN && len <= MAX_KEY_LEN
+    (MIN_KEY_LEN..=MAX_KEY_LEN).contains(&len)
 }
 
 /// Returns true if the provided value length is within the accepted bounds.

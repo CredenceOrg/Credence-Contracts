@@ -127,6 +127,17 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    (
+        "ClaimAlreadyProcessed",
+        ContractError::ClaimAlreadyProcessed,
+    ), // 240
+    ("ClaimExpired", ContractError::ClaimExpired), // 241
+    ("ClaimNotFound", ContractError::ClaimNotFound), // 242
+    ("NoPendingClaims", ContractError::NoPendingClaims), // 243
+    (
+        "NoValidClaimsToProcess",
+        ContractError::NoValidClaimsToProcess,
+    ), // 244
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301
@@ -245,6 +256,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("Underflow", ContractError::Underflow),           // 701
     ("DivisionByZero", ContractError::DivisionByZero), // 702
     ("InvalidPercentSplit", ContractError::InvalidPercentSplit), // 703
+    ("InvalidPeriodCount", ContractError::InvalidPeriodCount), // 704
     // --- Escrow (800-899) ---
     ("EscrowNotFound", ContractError::EscrowNotFound), // 800
     ("EscrowNotReleasable", ContractError::EscrowNotReleasable), // 801

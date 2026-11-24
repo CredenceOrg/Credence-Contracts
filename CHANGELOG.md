@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dispute-resolution pause controls**: Added admin-configured pause administration with signer-threshold proposals; `create_dispute`, `resolve`, and `close` now reject writes while paused, while reads remain available (closes #1747).
 - **Ownership transfer failure boundaries**: Added deterministic coverage for suspended-candidate expiry and configuration-epoch overflow, asserting rejected proposals preserve ownership state, proposal metadata, epoch, and events (closes #1422).
 - **Admin configuration epoch**: Added a monotonic `ConfigEpoch` to the Admin contract that advances exactly once per committed privileged mutation (admin role changes, suspension, ownership transfer, pause configuration, pause state transitions, and pause-proposal approvals). Exposes `get_config_epoch()` so clients can detect concurrent conflicts and retry; rejected, stale, repeated, and failed operations never advance the epoch and leave no partial state. Documented in `docs/CONFIG_EPOCH.md` and covered by `test_concurrency_race_safety.rs` (closes #1297).
 - **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
@@ -25,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gas benchmark notes**: Documented hot-path contract call gas profiles, benchmark methodology, and optimization patterns in `docs/gas-benchmark-notes.md` (closes #1057).
 
 ### Fixed
+
+- **Credence bond claim errors**: Replaced bare claim panics with typed contract errors, reusing `AmountMustBePositive` and appending wire-stable claim error codes 240–244. Added typed-error regression coverage and updated the error catalogue (closes #1700).
 
 - **Admin compilation**: Moved the private pause configuration type out of the contract implementation, removed a duplicate address validator, restored the encoded admin epoch tests as Rust source, and repaired test API usage. Routed pause execution tracing through SDK debug logs to preserve the governance-event schema and avoid invalid diagnostic symbols, and preserved the overflow error for the maximum proposal ID. Added a generated-client regression covering all seven pause entry points (closes #1602).
 

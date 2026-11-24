@@ -16,11 +16,14 @@ The security scanning pipeline runs automatically on every push and pull request
 
 The pipeline will **FAIL** on:
 - Dependency vulnerabilities or audit warnings reported by `cargo audit --deny warnings`
-- Security lint violations (clippy with `-D warnings`)
+
+> **Note:** the clippy security pass is currently **report-only** and does not
+> fail the pipeline. See [Current status: report-only](#current-status-report-only).
 
 ### Warning Conditions
 
 The pipeline will **PASS WITH WARNINGS** on:
+- Clippy security lint findings (report-only, uploaded as the `clippy-security-report` artifact)
 - Unsafe code detected in contracts (informational only)
 
 ### Pull Request Comments
@@ -74,19 +77,11 @@ cargo audit --deny warnings
 Run static analysis with security-focused lints:
 
 ```bash
-# Run the same checks as CI
-cargo clippy --all-targets -- \
-  -W clippy::arithmetic_side_effects \
-  -W clippy::unwrap_used \
-  -W clippy::expect_used \
-  -W clippy::panic \
-  -W clippy::todo \
-  -W clippy::unimplemented \
-  -W clippy::indexing_slicing \
-  -W clippy::cast_possible_truncation \
-  -W clippy::cast_sign_loss \
-  -D warnings
+# Run the same checks as CI (report-only: warnings are printed, not fatal)
+cargo clippy --all-targets --message-format=json --   -W clippy::arithmetic_side_effects   -W clippy::unwrap_used   -W clippy::expect_used   -W clippy::panic   -W clippy::todo   -W clippy::unimplemented   -W clippy::indexing_slicing   -W clippy::cast_possible_truncation   -W clippy::cast_sign_loss   > clippy-output.json
 ```
+
+Drop `--message-format=json` (and the redirect) for human-readable output.
 
 **What it checks:**
 - Integer overflow/underflow risks
@@ -94,6 +89,68 @@ cargo clippy --all-targets -- \
 - Unsafe type casting
 - Array indexing without bounds checks
 - Incomplete code markers (todo!, unimplemented!)
+
+#### Current status: report-only
+
+The `Static Analysis (Clippy Security Lints)` job in
+`.github/workflows/security.yml` is currently **report-only**:
+
+- `-D warnings` has been removed (marked `TODO(drips-wave)` in the workflow)
+  because the workspace has many pre-existing clippy errors. Enforcing it would
+  fail every pull request regardless of what the PR changes.
+- All lints below run at **warn** level (`-W`), not deny level.
+- Output is written with `--message-format=json` to `clippy-output.json`. If
+  clippy exits non-zero, the step prints the output and continues; **the step
+  does not fail the build**.
+- A follow-up step counts errors and warnings into `clippy-summary.txt` and
+  renders `clippy-report.html`. All three files are uploaded as the
+  `clippy-security-report` artifact (30-day retention).
+
+Reviewers should therefore **not** read a green security workflow as "no clippy
+findings". Download the `clippy-security-report` artifact to see them.
+
+Lint set (must match `.github/workflows/security.yml`):
+
+| Lint | Level |
+|------|-------|
+| `clippy::arithmetic_side_effects` | warn |
+| `clippy::unwrap_used` | warn |
+| `clippy::expect_used` | warn |
+| `clippy::panic` | warn |
+| `clippy::todo` | warn |
+| `clippy::unimplemented` | warn |
+| `clippy::indexing_slicing` | warn |
+| `clippy::cast_possible_truncation` | warn |
+| `clippy::cast_sign_loss` | warn |
+
+#### Path back to enforcement
+
+`-D warnings` can be restored once every workspace crate is clippy-clean.
+Progress is tracked per crate:
+
+- [ ] `timelock` (#1686)
+- [ ] `credence_arbitration` (#1682)
+- [ ] `credence_multisig`: duplicate module declaration (#1687)
+- [ ] `credence_treasury` (#1688)
+- [ ] `credence_registry` (#1689)
+- [ ] `templates` (#1690)
+- [ ] `credence_math` (#1691)
+- [ ] `interfaces` (#1692)
+- [ ] `credence_errors` (#1693)
+- [ ] `bounty-escrow` (#1694)
+- [ ] `fixed_duration_bond` (#1695)
+- [ ] `credence_delegation` (#1696)
+- [ ] `admin` (#1697)
+- [ ] `credence_bond` (#1698)
+- [ ] `credence_admin_cli` (#1699)
+- [ ] Optional: summarise clippy JSON by crate and lint to track progress (#1745)
+
+Once all crates are clean:
+
+1. Re-add `-D warnings` to the clippy step in `.github/workflows/security.yml`
+   and remove the `|| { ...report-only... }` fallback and the `TODO(drips-wave)` comment.
+2. Update this section and the [Failure Conditions](#failure-conditions) to say
+   clippy violations fail the pipeline again.
 
 ### cargo-geiger: Unsafe Code Detection
 
@@ -350,7 +407,10 @@ new vulnerabilities.
 
 ### Clippy Thresholds
 
-Current configuration uses `-D warnings` which treats all warnings as errors.
+Current configuration is **report-only**: lints run at warn level (`-W`) and
+`-D warnings` is disabled, so findings do not fail the build (see
+[Current status: report-only](#current-status-report-only)). When enforcement is
+restored, `-D warnings` will treat every warning as an error.
 
 To allow specific lints:
 

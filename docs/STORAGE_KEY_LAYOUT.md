@@ -76,7 +76,7 @@ TTL: `STORAGE_TTL_EXTEND_TO = 31_536_000` ledgers, bumped at half-life via `bump
 
 ### arbitration
 
-Single enum `DataKey` (`contracts/arbitration/src/lib.rs`), all **instance** storage.
+Single enum `DataKey` (`contracts/arbitration/src/lib.rs`), used across instance and persistent storage.
 
 | Variant | Used for |
 |---|---|
@@ -91,8 +91,12 @@ Single enum `DataKey` (`contracts/arbitration/src/lib.rs`), all **instance** sto
 | `ArbitratorRegistry` | `Vec<Address>` of all registered arbitrators |
 | `MinTotalWeight` / `MinVoters` | Quorum configuration |
 | `ActiveDispute(Address)` | Tracks a creator's in-flight dispute (one-at-a-time guard) |
+| `CreatorDispute(Address, u32)` | Persistent dispute ID at a creator's history index |
+| `CreatorDisputeCount(Address)` | Persistent number of indexed disputes for a creator |
 
-TTL: same `31_536_000` / half-life pattern as `admin`.
+Instance TTL: same `31_536_000` / half-life pattern as `admin`. Creator dispute
+index slots and counts are persistent with a `3_110_400`-ledger target TTL,
+extended at half-life when written or read.
 
 ### credence_bond
 

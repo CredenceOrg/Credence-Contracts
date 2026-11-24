@@ -77,9 +77,13 @@ pub enum DataKey {
     MinTotalWeight,
     MinVoters,
     ActiveDispute(Address),
+    CreatorDispute(Address, u32),
+    CreatorDisputeCount(Address),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400;
+const PERSISTENT_TTL_THRESHOLD: u32 = PERSISTENT_TTL_EXTEND_TO / 2;
 
 fn bump_instance_ttl(e: &Env) {
     e.storage()
@@ -281,6 +285,33 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::ActiveDispute(creator.clone()), &id);
+
+        let creator_dispute_count_key = DataKey::CreatorDisputeCount(creator.clone());
+        let creator_dispute_count: u32 = e
+            .storage()
+            .persistent()
+            .get(&creator_dispute_count_key)
+            .unwrap_or(0);
+        let next_creator_dispute_count = creator_dispute_count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let creator_dispute_key = DataKey::CreatorDispute(creator.clone(), creator_dispute_count);
+        e.storage()
+            .persistent()
+            .set(&creator_dispute_key, &id);
+        e.storage().persistent().extend_ttl(
+            &creator_dispute_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+        e.storage()
+            .persistent()
+            .set(&creator_dispute_count_key, &next_creator_dispute_count);
+        e.storage().persistent().extend_ttl(
+            &creator_dispute_count_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
 
         // Lifecycle events: created + status transition
         e.events()
@@ -773,6 +804,66 @@ impl CredenceArbitration {
         Ok((page, next_cursor))
     }
 
+    /// Get a paginated list of dispute IDs created by an address.
+    ///
+    /// The cursor is a 0-based index in creation order. Each page reads at most
+    /// 200 indexed entries; a zero limit uses the default of 50.
+    ///
+    /// Returns [`ArbitrationError::CursorOutOfRange`] when `cursor` is greater
+    /// than or equal to the creator's dispute count.
+    pub fn get_disputes_by_creator(
+        e: Env,
+        creator: Address,
+        cursor: u32,
+        limit: u32,
+    ) -> Result<(Vec<u64>, Option<u32>), ArbitrationError> {
+        bump_instance_ttl(&e);
+        let count_key = DataKey::CreatorDisputeCount(creator.clone());
+        let dispute_count: u32 = if let Some(count) = e.storage().persistent().get(&count_key) {
+            e.storage().persistent().extend_ttl(
+                &count_key,
+                PERSISTENT_TTL_THRESHOLD,
+                PERSISTENT_TTL_EXTEND_TO,
+            );
+            count
+        } else {
+            0
+        };
+
+        if cursor >= dispute_count {
+            return Err(ArbitrationError::CursorOutOfRange);
+        }
+
+        const MAX_ITER_HARD_CAP: u32 = 200;
+        const DEFAULT_MAX_ITER: u32 = 50;
+
+        let effective_limit = if limit == 0 {
+            DEFAULT_MAX_ITER
+        } else {
+            limit.min(MAX_ITER_HARD_CAP)
+        };
+        let end = cursor.saturating_add(effective_limit).min(dispute_count);
+        let mut page = Vec::new(&e);
+        for index in cursor..end {
+            let key = DataKey::CreatorDispute(creator.clone(), index);
+            if let Some(dispute_id) = e.storage().persistent().get::<_, u64>(&key) {
+                e.storage().persistent().extend_ttl(
+                    &key,
+                    PERSISTENT_TTL_THRESHOLD,
+                    PERSISTENT_TTL_EXTEND_TO,
+                );
+                page.push_back(dispute_id);
+            }
+        }
+
+        let next_cursor = if end >= dispute_count {
+            None
+        } else {
+            Some(end)
+        };
+        Ok((page, next_cursor))
+    }
+
     pub fn pause(e: Env, caller: Address) -> Option<u64> {
         bump_instance_ttl(&e);
         pausable::pause(&e, &caller)
@@ -986,3 +1077,6 @@ mod test_archive_reopen;
 
 #[cfg(test)]
 mod test_events_schema;
+
+#[cfg(test)]
+mod test_creator_disputes;

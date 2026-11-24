@@ -6,4 +6,5 @@ pub enum DisputeError {
     DisputeNotFound = 1,
     AlreadyClosed = 2,
     Unauthorized = 3,
+    Paused = 4,
 }
