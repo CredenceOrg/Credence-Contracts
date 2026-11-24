@@ -7,6 +7,7 @@ This directory contains all design docs, API references, and operational guides 
 | Document | Audience | Summary |
 |---|---|---|
 | [architecture.md](architecture.md) | Contributor / Operator | System-wide component diagram, data flows, trust boundaries |
+| [cross-contract-call-graph.md](cross-contract-call-graph.md) | Contributor / Integrator | Cross-contract call paths, authorization checkpoints, and the end-to-end lifecycle regression flow |
 
 ## Per-crate entrypoint guides
 

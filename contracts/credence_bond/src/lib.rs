@@ -217,6 +217,7 @@ mod test_attestation_dedup_cap;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_invariants;
 use credence_errors::ContractError;
+use interfaces::consts::IFACE_CREDENCE_BOND_V1;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
     Symbol, Val, Vec,
@@ -556,6 +557,15 @@ impl CredenceBond {
     /// Return the contract version.
     pub fn version(e: Env) -> String {
         String::from_str(&e, credence_errors::VERSION)
+    }
+
+    /// Report support for the canonical bond interface used by the registry.
+    ///
+    /// The registry calls this during strict `register` before it maps an
+    /// identity to a bond contract. Keeping the identifier in the shared
+    /// `interfaces` crate ensures both sides agree on the wire value.
+    pub fn supports_interface(_e: Env, interface_id: u32) -> bool {
+        interface_id == IFACE_CREDENCE_BOND_V1
     }
 
     /// Initialize the contract with admin authority.

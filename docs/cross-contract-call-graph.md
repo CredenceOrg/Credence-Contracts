@@ -153,6 +153,30 @@ sequenceDiagram
 
 ---
 
+## End-to-End Lifecycle Regression Test
+
+`tests/e2e_protocol_lifecycle.rs` drives registry, bond, arbitration, and treasury in a single `Env` with a real Stellar Asset Contract token and deterministic ledger progression. It is the executable companion to the call edges above and to the `try_*` versus panicking-call guidance in [CROSS_CONTRACT.md](CROSS_CONTRACT.md).
+
+The test scenario is:
+
+1. Initialize every contract and register the identity with the registry using strict interface verification (`IFACE_CREDENCE_BOND_V1`).
+2. Create a bond funded by the identity's real token balance.
+3. Open an arbitration dispute, vote for the configured slash outcome, advance past the voting window, and resolve it.
+4. Have a test orchestrator enforce the ruling, slash the bond to its own address, and route the slashed amount into treasury as `FundSource::SlashedFunds`.
+5. Assert token conservation across identity, bond, orchestrator, and treasury at every hop.
+
+The orchestrator stands in for the off-chain settlement service: arbitration records the outcome, and the configured outcome decides whether a slash is executed. A second test resolves with a different outcome and asserts that no slash or treasury deposit occurs.
+
+Soroban's test event buffer is scoped to the most recent top-level invocation, so event assertions are made immediately after the call that emits them. The test verifies `identity_registered`, `dispute_resolved`, `bond_slashed_v2`, and `treasury_deposit`.
+
+Run it with:
+
+```sh
+cargo test --test e2e_protocol_lifecycle --locked
+```
+
+---
+
 ## Authorization Matrix
 
 | Contract | Function | Caller / Auth | Nonce / Replay Check |

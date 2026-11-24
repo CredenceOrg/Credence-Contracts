@@ -1,3 +1,17 @@
+[package]
+name = "credence-contracts"
+version.workspace = true
+edition.workspace = true
+publish = false
+autobins = false
+autoexamples = false
+autobenches = false
+autotests = false
+
+[[test]]
+name = "e2e_protocol_lifecycle"
+path = "tests/e2e_protocol_lifecycle.rs"
+
 [workspace]
 resolver = "2"
 members = [
@@ -33,3 +47,10 @@ debug-assertions = false
 panic = "abort"
 codegen-units = 1
 lto = true
+
+[dev-dependencies]
+credence_arbitration = { path = "contracts/arbitration" }
+credence_bond = { path = "contracts/credence_bond", features = ["testutils"] }
+credence_registry = { path = "contracts/credence_registry" }
+credence_treasury = { path = "contracts/credence_treasury" }
+soroban-sdk = { version = "22.0", features = ["testutils"] }

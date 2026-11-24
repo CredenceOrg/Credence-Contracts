@@ -6,7 +6,8 @@
 
 use credence_errors::ContractError;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, Map, String, Symbol, Vec,
+    contract, contractimpl, contracttype, panic_with_error, symbol_short, Address, Env, Map,
+    String, Symbol, Vec,
 };
 
 /// Signature domain identifier for the CredenceArbitration contract.
@@ -296,9 +297,7 @@ impl CredenceArbitration {
             .checked_add(1)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let creator_dispute_key = DataKey::CreatorDispute(creator.clone(), creator_dispute_count);
-        e.storage()
-            .persistent()
-            .set(&creator_dispute_key, &id);
+        e.storage().persistent().set(&creator_dispute_key, &id);
         e.storage().persistent().extend_ttl(
             &creator_dispute_key,
             PERSISTENT_TTL_THRESHOLD,
@@ -355,16 +354,16 @@ impl CredenceArbitration {
             .ok_or(ArbitrationError::NotInitialized)?;
 
         let role = if caller == dispute.creator {
-            Symbol::short("creator")
+            symbol_short!("creator")
         } else if caller == admin {
-            Symbol::short("admin")
+            symbol_short!("admin")
         } else {
             return Err(ArbitrationError::NotAuthorized);
         };
 
         // Creator may only cancel before any votes are cast and within the voting window.
         // Admin retains a moderation override to cancel a Voting dispute at any time.
-        if role == Symbol::short("creator") {
+        if role == symbol_short!("creator") {
             let voter_count: u32 = e
                 .storage()
                 .instance()

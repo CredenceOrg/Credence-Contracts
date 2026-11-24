@@ -63,9 +63,9 @@ fn bump_instance_ttl(e: &Env) {
         .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
 }
 
-fn bump_persistent_ttl(e: &Env, key: DataKey) {
+fn bump_persistent_ttl(e: &Env, key: &DataKey) {
     e.storage().persistent().extend_ttl(
-        &key,
+        key,
         CALL_BOUND_OPERATION_TTL / 2,
         CALL_BOUND_OPERATION_TTL,
     );
@@ -332,7 +332,7 @@ impl TimelockContract {
         // Store in persistent storage with TTL extension
         let op_key = DataKey::CallBoundOperation(op_id);
         e.storage().persistent().set(&op_key, &op);
-        bump_persistent_ttl(&e, op_key);
+        bump_persistent_ttl(&e, &op_key);
 
         // Also store in instance storage for backward compatibility with get_operation
         let op_wrapper = QueuedOperation {
@@ -488,7 +488,7 @@ impl TimelockContract {
 
         op.status = OperationStatus::Executed;
         e.storage().persistent().set(&key, &op);
-        bump_persistent_ttl(e, key);
+        bump_persistent_ttl(e, &key);
 
         // Also update the instance storage wrapper
         let op_wrapper = QueuedOperation {
@@ -545,7 +545,7 @@ impl TimelockContract {
 
             op.status = OperationStatus::Cancelled;
             e.storage().persistent().set(&call_bound_key, &op);
-            bump_persistent_ttl(&e, call_bound_key);
+            bump_persistent_ttl(&e, &call_bound_key);
 
             // Update instance storage wrapper
             let op_wrapper = QueuedOperation {
@@ -598,7 +598,7 @@ impl TimelockContract {
         let key = DataKey::CallBoundOperation(op_id);
         let op: Option<CallBoundOperation> = e.storage().persistent().get(&key);
         if let Some(op) = op {
-            bump_persistent_ttl(&e, key);
+            bump_persistent_ttl(&e, &key);
             Some(CallSpec {
                 target: op.target,
                 func: op.func,
@@ -654,7 +654,7 @@ impl TimelockContract {
                 .persistent()
                 .get::<DataKey, QueuedOperation>(&key)
             {
-                bump_persistent_ttl(&e, key);
+                bump_persistent_ttl(&e, &key);
                 page.push_back(op);
             }
         }

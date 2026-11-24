@@ -36,7 +36,7 @@ use storage::{bump_instance_ttl, extend_persistent_ttl, DataKey};
 const SIGNATURE_DOMAIN: &str = "CredenceRegistry";
 
 /// Interface identifier expected from Credence bond contracts.
-pub const IFACE_CREDENCE_BOND_V1: u32 = 0x4342_5631;
+pub use interfaces::consts::IFACE_CREDENCE_BOND_V1;
 
 /// Maximum number of identities that can be returned in a single page
 /// This hard cap prevents unbounded ledger reads that could exceed Soroban's
