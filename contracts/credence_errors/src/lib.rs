@@ -138,10 +138,11 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     NotOriginalAttester = 103,
 
-    /// Caller is not a registered multi-sig signer.
+    /// Caller is not an authorized multi-sig pause or treasury signer.
     /// Replaces: panic!("only signer can propose withdrawal")
     ///           panic!("only signer can approve")
-    /// Contracts: treasury
+    ///           panic!("not pause signer")
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     NotSigner = 104,
 
@@ -159,7 +160,7 @@ pub enum ContractError {
 
     /// Pause proposal action value is invalid.
     /// Replaces: panic!("invalid pause action")
-    /// Contracts: registry, treasury
+    /// Contracts: bond, registry, treasury
     /// Wire-stable: do not renumber this error code.
     InvalidPauseAction = 107,
 
@@ -279,6 +280,40 @@ pub enum ContractError {
     /// Contracts: anywhere role-based `require_role` is enforced.
     /// Wire-stable: do not renumber this error code.
     RoleRequired = 127,
+
+    /// A queued timelock operation is past its configured execution grace period.
+    /// Contracts: timelock
+    /// Wire-stable: do not renumber this error code.
+    OperationExpired = 128,
+    /// Upgrade authorization already exists for the address.
+    /// Replaces: panic!("address already authorized")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeAuthorizationAlreadyExists = 128,
+
+    /// No upgrade authorization exists for the address.
+    /// Replaces: panic!("address not authorized")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeAuthorizationNotFound = 129,
+
+    /// An upgrade admin cannot grant themselves an equal or higher role.
+    /// Replaces: panic!("cannot grant equal or higher role to self")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UpgradeSelfRoleNotAllowed = 130,
+
+    /// The last active upgrade admin cannot be revoked.
+    /// Replaces: panic!("cannot revoke last upgrade admin")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    LastUpgradeAdmin = 131,
+
+    /// Caller is not the pending upgrade admin.
+    /// Replaces: panic!("not pending upgrade admin")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NotPendingUpgradeAdmin = 132,
 
     // --- Bond (200-299) ---
     /// No bond exists for the given address or key.
@@ -508,6 +543,99 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// A token amount was negative where a non-negative amount is required.
+    /// Replaces: panic!("amount must be non-negative")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NegativeAmount = 240,
+
+    /// The token allowance is smaller than the requested transfer amount.
+    /// Replaces: panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InsufficientTokenAllowance = 241,
+
+    /// The configured Stellar network label is not supported.
+    /// Replaces: panic!("unsupported stellar network")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UnsupportedStellarNetwork = 242,
+    /// A claim has already been processed and cannot be paid again.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ClaimAlreadyProcessed = 240,
+
+    /// A claim's expiry time has passed.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ClaimExpired = 241,
+
+    /// No pending claim exists for the given user and claim ID.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ClaimNotFound = 242,
+
+    /// The user has no pending claims to process.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NoPendingClaims = 243,
+
+    /// No pending claims match the processing request.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NoValidClaimsToProcess = 244,
+    /// Fee basis points value is outside the allowed bounds.
+    /// Replaces: panic!("fee_bps out of bounds")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidFeeBps = 240,
+
+    /// No slash record was found for the given identity and index.
+    /// Replaces: panic!("slash record not found")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SlashRecordNotFound = 241,
+
+    /// Slash is blocked because collateral was increased in the current ledger.
+    /// Replaces: panic!("{}", SLASH_BLOCKED_REASON)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SameLedgerSlashBlocked = 242,
+
+    /// Cooldown execution is blocked because collateral was increased in the current ledger.
+    /// Replaces: panic!("{}", COOLDOWN_BLOCKED_REASON)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SameLedgerCooldownBlocked = 243,
+    /// Bond amount is below the minimum required normalized bound.
+    /// Replaces: panic!("bond amount below minimum required: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondAmountBelowMinimum = 240,
+
+    /// Bond amount exceeds the maximum allowed normalized bound.
+    /// Replaces: panic!("bond amount exceeds maximum allowed: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondAmountExceedsMaximum = 241,
+
+    /// Bond duration is shorter than the minimum allowed (1 day).
+    /// Replaces: panic!("bond duration too short: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondDurationTooShort = 242,
+
+    /// Bond duration exceeds the maximum allowed (365 days).
+    /// Replaces: panic!("bond duration too long: ...")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondDurationTooLong = 243,
+
+    /// Recipient address is the contract itself; self-transfers are rejected.
+    /// Replaces: panic!("recipient cannot be the contract itself")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidRecipient = 244,
     /// Caller holds no upgrade authorization and may not propose an upgrade.
     /// Replaces: panic!("not authorized to propose upgrade")
     /// Contracts: bond
@@ -758,7 +886,7 @@ pub enum ContractError {
 
     /// Approval threshold cannot exceed the current number of signers.
     /// Replaces: panic!("threshold cannot exceed signer count")
-    /// Contracts: treasury
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     ThresholdExceedsSigners = 601,
 
@@ -768,9 +896,9 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InsufficientTreasuryBalance = 602,
 
-    /// Withdrawal proposal was not found for the given id.
+    /// Governance proposal was not found for the given id.
     /// Replaces: panic!("proposal not found")
-    /// Contracts: treasury
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     ProposalNotFound = 603,
 
@@ -782,7 +910,7 @@ pub enum ContractError {
 
     /// Proposal does not yet have enough approvals to execute.
     /// Replaces: panic!("insufficient approvals to execute")
-    /// Contracts: treasury
+    /// Contracts: bond, treasury
     /// Wire-stable: do not renumber this error code.
     InsufficientApprovals = 605,
 
@@ -966,6 +1094,7 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady
+            | ContractError::OperationExpired
             | ContractError::AdminSuspended
             | ContractError::BorrowFrozen
             | ContractError::NoPendingAdmin
@@ -982,7 +1111,12 @@ impl ErrorExt for ContractError {
             | ContractError::CrossContractCallerMismatch
             | ContractError::MigrationInProgress
             | ContractError::MaxPauseSignersExceeded
-            | ContractError::RoleRequired => ErrorCategory::Authorization,
+            | ContractError::RoleRequired
+            | ContractError::UpgradeAuthorizationAlreadyExists
+            | ContractError::UpgradeAuthorizationNotFound
+            | ContractError::UpgradeSelfRoleNotAllowed
+            | ContractError::LastUpgradeAdmin
+            | ContractError::NotPendingUpgradeAdmin => ErrorCategory::Authorization,
 
             ContractError::BondNotFound
             | ContractError::BondNotActive
@@ -1024,6 +1158,23 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
             | ContractError::BytesTooLarge
+            | ContractError::NegativeAmount
+            | ContractError::InsufficientTokenAllowance
+            | ContractError::UnsupportedStellarNetwork => ErrorCategory::Bond,
+            | ContractError::ClaimAlreadyProcessed
+            | ContractError::ClaimExpired
+            | ContractError::ClaimNotFound
+            | ContractError::NoPendingClaims
+            | ContractError::NoValidClaimsToProcess => ErrorCategory::Bond,
+            | ContractError::InvalidFeeBps
+            | ContractError::SlashRecordNotFound
+            | ContractError::SameLedgerSlashBlocked
+            | ContractError::SameLedgerCooldownBlocked => ErrorCategory::Bond,
+            | ContractError::BondAmountBelowMinimum
+            | ContractError::BondAmountExceedsMaximum
+            | ContractError::BondDurationTooShort
+            | ContractError::BondDurationTooLong
+            | ContractError::InvalidRecipient => ErrorCategory::Bond,
             | ContractError::UpgradeNotAuthorized
             | ContractError::UpgradeAuthNotActive
             | ContractError::UpgradeAuthExpired
@@ -1103,7 +1254,9 @@ impl ErrorExt for ContractError {
             ContractError::NotBondOwner => "Caller is not the bond owner",
             ContractError::UnauthorizedAttester => "Caller is not an authorized attester",
             ContractError::NotOriginalAttester => "Only the original attester can revoke",
-            ContractError::NotSigner => "Caller is not a registered multi-sig signer",
+            ContractError::NotSigner => {
+                "Caller is not an authorized multi-sig pause or treasury signer"
+            }
             ContractError::UnauthorizedDepositor => {
                 "Caller is neither admin nor an authorized depositor"
             }
@@ -1114,6 +1267,7 @@ impl ErrorExt for ContractError {
             ContractError::InvalidAdminAddress => "Proposed admin is the zero or identity address",
             ContractError::AdminUnchanged => "Proposed admin is the same as the current admin",
             ContractError::TimelockNotReady => "Timelock delay has not yet elapsed",
+            ContractError::OperationExpired => "Queued operation execution grace period has expired",
             ContractError::AdminSuspended => "Admin is currently suspended",
             ContractError::BorrowFrozen => {
                 "Borrows are frozen: new bond creation and top-ups are not allowed"
@@ -1149,6 +1303,19 @@ impl ErrorExt for ContractError {
             }
             ContractError::LeaseSignerMismatch => "Lease signer must match calling actor",
             ContractError::RoleRequired => "Caller does not hold the required role",
+            ContractError::UpgradeAuthorizationAlreadyExists => {
+                "Upgrade authorization already exists for the address"
+            }
+            ContractError::UpgradeAuthorizationNotFound => {
+                "No upgrade authorization exists for the address"
+            }
+            ContractError::UpgradeSelfRoleNotAllowed => {
+                "Upgrade admin cannot grant themselves an equal or higher role"
+            }
+            ContractError::LastUpgradeAdmin => "The last upgrade admin cannot be revoked",
+            ContractError::NotPendingUpgradeAdmin => {
+                "Caller is not the pending upgrade admin"
+            }
             ContractError::StaleAdminEpoch => {
                 "Admin pause proposal carries a stale epoch reference"
             }
@@ -1235,6 +1402,40 @@ impl ErrorExt for ContractError {
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
             }
+            ContractError::NegativeAmount => "Token amount must be non-negative",
+            ContractError::InsufficientTokenAllowance => {
+                "Token allowance is smaller than the requested transfer amount"
+            }
+            ContractError::UnsupportedStellarNetwork => {
+                "The configured Stellar network label is not supported"
+            ContractError::ClaimAlreadyProcessed => "Claim has already been processed",
+            ContractError::ClaimExpired => "Claim has expired",
+            ContractError::ClaimNotFound => "No pending claim exists for the given user and ID",
+            ContractError::NoPendingClaims => "User has no pending claims to process",
+            ContractError::NoValidClaimsToProcess => {
+                "No pending claims match the processing request"
+            ContractError::InvalidFeeBps => "Fee basis points value is out of bounds",
+            ContractError::SlashRecordNotFound => "No slash record found for the given index",
+            ContractError::SameLedgerSlashBlocked => {
+                "Slash blocked: collateral increased in this ledger"
+            }
+            ContractError::SameLedgerCooldownBlocked => {
+                "Cooldown execution blocked: collateral increased in this ledger"
+            ContractError::BondAmountBelowMinimum => {
+                "Bond amount is below the minimum required normalized bound"
+            }
+            ContractError::BondAmountExceedsMaximum => {
+                "Bond amount exceeds the maximum allowed normalized bound"
+            }
+            ContractError::BondDurationTooShort => {
+                "Bond duration is shorter than the minimum allowed (1 day)"
+            }
+            ContractError::BondDurationTooLong => {
+                "Bond duration exceeds the maximum allowed (365 days)"
+            }
+            ContractError::InvalidRecipient => {
+                "Recipient address is the contract itself; self-transfers are rejected"
+            }
             ContractError::UpgradeNotAuthorized => "Caller is not authorized to propose upgrades",
             ContractError::UpgradeAuthNotActive => "Upgrade authorization is not active",
             ContractError::UpgradeAuthExpired => "Upgrade authorization has expired",
@@ -1311,7 +1512,7 @@ impl ErrorExt for ContractError {
             ContractError::InsufficientTreasuryBalance => {
                 "Treasury balance is insufficient for withdrawal"
             }
-            ContractError::ProposalNotFound => "Withdrawal proposal not found",
+            ContractError::ProposalNotFound => "Governance proposal not found",
             ContractError::ProposalAlreadyExecuted => {
                 "Withdrawal proposal has already been executed"
             }
@@ -1391,12 +1592,18 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidAdminAddress
             | ContractError::AdminUnchanged
             | ContractError::TimelockNotReady         // wait for delay
+            | ContractError::OperationExpired         // cancel and queue a replacement
             | ContractError::AdminSuspended           // wait for suspension to lift
             | ContractError::BorrowFrozen             // wait for unfreeze
             | ContractError::NoPendingAdmin           // call begin_admin_transfer first
             | ContractError::RoleNotHeldAtLedger      // re-sign with a valid ledger timestamp
             | ContractError::EmergencyDrainNotPermitted
             | ContractError::RoleRequired
+            | ContractError::UpgradeAuthorizationAlreadyExists
+            | ContractError::UpgradeAuthorizationNotFound
+            | ContractError::UpgradeSelfRoleNotAllowed
+            | ContractError::LastUpgradeAdmin
+            | ContractError::NotPendingUpgradeAdmin
             | ContractError::TimestampInFuture
             | ContractError::LeaseScopeMismatch
             | ContractError::LeaseExpired
@@ -1452,6 +1659,27 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::NegativeAmount        // supply a non-negative amount
+            | ContractError::InsufficientTokenAllowance // approve a sufficient allowance
+            | ContractError::UnsupportedStellarNetwork // use mainnet or testnet
+            | ContractError::ClaimNotFound         // supply a claim ID pending for this user
+            | ContractError::NoPendingClaims       // create a claim before processing
+            | ContractError::NoValidClaimsToProcess // adjust the filter or pending claims
+            | ContractError::InvalidFeeBps         // supply fee_bps within allowed bounds
+            | ContractError::SlashRecordNotFound   // query an existing slash record index
+            | ContractError::SameLedgerSlashBlocked // retry in a subsequent ledger
+            | ContractError::SameLedgerCooldownBlocked // retry in a subsequent ledger
+            | ContractError::BondAmountBelowMinimum // raise the amount to the minimum
+            | ContractError::BondAmountExceedsMaximum // lower the amount to the maximum
+            | ContractError::BondDurationTooShort  // extend duration to at least 1 day
+            | ContractError::BondDurationTooLong   // shorten duration to at most 365 days
+            | ContractError::InvalidRecipient      // supply a non-self recipient
+            => true,
+
+            // FATAL Bond: caller cannot directly fix any of these.
+            ContractError::ClaimAlreadyProcessed
+            | ContractError::ClaimExpired
+            | ContractError::ReentrancyDetected => false, // terminal state or SECURITY HALT
             | ContractError::UpgradeProposalNotApproved  // wait for approvals then retry
             | ContractError::UpgradeImplementationMismatch  // resubmit with the proposed implementation
             | ContractError::SameImplementation  // supply a different implementation

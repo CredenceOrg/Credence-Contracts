@@ -32,15 +32,8 @@ fn future_ts(env: &Env, secs: u64) -> u64 {
 
 /// Advance the mock ledger timestamp by `secs`.
 fn advance(env: &Env, secs: u64) {
-    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
-        timestamp: env.ledger().timestamp() + secs,
-        protocol_version: 22,
-        sequence_number: 1,
-        network_id: [0; 32],
-        base_reserve: 10,
-        min_temp_entry_ttl: 16,
-        min_persistent_entry_ttl: 16,
-        max_entry_ttl: 3_000_000,
+    env.ledger().with_mut(|li| {
+        li.timestamp += secs;
     });
 }
 

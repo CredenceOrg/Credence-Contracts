@@ -249,14 +249,14 @@ pub fn grant_upgrade_auth(
         .instance()
         .has(&DataKey::Upgrade(UpgradeKey::Auth(address.clone())))
     {
-        panic!("address already authorized");
+        panic_with_error!(e, ContractError::UpgradeAuthorizationAlreadyExists);
     }
 
     // Prevent self-assignment of equal or higher role
     if admin == address {
         let admin_role = get_upgrade_role(e, admin);
         if admin_role >= role {
-            panic!("cannot grant equal or higher role to self");
+            panic_with_error!(e, ContractError::UpgradeSelfRoleNotAllowed);
         }
     }
 
@@ -310,7 +310,7 @@ pub fn revoke_upgrade_auth(e: &Env, admin: &Address, address: &Address) {
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Auth(address.clone())))
-        .unwrap_or_else(|| panic!("address not authorized"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::UpgradeAuthorizationNotFound));
 
     // Check if this is the last upgrade admin
     if auth.role == UpgradeRole::Upgrader {
@@ -321,7 +321,7 @@ pub fn revoke_upgrade_auth(e: &Env, admin: &Address, address: &Address) {
             .unwrap_or(Vec::new(e));
 
         if upgraders.len() <= 1 {
-            panic!("cannot revoke last upgrade admin");
+            panic_with_error!(e, ContractError::LastUpgradeAdmin);
         }
 
         // Remove from authorized upgraders list
@@ -390,7 +390,7 @@ pub fn get_upgrade_role(e: &Env, address: &Address) -> UpgradeRole {
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Auth(address.clone())))
-        .unwrap_or_else(|| panic!("address not authorized"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::UpgradeAuthorizationNotFound));
     auth.role
 }
 
@@ -407,10 +407,10 @@ pub fn require_upgrade_admin(e: &Env, caller: &Address) {
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Admin))
-        .unwrap_or_else(|| panic!("upgrade authorization not initialized"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
 
     if *caller != upgrade_admin {
-        panic!("not upgrade admin");
+        panic_with_error!(e, ContractError::NotAdmin);
     }
 }
 
@@ -425,7 +425,7 @@ pub fn require_upgrade_admin(e: &Env, caller: &Address) {
 /// * If caller's authorization has expired
 pub fn require_upgrade_auth(e: &Env, caller: &Address) {
     if !is_authorized_upgrader(e, caller) {
-        panic!("unauthorized upgrade");
+        panic_with_error!(e, ContractError::RoleRequired);
     }
 }
 
@@ -625,6 +625,7 @@ pub fn execute_upgrade(
         .get(&DataKey::ExecutedOp(op_hash.clone()))
         .unwrap_or(false)
     {
+        panic_with_error!(e, credence_errors::ContractError::ProposalAlreadyExecuted);
         panic_with_error!(e, ContractError::ProposalAlreadyExecuted);
     }
 
@@ -687,7 +688,7 @@ pub fn get_upgrade_auth(e: &Env, address: &Address) -> UpgradeAuthorization {
     e.storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Auth(address.clone())))
-        .unwrap_or_else(|| panic!("address not authorized"))
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::UpgradeAuthorizationNotFound))
 }
 
 /// Get an upgrade proposal
@@ -745,13 +746,13 @@ pub fn transfer_upgrade_admin(e: &Env, admin: &Address, new_admin: &Address) {
     require_upgrade_admin(e, admin);
 
     if admin == new_admin {
-        panic!("new admin must be different");
+        panic_with_error!(e, ContractError::AdminUnchanged);
     }
 
     // Zero-address check
     let zero_str = soroban_sdk::String::from_str(e, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
     if new_admin.to_string() == zero_str {
-        panic!("ZeroAddress");
+        panic_with_error!(e, ContractError::InvalidAdminAddress);
     }
 
     let pending = PendingAdminTransfer {
@@ -773,10 +774,10 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
-        .unwrap_or_else(|| panic!("no pending upgrade admin"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NoPendingAdmin));
 
     if *caller != pending.new_admin {
-        panic!("not pending upgrade admin");
+        panic_with_error!(e, ContractError::NotPendingUpgradeAdmin);
     }
 
     let now = e.ledger().timestamp();
@@ -788,14 +789,14 @@ pub fn accept_upgrade_admin(e: &Env, caller: &Address) {
     }
 
     if now > pending.proposed_at + expiry {
-        panic!("admin transfer proposal expired");
+        panic_with_error!(e, ContractError::ProposalExpired);
     }
 
     let old_admin: Address = e
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::Admin))
-        .unwrap_or_else(|| panic!("no upgrade admin"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
 
     // Update upgrade admin
     e.storage()
@@ -863,7 +864,7 @@ pub fn cancel_upgrade_admin_transfer(e: &Env, admin: &Address) {
         .storage()
         .instance()
         .get(&DataKey::Upgrade(UpgradeKey::PndgUpgrAdmin))
-        .unwrap_or_else(|| panic!("no pending upgrade admin"));
+        .unwrap_or_else(|| panic_with_error!(e, ContractError::NoPendingAdmin));
 
     e.storage()
         .instance()

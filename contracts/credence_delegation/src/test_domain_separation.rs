@@ -1048,10 +1048,10 @@ fn require_matching_contract_id_rejects_zero_address() {
     let owner = Address::generate(&e);
     let delegate = Address::generate(&e);
     let expiry = e.ledger().timestamp() + 86_400;
-    let zero_contract = Address::from_str(
+    let zero_contract = Address::from_string(&String::from_str(
         &e,
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
-    );
+    ));
 
     let payload = make_payload(
         &e,

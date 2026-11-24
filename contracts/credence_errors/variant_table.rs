@@ -28,6 +28,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "InsufficientSignatures",
         ContractError::InsufficientSignatures,
     ), // 108
+    ("ZeroBytes32", ContractError::ZeroBytes32),   // 109
     ("InvalidAdminAddress", ContractError::InvalidAdminAddress), // 110
     ("AdminUnchanged", ContractError::AdminUnchanged), // 111
     ("TimelockNotReady", ContractError::TimelockNotReady), // 112
@@ -51,14 +52,33 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "CrossContractCallerMismatch",
         ContractError::CrossContractCallerMismatch,
     ), // 123
+    ("MigrationInProgress", ContractError::MigrationInProgress), // 124
     (
         "MaxPauseSignersExceeded",
         ContractError::MaxPauseSignersExceeded,
-    ), // 124
-    ("MigrationInProgress", ContractError::MigrationInProgress), // 125
+    ), // 125
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
     ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
-    ("RoleRequired", ContractError::RoleRequired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    ("OperationExpired", ContractError::OperationExpired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    (
+        "UpgradeAuthorizationAlreadyExists",
+        ContractError::UpgradeAuthorizationAlreadyExists,
+    ), // 128
+    (
+        "UpgradeAuthorizationNotFound",
+        ContractError::UpgradeAuthorizationNotFound,
+    ), // 129
+    (
+        "UpgradeSelfRoleNotAllowed",
+        ContractError::UpgradeSelfRoleNotAllowed,
+    ), // 130
+    ("LastUpgradeAdmin", ContractError::LastUpgradeAdmin), // 131
+    (
+        "NotPendingUpgradeAdmin",
+        ContractError::NotPendingUpgradeAdmin,
+    ), // 132
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201
@@ -127,6 +147,30 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    (
+        "ClaimAlreadyProcessed",
+        ContractError::ClaimAlreadyProcessed,
+    ), // 240
+    ("ClaimExpired", ContractError::ClaimExpired), // 241
+    ("ClaimNotFound", ContractError::ClaimNotFound), // 242
+    ("NoPendingClaims", ContractError::NoPendingClaims), // 243
+    (
+        "NoValidClaimsToProcess",
+        ContractError::NoValidClaimsToProcess,
+    ), // 244
+        "BondAmountBelowMinimum",
+        ContractError::BondAmountBelowMinimum,
+    ), // 240
+    (
+        "BondAmountExceedsMaximum",
+        ContractError::BondAmountExceedsMaximum,
+    ), // 241
+    (
+        "BondDurationTooShort",
+        ContractError::BondDurationTooShort,
+    ), // 242
+    ("BondDurationTooLong", ContractError::BondDurationTooLong), // 243
+    ("InvalidRecipient", ContractError::InvalidRecipient), // 244
     ("UpgradeNotAuthorized", ContractError::UpgradeNotAuthorized), // 240
     ("UpgradeAuthNotActive", ContractError::UpgradeAuthNotActive), // 241
     ("UpgradeAuthExpired", ContractError::UpgradeAuthExpired), // 242
@@ -260,7 +304,10 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("EscrowNotReleasable", ContractError::EscrowNotReleasable), // 801
     ("EscrowNotRefundable", ContractError::EscrowNotRefundable), // 802
     ("EscrowNotExpired", ContractError::EscrowNotExpired), // 803
-    ("RefundExceedsRemaining", ContractError::RefundExceedsRemaining), // 804
+    (
+        "RefundExceedsRemaining",
+        ContractError::RefundExceedsRemaining,
+    ), // 804
     ("InvalidEscrowExpiry", ContractError::InvalidEscrowExpiry), // 805
     ("NotEscrowParty", ContractError::NotEscrowParty), // 806
 ];
