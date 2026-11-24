@@ -7,11 +7,6 @@
 //! so the contract invocation XDR is actually being built (not just printed as
 //! an empty stub).
 
-// Integration test uses assert_ne! with custom messages for diagnostics.
-// The disallowed_macros lint targets production contract code; test harnesses
-// are explicitly exempted.
-#![allow(clippy::disallowed_macros)]
-
 use std::process::Command;
 
 fn bin() -> &'static str {
@@ -262,14 +257,17 @@ fn different_commands_produce_different_xdr() {
         "--enabled=true",
     ]);
 
+    #[allow(clippy::disallowed_macros)]
     assert_ne!(
         xdr_early_exit, xdr_weights,
         "early_exit and weights XDR should differ"
     );
+    #[allow(clippy::disallowed_macros)]
     assert_ne!(
         xdr_weights, xdr_pause,
         "weights and pause XDR should differ"
     );
+    #[allow(clippy::disallowed_macros)]
     assert_ne!(
         xdr_early_exit, xdr_pause,
         "early_exit and pause XDR should differ"
