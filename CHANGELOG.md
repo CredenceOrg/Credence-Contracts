@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - **Credence bond claim errors**: Replaced bare claim panics with typed contract errors, reusing `AmountMustBePositive` and appending wire-stable claim error codes 240–244. Added typed-error regression coverage and updated the error catalogue (closes #1700).
+- **Arbitration cancellation validation**: Check whether the dispute can transition to `Cancelled` before applying creator-only vote-count and deadline restrictions. Terminal disputes now return `InvalidTransition`; creator attempts to cancel an active voting dispute after a vote or deadline still return `CancelNotAllowed`. Fixed the arbitration archive/reopen tests to use their fixture principals, assert successful `try_` calls fully, and verify the admin cancellation event role.
 
 - **Admin compilation**: Moved the private pause configuration type out of the contract implementation, removed a duplicate address validator, restored the encoded admin epoch tests as Rust source, and repaired test API usage. Routed pause execution tracing through SDK debug logs to preserve the governance-event schema and avoid invalid diagnostic symbols, and preserved the overflow error for the maximum proposal ID. Added a generated-client regression covering all seven pause entry points (closes #1602).
 
