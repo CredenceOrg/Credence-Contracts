@@ -27,7 +27,7 @@ const STORAGE_TTL_THRESHOLD: u32 = STORAGE_TTL_EXTEND_TO / 2;
 
 #[contracttype]
 #[derive(Clone)]
-enum DataKey {
+pub enum DataKey {
     Admin,
     Token,
     Bond(Address),

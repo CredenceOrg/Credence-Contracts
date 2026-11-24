@@ -5,7 +5,7 @@ edition = "2021"
 description = "Fixed-duration bond contract for Credence — lock USDC for a predetermined time period"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 credence_errors = { path = "../credence_errors" }

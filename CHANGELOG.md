@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **DataKey fingerprint snapshots**: Added pinned XDR fingerprints for every `DataKey` variant in `credence_registry`, `credence_treasury`, `timelock`, `credence_multisig`, `fixed_duration_bond`, and `bounty-escrow` so storage-key changes cannot silently orphan ledger entries (closes #1758).
 - **Ownership transfer failure boundaries**: Added deterministic coverage for suspended-candidate expiry and configuration-epoch overflow, asserting rejected proposals preserve ownership state, proposal metadata, epoch, and events (closes #1422).
 - **Admin configuration epoch**: Added a monotonic `ConfigEpoch` to the Admin contract that advances exactly once per committed privileged mutation (admin role changes, suspension, ownership transfer, pause configuration, pause state transitions, and pause-proposal approvals). Exposes `get_config_epoch()` so clients can detect concurrent conflicts and retry; rejected, stale, repeated, and failed operations never advance the epoch and leave no partial state. Documented in `docs/CONFIG_EPOCH.md` and covered by `test_concurrency_race_safety.rs` (closes #1297).
 - **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
