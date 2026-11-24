@@ -135,7 +135,7 @@ pub struct CallBoundOperation {
     pub op_hash: BytesN<32>,
     pub target: Address,
     pub func: Symbol,
-    pub args: Vec<soroban_sdk::Val>,
+    pub args: Vec<Val>,
     pub salt: BytesN<32>,
     pub eta: u64,
     pub expires_at: u64,
@@ -302,7 +302,7 @@ impl TimelockContract {
         proposer: Address,
         target: Address,
         func: Symbol,
-        args: Vec<soroban_sdk::Val>,
+        args: Vec<Val>,
         salt: BytesN<32>,
         delay: u64,
     ) -> u64 {
@@ -351,13 +351,13 @@ impl TimelockContract {
         e: Env,
         target: Address,
         func: Symbol,
-        args: Vec<soroban_sdk::Val>,
+        args: Vec<Val>,
         salt: BytesN<32>,
     ) -> BytesN<32> {
         let timelock_address = e.current_contract_address();
 
         // Build the pre-image using Bytes and append (following the pattern in credence_bond)
-        let mut preimage = soroban_sdk::Bytes::new(&e);
+        let mut preimage = Bytes::new(&e);
         preimage.append(&timelock_address.to_xdr(&e));
         preimage.append(&target.to_xdr(&e));
         preimage.append(&func.to_xdr(&e));
@@ -365,7 +365,7 @@ impl TimelockContract {
         preimage.append(&salt.to_xdr(&e));
 
         // Compute SHA256 hash using e.crypto().sha256()
-        let hash: soroban_sdk::BytesN<32> = e.crypto().sha256(&preimage).into();
+        let hash: BytesN<32> = e.crypto().sha256(&preimage).into();
         hash
     }
 
@@ -496,7 +496,7 @@ impl TimelockContract {
             .publish(("operation_executed", op_id), op.op_hash.clone());
 
         // Invoke the target contract
-        e.invoke_contract::<soroban_sdk::Val>(&op.target, &op.func, op.args.clone());
+        e.invoke_contract::<Val>(&op.target, &op.func, op.args.clone());
 
         // Emit post-execution event
         e.events()
