@@ -23,14 +23,54 @@ for every PR and push to `main`/`master`:
 
 ### Gated packages (scripts/ci-gated-packages.txt)
 
-The gated packages as of this writing are:
+The currently enabled packages are:
 
 ```
-credence_arbitration
-timelock
 dispute_resolution
 testutils
 ```
+
+`credence_arbitration` and `timelock` are currently commented out in the
+authoritative list with their existing test/Clippy blockers. Read that file for
+the current gate; this validator does not enable or disable packages.
+
+### Validate the gated package list
+
+Before submitting a change to the list, run:
+
+```bash
+python3 scripts/check_gated_packages.py
+python3 -m unittest discover -s scripts/tests -v
+```
+
+The checker reads `Cargo.toml` workspace members (including globs and exclusions)
+and each member's `[package] name`. It rejects unknown or duplicate gated names,
+leading/trailing whitespace, and multiple names or inline comments on an entry.
+Blank lines and full-line comments are ignored. For example, use
+`credence_arbitration`, not its directory name `arbitration`.
+
+Gated libraries with `cdylib` in `[lib].crate-type` also need a positive integer
+KiB entry under `[contracts]` in `scripts/wasm-size-budget.toml`. Budget keys match
+the Wasm artifact name: the explicit `[lib].name`, or the package name with
+hyphens replaced by underscores (`bounty-escrow` → `bounty_escrow`). A default
+budget does not replace this explicit entry. Helper libraries without `cdylib`,
+including `testutils`, do not need a Wasm budget.
+
+The script is read-only and uses only Python's standard library; it does not run
+Cargo, build contracts, fetch dependencies or need credentials. Python 3.11+
+uses `tomllib`; Python 3.10 supports the simple string/array/integer TOML subset
+used by these manifests through a conservative regex fallback. Unsupported
+relevant TOML syntax fails with instructions to use Python 3.11+.
+Use `--root <workspace>` to validate a temporary workspace. Errors include the
+gate line number; success exits 0, and invalid input exits 1. Example:
+
+```text
+OK: 2 gated packages validated: dispute_resolution, testutils
+ERROR: scripts/ci-gated-packages.txt:2: unknown workspace package arbitration; use [package] name
+```
+
+This is a local preflight check. Existing CI workflows are unchanged; passing it
+does not replace the Rust test, Clippy or Wasm build/size checks below.
 
 ### How to add a crate to the gate
 
@@ -50,7 +90,9 @@ testutils
    `docs/wasm-size-budget.md` in the same PR.
 4. Add the crate's `[package] name` (one line, no trailing whitespace) to
    `scripts/ci-gated-packages.txt`.
-5. Open a PR — the CI picks up the new entry automatically.
+5. Run `python3 scripts/check_gated_packages.py` and
+   `python3 -m unittest discover -s scripts/tests -v`.
+6. Open a PR — the CI picks up the new entry automatically.
 
 ---
 
@@ -61,7 +103,7 @@ testutils
 cargo fmt --all -- --check
 
 # 2. Per-package clippy (gated packages)
-for pkg in credence_arbitration timelock dispute_resolution testutils; do
+for pkg in dispute_resolution testutils; do
   cargo clippy -p "$pkg" --all-targets --locked -- -D warnings
 done
 
@@ -79,7 +121,7 @@ cargo clippy --all-targets -- \
   -D warnings
 
 # 4. Per-package tests (gated packages)
-for pkg in credence_arbitration timelock dispute_resolution testutils; do
+for pkg in dispute_resolution testutils; do
   cargo test -p "$pkg" --locked
 done
 
@@ -99,7 +141,7 @@ cargo geiger
 
 # 9. WASM build + size check (gated contract crates)
 rustup target add wasm32v1-none
-for pkg in credence_arbitration timelock dispute_resolution; do
+for pkg in dispute_resolution; do
   cargo build -p "$pkg" --target wasm32v1-none --release --locked
 done
 WASM_DIR=target/wasm32v1-none/release bash scripts/check_wasm_size.sh

@@ -100,6 +100,14 @@ Calculates the winner and closes the case.
 | `get_arbitrator_weight` | `Result<u32, Error>` | Returns the voting weight of an arbitrator. Returns `Error::NotArbitrator` if unregistered. |
 | `has_voted` | `bool` | Returns `true` if the arbitrator has already voted on the specified dispute, `false` otherwise. |
 | `get_arbitrators_page` | `(Vec<Address>, Option<u32>)` | Returns a page of registered arbitrator addresses starting at `cursor` up to `limit`. |
+| `get_disputes_by_creator` | `(Vec<u64>, Option<u32>)` | Returns dispute IDs created by an address, in creation order, starting at `cursor`. |
+
+### 📖 Creator Dispute Pagination (`get_disputes_by_creator`)
+
+- The cursor is a 0-based index in the creator's dispute history.
+- A `limit` of `0` uses the default page size of `50`; larger limits are capped at `200`.
+- `CursorOutOfRange` is returned when `cursor` is greater than or equal to the creator's dispute count, including an empty history.
+- IDs are stored in persistent per-creator index slots and appended on dispute creation. The count and each slot use a 180-day TTL, extended when written or read; inactive index entries may expire under Soroban storage TTL.
 
 ### 📖 Pagination Semantics (`get_arbitrators_page`)
 

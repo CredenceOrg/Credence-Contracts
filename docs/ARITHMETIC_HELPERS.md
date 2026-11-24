@@ -157,23 +157,37 @@ Returns `(fee, net)` where `fee = bps(amount, bps_value, ...)` and
 
 ## Rate Helpers
 
-### `Rate::compound`
+### `Rate::try_compound`
 
 ```rust
-pub fn compound(rate: u32, periods: u32) -> i128
+pub const MAX_COMPOUND_PERIODS: u32 = 10_000;
+
+pub fn try_compound(rate: u32, periods: u32) -> Result<i128, ContractError>
+pub fn compound(rate: u32, periods: u32) -> i128 // panicking wrapper
 ```
 
 Computes the compounded multiplier over `periods` periods at the given
-`rate` (in basis points). Uses iterative multiplication via
-`mul_div_i128` with `Rounding::Down`.
+`rate` (in basis points).
 
 The result is scaled by `BPS_DENOMINATOR` (10_000), so a return value of
 `10_000` represents 1.0x (no growth).
 
+**Failure modes**:
+- `Err(ContractError::InvalidPeriodCount)` when `periods > MAX_COMPOUND_PERIODS`.
+  The cap is checked before any multiplication, so `u32::MAX` cannot burn the
+  instruction budget.
+- `Err(ContractError::Overflow)` when the multiplier does not fit in `i128`.
+
+**Rounding**:
+- `periods <= 500`: the historical loop, which truncates down after every
+  period. Results are identical to the pre-squaring implementation.
+- `periods > 500`: exponentiation by squaring, `O(log periods)`. It rounds down
+  at each squaring combine and can differ from the legacy loop, particularly
+  for small rates over long horizons.
+
 **Assumptions**:
 - The rate is in basis points (e.g. 500 = 5% per period)
 - All periods compound discretely (not continuously)
-- The multiplier is rounded down at each compounding step
 
 ## Timestamp Helpers
 

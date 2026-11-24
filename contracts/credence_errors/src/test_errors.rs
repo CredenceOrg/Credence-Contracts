@@ -250,6 +250,7 @@ mod tests {
         assert_eq!(ContractError::Underflow as u32, 701);
         assert_eq!(ContractError::DivisionByZero as u32, 702);
         assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
+        assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
     }
 
     // ---------------------------------------------------------------------------
@@ -469,6 +470,10 @@ mod tests {
         );
         assert_eq!(
             ContractError::InvalidPercentSplit.category(),
+            ErrorCategory::Arithmetic
+        );
+        assert_eq!(
+            ContractError::InvalidPeriodCount.category(),
             ErrorCategory::Arithmetic
         );
     }
@@ -1486,6 +1491,7 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
             ContractError::InvalidPercentSplit => true,
+            ContractError::InvalidPeriodCount => true,
 
             // Escrow
             ContractError::EscrowNotFound => true,
@@ -2097,6 +2103,12 @@ mod tests {
     #[test]
     fn test_invalid_percent_split_is_recoverable() {
         assert!(ContractError::InvalidPercentSplit.is_recoverable());
+    }
+
+    /// InvalidPeriodCount: caller supplies a period count within the cap.
+    #[test]
+    fn test_invalid_period_count_is_recoverable() {
+        assert!(ContractError::InvalidPeriodCount.is_recoverable());
     }
 
     // ---------------------------------------------------------------------------

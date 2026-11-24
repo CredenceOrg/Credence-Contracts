@@ -41,6 +41,22 @@ const CALL_BOUND_OPERATION_TTL: u32 = 3600;
 const PERSISTENT_TTL_THRESHOLD: u32 = 518_400; // ~30 days
 const PERSISTENT_TTL_EXTEND_TO: u32 = 3_110_400; // ~180 days
 
+/// Hard cap on the page size accepted by
+/// [`TimelockContract::get_operations_page`].
+///
+/// A caller requesting a larger `limit` is silently clamped to this value so a
+/// single read can never exceed the gas/read budget regardless of the argument.
+/// `limit == 0` selects this maximum, matching the admin contract's pagination.
+const MAX_PAGE_LIMIT: u32 = 200;
+
+fn effective_page_limit(limit: u32) -> u32 {
+    if limit == 0 {
+        MAX_PAGE_LIMIT
+    } else {
+        limit.min(MAX_PAGE_LIMIT)
+    }
+}
+
 fn bump_instance_ttl(e: &Env) {
     e.storage()
         .instance()
@@ -594,6 +610,58 @@ impl TimelockContract {
         }
     }
 
+    /// Number of operation ids allocated so far.
+    ///
+    /// Ids are assigned from `0` and increase by one per queued operation, so
+    /// the valid id space is `0..get_operation_count()`.
+    pub fn get_operation_count(e: Env) -> u64 {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::OperationCounter)
+            .unwrap_or(0)
+    }
+
+    /// Read a page of queued operations in ascending id order.
+    ///
+    /// `offset` is an id-space index, not an index into the returned vector:
+    /// the examined slice is `offset..min(offset + effective_limit, count)`.
+    /// Missing entries (never stored, or expired from persistent storage) are
+    /// skipped, so a page may be shorter than `limit` even when later ids
+    /// exist; nothing is fabricated in their place.
+    ///
+    /// `limit == 0` means [`MAX_PAGE_LIMIT`]; any larger `limit` is clamped to
+    /// it. Each returned entry has its persistent TTL bumped, exactly like
+    /// [`Self::get_operation`].
+    pub fn get_operations_page(e: Env, offset: u64, limit: u32) -> Vec<QueuedOperation> {
+        bump_instance_ttl(&e);
+        let count: u64 = e
+            .storage()
+            .instance()
+            .get(&DataKey::OperationCounter)
+            .unwrap_or(0);
+        let mut page = Vec::new(&e);
+        if offset >= count {
+            return page;
+        }
+        let end = offset
+            .saturating_add(u64::from(effective_page_limit(limit)))
+            .min(count);
+        for op_id in offset..end {
+            let key = DataKey::Operation(op_id);
+            if let Some(op) = e
+                .storage()
+                .persistent()
+                .get::<DataKey, QueuedOperation>(&key)
+            {
+                bump_persistent_ttl(&e, key);
+                page.push_back(op);
+            }
+        }
+        page
+        }
+    }
+
     fn require_proposer_admin(e: &Env, proposer: &Address) {
         proposer.require_auth();
         let admin: Address = e
@@ -955,6 +1023,174 @@ mod tests {
 
         let res = client.try_queue_operation(&admin, &op_hash, &delay);
         assert!(res.is_err());
+    }
+
+    // --- operation count and paginated view (#1754) ---
+
+    fn queue_hash_only(
+        env: &Env,
+        client: &TimelockContractClient<'_>,
+        admin: &Address,
+        tag: u8,
+    ) -> u64 {
+        client.queue_operation(
+            admin,
+            &BytesN::from_array(env, &[tag; 32]),
+            &min_delay_seconds(),
+        )
+    }
+
+    #[test]
+    fn operations_page_is_empty_before_any_queue() {
+        let (_env, client, _admin) = setup_env();
+
+        assert_eq!(client.get_operation_count(), 0);
+        assert_eq!(client.get_operations_page(&0, &10).len(), 0);
+        assert_eq!(client.get_operations_page(&0, &0).len(), 0);
+        assert_eq!(client.get_operations_page(&99, &10).len(), 0);
+    }
+
+    #[test]
+    fn operations_page_lists_ids_in_ascending_order() {
+        let (env, client, admin) = setup_env();
+        let first = queue_hash_only(&env, &client, &admin, 1);
+        let second = queue_hash_only(&env, &client, &admin, 2);
+        let third = queue_hash_only(&env, &client, &admin, 3);
+
+        assert_eq!(client.get_operation_count(), 3);
+
+        let page = client.get_operations_page(&0, &10);
+        assert_eq!(page.len(), 3);
+        assert_eq!(page.get(0).unwrap().id, first);
+        assert_eq!(page.get(1).unwrap().id, second);
+        assert_eq!(page.get(2).unwrap().id, third);
+        for op in page.iter() {
+            assert_eq!(op.status, OperationStatus::Pending);
+        }
+    }
+
+    #[test]
+    fn operations_page_supports_a_page_smaller_than_the_range() {
+        let (env, client, admin) = setup_env();
+        for tag in 1..=4u8 {
+            queue_hash_only(&env, &client, &admin, tag);
+        }
+
+        let page = client.get_operations_page(&1, &2);
+        assert_eq!(page.len(), 2);
+        assert_eq!(page.get(0).unwrap().id, 1);
+        assert_eq!(page.get(1).unwrap().id, 2);
+    }
+
+    #[test]
+    fn operations_page_offset_past_the_end_is_empty() {
+        let (env, client, admin) = setup_env();
+        queue_hash_only(&env, &client, &admin, 1);
+
+        assert_eq!(client.get_operations_page(&1, &10).len(), 0);
+        assert_eq!(client.get_operations_page(&u64::MAX, &10).len(), 0);
+    }
+
+    #[test]
+    fn operations_page_clamps_limit_and_zero_means_max() {
+        let (env, client, admin) = setup_env();
+        for _ in 0..=MAX_PAGE_LIMIT {
+            queue_hash_only(&env, &client, &admin, 0);
+        }
+        assert_eq!(client.get_operation_count(), u64::from(MAX_PAGE_LIMIT + 1));
+
+        // limit 0 selects MAX_PAGE_LIMIT.
+        assert_eq!(client.get_operations_page(&0, &0).len(), MAX_PAGE_LIMIT);
+        // A larger limit is clamped, never honoured.
+        assert_eq!(
+            client.get_operations_page(&0, &u32::MAX).len(),
+            MAX_PAGE_LIMIT
+        );
+        // The last page is bounded by the id space, not the limit.
+        let last = client.get_operations_page(&u64::from(MAX_PAGE_LIMIT), &u32::MAX);
+        assert_eq!(last.len(), 1);
+        assert_eq!(last.get(0).unwrap().id, u64::from(MAX_PAGE_LIMIT));
+    }
+
+    #[test]
+    fn operations_page_keeps_executed_and_cancelled_entries() {
+        let (env, client, _admin) = setup_env();
+
+        // Seed the persistent entries directly: this test covers the view, not
+        // the queue/execute/cancel lifecycle.
+        env.as_contract(&client.address, || {
+            let entries = [
+                (0u64, 31u8, OperationStatus::Executed),
+                (1u64, 32u8, OperationStatus::Pending),
+                (2u64, 33u8, OperationStatus::Cancelled),
+            ];
+            for (id, tag, status) in entries {
+                store_operation(
+                    &env,
+                    &QueuedOperation {
+                        id,
+                        op_hash: BytesN::from_array(&env, &[tag; 32]),
+                        eta: 1_000,
+                        expires_at: 87_400,
+                        status,
+                    },
+                );
+            }
+            env.storage()
+                .instance()
+                .set(&DataKey::OperationCounter, &3_u64);
+        });
+
+        assert_eq!(client.get_operation_count(), 3);
+
+        // Ascending id order, status intact, entry contents not dropped.
+        let page = client.get_operations_page(&0, &10);
+        assert_eq!(page.len(), 3);
+        assert_eq!(page.get(0).unwrap().id, 0);
+        assert_eq!(
+            page.get(0).unwrap().op_hash,
+            BytesN::from_array(&env, &[31; 32])
+        );
+        assert_eq!(page.get(0).unwrap().status, OperationStatus::Executed);
+        assert_eq!(page.get(1).unwrap().id, 1);
+        assert_eq!(
+            page.get(1).unwrap().op_hash,
+            BytesN::from_array(&env, &[32; 32])
+        );
+        assert_eq!(page.get(1).unwrap().status, OperationStatus::Pending);
+        assert_eq!(page.get(2).unwrap().id, 2);
+        assert_eq!(
+            page.get(2).unwrap().op_hash,
+            BytesN::from_array(&env, &[33; 32])
+        );
+        assert_eq!(page.get(2).unwrap().status, OperationStatus::Cancelled);
+    }
+
+    #[test]
+    fn operations_page_skips_missing_ids_without_fabricating() {
+        let (env, client, admin) = setup_env();
+        queue_hash_only(&env, &client, &admin, 21);
+        queue_hash_only(&env, &client, &admin, 22);
+        queue_hash_only(&env, &client, &admin, 23);
+
+        // Drop a stored entry the way an expired persistent key would vanish.
+        env.as_contract(&client.address, || {
+            env.storage().persistent().remove(&DataKey::Operation(1));
+        });
+
+        // The count still reflects allocated ids; the gap is only skipped.
+        assert_eq!(client.get_operation_count(), 3);
+
+        let page = client.get_operations_page(&0, &10);
+        assert_eq!(page.len(), 2);
+        assert_eq!(page.get(0).unwrap().id, 0);
+        assert_eq!(page.get(1).unwrap().id, 2);
+
+        // `offset` indexes the id space, so a page starting inside a gap
+        // simply starts after it.
+        let after_gap = client.get_operations_page(&1, &10);
+        assert_eq!(after_gap.len(), 1);
+        assert_eq!(after_gap.get(0).unwrap().id, 2);
     }
 
     // --- is_ready boundary regression suite ---
