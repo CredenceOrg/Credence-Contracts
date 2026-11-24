@@ -51,7 +51,7 @@ fn calculate_fee_truncates_sub_unit_remainders_deterministically() {
 // ───────────────────────── set_config / get_config ─────────────────────────
 
 #[test]
-#[should_panic(expected = "emergency config not set")]
+#[should_panic(expected = "Error(Contract, #241)")]
 fn get_config_panics_before_configuration() {
     let e = Env::default();
     let client = setup(&e);
@@ -85,7 +85,7 @@ fn set_config_accepts_exact_fee_boundaries() {
 }
 
 #[test]
-#[should_panic(expected = "emergency fee bps must be <= 10000")]
+#[should_panic(expected = "Error(Contract, #240)")]
 fn set_config_rejects_one_bps_above_boundary() {
     let e = Env::default();
     let client = setup(&e);
@@ -144,7 +144,7 @@ fn set_enabled_records_only_real_transitions_and_recovers_sequence() {
 }
 
 #[test]
-#[should_panic(expected = "transition not found")]
+#[should_panic(expected = "Error(Contract, #243)")]
 fn get_transition_missing_id_panics() {
     let e = Env::default();
     let client = setup(&e);
@@ -207,7 +207,7 @@ fn record_sequence_starts_at_zero_and_increments_per_store() {
 }
 
 #[test]
-#[should_panic(expected = "record not found")]
+#[should_panic(expected = "Error(Contract, #242)")]
 fn get_record_missing_id_panics() {
     let e = Env::default();
     let client = setup(&e);

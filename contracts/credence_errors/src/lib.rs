@@ -508,6 +508,36 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// Emergency fee basis points exceed 10,000 (100%).
+    /// Replaces: panic!("emergency fee bps must be <= {}", math::BPS_DENOMINATOR)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InvalidEmergencyFeeBps = 240,
+
+    /// Emergency mode configuration has not been set.
+    /// Replaces: panic!("emergency config not set")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmergencyConfigNotSet = 241,
+
+    /// No emergency withdrawal record exists for the given id.
+    /// Replaces: panic!("record not found")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmergencyRecordNotFound = 242,
+
+    /// No emergency mode transition record exists for the given id.
+    /// Replaces: panic!("transition not found")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    EmergencyTransitionNotFound = 243,
+
+    /// No emergency drain record exists for the given id.
+    /// Replaces: panic!("drain record not found")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    DrainRecordNotFound = 244,
+
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
     /// Replaces: panic!("duplicate attestation")
@@ -969,7 +999,12 @@ impl ErrorExt for ContractError {
             | ContractError::InvariantViolation
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
-            | ContractError::BytesTooLarge => ErrorCategory::Bond,
+            | ContractError::BytesTooLarge
+            | ContractError::InvalidEmergencyFeeBps
+            | ContractError::EmergencyConfigNotSet
+            | ContractError::EmergencyRecordNotFound
+            | ContractError::EmergencyTransitionNotFound
+            | ContractError::DrainRecordNotFound => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1281,6 +1316,19 @@ impl ErrorExt for ContractError {
             ContractError::RefundExceedsRemaining => "Refund amount exceeds the escrow's remaining balance",
             ContractError::InvalidEscrowExpiry => "Escrow expiry must be in the future",
             ContractError::NotEscrowParty => "Caller is neither the escrow depositor nor the contract admin",
+            ContractError::InvalidEmergencyFeeBps => {
+                "Emergency fee basis points must be between 0 and 10,000"
+            }
+            ContractError::EmergencyConfigNotSet => "Emergency configuration has not been set",
+            ContractError::EmergencyRecordNotFound => {
+                "No emergency withdrawal record exists for the given id"
+            }
+            ContractError::EmergencyTransitionNotFound => {
+                "No emergency mode transition record exists for the given id"
+            }
+            ContractError::DrainRecordNotFound => {
+                "No emergency drain record exists for the given id"
+            }
         }
     }
 
@@ -1380,6 +1428,11 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::InvalidEmergencyFeeBps // use 0..=10000
+            | ContractError::EmergencyConfigNotSet // configure emergency mode first
+            | ContractError::EmergencyRecordNotFound // query an existing record id
+            | ContractError::EmergencyTransitionNotFound // query an existing transition id
+            | ContractError::DrainRecordNotFound   // query an existing drain record id
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.

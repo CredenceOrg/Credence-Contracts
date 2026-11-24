@@ -1501,6 +1501,13 @@ mod tests {
             ContractError::RefundExceedsRemaining => true,
             ContractError::InvalidEscrowExpiry => true,
             ContractError::NotEscrowParty => true,
+
+            // Emergency / drain
+            ContractError::InvalidEmergencyFeeBps => true,
+            ContractError::EmergencyConfigNotSet => true,
+            ContractError::EmergencyRecordNotFound => true,
+            ContractError::EmergencyTransitionNotFound => true,
+            ContractError::DrainRecordNotFound => true,
         }
     }
 

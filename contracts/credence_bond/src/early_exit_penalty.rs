@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, Address, Env, Symbol};
+use soroban_sdk::{contracttype, panic_with_error, Address, Env, Symbol};
 
 use crate::math::BPS_DENOMINATOR;
 use crate::DataKey;
@@ -24,7 +24,7 @@ pub struct EarlyExitConfig {
 /// overwrite the previous config.
 pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
     if penalty_bps > BPS_DENOMINATOR as u32 {
-        panic!("penalty_bps must be <= 10000");
+        panic_with_error!(e, ContractError::InvalidPenaltyBps);
     }
     let key = DataKey::EarlyExitConfig;
     e.storage().instance().set(
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "Error(Contract, #211)")]
     fn test_set_config_rejects_bps_above_max() {
         let (e, contract_id) = setup_contract();
         let treasury = addr(&e, 4);
