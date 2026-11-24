@@ -228,27 +228,19 @@ pub fn verify_stringified_bytes_bytes(e: &Env, data: &Bytes) {
     }
 }
 
-#[cfg(not(test))]
-/// Minimum bond amount in normalized 18-decimal format (1 token = 10^18).
-/// This ensures consistent validation regardless of underlying token decimals.
-pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000; // 1 * 10^18 (1 token)
+/// Default minimum bond amount (1 token in normalized 18-decimal format).
+/// Kept as a re-export for callers that need the default without an Env.
+pub const MIN_BOND_AMOUNT: i128 = 1_000_000_000_000_000_000;
 
-#[cfg(test)]
-/// Minimum bond amount in tests. Set to 1000 to match legacy tests.
-/// See docs/known-simplifications.md § 4.2 for production vs test bounds.
-pub const MIN_BOND_AMOUNT: i128 = 1_000;
+/// Default maximum bond amount (100M tokens in 18-decimal format).
+/// Kept as a re-export for callers that need the default without an Env.
+pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000;
 
-#[cfg(not(test))]
-/// Maximum bond amount in normalized 18-decimal format (100 million tokens = 10^8 * 10^18 = 10^26).
-/// This prevents overflow in accounting calculations.
-pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000_000_000_000_000; // 100M * 10^18
-
-#[cfg(test)]
-/// Maximum bond amount in tests. Set to 100_000_000_000_000 to match legacy tests.
-/// See docs/known-simplifications.md § 4.3 for production vs test bounds.
-pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000;
-
-/// Validates that a bond amount is within acceptable bounds.
+/// Validates that a bond amount is within the governed bounds.
+///
+/// Reads the current minimum and maximum from the governance-controlled
+/// parameters (see [`crate::parameters`]) rather than compile-time constants,
+/// so tokens with different decimals can be tuned without redeploying.
 ///
 /// # Arguments
 /// * `e` - Soroban environment, used to abort with a typed `ContractError`
@@ -259,6 +251,17 @@ pub const MAX_BOND_AMOUNT: i128 = 100_000_000_000_000;
 /// * `ContractError::BondAmountBelowMinimum` if amount is less than MIN_BOND_AMOUNT
 /// * `ContractError::BondAmountExceedsMaximum` if amount is greater than MAX_BOND_AMOUNT
 pub fn validate_bond_amount(e: &Env, amount: i128) {
+/// * `e` - Soroban environment (used to read governed parameters)
+/// * `amount` - The bond amount to validate
+///
+/// # Panics
+/// * If amount is less than the governed minimum
+/// * If amount is greater than the governed maximum
+/// * If amount is negative
+pub fn validate_bond_amount(e: &Env, amount: i128) {
+    let min = crate::parameters::get_min_bond_amount(e);
+    let max = crate::parameters::get_max_bond_amount(e);
+
     if amount < 0 {
         panic_with_error!(e, ContractError::InvalidBondAmount);
     }
@@ -269,6 +272,18 @@ pub fn validate_bond_amount(e: &Env, amount: i128) {
 
     if amount > MAX_BOND_AMOUNT {
         panic_with_error!(e, ContractError::BondAmountExceedsMaximum);
+    if amount < min {
+        panic!(
+            "bond amount below minimum required: {} (minimum: {})",
+            amount, min
+        );
+    }
+
+    if amount > max {
+        panic!(
+            "bond amount exceeds maximum allowed: {} (maximum: {})",
+            amount, max
+        );
     }
 }
 
@@ -430,6 +445,11 @@ mod tests {
         validate_bond_amount(&env, MIN_BOND_AMOUNT);
         validate_bond_amount(&env, MAX_BOND_AMOUNT);
         validate_bond_amount(&env, (MIN_BOND_AMOUNT + MAX_BOND_AMOUNT) / 2);
+        let e = Env::default();
+        // Production defaults: MIN = 1e18, MAX = 1e26
+        validate_bond_amount(&e, MIN_BOND_AMOUNT);
+        validate_bond_amount(&e, MAX_BOND_AMOUNT);
+        validate_bond_amount(&e, (MIN_BOND_AMOUNT + MAX_BOND_AMOUNT) / 2);
     }
 
     #[test]
@@ -437,6 +457,8 @@ mod tests {
     fn test_validate_bond_amount_below_minimum() {
         let env = Env::default();
         validate_bond_amount(&env, MIN_BOND_AMOUNT - 1);
+        let e = Env::default();
+        validate_bond_amount(&e, MIN_BOND_AMOUNT - 1);
     }
 
     #[test]
@@ -444,6 +466,8 @@ mod tests {
     fn test_validate_bond_amount_zero() {
         let env = Env::default();
         validate_bond_amount(&env, 0);
+        let e = Env::default();
+        validate_bond_amount(&e, 0);
     }
 
     #[test]
@@ -451,6 +475,8 @@ mod tests {
     fn test_validate_bond_amount_negative() {
         let env = Env::default();
         validate_bond_amount(&env, -1);
+        let e = Env::default();
+        validate_bond_amount(&e, -1);
     }
 
     #[test]
@@ -458,6 +484,8 @@ mod tests {
     fn test_validate_bond_amount_above_maximum() {
         let env = Env::default();
         validate_bond_amount(&env, MAX_BOND_AMOUNT + 1);
+        let e = Env::default();
+        validate_bond_amount(&e, MAX_BOND_AMOUNT + 1);
     }
 
     #[test]
@@ -465,6 +493,8 @@ mod tests {
         let env = Env::default();
         // Exact minimum boundary must be accepted.
         validate_bond_amount(&env, MIN_BOND_AMOUNT);
+        let e = Env::default();
+        validate_bond_amount(&e, MIN_BOND_AMOUNT);
     }
 
     #[test]
@@ -472,6 +502,59 @@ mod tests {
         let env = Env::default();
         // Exact maximum boundary must be accepted.
         validate_bond_amount(&env, MAX_BOND_AMOUNT);
+        let e = Env::default();
+        validate_bond_amount(&e, MAX_BOND_AMOUNT);
+    }
+
+    #[test]
+    fn test_min_bond_amount_settable_via_governance() {
+        let e = Env::default();
+        let admin = Address::generate(&e);
+        e.mock_all_auths();
+        e.storage().instance().set(&crate::DataKey::Admin, &admin);
+
+        // Set a custom minimum for a 7-decimal token (0.1 tokens = 1_000_000 raw)
+        crate::parameters::set_min_bond_amount(&e, &admin, 100_000_000_000_000_000);
+        assert_eq!(
+            crate::parameters::get_min_bond_amount(&e),
+            100_000_000_000_000_000
+        );
+
+        // Amount below the new minimum must now fail.
+        let result = std::panic::catch_unwind(|| {
+            validate_bond_amount(&e, 50_000_000_000_000_000);
+        });
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_bond_amount_settable_via_governance() {
+        let e = Env::default();
+        let admin = Address::generate(&e);
+        e.mock_all_auths();
+        e.storage().instance().set(&crate::DataKey::Admin, &admin);
+
+        // Set a custom maximum (1M tokens)
+        crate::parameters::set_max_bond_amount(&e, &admin, 1_000_000_000_000_000_000_000_000);
+        assert_eq!(
+            crate::parameters::get_max_bond_amount(&e),
+            1_000_000_000_000_000_000_000_000
+        );
+    }
+
+    #[test]
+    fn test_seven_decimal_amounts_validate() {
+        let e = Env::default();
+        // 0.1 tokens at 7 decimals = 1_000_000 raw. Normalized to 18 decimals
+        // this is 100_000_000_000_000_000 (1e17). With default MIN of 1e18,
+        // a 0.1-token bond is below the minimum — governed value can lower it.
+        let admin = Address::generate(&e);
+        e.mock_all_auths();
+        e.storage().instance().set(&crate::DataKey::Admin, &admin);
+        crate::parameters::set_min_bond_amount(&e, &admin, 10_000_000_000_000_000);
+
+        // 0.1 tokens normalized (1e17) must pass the lowered minimum.
+        validate_bond_amount(&e, 100_000_000_000_000_000);
     }
 
     // ─── Address Validation Tests ─────────────────────────────────────────

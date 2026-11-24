@@ -1,4 +1,4 @@
-#![no_std]
+﻿#![no_std]
 #![deny(clippy::float_arithmetic)]
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
@@ -177,7 +177,7 @@ fn derive_salt(e: &Env, op_id: u64, eta: u64) -> BytesN<32> {
     e.crypto().sha256(&preimage).to_bytes()
 }
 
-/// `op_hash = sha256(xdr(network_id ‖ timelock_address ‖ target ‖ func ‖ args ‖ salt))`
+/// `op_hash = sha256(xdr(network_id â€– timelock_address â€– target â€– func â€– args â€– salt))`
 ///
 /// Every field of the pre-image is length-delimited by its XDR encoding, so
 /// changing any byte of `target`, `func`, `args` or `salt` yields a different
@@ -1247,20 +1247,20 @@ mod tests {
 
     #[test]
     fn is_ready_boundary_eta_zero_now_zero() {
-        // eta == 0, now == 0  →  0 >= 0  →  true
+        // eta == 0, now == 0  â†’  0 >= 0  â†’  true
         assert!(is_ready(0, 0));
     }
 
     #[test]
     fn is_ready_boundary_eta_zero_now_nonzero() {
-        // eta == 0, now > 0  →  always ready
+        // eta == 0, now > 0  â†’  always ready
         assert!(is_ready(0, 1));
         assert!(is_ready(0, u64::MAX));
     }
 
     #[test]
     fn is_ready_boundary_now_zero_eta_nonzero() {
-        // now == 0, eta > 0  →  never ready
+        // now == 0, eta > 0  â†’  never ready
         assert!(!is_ready(1, 0));
         assert!(!is_ready(u64::MAX, 0));
     }
@@ -1275,33 +1275,33 @@ mod tests {
 
     #[test]
     fn is_ready_boundary_now_one_before_eta() {
-        // now == eta - 1: one ledger before the ETA — must be false.
+        // now == eta - 1: one ledger before the ETA â€” must be false.
         let eta: u64 = 500;
         assert!(!is_ready(eta, eta - 1));
     }
 
     #[test]
     fn is_ready_boundary_now_one_after_eta() {
-        // now == eta + 1: one ledger after the ETA — must be true.
+        // now == eta + 1: one ledger after the ETA â€” must be true.
         let eta: u64 = 500;
         assert!(is_ready(eta, eta + 1));
     }
 
     #[test]
     fn is_ready_boundary_eta_max_now_max_minus_one() {
-        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  →  false
+        // Saturating upper bound: eta == u64::MAX, now == u64::MAX - 1  â†’  false
         assert!(!is_ready(u64::MAX, u64::MAX - 1));
     }
 
     #[test]
     fn is_ready_boundary_eta_max_now_max() {
-        // eta == u64::MAX, now == u64::MAX  →  true (tie-break at maximum value)
+        // eta == u64::MAX, now == u64::MAX  â†’  true (tie-break at maximum value)
         assert!(is_ready(u64::MAX, u64::MAX));
     }
 
     #[test]
     fn is_ready_boundary_eta_max_minus_one_now_max() {
-        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  →  true
+        // now overflows past eta: now == u64::MAX > eta == u64::MAX - 1  â†’  true
         assert!(is_ready(u64::MAX - 1, u64::MAX));
     }
 
