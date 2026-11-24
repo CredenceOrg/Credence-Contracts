@@ -95,8 +95,9 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | QuorumNotMet       | 13   | Quorum requirements were not met         |
 | ReasonTooLong      | 14   | Cancellation reason exceeds the limit    |
 | PromiseNotKept     | 15   | The promise outcome did not match reality |
-| DisputeActive      | 16   | Dispute is still active and blocks this action |
-| OngoingDispute     | 17   | Creator already has an unresolved dispute |
+| CursorOutOfRange   | 16   | Pagination cursor is out of range         |
+| DisputeActive      | 17   | Dispute is still active and blocks this action |
+| OngoingDispute     | 18   | Creator already has an unresolved dispute |
 | CancelNotAllowed   | 19   | Creator cannot cancel after votes or after voting_end |
 | ConflictOfInterest | 20   | Voter is the creator of the dispute       |
 
