@@ -239,6 +239,8 @@ emits the usual `operation_queued` event.
 - `set_grace_period(admin, seconds)` updates the period for future queue
   operations and emits `grace_period_updated(previous, new)`.
 - Zero is allowed and makes the ETA the only executable timestamp.
+| `salt`     | BytesN<32>    | Caller-supplied 32-byte salt for hash uniqueness  |
+| `delay`    | u64           | Seconds to delay (`>= min_delay_seconds()`)       |
 
 ### `hash_call(target, func, args, salt) -> BytesN<32>`
 
