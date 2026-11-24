@@ -3,8 +3,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use soroban_sdk::{testutils::Address as TestAddress, testutils::Events, Env, Symbol};
+    use soroban_sdk::{testutils::Address as TestAddress, testutils::Events, Env};
 
     fn verify_event_structure(
         events: &soroban_sdk::Vec<soroban_sdk::ContractEvent>,
@@ -12,13 +11,17 @@ mod tests {
         expected_data_len: u32,
     ) {
         assert_eq!(events.len(), 1, "Expected exactly one event");
-        let ev = &events[0];
+        let ev = events.get(0).unwrap();
         assert_eq!(
-            ev.topics.len(),
+            ev.body.topics.len(),
             expected_topics_len,
             "Topics length mismatch"
         );
-        assert_eq!(ev.data.len(), expected_data_len, "Data length mismatch");
+        assert_eq!(
+            ev.body.data.len(),
+            expected_data_len,
+            "Data length mismatch"
+        );
     }
 
     #[test]
