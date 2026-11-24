@@ -95,3 +95,4 @@ mod test_withdrawal_recovery_guardrails;
 
 #[cfg(test)]
 mod proptest_invariants;
+mod test_reentrancy;

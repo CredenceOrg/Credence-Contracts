@@ -212,6 +212,8 @@ mod tests {
         assert_eq!(ContractError::UpgradeImplementationMismatch as u32, 246);
         assert_eq!(ContractError::ImplementationNotSet as u32, 247);
         assert_eq!(ContractError::SameImplementation as u32, 248);
+        assert_eq!(ContractError::NoFeesToCollect as u32, 240);
+        assert_eq!(ContractError::LockupAlreadyElapsed as u32, 241);
     }
 
     #[test]
@@ -409,6 +411,8 @@ mod tests {
             ContractError::UpgradeImplementationMismatch,
             ContractError::ImplementationNotSet,
             ContractError::SameImplementation,
+            ContractError::NoFeesToCollect,
+            ContractError::LockupAlreadyElapsed,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -1506,6 +1510,8 @@ mod tests {
             ContractError::UpgradeImplementationMismatch => true, // resubmit with the proposed implementation
             ContractError::ImplementationNotSet => false, // implementation must be initialized first
             ContractError::SameImplementation => true, // supply a different implementation
+            ContractError::NoFeesToCollect => true,       // await fee accumulation
+            ContractError::LockupAlreadyElapsed => true,  // use normal withdraw
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -2154,6 +2160,18 @@ mod tests {
     #[test]
     fn test_bytes_too_large_is_recoverable() {
         assert!(ContractError::BytesTooLarge.is_recoverable());
+    }
+
+    /// NoFeesToCollect: caller waits for fees to accrue.
+    #[test]
+    fn test_no_fees_to_collect_is_recoverable() {
+        assert!(ContractError::NoFeesToCollect.is_recoverable());
+    }
+
+    /// LockupAlreadyElapsed: caller uses withdraw instead.
+    #[test]
+    fn test_lockup_already_elapsed_is_recoverable() {
+        assert!(ContractError::LockupAlreadyElapsed.is_recoverable());
     }
 
     /// MaxPauseSignersExceeded: admin can remove a signer or raise the cap.

@@ -151,6 +151,28 @@ Once all crates are clean:
    and remove the `|| { ...report-only... }` fallback and the `TODO(drips-wave)` comment.
 2. Update this section and the [Failure Conditions](#failure-conditions) to say
    clippy violations fail the pipeline again.
+#### Summarize Clippy JSON output
+
+`scripts/summarize_clippy.py` summarizes Cargo's `--message-format=json` output
+by package ID and Clippy lint code. It counts warning and error diagnostics and
+prints rows in deterministic package/lint order:
+
+```bash
+# Summarize a saved Clippy report
+python3 scripts/summarize_clippy.py clippy-output.json
+
+# Fail if the total warning/error count exceeds a threshold
+python3 scripts/summarize_clippy.py clippy-output.json --fail-on 0
+
+# Compare with a previous Cargo JSON-lines report
+python3 scripts/summarize_clippy.py clippy-output.json --baseline clippy-baseline.json
+```
+
+`--baseline` accepts a previous Cargo `--message-format=json` JSON-lines file.
+The table includes each package/lint count's baseline value and delta, including
+findings that have been eliminated. The command exits non-zero if any
+package/lint count increases above the baseline. `--fail-on` independently
+limits the total current warning and error count.
 
 ### cargo-geiger: Unsafe Code Detection
 

@@ -52,6 +52,7 @@ use crate::same_ledger_liquidation_guard::{
 };
 use crate::test_helpers;
 use crate::{CredenceBond, CredenceBondClient};
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::{Address, Env};
 
@@ -673,6 +674,23 @@ fn execute_blocked_when_create_bond_is_in_same_ledger() {
     e.as_contract(&contract_id, || {
         require_cooldown_allowed_after_collateral_increase(&e);
     });
+}
+
+#[test]
+fn execute_entrypoint_returns_typed_same_ledger_error() {
+    let e = Env::default();
+    let (client, admin, identity, _token, _contract_id) = test_helpers::setup_with_token(&e);
+    let treasury = Address::generate(&e);
+    client.set_slash_treasury(&admin, &treasury);
+    client.create_bond(&identity, &1000_i128, &86_400_u64, &false, &0_u64);
+    client.request_cooldown_withdrawal(&identity, &500_i128);
+
+    assert_eq!(
+        client.try_execute_cooldown_withdrawal(&identity),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::SameLedgerCooldownBlocked as u32
+        )))
+    );
 }
 
 #[test]

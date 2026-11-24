@@ -193,6 +193,11 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("ImplementationNotSet", ContractError::ImplementationNotSet), // 247
     ("SameImplementation", ContractError::SameImplementation), // 248
     ("ParameterOutOfBounds", ContractError::ParameterOutOfBounds), // 240
+    ("NoFeesToCollect", ContractError::NoFeesToCollect), // 240
+    (
+        "LockupAlreadyElapsed",
+        ContractError::LockupAlreadyElapsed,
+    ), // 241
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301
