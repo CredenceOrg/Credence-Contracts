@@ -153,6 +153,11 @@ pub fn safe_transfer_from(e: &Env, owner: &Address, amount: i128) {
 /// * `owner` - Address owning the tokens
 /// * `amount` - Required amount
 ///
+/// # Panics
+/// * If token is not configured
+/// * If allowance check fails
+/// * If allowance is insufficient
+#[cfg(test)]
 /// # Errors
 /// * `InvalidTokenAmount` if `amount` is negative
 /// * `InsufficientTokenAllowance` if allowance is below `amount`

@@ -91,6 +91,7 @@ fn discriminant_codes_fit_their_documented_category_range() {
         (500..=599, "Delegation"),
         (600..=699, "Treasury"),
         (700..=799, "Arithmetic"),
+        (800..=899, "Escrow"),
     ];
     for (name, variant) in ALL_VARIANTS.iter() {
         let code = *variant as u32;
@@ -100,7 +101,8 @@ fn discriminant_codes_fit_their_documented_category_range() {
             "variant `{name}` code {code} falls outside every documented \
              category range (Initialization 1-99, Authorization 100-199, \
              Bond 200-299, Attestation 300-399, Registry 400-499, \
-             Delegation 500-599, Treasury 600-699, Arithmetic 700-799). \
+             Delegation 500-599, Treasury 600-699, Arithmetic 700-799, \
+             Escrow 800-899). \
              See `docs/errors.md` \"Error Code Layout\" for the canonical \
              lists and update both when bumping a variant.",
         );

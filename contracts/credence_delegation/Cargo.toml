@@ -21,3 +21,6 @@ proptest = "1.0"
 # Cross-contract auth-tree fuzz test drives the bond contract from delegation tests.
 credence_bond = { path = "../credence_bond" }
 credence_math = { path = "../credence_math" }
+
+[features]
+testutils = ["soroban-sdk/testutils"]

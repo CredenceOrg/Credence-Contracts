@@ -14,6 +14,7 @@
 
 use crate::parameters::MAX_QUERY_LIMIT;
 use crate::{events, DataKey};
+use credence_errors::ContractError;
 use soroban_sdk::{contracttype, Address, Env, Map, Symbol, Vec};
 
 /// Maximum number of claims that can be processed in a single batch
@@ -133,8 +134,8 @@ impl DataKey {
 /// * `source_id` - Source transaction/event ID
 /// * `metadata` - Optional metadata
 ///
-/// # Panics
-/// * If amount is negative or zero
+/// # Errors
+/// Panics with [`ContractError::AmountMustBePositive`] if `amount <= 0`.
 pub fn add_pending_claim(
     e: &Env,
     user: &Address,
@@ -144,7 +145,7 @@ pub fn add_pending_claim(
     metadata: Option<Symbol>,
 ) -> u64 {
     if amount <= 0 {
-        panic!("claim amount must be positive");
+        soroban_sdk::panic_with_error!(e, ContractError::AmountMustBePositive);
     }
 
     // Get next claim ID
@@ -339,9 +340,10 @@ pub fn get_claimable_amount(e: &Env, user: &Address) -> i128 {
 /// # Returns
 /// ClaimResult with details of processed claims
 ///
-/// # Panics
-/// * If user has no pending claims
-/// * If token transfer fails
+/// # Errors
+/// * [`ContractError::NoPendingClaims`] if the user has no pending claims.
+/// * [`ContractError::NoValidClaimsToProcess`] if no claims match the request.
+/// * Panics if token transfer fails.
 pub fn process_claims(
     e: &Env,
     user: &Address,
@@ -354,7 +356,7 @@ pub fn process_claims(
     let claims = get_pending_claims(e, user);
 
     if claims.is_empty() {
-        panic!("no pending claims");
+        soroban_sdk::panic_with_error!(e, ContractError::NoPendingClaims);
     }
 
     // Filter claims by type if specified
@@ -440,7 +442,7 @@ pub fn process_claims(
     }
 
     if processed_claims.is_empty() {
-        panic!("no valid claims to process");
+        soroban_sdk::panic_with_error!(e, ContractError::NoValidClaimsToProcess);
     }
 
     // Update storage with remaining claims
@@ -511,8 +513,10 @@ pub fn process_claims(
 /// # Returns
 /// ClaimResult with details of the processed claim
 ///
-/// # Panics
-/// * If claim is not found, expired, or already processed
+/// # Errors
+/// * [`ContractError::ClaimNotFound`] if the claim is not pending for `user`.
+/// * [`ContractError::ClaimExpired`] if the claim has expired.
+/// * [`ContractError::ClaimAlreadyProcessed`] if the claim was already processed.
 pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResult {
     user.require_auth();
 
@@ -527,14 +531,15 @@ pub fn process_claim_by_id(e: &Env, user: &Address, claim_id: u64) -> ClaimResul
         }
     }
 
-    let idx = found_idx.expect("claim not found for user");
+    let idx = found_idx
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(e, ContractError::ClaimNotFound));
     let claim = claims.get(idx as u32).unwrap();
 
     if claim.processed {
-        panic!("claim already processed");
+        soroban_sdk::panic_with_error!(e, ContractError::ClaimAlreadyProcessed);
     }
     if claim.expires_at > 0 && now > claim.expires_at {
-        panic!("claim expired");
+        soroban_sdk::panic_with_error!(e, ContractError::ClaimExpired);
     }
 
     let mut paid_claim = claim.clone();
@@ -1026,11 +1031,11 @@ pub fn get_pending_claims_paginated(
 
 /// Look up a single claim by its unique `claim_id`.
 ///
-/// # Panics
-/// Panics with `"claim not found"` when no claim with that ID exists.
+/// # Errors
+/// Panics with [`ContractError::ClaimNotFound`] when no claim with that ID exists.
 pub fn get_claim_by_id(e: &Env, claim_id: u64) -> PendingClaim {
     e.storage()
         .persistent()
         .get(&DataKey::ClaimById(claim_id))
-        .unwrap_or_else(|| panic!("claim not found"))
+        .unwrap_or_else(|| soroban_sdk::panic_with_error!(e, ContractError::ClaimNotFound))
 }

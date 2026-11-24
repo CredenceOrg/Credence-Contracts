@@ -38,8 +38,8 @@
 //! - **P6 — the accepted amount domain is `[0, i128::MAX]`.** `i128::MIN` is
 //!   rejected; the upper bound must not be rejected by validation itself, and
 //!   the check must not overflow while testing the bound.
-//! - **P7 — `get_token` returns the configured address and panics with a
-//!   stable, diagnosable message otherwise.
+//! - **P7 — `get_token` returns the configured address and reports
+//!   `ContractError::NotInitialized` otherwise.
 //! - **P8 — the `errors` constants are the user-visible contract surface and
 //!   must not drift or collide.
 //!
@@ -75,6 +75,8 @@ use crate::safe_token::{
     errors, force_approve, get_token, safe_approve, safe_increase_allowance,
     safe_require_allowance, safe_transfer, safe_transfer_from, token_client,
 };
+use crate::test_helpers::expect_contract_error_panic;
+use credence_errors::ContractError;
 use soroban_sdk::testutils::Address as _;
 use soroban_sdk::token::{StellarAssetClient, TokenClient};
 use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, Symbol, Val, Vec};
@@ -290,6 +292,10 @@ impl Fixture {
     }
 }
 
+/// Capture the payload of an expected panic as a `String`.
+///
+/// The test paths include both string panics and Soroban contract-error
+/// panics, so both string payload forms are handled.
 /// Capture string panic payloads used by legacy, non-typed failure paths.
 fn panic_message<F: FnOnce()>(f: F) -> String {
     let payload = catch_unwind(AssertUnwindSafe(f)).expect_err("expected a panic");
@@ -377,6 +383,12 @@ fn negative_amounts_are_rejected_at_every_entry_point() {
 /// versa), which makes production incidents misdiagnosable.
 #[test]
 fn negative_amount_is_rejected_before_token_lookup() {
+    let f = Fixture::unconfigured();
+    let other = Address::generate(&f.env);
+
+    let message = panic_message(|| f.as_contract(|| safe_transfer(&f.env, &other, -1)));
+
+    assert_eq!(message, errors::INVALID_AMOUNT);
     let env = Env::default();
     let contract = env.register(SafeTokenErrorHarness, ());
     let other = Address::generate(&env);
@@ -418,10 +430,9 @@ fn non_zero_amount_on_the_same_unconfigured_contract_does_panic() {
     let f = Fixture::unconfigured();
     let other = Address::generate(&f.env);
 
-    expect_panic_with(
-        "token not configured - contract not properly initialized",
-        || f.as_contract(|| safe_require_allowance(&f.env, &other, 1)),
-    );
+    expect_contract_error_panic(ContractError::NotInitialized as u32, || {
+        f.as_contract(|| safe_require_allowance(&f.env, &other, 1))
+    });
 }
 
 /// P3: `safe_approve` has **no** zero fast path, unlike the other four entry

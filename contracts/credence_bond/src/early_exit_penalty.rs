@@ -43,7 +43,7 @@ pub fn set_config(e: &Env, treasury: Address, penalty_bps: u32) {
 /// Return the current early exit configuration.
 ///
 /// Returns `EarlyExitConfigNotSet` when no config has been stored. This is
-
+///
 /// a recoverable error: callers may call `set_config` and retry.
 pub fn get_config(e: &Env) -> Result<EarlyExitConfig, ContractError> {
     let key = DataKey::EarlyExitConfig;
@@ -255,7 +255,6 @@ mod tests {
         // Large inputs must not panic or wrap; the result is clamped.
         let penalty = calculate_penalty(i128::MAX, 10, 10, BPS_DENOMINATOR as u32);
         assert!(penalty >= 0);
-        assert!(penalty <= i128::MAX);
     }
 
     #[test]

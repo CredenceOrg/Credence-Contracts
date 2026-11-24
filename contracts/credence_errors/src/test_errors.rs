@@ -139,6 +139,16 @@ mod tests {
     #[test]
     fn test_code_role_required() {
         assert_eq!(ContractError::RoleRequired as u32, 127);
+        assert_eq!(ContractError::OperationExpired as u32, 128);
+    }
+
+    #[test]
+    fn test_codes_upgrade_authorization() {
+        assert_eq!(ContractError::UpgradeAuthorizationAlreadyExists as u32, 128);
+        assert_eq!(ContractError::UpgradeAuthorizationNotFound as u32, 129);
+        assert_eq!(ContractError::UpgradeSelfRoleNotAllowed as u32, 130);
+        assert_eq!(ContractError::LastUpgradeAdmin as u32, 131);
+        assert_eq!(ContractError::NotPendingUpgradeAdmin as u32, 132);
     }
 
     #[test]
@@ -183,6 +193,25 @@ mod tests {
         assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
         assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
         assert_eq!(ContractError::BytesTooLarge as u32, 239);
+        assert_eq!(ContractError::ClaimAlreadyProcessed as u32, 240);
+        assert_eq!(ContractError::ClaimExpired as u32, 241);
+        assert_eq!(ContractError::ClaimNotFound as u32, 242);
+        assert_eq!(ContractError::NoPendingClaims as u32, 243);
+        assert_eq!(ContractError::NoValidClaimsToProcess as u32, 244);
+        assert_eq!(ContractError::BondAmountBelowMinimum as u32, 240);
+        assert_eq!(ContractError::BondAmountExceedsMaximum as u32, 241);
+        assert_eq!(ContractError::BondDurationTooShort as u32, 242);
+        assert_eq!(ContractError::BondDurationTooLong as u32, 243);
+        assert_eq!(ContractError::InvalidRecipient as u32, 244);
+        assert_eq!(ContractError::UpgradeNotAuthorized as u32, 240);
+        assert_eq!(ContractError::UpgradeAuthNotActive as u32, 241);
+        assert_eq!(ContractError::UpgradeAuthExpired as u32, 242);
+        assert_eq!(ContractError::UpgradeProposalNotPending as u32, 243);
+        assert_eq!(ContractError::UpgradeProposalAlreadyApproved as u32, 244);
+        assert_eq!(ContractError::UpgradeProposalNotApproved as u32, 245);
+        assert_eq!(ContractError::UpgradeImplementationMismatch as u32, 246);
+        assert_eq!(ContractError::ImplementationNotSet as u32, 247);
+        assert_eq!(ContractError::SameImplementation as u32, 248);
     }
 
     #[test]
@@ -250,6 +279,7 @@ mod tests {
         assert_eq!(ContractError::Underflow as u32, 701);
         assert_eq!(ContractError::DivisionByZero as u32, 702);
         assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
+        assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
     }
 
     // ---------------------------------------------------------------------------
@@ -299,6 +329,12 @@ mod tests {
             ContractError::MaxPauseSignersExceeded,
             ContractError::LeaseSignerMismatch,
             ContractError::RoleRequired,
+            ContractError::OperationExpired,
+            ContractError::UpgradeAuthorizationAlreadyExists,
+            ContractError::UpgradeAuthorizationNotFound,
+            ContractError::UpgradeSelfRoleNotAllowed,
+            ContractError::LastUpgradeAdmin,
+            ContractError::NotPendingUpgradeAdmin,
             ContractError::StaleAdminEpoch,
             ContractError::StaleSignerEpoch,
         ];
@@ -354,6 +390,25 @@ mod tests {
             ContractError::CooldownRequestNotFound,
             ContractError::CooldownPeriodNotElapsed,
             ContractError::BytesTooLarge,
+            ContractError::ClaimAlreadyProcessed,
+            ContractError::ClaimExpired,
+            ContractError::ClaimNotFound,
+            ContractError::NoPendingClaims,
+            ContractError::NoValidClaimsToProcess,
+            ContractError::BondAmountBelowMinimum,
+            ContractError::BondAmountExceedsMaximum,
+            ContractError::BondDurationTooShort,
+            ContractError::BondDurationTooLong,
+            ContractError::InvalidRecipient,
+            ContractError::UpgradeNotAuthorized,
+            ContractError::UpgradeAuthNotActive,
+            ContractError::UpgradeAuthExpired,
+            ContractError::UpgradeProposalNotPending,
+            ContractError::UpgradeProposalAlreadyApproved,
+            ContractError::UpgradeProposalNotApproved,
+            ContractError::UpgradeImplementationMismatch,
+            ContractError::ImplementationNotSet,
+            ContractError::SameImplementation,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -469,6 +524,10 @@ mod tests {
         );
         assert_eq!(
             ContractError::InvalidPercentSplit.category(),
+            ErrorCategory::Arithmetic
+        );
+        assert_eq!(
+            ContractError::InvalidPeriodCount.category(),
             ErrorCategory::Arithmetic
         );
     }
@@ -1375,6 +1434,7 @@ mod tests {
             ContractError::InvalidAdminAddress => true,
             ContractError::AdminUnchanged => true,
             ContractError::TimelockNotReady => true, // wait for delay
+            ContractError::OperationExpired => true, // cancel and queue a replacement
             ContractError::EmergencyDrainNotPermitted => true,
             ContractError::RoleNotHeldAtLedger => true,
             ContractError::ZeroBytes32 => true,
@@ -1386,6 +1446,11 @@ mod tests {
             ContractError::LeaseSignerMismatch => true, // re-sign as the lease signer
             ContractError::CrossContractCallerMismatch => false,
             ContractError::RoleRequired => true,
+            ContractError::UpgradeAuthorizationAlreadyExists => true, // choose another address or revoke first
+            ContractError::UpgradeAuthorizationNotFound => true,      // grant authorization first
+            ContractError::UpgradeSelfRoleNotAllowed => true, // choose another address or a lower role
+            ContractError::LastUpgradeAdmin => true, // grant another upgrader before revoking
+            ContractError::NotPendingUpgradeAdmin => true, // sign as the pending admin
             ContractError::StaleAdminEpoch => false,
             ContractError::StaleSignerEpoch => false,
 
@@ -1422,6 +1487,25 @@ mod tests {
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::ClaimAlreadyProcessed => false,
+            ContractError::ClaimExpired => false,
+            ContractError::ClaimNotFound => true,
+            ContractError::NoPendingClaims => true,
+            ContractError::NoValidClaimsToProcess => true,
+            ContractError::BondAmountBelowMinimum => true, // raise the amount to the minimum
+            ContractError::BondAmountExceedsMaximum => true, // lower the amount to the maximum
+            ContractError::BondDurationTooShort => true,  // extend duration to at least 1 day
+            ContractError::BondDurationTooLong => true,   // shorten duration to at most 365 days
+            ContractError::InvalidRecipient => true,      // supply a non-self recipient
+            ContractError::UpgradeNotAuthorized => false, // admin must grant upgrade authorization
+            ContractError::UpgradeAuthNotActive => false, // admin must reactivate authorization
+            ContractError::UpgradeAuthExpired => false, // admin must renew authorization
+            ContractError::UpgradeProposalNotPending => false, // proposal already left Pending
+            ContractError::UpgradeProposalAlreadyApproved => false, // approval already recorded
+            ContractError::UpgradeProposalNotApproved => true, // wait for approvals then retry
+            ContractError::UpgradeImplementationMismatch => true, // resubmit with the proposed implementation
+            ContractError::ImplementationNotSet => false, // implementation must be initialized first
+            ContractError::SameImplementation => true, // supply a different implementation
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -1486,6 +1570,7 @@ mod tests {
             ContractError::Underflow => false,
             ContractError::DivisionByZero => false,
             ContractError::InvalidPercentSplit => true,
+            ContractError::InvalidPeriodCount => true,
 
             // Escrow
             ContractError::EscrowNotFound => true,
@@ -1495,6 +1580,10 @@ mod tests {
             ContractError::RefundExceedsRemaining => true,
             ContractError::InvalidEscrowExpiry => true,
             ContractError::NotEscrowParty => true,
+            ContractError::GovernanceApproverMismatch => true,
+            ContractError::GovernanceApprovalExpired => true,
+            ContractError::GovernanceApprovalCategoryMismatch => true,
+            ContractError::ParameterOutOfBounds => true,
         }
     }
 
@@ -1537,6 +1626,11 @@ mod tests {
             ContractError::RoleNotHeldAtLedger,
             ContractError::ZeroBytes32,
             ContractError::RoleRequired,
+            ContractError::UpgradeAuthorizationAlreadyExists,
+            ContractError::UpgradeAuthorizationNotFound,
+            ContractError::UpgradeSelfRoleNotAllowed,
+            ContractError::LastUpgradeAdmin,
+            ContractError::NotPendingUpgradeAdmin,
             ContractError::LeaseSignerMismatch,
             ContractError::BondNotFound,
             ContractError::BondNotActive,
@@ -1621,10 +1715,15 @@ mod tests {
             ContractError::StaleEpoch,
             ContractError::MigrationInProgress,
             ContractError::OutsideBusinessHours,
+            ContractError::BondAmountBelowMinimum,
+            ContractError::BondAmountExceedsMaximum,
+            ContractError::BondDurationTooShort,
+            ContractError::BondDurationTooLong,
+            ContractError::InvalidRecipient,
         ];
         assert_eq!(
             cases.len(),
-            105,
+            110,
             "Add the new variant to ALL THREE places: \
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
@@ -2097,6 +2196,12 @@ mod tests {
     #[test]
     fn test_invalid_percent_split_is_recoverable() {
         assert!(ContractError::InvalidPercentSplit.is_recoverable());
+    }
+
+    /// InvalidPeriodCount: caller supplies a period count within the cap.
+    #[test]
+    fn test_invalid_period_count_is_recoverable() {
+        assert!(ContractError::InvalidPeriodCount.is_recoverable());
     }
 
     // ---------------------------------------------------------------------------
