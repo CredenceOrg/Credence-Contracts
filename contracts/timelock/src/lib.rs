@@ -864,6 +864,9 @@ mod test_call_binding;
 mod test_events_schema;
 
 #[cfg(test)]
+mod test_delay_boundaries;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use soroban_sdk::{
