@@ -77,8 +77,7 @@ pub fn advance_ledgers_by(e: &Env, n: u32) {
 #[allow(dead_code)]
 pub fn expect_contract_error_panic<F: FnOnce()>(expected: u32, f: F) {
     let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-        .err()
-        .expect("expected the call to revert, but it succeeded");
+        .expect_err("expected the call to revert, but it succeeded");
 
     let message = payload
         .downcast_ref::<std::string::String>()

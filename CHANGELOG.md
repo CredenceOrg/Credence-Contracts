@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dispute-resolution pause controls**: Added admin-configured pause administration with signer-threshold proposals; `create_dispute`, `resolve`, and `close` now reject writes while paused, while reads remain available (closes #1747).
+- **Appeal round for arbitration disputes** (`credence_arbitration`): parties may now appeal a `Resolved`, `Tied`, or `NoQuorum` outcome within an admin-configurable window (default 86 400 s). `appeal_dispute(creator, id, duration)` transitions the dispute to `Appealed`, resets voting state, records round-one voters (who are excluded from round two), and opens a fresh voting window. Round two resolves under a stricter quorum set via `set_appeal_config`; the second-round outcome is final and cannot be appealed again. New status `NoQuorum` (discriminant 7) is set by `no_quorum_resolve` when voting ends without reaching quorum; `Appealed` (discriminant 8) is the non-terminal round-two state. New errors appended: `AppealWindowClosed = 19`, `AlreadyAppealed = 20`, `NotAppealable = 21`, `NotAParty = 22`, `ArbitratorVotedInRoundOne = 23`. New storage keys: `AppealWindow`, `AppealMinTotalWeight`, `AppealMinVoters`, `ResolvedAt(id)`, `AppealCount(id)`, `RoundOneVoter(id, addr)`. Covered by `test_appeal.rs`; `test_dispute_guard.rs` updated for the two new variants. Documented in `docs/arbitration.md`. (Closes #1775.)
+
+- **Timelock delay boundaries**: Pin minimum delay acceptance/rejection for both queue entrypoints, exact too-short errors, and readiness at ETA (#1724).
 - **Ownership transfer failure boundaries**: Added deterministic coverage for suspended-candidate expiry and configuration-epoch overflow, asserting rejected proposals preserve ownership state, proposal metadata, epoch, and events (closes #1422).
 - **Admin configuration epoch**: Added a monotonic `ConfigEpoch` to the Admin contract that advances exactly once per committed privileged mutation (admin role changes, suspension, ownership transfer, pause configuration, pause state transitions, and pause-proposal approvals). Exposes `get_config_epoch()` so clients can detect concurrent conflicts and retry; rejected, stale, repeated, and failed operations never advance the epoch and leave no partial state. Documented in `docs/CONFIG_EPOCH.md` and covered by `test_concurrency_race_safety.rs` (closes #1297).
 - **Lease scope guard** (`require_matching_lease_scope`): defence-in-depth check that a lease's scope bitmask covers the requested operation. Adds `Lease` / `lease_op` primitives and typed `LeaseScopeMismatch` / `LeaseExpired` errors in `credence_errors` (Closes #847).
@@ -25,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gas benchmark notes**: Documented hot-path contract call gas profiles, benchmark methodology, and optimization patterns in `docs/gas-benchmark-notes.md` (closes #1057).
 
 ### Fixed
+
+- **Credence bond claim errors**: Replaced bare claim panics with typed contract errors, reusing `AmountMustBePositive` and appending wire-stable claim error codes 240–244. Added typed-error regression coverage and updated the error catalogue (closes #1700).
+- **Arbitration cancellation validation**: Check whether the dispute can transition to `Cancelled` before applying creator-only vote-count and deadline restrictions. Terminal disputes now return `InvalidTransition`; creator attempts to cancel an active voting dispute after a vote or deadline still return `CancelNotAllowed`. Fixed the arbitration archive/reopen tests to use their fixture principals, assert successful `try_` calls fully, and verify the admin cancellation event role.
 
 - **Typed bond entrypoint errors**: Replaced bare panics for duplicate batch attestations, withdrawal timing, liquidation eligibility, same-ledger cooldown blocking, and batch-transfer validation with typed contract errors; documented the new wire-stable codes and removed the corresponding panic-baseline entries (closes #1712).
 - **Admin compilation**: Moved the private pause configuration type out of the contract implementation, removed a duplicate address validator, restored the encoded admin epoch tests as Rust source, and repaired test API usage. Routed pause execution tracing through SDK debug logs to preserve the governance-event schema and avoid invalid diagnostic symbols, and preserved the overflow error for the maximum proposal ID. Added a generated-client regression covering all seven pause entry points (closes #1602).
@@ -52,5 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SafeERC20 Migration**: Replaced direct `TokenClient` calls with safe wrapper functions to support non-compliant ERC20 tokens across the protocol.
 - **Protocol Fixes**: Resolved compilation errors, completed `top_up` and `extend_duration` with overflow protection.
 - **Event Indexing**: Migrated lifecycle events to V2 for optimized off-chain indexing.
+
+### Removed
+
+- **Superseded ignored batch tests**: Removed `test_atomic_failure_on_second_bond` and `test_atomic_failure_validation_order` from `contracts/credence_bond/src/test_batch.rs` (already replaced by Section J `try_*` atomicity tests) and marked `docs/known-simplifications.md` § 5.1 as resolved.
 
 <!-- a -->

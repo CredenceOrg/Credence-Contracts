@@ -1,7 +1,10 @@
 //! Storage migration utilities for IdentityBond
 use crate::{DataKey, IdentityBond};
+#[cfg(test)]
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Env};
+#[cfg(test)]
+use soroban_sdk::panic_with_error;
+use soroban_sdk::{contracttype, Address, Env};
 
 #[contracttype]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,6 +16,7 @@ pub enum MigrationStatus {
 
 /// Ensures that no migration is currently in progress, to prevent
 /// state mutations during an active migration.
+#[cfg(test)]
 pub fn require_no_ongoing_migration(e: &Env, status: MigrationStatus) {
     if status == MigrationStatus::InProgress {
         panic_with_error!(e, ContractError::MigrationInProgress);
