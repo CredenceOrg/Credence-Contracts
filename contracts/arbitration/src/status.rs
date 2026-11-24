@@ -88,6 +88,11 @@ pub enum ArbitrationError {
     /// A creator already has an unresolved dispute tracked as active.
     /// This is raised when stale/duplicate active markers are still present.
     OngoingDispute = 18,
+    /// The creator may only cancel before any vote is cast and before
+    /// the voting deadline.
+    CancelNotAllowed = 19,
+    /// The voter is the creator of the dispute (conflict of interest).
+    ConflictOfInterest = 20,
 }
 
 /// Assert a status transition is valid, returning ArbitrationError::InvalidTransition otherwise.

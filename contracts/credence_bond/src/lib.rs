@@ -18,16 +18,16 @@ pub mod access_control;
 mod batch;
 #[cfg(test)]
 pub use batch::{BatchBondParams, BatchBondResult};
-mod claims;
+pub mod claims;
 mod cooldown;
 mod early_exit_penalty;
 pub mod emergency;
 mod emergency_drain;
-mod events;
+pub mod events;
 mod fees;
 mod guards;
 mod idempotency;
-mod invariants;
+pub mod invariants;
 pub mod iter_chunks;
 mod leverage;
 mod lifecycle;
@@ -46,7 +46,7 @@ mod status_snapshot;
 mod storage;
 mod tiered_bond;
 mod token_integration;
-mod upgrade_auth;
+pub mod upgrade_auth;
 mod validation;
 mod weighted_attestation;
 

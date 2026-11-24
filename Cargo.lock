@@ -504,6 +504,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "credence-contracts"
+version = "0.1.0"
+dependencies = [
+ "admin",
+ "credence_arbitration",
+ "credence_bond",
+ "credence_delegation",
+ "credence_registry",
+ "credence_treasury",
+ "serde",
+ "serde_json",
+ "soroban-sdk",
+ "timelock",
+]
+
+[[package]]
 name = "credence_admin_cli"
 version = "0.1.0"
 dependencies = [

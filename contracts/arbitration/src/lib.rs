@@ -296,9 +296,7 @@ impl CredenceArbitration {
             .checked_add(1)
             .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
         let creator_dispute_key = DataKey::CreatorDispute(creator.clone(), creator_dispute_count);
-        e.storage()
-            .persistent()
-            .set(&creator_dispute_key, &id);
+        e.storage().persistent().set(&creator_dispute_key, &id);
         e.storage().persistent().extend_ttl(
             &creator_dispute_key,
             PERSISTENT_TTL_THRESHOLD,
