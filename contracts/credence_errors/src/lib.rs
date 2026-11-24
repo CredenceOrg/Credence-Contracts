@@ -757,6 +757,24 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     AttestationWeightExceedsMax = 304,
 
+    /// Caller-supplied attestation data exceeds the maximum accepted length.
+    /// Replaces: panic!("attestation data exceeds maximum length")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    AttestationDataTooLarge = 305,
+
+    /// Configured attestation weight multiplier exceeds the maximum basis points.
+    /// Replaces: panic!("multiplier_bps exceeds maximum")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    AttestationMultiplierExceedsMax = 306,
+
+    /// Configured maximum attestation weight exceeds the protocol maximum.
+    /// Replaces: panic!("max_weight exceeds maximum")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    AttestationMaxWeightExceedsMax = 307,
+
     // --- Registry (400-499) ---
     /// Identity has already been registered in the registry.
     /// Replaces: panic!("identity already registered")
@@ -1233,7 +1251,10 @@ impl ErrorExt for ContractError {
             | ContractError::AttestationNotFound
             | ContractError::AttestationAlreadyRevoked
             | ContractError::InvalidAttestationWeight
-            | ContractError::AttestationWeightExceedsMax => ErrorCategory::Attestation,
+            | ContractError::AttestationWeightExceedsMax
+            | ContractError::AttestationDataTooLarge
+            | ContractError::AttestationMultiplierExceedsMax
+            | ContractError::AttestationMaxWeightExceedsMax => ErrorCategory::Attestation,
 
             ContractError::IdentityAlreadyRegistered
             | ContractError::BondContractAlreadyRegistered
@@ -1497,6 +1518,15 @@ impl ErrorExt for ContractError {
             ContractError::InvalidAttestationWeight => "Attestation weight must be positive",
             ContractError::AttestationWeightExceedsMax => {
                 "Attestation weight exceeds the configured maximum"
+            }
+            ContractError::AttestationDataTooLarge => {
+                "Caller-supplied attestation data exceeds the maximum accepted length"
+            }
+            ContractError::AttestationMultiplierExceedsMax => {
+                "Configured attestation weight multiplier exceeds the maximum basis points"
+            }
+            ContractError::AttestationMaxWeightExceedsMax => {
+                "Configured maximum attestation weight exceeds the protocol maximum"
             }
             ContractError::IdentityAlreadyRegistered => {
                 "Identity has already been registered in the registry"
@@ -1766,7 +1796,10 @@ impl ErrorExt for ContractError {
             | ContractError::AttestationNotFound
             | ContractError::AttestationAlreadyRevoked
             | ContractError::InvalidAttestationWeight
-            | ContractError::AttestationWeightExceedsMax => true,
+            | ContractError::AttestationWeightExceedsMax
+            | ContractError::AttestationDataTooLarge
+            | ContractError::AttestationMultiplierExceedsMax
+            | ContractError::AttestationMaxWeightExceedsMax => true,
 
             // --- Registry (400-499): all caller-fixable. ---
             ContractError::IdentityAlreadyRegistered
