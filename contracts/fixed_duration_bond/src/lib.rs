@@ -1804,5 +1804,228 @@ mod tests {
         let treasury_2 = Address::generate(&e);
         client.set_penalty_config(&admin, &treasury_2, &0_u32);
         assert_eq!(client.get_penalty_config(), Some((treasury_2, 0_u32)));
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Penalty Rounding & Fund Conservation Table Tests
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_withdraw_early_penalty_conservation_table() {
+        struct Case {
+            name: &'static str,
+            principal: i128,
+            fee_bps: u32,
+            penalty_bps: u32,
+            duration: u64,
+            exit_offset: u64,
+        }
+
+        let cases = [
+            // Tiny amounts where integer division truncates penalty to 0
+            Case {
+                name: "tiny_1_unit_1_bps",
+                principal: 1,
+                fee_bps: 0,
+                penalty_bps: 1,
+                duration: 100,
+                exit_offset: 0,
+            },
+            Case {
+                name: "tiny_1_unit_5000_bps",
+                principal: 1,
+                fee_bps: 0,
+                penalty_bps: 5_000,
+                duration: 100,
+                exit_offset: 50,
+            },
+            Case {
+                name: "tiny_1_unit_10000_bps",
+                principal: 1,
+                fee_bps: 0,
+                penalty_bps: 10_000,
+                duration: 100,
+                exit_offset: 99,
+            },
+            Case {
+                name: "tiny_7_units_333_bps_with_fee",
+                principal: 7,
+                fee_bps: 250,
+                penalty_bps: 333,
+                duration: 86_400,
+                exit_offset: 86_399,
+            },
+            Case {
+                name: "tiny_99_units_100_bps",
+                principal: 99,
+                fee_bps: 100,
+                penalty_bps: 100,
+                duration: 1_000,
+                exit_offset: 999,
+            },
+            // Exact 10_000 bps (100% penalty)
+            Case {
+                name: "full_penalty_10000_bps_no_fee",
+                principal: 100_000,
+                fee_bps: 0,
+                penalty_bps: 10_000,
+                duration: 86_400,
+                exit_offset: 0,
+            },
+            Case {
+                name: "full_penalty_10000_bps_with_fee",
+                principal: 100_000,
+                fee_bps: 250,
+                penalty_bps: 10_000,
+                duration: 86_400,
+                exit_offset: 43_200,
+            },
+            // Last-second exits (1 second before maturity)
+            Case {
+                name: "last_second_exit_min_duration",
+                principal: 10_000,
+                fee_bps: 0,
+                penalty_bps: 1_000,
+                duration: MIN_BOND_DURATION,
+                exit_offset: 0,
+            },
+            Case {
+                name: "last_second_exit_max_duration",
+                principal: 123_456_789,
+                fee_bps: 150,
+                penalty_bps: 333,
+                duration: MAX_BOND_DURATION,
+                exit_offset: MAX_BOND_DURATION - 1,
+            },
+            Case {
+                name: "last_second_exit_9999_bps",
+                principal: 10_001,
+                fee_bps: 1,
+                penalty_bps: 9_999,
+                duration: 3_600,
+                exit_offset: 3_599,
+            },
+            // Mid-lock non-divisible amounts with creation fee + penalty
+            Case {
+                name: "odd_principal_with_fee_and_penalty",
+                principal: 999_999,
+                fee_bps: 333,
+                penalty_bps: 777,
+                duration: 86_400,
+                exit_offset: 12_345,
+            },
+        ];
+
+        for case in cases {
+            let (e, admin, token_addr, client) = setup();
+            let token_client = token::Client::new(&e, &token_addr);
+
+            let fee_treasury = Address::generate(&e);
+            let penalty_treasury = Address::generate(&e);
+            let fee_collector = Address::generate(&e);
+            let owner = Address::generate(&e);
+
+            client.set_fee_config(&admin, &fee_treasury, &case.fee_bps);
+            client.set_penalty_config(&admin, &penalty_treasury, &case.penalty_bps);
+
+            let owner_initial = token_client.balance(&owner);
+            let penalty_treasury_initial = token_client.balance(&penalty_treasury);
+            let fee_collector_initial = token_client.balance(&fee_collector);
+            let contract_initial = token_client.balance(&client.address);
+
+            let start_ts: u64 = 1_000_000;
+            set_timestamp(&e, start_ts);
+
+            let bond = client.create_bond(&owner, &case.principal, &case.duration);
+
+            set_timestamp(&e, start_ts + case.exit_offset);
+            client.withdraw_early(&owner);
+
+            let expected_fee = (case.principal * case.fee_bps as i128) / BPS_DENOMINATOR;
+            let expected_net_bond = case.principal - expected_fee;
+            let expected_penalty = (expected_net_bond * case.penalty_bps as i128) / BPS_DENOMINATOR;
+            let expected_payout = expected_net_bond - expected_penalty;
+
+            let fee_collected = if expected_fee > 0 {
+                client.collect_fees(&admin, &fee_collector)
+            } else {
+                0
+            };
+
+            let owner_after = token_client.balance(&owner);
+            let penalty_treasury_after = token_client.balance(&penalty_treasury);
+            let fee_collector_after = token_client.balance(&fee_collector);
+            let contract_after = token_client.balance(&client.address);
+
+            let payout = owner_after - (owner_initial - case.principal);
+            let penalty_received = penalty_treasury_after - penalty_treasury_initial;
+            let fee_received = fee_collector_after - fee_collector_initial;
+            let contract_delta = contract_after - contract_initial;
+
+            assert_eq!(bond.amount, expected_net_bond, "case {}", case.name);
+            assert_eq!(fee_collected, expected_fee, "case {}", case.name);
+            assert_eq!(fee_received, expected_fee, "case {}", case.name);
+            assert_eq!(penalty_received, expected_penalty, "case {}", case.name);
+            assert_eq!(payout, expected_payout, "case {}", case.name);
+
+            // Conservation of funds: non-negative, bounded by principal, exact sum, zero dust.
+            assert!(payout >= 0, "case {}: negative payout", case.name);
+            assert!(penalty_received >= 0, "case {}: negative penalty", case.name);
+            assert!(fee_received >= 0, "case {}: negative fee", case.name);
+            assert!(
+                payout <= case.principal,
+                "case {}: payout exceeds principal",
+                case.name
+            );
+            assert!(
+                penalty_received <= case.principal,
+                "case {}: penalty exceeds principal",
+                case.name
+            );
+            assert!(
+                fee_received <= case.principal,
+                "case {}: fee exceeds principal",
+                case.name
+            );
+            assert_eq!(
+                penalty_received + payout + fee_received,
+                case.principal,
+                "case {}: funds not conserved",
+                case.name
+            );
+            assert_eq!(
+                contract_delta, 0,
+                "case {}: unexpected balance left in contract",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_withdraw_early_penalty_zero_bps_disables_early_exit_and_conserves_principal() {
+        let (e, admin, token_addr, client) = setup();
+        let token_client = token::Client::new(&e, &token_addr);
+
+        let penalty_treasury = Address::generate(&e);
+        let owner = Address::generate(&e);
+        let principal: i128 = 10_000;
+        let duration: u64 = 1_000;
+
+        client.set_penalty_config(&admin, &penalty_treasury, &0_u32);
+
+        let owner_initial = token_client.balance(&owner);
+        let start_ts: u64 = 5_000;
+        set_timestamp(&e, start_ts);
+        client.create_bond(&owner, &principal, &duration);
+
+        // Last-second early exit with 0 bps penalty must be rejected.
+        set_timestamp(&e, start_ts + duration - 1);
+        let early_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            client.withdraw_early(&owner);
+        }));
+        assert!(early_res.is_err());
+
+        // Bond remains active and full principal is returned at maturity.
+        set_timestamp(&e, start_ts + duration);
+        client.withdraw(&owner);
+        assert_eq!(token_client.balance(&owner), owner_initial);
     }
 }
