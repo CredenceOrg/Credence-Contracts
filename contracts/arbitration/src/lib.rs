@@ -289,6 +289,34 @@ impl CredenceArbitration {
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
         bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .set(&DataKey::ActiveDispute(creator.clone()), &id);
+
+        let creator_dispute_count_key = DataKey::CreatorDisputeCount(creator.clone());
+        let creator_dispute_count: u32 = e
+            .storage()
+            .persistent()
+            .get(&creator_dispute_count_key)
+            .unwrap_or(0);
+        let next_creator_dispute_count = creator_dispute_count
+            .checked_add(1)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+        let creator_dispute_key = DataKey::CreatorDispute(creator.clone(), creator_dispute_count);
+        e.storage().persistent().set(&creator_dispute_key, &id);
+        e.storage().persistent().extend_ttl(
+            &creator_dispute_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+        e.storage()
+            .persistent()
+            .set(&creator_dispute_count_key, &next_creator_dispute_count);
+        e.storage().persistent().extend_ttl(
+            &creator_dispute_count_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
 
         // Lifecycle events: created + status transition
         e.events()

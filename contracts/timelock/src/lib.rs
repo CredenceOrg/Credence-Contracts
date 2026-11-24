@@ -140,6 +140,7 @@ pub struct PendingAdmin {
 }
 
 #[contracttype]
+#[derive(Clone)]
 pub enum DataKey {
     Admin,
     PendingAdmin,
@@ -594,6 +595,7 @@ impl TimelockContract {
         let op: Option<QueuedOperation> = e.storage().persistent().get(&key);
         if op.is_some() {
             bump_persistent_ttl(&e, key);
+            bump_persistent_ttl(&e, key.clone());
             return op;
         }
         e.storage().instance().get(&key)

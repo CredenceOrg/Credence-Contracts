@@ -60,6 +60,9 @@ mod test_boundary_recovery;
 #[cfg(test)]
 mod test_indexed_storage;
 
+#[cfg(test)]
+mod test_events_schema;
+
 #[contract]
 pub struct CredenceRegistry;
 
