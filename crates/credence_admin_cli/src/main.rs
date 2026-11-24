@@ -1,4 +1,3 @@
-#![allow(clippy::disallowed_macros)]
 // Off-chain CLI binary — issue #713 silences dynamic-string macros in
 // ON-CHAIN contract code only. Production contract wasm cannot depend on
 // `format!` for event topics or reverts, but an admin CLI printing JSON
@@ -542,6 +541,7 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
                 .await
                 .map_err(|e| anyhow!("send_transaction failed: {e:?}"))?;
 
+            #[allow(clippy::disallowed_macros)]
             let out = json!({
                 "status": format!("{:?}", resp.status),
                 "hash": resp.hash,
