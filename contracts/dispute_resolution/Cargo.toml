@@ -12,9 +12,17 @@ doctest = false
 
 [dependencies]
 soroban-sdk = { version = "22.0", default-features = false }
+# Shared cross-contract client and mirrored arbitration types. They live in
+# `interfaces` (not in `credence_arbitration`) so this contract can read an
+# arbitration ruling without taking a hard dependency edge on a sibling
+# contract.
+interfaces = { path = "../../crates/interfaces" }
 
 [dev-dependencies]
 soroban-sdk = { version = "22.0", features = ["testutils"] }
+# Integration tests register the real arbitration contract on the same ledger
+# to prove arbitration-backed resolution works end to end.
+credence_arbitration = { path = "../arbitration" }
 
 [features]
 default = []

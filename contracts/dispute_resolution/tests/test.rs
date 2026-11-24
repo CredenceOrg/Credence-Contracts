@@ -34,11 +34,13 @@
 
 #![cfg(test)]
 
+use credence_arbitration::{CredenceArbitration, CredenceArbitrationClient};
 use dispute_resolution::{DisputeError, DisputeResolutionContract, DisputeStatus};
+use interfaces::arbitration::{ArbitrationClient, ArbitrationStatus};
 use soroban_sdk::{
     symbol_short,
-    testutils::{storage::Instance, storage::Persistent, Address as _, Events},
-    vec, Address, Env, IntoVal,
+    testutils::{storage::Instance, storage::Persistent, Address as _, Events, Ledger},
+    vec, Address, Env, IntoVal, String,
 };
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -672,4 +674,320 @@ fn test_ttl_extended_on_access() {
             "instance TTL should be extended, got {instance_ttl}"
         );
     });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// § 31+ arbitration-backed resolution
+//
+// These tests register BOTH contracts (dispute_resolution + credence_arbitration)
+// on a single ledger and drive a real arbitration ruling into `resolve`, proving
+// the binding works end to end rather than only in isolation.
+//
+// Coverage map
+// ─────────────────────────────────────────────────────────────────────────
+// § 31 happy path   – final Resolved ruling maps to DisputeStatus::Resolved
+// § 32 tie          – a tied arbitration ruling is rejected (ArbitrationTied)
+// § 33 no quorum    – a no-quorum ruling is rejected (ArbitrationNoQuorum)
+// § 34 not final    – a non-final ruling is rejected, then retried once final
+// § 35 auth         – only the bound arbitration contract may resolve
+// § 36 plain flow   – the address-resolver flow is unchanged (no arbitration)
+// § 37 wire compat  – the mirrored interfaces client decodes the real ruling
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Registers both contracts on one ledger and initializes the arbitration admin.
+///
+/// Returns the arbitration contract address (which doubles as the
+/// arbitration-backed resolver) and both clients so a test can create an
+/// arbitration dispute and then bind a `dispute_resolution` dispute to it.
+fn setup_pair() -> (
+    Env,
+    dispute_resolution::DisputeResolutionContractClient<'static>,
+    Address,
+    CredenceArbitrationClient<'static>,
+    Address,
+) {
+    let env = Env::default();
+    env.mock_all_auths();
+    let dispute_contract_id = env.register(DisputeResolutionContract, ());
+    let client =
+        dispute_resolution::DisputeResolutionContractClient::new(&env, &dispute_contract_id);
+    let arbitration_id = env.register(CredenceArbitration, ());
+    let arbitration_client = CredenceArbitrationClient::new(&env, &arbitration_id);
+    let admin = Address::generate(&env);
+    arbitration_client.initialize(&admin);
+    (env, client, arbitration_id, arbitration_client, admin)
+}
+
+/// Advance the ledger clock so an arbitration voting window can elapse.
+fn advance(env: &Env, secs: u64) {
+    env.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        timestamp: env.ledger().timestamp() + secs,
+        protocol_version: 22,
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 1000,
+    });
+}
+
+/// True when an event with the given 2-topic prefix was emitted.
+fn has_event(env: &Env, name: soroban_sdk::Symbol, id: u64) -> bool {
+    let events = env.events().all();
+    events
+        .iter()
+        .any(|(_, topics, _data)| topics == vec![env, name.into_val(env), id.into_val(env)])
+}
+
+// ─── § 31 happy path: arbitration ruling → Resolved ──────────────────────────
+
+#[test]
+fn test_arbitration_backed_resolve_succeeds() {
+    let (env, client, arbitration_id, arbitration, _admin) = setup_pair();
+
+    let arb1 = Address::generate(&env);
+    let arb2 = Address::generate(&env);
+    let arbitration_creator = Address::generate(&env);
+    arbitration.register_arbitrator(&arb1, &10);
+    arbitration.register_arbitrator(&arb2, &5);
+
+    let arbitration_dispute_id = arbitration.create_dispute(
+        &arbitration_creator,
+        &String::from_str(&env, "arb dispute"),
+        &3600,
+    );
+    arbitration.vote(&arb1, &arbitration_dispute_id, &1);
+    arbitration.vote(&arb2, &arbitration_dispute_id, &2);
+
+    advance(&env, 3601);
+    let winner = arbitration.resolve_dispute(&arbitration_dispute_id);
+    assert_eq!(winner, 1);
+
+    let creator = Address::generate(&env);
+    let id = client.create_arbitration_dispute(&creator, &arbitration_id, &arbitration_dispute_id);
+
+    // The binding is recorded and announced.
+    assert!(has_event(&env, symbol_short!("arb_bound"), id));
+
+    // Only the bound arbitration contract resolves the dispute.
+    client.try_resolve(&arbitration_id, &id).unwrap().unwrap();
+
+    // Event assertions must run before the next contract call: `events().all()`
+    // reports the events of the most recent invocation only.
+    assert!(has_event(&env, symbol_short!("resolved"), id));
+    assert!(has_event(&env, symbol_short!("arb_res"), id));
+
+    let dispute = client.try_get_dispute(&id).unwrap().unwrap();
+    assert_eq!(dispute.status, DisputeStatus::Resolved);
+    assert_eq!(dispute.resolver, arbitration_id);
+    assert_eq!(dispute.creator, creator);
+}
+
+// ─── § 32 a tie is rejected ──────────────────────────────────────────────────
+
+#[test]
+fn test_arbitration_tied_is_rejected() {
+    let (env, client, arbitration_id, arbitration, _admin) = setup_pair();
+
+    let arb1 = Address::generate(&env);
+    let arb2 = Address::generate(&env);
+    let arbitration_creator = Address::generate(&env);
+    arbitration.register_arbitrator(&arb1, &10);
+    arbitration.register_arbitrator(&arb2, &10);
+
+    let arbitration_dispute_id =
+        arbitration.create_dispute(&arbitration_creator, &String::from_str(&env, "tie"), &3600);
+    arbitration.vote(&arb1, &arbitration_dispute_id, &1);
+    arbitration.vote(&arb2, &arbitration_dispute_id, &2);
+
+    advance(&env, 3601);
+    assert_eq!(arbitration.resolve_dispute(&arbitration_dispute_id), 0);
+    assert_eq!(
+        ArbitrationClient::new(&env, &arbitration_id)
+            .get_dispute(&arbitration_dispute_id)
+            .status,
+        ArbitrationStatus::Tied
+    );
+
+    let creator = Address::generate(&env);
+    let id = client.create_arbitration_dispute(&creator, &arbitration_id, &arbitration_dispute_id);
+
+    let err = client
+        .try_resolve(&arbitration_id, &id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, DisputeError::ArbitrationTied);
+    assert_eq!(
+        client.try_get_dispute(&id).unwrap().unwrap().status,
+        DisputeStatus::Open
+    );
+}
+
+// ─── § 33 no quorum is rejected ──────────────────────────────────────────────
+
+#[test]
+fn test_arbitration_no_quorum_is_rejected() {
+    let (env, client, arbitration_id, arbitration, admin) = setup_pair();
+
+    let arb1 = Address::generate(&env);
+    let arbitration_creator = Address::generate(&env);
+    arbitration.register_arbitrator(&arb1, &10);
+    // Require more weight than any single arbitrator can contribute.
+    arbitration.set_quorum(&admin, &100, &0);
+
+    let arbitration_dispute_id = arbitration.create_dispute(
+        &arbitration_creator,
+        &String::from_str(&env, "no quorum"),
+        &3600,
+    );
+    arbitration.vote(&arb1, &arbitration_dispute_id, &1);
+
+    advance(&env, 3601);
+    assert_eq!(arbitration.resolve_dispute(&arbitration_dispute_id), 0);
+    assert_eq!(
+        ArbitrationClient::new(&env, &arbitration_id)
+            .get_dispute(&arbitration_dispute_id)
+            .status,
+        ArbitrationStatus::NoQuorum
+    );
+
+    let creator = Address::generate(&env);
+    let id = client.create_arbitration_dispute(&creator, &arbitration_id, &arbitration_dispute_id);
+
+    let err = client
+        .try_resolve(&arbitration_id, &id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, DisputeError::ArbitrationNoQuorum);
+    assert_eq!(
+        client.try_get_dispute(&id).unwrap().unwrap().status,
+        DisputeStatus::Open
+    );
+}
+
+// ─── § 34 a non-final ruling is rejected, then retried once final ────────────
+
+#[test]
+fn test_arbitration_not_final_is_rejected_then_retryable() {
+    let (env, client, arbitration_id, arbitration, _admin) = setup_pair();
+
+    let arb1 = Address::generate(&env);
+    let arbitration_creator = Address::generate(&env);
+    arbitration.register_arbitrator(&arb1, &10);
+
+    let arbitration_dispute_id = arbitration.create_dispute(
+        &arbitration_creator,
+        &String::from_str(&env, "pending"),
+        &3600,
+    );
+    arbitration.vote(&arb1, &arbitration_dispute_id, &1);
+
+    let creator = Address::generate(&env);
+    let id = client.create_arbitration_dispute(&creator, &arbitration_id, &arbitration_dispute_id);
+
+    // Still Voting → rejected, and the dispute stays Open so it can be retried.
+    let err = client
+        .try_resolve(&arbitration_id, &id)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, DisputeError::ArbitrationNotResolved);
+    assert_eq!(
+        client.try_get_dispute(&id).unwrap().unwrap().status,
+        DisputeStatus::Open
+    );
+
+    // Once arbitration finalizes, the same dispute resolves.
+    advance(&env, 3601);
+    assert_eq!(arbitration.resolve_dispute(&arbitration_dispute_id), 1);
+    client.try_resolve(&arbitration_id, &id).unwrap().unwrap();
+    assert_eq!(
+        client.try_get_dispute(&id).unwrap().unwrap().status,
+        DisputeStatus::Resolved
+    );
+}
+
+// ─── § 35 only the bound arbitration contract may resolve ────────────────────
+
+#[test]
+fn test_arbitration_backed_resolve_rejects_non_binding_caller() {
+    let (env, client, arbitration_id, arbitration, _admin) = setup_pair();
+
+    let arb1 = Address::generate(&env);
+    let arbitration_creator = Address::generate(&env);
+    let attacker = Address::generate(&env);
+    arbitration.register_arbitrator(&arb1, &10);
+
+    let arbitration_dispute_id =
+        arbitration.create_dispute(&arbitration_creator, &String::from_str(&env, "auth"), &3600);
+    arbitration.vote(&arb1, &arbitration_dispute_id, &1);
+    advance(&env, 3601);
+    assert_eq!(arbitration.resolve_dispute(&arbitration_dispute_id), 1);
+
+    let creator = Address::generate(&env);
+    let id = client.create_arbitration_dispute(&creator, &arbitration_id, &arbitration_dispute_id);
+
+    let err = client.try_resolve(&attacker, &id).unwrap_err().unwrap();
+    assert_eq!(err, DisputeError::Unauthorized);
+    assert_eq!(
+        client.try_get_dispute(&id).unwrap().unwrap().status,
+        DisputeStatus::Open
+    );
+}
+
+// ─── § 36 plain address-resolver flow is unchanged ──────────────────────────
+
+#[test]
+fn test_plain_resolver_flow_is_unchanged() {
+    let (env, client) = setup();
+    let creator = Address::generate(&env);
+    let resolver = Address::generate(&env);
+    let id = client.create_dispute(&creator, &resolver);
+
+    client.try_resolve(&resolver, &id).unwrap().unwrap();
+
+    // A plain resolver flow must not emit arbitration-specific events. This is
+    // checked before the next call, since `events().all()` reports the most
+    // recent invocation only.
+    assert!(
+        !has_event(&env, symbol_short!("arb_res"), id),
+        "plain resolver flow must not emit 'arb_res'"
+    );
+
+    let dispute = client.try_get_dispute(&id).unwrap().unwrap();
+    assert_eq!(dispute.status, DisputeStatus::Resolved);
+    assert_eq!(dispute.resolver, resolver);
+}
+
+// ─── § 37 the mirrored interfaces client decodes the real ruling ────────────
+
+/// Pins wire-compatibility between `interfaces::arbitration` mirrored types and
+/// the arbitration contract's own `Dispute`/`DisputeStatus` encoding.
+#[test]
+fn test_interfaces_client_decodes_arbitration_dispute() {
+    let (env, _client, arbitration_id, arbitration, _admin) = setup_pair();
+
+    let arb1 = Address::generate(&env);
+    let arbitration_creator = Address::generate(&env);
+    arbitration.register_arbitrator(&arb1, &7);
+
+    let arbitration_dispute_id =
+        arbitration.create_dispute(&arbitration_creator, &String::from_str(&env, "wire"), &1234);
+    arbitration.vote(&arb1, &arbitration_dispute_id, &9);
+
+    let decoded =
+        ArbitrationClient::new(&env, &arbitration_id).get_dispute(&arbitration_dispute_id);
+    assert_eq!(decoded.id, arbitration_dispute_id);
+    assert_eq!(decoded.creator, arbitration_creator);
+    assert_eq!(decoded.status, ArbitrationStatus::Voting);
+    assert_eq!(decoded.outcome, 0);
+    assert_eq!(decoded.voting_end, decoded.voting_start + 1234);
+    assert_eq!(decoded.cancellation_reason, None);
+
+    advance(&env, 1235);
+    assert_eq!(arbitration.resolve_dispute(&arbitration_dispute_id), 9);
+    let decoded =
+        ArbitrationClient::new(&env, &arbitration_id).get_dispute(&arbitration_dispute_id);
+    assert_eq!(decoded.status, ArbitrationStatus::Resolved);
+    assert_eq!(decoded.outcome, 9);
 }

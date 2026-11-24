@@ -126,3 +126,52 @@ Quorum tests are in:
 
 - `contracts/arbitration/src/test.rs` — basic config + single-voter edge case
 - `contracts/arbitration/src/test_lifecycle.rs` — lifecycle integration tests for all quorum branches
+
+## Arbitration-backed resolution (`dispute_resolution`)
+
+A `dispute_resolution` dispute can delegate its ruling to a `credence_arbitration`
+contract instead of a single resolver address. The two contracts are connected via
+a binding record, so a dispute is resolved from an on-chain weighted vote with no
+off-chain glue.
+
+### Binding
+
+`create_arbitration_dispute(creator, arbitration_contract, arbitration_dispute_id)`
+creates a dispute whose `resolver` is `arbitration_contract` and writes an
+`ArbitrationBinding { arbitration_contract, arbitration_dispute_id }` at
+`DataKey::ArbitrationBinding(id)`. The binding is the sole thing that makes
+`resolve` require a verified ruling.
+
+### Verified resolution
+
+`resolve(caller, id)` still requires `caller == dispute.resolver`, so only the
+bound arbitration contract can move the dispute to `Resolved`. When a binding
+exists, `resolve` reads the arbitration dispute through the cross-contract client
+(`interfaces::arbitration::ArbitrationClient`) and applies the ruling:
+
+| Arbitration status | Outcome               | `dispute_resolution` result          |
+| ------------------ | --------------------- | ------------------------------------ |
+| `Resolved`         | non-zero (a winner)   | dispute → `Resolved`                 |
+| `Resolved`         | `0` (inconsistent)    | `DisputeError::ArbitrationNotResolved` (4) |
+| `Tied`             | `0`                   | `DisputeError::ArbitrationTied` (5)   |
+| `NoQuorum`         | `0`                   | `DisputeError::ArbitrationNoQuorum` (6) |
+| anything else      | –                     | `DisputeError::ArbitrationNotResolved` (4) |
+
+A rejected ruling leaves the dispute `Open`, so the same call can be retried once
+the arbitration dispute reaches a final ruling. A dispute with no binding keeps
+the original behaviour exactly: its plain address resolver resolves it as before.
+
+### Events
+
+| Event       | Topics                       | Data                                                  | Trigger                        |
+| ----------- | ---------------------------- | ----------------------------------------------------- | ------------------------------ |
+| `arb_bound` | `("arb_bound", id)`          | `(arbitration_contract, arbitration_dispute_id)`      | `create_arbitration_dispute`   |
+| `arb_res`   | `("arb_res", id)`            | `(arbitration_dispute_id, outcome)`                   | arbitration-backed `resolve`   |
+
+### Errors
+
+| Error                     | Code | Description                                              |
+| ------------------------- | ---- | -------------------------------------------------------- |
+| `ArbitrationNotResolved`  | 4    | Bound arbitration dispute has no final `Resolved` ruling. |
+| `ArbitrationTied`         | 5    | Bound arbitration dispute ended in a tie.                 |
+| `ArbitrationNoQuorum`     | 6    | Bound arbitration dispute ended without meeting quorum.   |
