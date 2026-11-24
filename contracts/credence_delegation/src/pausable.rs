@@ -1,5 +1,5 @@
 use credence_errors::ContractError;
-use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, Symbol, Vec};
+use soroban_sdk::{contracttype, panic_with_error, Address, Bytes, Env, String, Symbol, Vec};
 
 use crate::DataKey;
 
@@ -84,7 +84,7 @@ pub const PROPOSAL_EPOCH_SIZE: u32 = 100;
 /// The helper is **pure**: identical inputs always produce identical output;
 /// it reads the ledger sequence from `env` but writes nothing to storage.
 fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
-    let epoch = e.ledger().sequence() / PROPOSAL_EPOCH_SIZE;
+    let epoch = e.ledger().sequence().saturating_sub(1) / PROPOSAL_EPOCH_SIZE;
     let action_u32 = action as u32;
 
     // Build an 8-byte preimage: 4 bytes action || 4 bytes epoch (big-endian).
@@ -108,16 +108,15 @@ fn derive_proposal_id(e: &Env, action: PauseAction) -> u64 {
     u64::from_be_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]])
 }
 
-fn require_admin_auth(e: &Env, admin: &Address) {
-    let stored_admin: Address = e
-        .storage()
-        .instance()
-        .get(&DataKey::Admin)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::NotInitialized));
-    if stored_admin != *admin {
-        panic_with_error!(e, ContractError::NotAdmin);
+fn require_matching_operator_epoch(e: &Env, action: PauseAction, ep: u64) {
+    let expected_id = derive_proposal_id(e, action);
+    if ep != expected_id {
+        panic_with_error!(e, ContractError::StaleEpoch);
     }
-    admin.require_auth();
+}
+
+fn require_admin_auth(e: &Env, admin: &Address) {
+    credence_errors::require_admin!(e, admin, DataKey::Admin);
 }
 
 pub fn is_paused(e: &Env) -> bool {
@@ -143,6 +142,7 @@ pub fn require_not_paused(e: &Env) {
 /// previously-true entry is removed. Tests should assert this invariant after
 /// every `set_pause_signer` call.
 pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: bool) {
+    require_not_paused(e);
     require_admin_auth(e, admin);
 
     // No-lockout invariants:
@@ -210,6 +210,7 @@ pub fn set_pause_signer(e: &Env, admin: &Address, signer: &Address, enabled: boo
 }
 
 pub fn set_pause_threshold(e: &Env, admin: &Address, threshold: u32) {
+    require_not_paused(e);
     require_admin_auth(e, admin);
     let count: u32 = e
         .storage()
@@ -268,7 +269,7 @@ pub fn pause(e: &Env, caller: &Address) -> Option<u64> {
         .unwrap_or(0);
     if threshold == 0 {
         require_admin_auth(e, caller);
-        do_pause(e, None);
+        do_pause(e, None, &caller.to_string());
         None
     } else {
         propose_action(e, caller, PauseAction::Pause)
@@ -336,11 +337,20 @@ fn propose_action(e: &Env, caller: &Address, action: PauseAction) -> Option<u64>
 pub fn approve_pause_proposal(e: &Env, signer: &Address, proposal_id: u64) {
     require_pause_signer(e, signer);
 
-    let _action: u32 = e
+    let action: u32 = e
         .storage()
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+
+    let action_enum = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+    if proposal_id != derive_proposal_id(e, action_enum) {
+        panic_with_error!(e, ContractError::StaleEpoch);
+    }
 
     record_approval(e, proposal_id, signer);
 
@@ -356,6 +366,15 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .instance()
         .get(&DataKey::PauseProposal(proposal_id))
         .unwrap_or_else(|| panic_with_error!(e, ContractError::ProposalNotFound));
+
+    let action_enum = match action {
+        1 => PauseAction::Pause,
+        2 => PauseAction::Unpause,
+        _ => panic_with_error!(e, ContractError::InvalidPauseAction),
+    };
+    if proposal_id != derive_proposal_id(e, action_enum) {
+        panic_with_error!(e, ContractError::StaleEpoch);
+    }
 
     let threshold: u32 = e
         .storage()
@@ -373,7 +392,7 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
     }
 
     match action {
-        1 => do_pause(e, Some(proposal_id)),
+        1 => do_pause(e, Some(proposal_id), &String::from_str(e, "")),
         2 => do_unpause(e, Some(proposal_id)),
         _ => panic_with_error!(e, ContractError::InvalidPauseAction),
     }
@@ -386,9 +405,10 @@ pub fn execute_pause_proposal(e: &Env, proposal_id: u64) {
         .remove(&DataKey::PauseApprovalCount(proposal_id));
 }
 
-fn do_pause(e: &Env, proposal_id: Option<u64>) {
+fn do_pause(e: &Env, proposal_id: Option<u64>, reason: &String) {
     e.storage().instance().set(&DataKey::Paused, &true);
-    e.events().publish((Symbol::new(e, "paused"),), proposal_id);
+    e.events()
+        .publish((Symbol::new(e, "paused"),), (proposal_id, reason.clone()));
 }
 
 fn do_unpause(e: &Env, proposal_id: Option<u64>) {

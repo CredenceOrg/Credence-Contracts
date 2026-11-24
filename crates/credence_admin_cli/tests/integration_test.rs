@@ -7,6 +7,11 @@
 //! so the contract invocation XDR is actually being built (not just printed as
 //! an empty stub).
 
+// Integration test uses assert_ne! with custom messages for diagnostics.
+// The disallowed_macros lint targets production contract code; test harnesses
+// are explicitly exempted.
+#![allow(clippy::disallowed_macros)]
+
 use std::process::Command;
 
 fn bin() -> &'static str {

@@ -10,16 +10,61 @@ Open → Voting → Resolving → Resolved
   Cancelled  Cancelled  Tied
 ```
 
-Valid transitions enforced by the status machine:
+Valid state transitions:
 
-| From      | To        | Trigger                                             |
-| --------- | --------- | --------------------------------------------------- |
-| Open      | Voting    | `create_dispute` (implicit)                         |
-| Open      | Cancelled | `cancel_dispute` (creator or admin)                 |
-| Voting    | Resolving | `resolve_dispute` (after voting ends)               |
-| Voting    | Cancelled | `cancel_dispute` (creator or admin)                 |
-| Resolving | Resolved  | `resolve_dispute` (after tally, clear winner)       |
-| Resolving | Tied      | `resolve_dispute` (after tally, tie or equal votes) |
+| From     | To       | Trigger           | Authorisation              |
+| -------- | -------- | ----------------- | -------------------------- |
+| Open     | Resolved | `resolve_dispute` | resolver only              |
+| Resolved | Closed   | `close`           | resolver only              |
+| Open     | Closed   | `close`           | resolver only (if allowed) |
+| (any)    | (same)   | (no‑op)           | –                          |
+
+## Closure Invariants
+
+- **No double‑close**  
+  Calling `close` on a dispute already in `Closed` state reverts with `AlreadyClosed`.
+
+- **No unauthorised close**  
+  Only the designated `resolver` (set at dispute creation) may call `close`. Any other account triggers `Unauthorized`.
+
+- **Deterministic terminal state**  
+  Once a dispute is `Closed`, **no further state changes are allowed**. All mutating functions (`resolve_dispute`, `close`, and any future extensions) will revert with `DisputeClosed` error, ensuring a permanent and unambiguous final state.
+
+## Functions
+
+| Function          | Parameters                            | Description                                     |
+| ----------------- | ------------------------------------- | ----------------------------------------------- |
+| `create_dispute`  | `resolver: Address` → `u64`           | Creates a new dispute with the given resolver.  |
+| `get_dispute`     | `id: u64` → `Dispute`                 | Returns the dispute details.                    |
+| `resolve_dispute` | `id: u64, outcome: String` → `Result` | Sets the outcome and transitions to `Resolved`. |
+| `close`           | `id: u64` → `Result`                  | Finalises the dispute (transition to `Closed`). |
+
+## Errors
+
+| Error             | Code | Description                                |
+| ----------------- | ---- | ------------------------------------------ |
+| `DisputeNotFound` | 1    | The given dispute ID does not exist.       |
+| `AlreadyClosed`   | 2    | Attempt to close a dispute already closed. |
+| `Unauthorized`    | 3    | Caller is not the authorised resolver.     |
+| `DisputeClosed`   | 4    | Attempt to modify a closed dispute.        |
+
+## Events
+
+| Event              | Topics             | Data              | Trigger           |
+| ------------------ | ------------------ | ----------------- | ----------------- |
+| `dispute_closed`   | `("closed", id)`   | `("by", Address)` | `close`           |
+| `dispute_resolved` | `("resolved", id)` | `("by", Address)` | `resolve_dispute` |
+
+## Authorisation
+
+- The `resolver` address is immutable and set at creation.
+- Only the resolver can call `resolve_dispute` and `close`.
+- No other roles (e.g., admin) exist in this contract.
+
+## Security & Determinism
+
+- The `Closed` state is final – the contract guarantees that once a dispute is closed, its outcome cannot be altered, ensuring determinism for off‑chain consumers (e.g., slashing, payouts).
+- All checks are performed upfront; no re‑entrancy or storage corruption risks.
 
 ## Tied vs. Resolved
 

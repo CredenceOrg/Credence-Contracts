@@ -10,14 +10,17 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
 
     // Initial upgrade admin is correct
     let stored: Address = e.as_contract(&contract_id, || {
-        e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::Admin)).unwrap()
+        e.storage()
+            .instance()
+            .get(&DataKey::Upgrade(UpgradeKey::Admin))
+            .unwrap()
     });
     assert_eq!(stored, admin);
 
@@ -37,7 +40,10 @@ fn test_upgrade_admin_transfer_full_flow() {
 
     // New admin is now the upgrade admin
     let stored: Address = e.as_contract(&contract_id, || {
-        e.storage().instance().get(&DataKey::Upgrade(UpgradeKey::Admin)).unwrap()
+        e.storage()
+            .instance()
+            .get(&DataKey::Upgrade(UpgradeKey::Admin))
+            .unwrap()
     });
     assert_eq!(stored, new_admin);
 
@@ -53,7 +59,7 @@ fn test_upgrade_admin_transfer_timelock_enforced() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -76,7 +82,7 @@ fn test_upgrade_admin_transfer_expiry_enforced() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -98,7 +104,7 @@ fn test_upgrade_admin_transfer_cancel() {
 
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -120,7 +126,7 @@ fn test_upgrade_admin_transfer_wrong_acceptor() {
     let admin = Address::generate(&e);
     let new_admin = Address::generate(&e);
     let wrong_admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);
@@ -141,7 +147,7 @@ fn test_cannot_propose_same_admin() {
     e.mock_all_auths();
 
     let admin = Address::generate(&e);
-    let contract_id = e.register_contract(None, CredenceBond);
+    let contract_id = e.register(CredenceBond, ());
     let client = CredenceBondClient::new(&e, &contract_id);
 
     client.initialize(&admin, &None);

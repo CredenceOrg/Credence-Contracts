@@ -32,8 +32,10 @@ const CONTRACT_CRATES: &[&str] = &[
 
 /// If a contract's SIGNATURE_DOMAIN lives in a file other than `src/lib.rs`,
 /// list the extra source paths to scan here.
-const EXTRA_DOMAIN_FILES: &[(&str, &str)] =
-    &[("credence_delegation", "contracts/credence_delegation/src/domain.rs")];
+const EXTRA_DOMAIN_FILES: &[(&str, &str)] = &[(
+    "credence_delegation",
+    "contracts/credence_delegation/src/domain.rs",
+)];
 
 /// Extract the SIGNATURE_DOMAIN string value from source content.
 /// Looks for: `const SIGNATURE_DOMAIN: &str = "VALUE";`
@@ -44,7 +46,10 @@ fn extract_domain_value(content: &str) -> Option<String> {
     while let Some(pos) = content[search_from..].find(marker) {
         let start = search_from + pos;
         let line_start = content[..start].rfind('\n').map(|i| i + 1).unwrap_or(0);
-        let line_end = content[start..].find('\n').map(|i| start + i).unwrap_or(content.len());
+        let line_end = content[start..]
+            .find('\n')
+            .map(|i| start + i)
+            .unwrap_or(content.len());
         let line = &content[line_start..line_end];
 
         // Find the opening quote after '='
@@ -74,9 +79,7 @@ fn signature_domains_are_unique_across_contracts() {
         let path = Path::new(&lib_path);
 
         let content = if path.exists() {
-            fs::read_to_string(path).unwrap_or_else(|e| {
-                panic!("failed to read {lib_path}: {e}")
-            })
+            fs::read_to_string(path).unwrap_or_else(|e| panic!("failed to read {lib_path}: {e}"))
         } else {
             missing.push(format!("{lib_path} (file not found)"));
             continue;
@@ -110,7 +113,11 @@ fn signature_domains_are_unique_across_contracts() {
         if unique_in_crate.len() > 1 {
             internal_duplicates.push(format!(
                 "{crate_name}: multiple different values across files: {}",
-                unique_in_crate.iter().map(|v| format!("\"{v}\"")).collect::<Vec<_>>().join(", ")
+                unique_in_crate
+                    .iter()
+                    .map(|v| format!("\"{v}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ));
         }
 

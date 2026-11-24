@@ -104,13 +104,31 @@ fn test_pause_proposal_lifecycle_snapshots() {
     assert_pause_snapshot("02_signers_set", &e, &contract_id, &all_signers, &[]);
 
     let prop_id = client.pause(&signer1).unwrap();
-    assert_pause_snapshot("03_pause_proposed", &e, &contract_id, &all_signers, &[prop_id]);
+    assert_pause_snapshot(
+        "03_pause_proposed",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id],
+    );
 
     client.approve_pause_proposal(&signer2, &prop_id);
-    assert_pause_snapshot("04_pause_approved", &e, &contract_id, &all_signers, &[prop_id]);
+    assert_pause_snapshot(
+        "04_pause_approved",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id],
+    );
 
     client.execute_pause_proposal(&prop_id);
-    assert_pause_snapshot("05_pause_executed", &e, &contract_id, &all_signers, &[prop_id]);
+    assert_pause_snapshot(
+        "05_pause_executed",
+        &e,
+        &contract_id,
+        &all_signers,
+        &[prop_id],
+    );
 
     let unpause_id = client.unpause(&signer3).unwrap();
     assert_pause_snapshot(

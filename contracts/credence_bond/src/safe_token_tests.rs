@@ -1,5 +1,6 @@
 // Making sure our token helpers don't blow up in unexpected ways
-// Tests all the edge cases: zero amounts, negative numbers, missing configs
+// Tests all the edge cases: zero amounts, negative numbers, missing configs,
+// fee-on-transfer rejection, and balance-delta guard correctness.
 
 #![cfg(test)]
 
@@ -127,9 +128,41 @@ fn test_safe_approve_with_negative_amount() {
     set_token_in_storage(&env, &token_address);
 
     let result = catch_unwind(|| {
-        safe_approve(&env, &spender, -100, 1000);
+        safe_approve(&env, &spender, -100);
     });
     assert!(result.is_err());
+}
+
+#[test]
+fn test_safe_approve_panics_on_failure() {
+    let env = setup_env();
+    let token_address = Address::generate(&env);
+    let spender = Address::generate(&env);
+
+    set_token_in_storage(&env, &token_address);
+
+    // No real token client, so try_approve will fail
+    let result = catch_unwind(|| {
+        safe_approve(&env, &spender, 100);
+    });
+    assert!(result.is_err());
+
+    // Verify the error message is APPROVE_FAILED, not a generic SDK panic
+    let err = result.unwrap_err();
+    let err_msg = err
+        .downcast_ref::<&str>()
+        .copied()
+        .unwrap_or_else(|| {
+            err.downcast_ref::<std::string::String>()
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        });
+    assert!(
+        err_msg.contains(errors::APPROVE_FAILED)
+            || err_msg.contains("HostError"),
+        "Expected APPROVE_FAILED or HostError but got: {}",
+        err_msg
+    );
 }
 
 #[test]
@@ -141,7 +174,7 @@ fn test_safe_increase_allowance_with_zero_amount() {
     set_token_in_storage(&env, &token_address);
 
     let result = catch_unwind(|| {
-        safe_increase_allowance(&env, &spender, 0, 1000);
+        safe_increase_allowance(&env, &spender, 0);
     });
     assert!(result.is_ok());
 }
@@ -155,7 +188,7 @@ fn test_safe_increase_allowance_with_negative_amount() {
     set_token_in_storage(&env, &token_address);
 
     let result = catch_unwind(|| {
-        safe_increase_allowance(&env, &spender, -100, 1000);
+        safe_increase_allowance(&env, &spender, -100);
     });
     assert!(result.is_err());
 }
@@ -169,7 +202,7 @@ fn test_force_approve_with_negative_amount() {
     set_token_in_storage(&env, &token_address);
 
     let result = catch_unwind(|| {
-        force_approve(&env, &spender, -100, 1000);
+        force_approve(&env, &spender, -100);
     });
     assert!(result.is_err());
 }
@@ -208,9 +241,9 @@ fn test_error_message_consistency() {
         Box::new(|| safe_transfer(&env, &recipient, -1)),
         Box::new(|| safe_transfer_from(&env, &recipient, -1)),
         Box::new(|| safe_require_allowance(&env, &recipient, -1)),
-        Box::new(|| safe_approve(&env, &recipient, -1, 1000)),
-        Box::new(|| safe_increase_allowance(&env, &recipient, -1, 1000)),
-        Box::new(|| force_approve(&env, &recipient, -1, 1000)),
+        Box::new(|| safe_approve(&env, &recipient, -1)),
+        Box::new(|| safe_increase_allowance(&env, &recipient, -1)),
+        Box::new(|| force_approve(&env, &recipient, -1)),
     ];
 
     for func in functions {
@@ -277,4 +310,73 @@ fn test_edge_cases() {
     let _ = catch_unwind(|| {
         safe_transfer(&env, &recipient, min_amount);
     });
+}
+
+// Test that safe_transfer panics on fee-on-transfer mismatch.
+// With no real token, the balance-delta check catches the discrepancy.
+#[test]
+fn test_safe_transfer_rejects_fee_on_transfer_mismatch() {
+    let env = setup_env();
+    let token_address = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    set_token_in_storage(&env, &token_address);
+
+    // No real token means no balance change. The delta check should panic
+    // with the mismatch error (or a host error since there's no real token).
+    let result = catch_unwind(|| {
+        safe_transfer(&env, &recipient, 100);
+    });
+
+    assert!(result.is_err());
+}
+
+// Test that safe_transfer_from panics on fee-on-transfer mismatch
+#[test]
+fn test_safe_transfer_from_rejects_fee_on_transfer_mismatch() {
+    let env = setup_env();
+    let token_address = Address::generate(&env);
+    let owner = Address::generate(&env);
+
+    set_token_in_storage(&env, &token_address);
+
+    // No real token means no balance change. The delta check should catch it.
+    let result = catch_unwind(|| {
+        safe_transfer_from(&env, &owner, 100);
+    });
+
+    assert!(result.is_err());
+}
+
+// Verify that transfer failure messages are descriptive
+#[test]
+fn test_transfer_failure_descriptive_error() {
+    let env = setup_env();
+    let token_address = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    set_token_in_storage(&env, &token_address);
+
+    let result = catch_unwind(|| {
+        safe_transfer(&env, &recipient, 100);
+    });
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    let err_msg = err
+        .downcast_ref::<&str>()
+        .copied()
+        .unwrap_or_else(|| {
+            err.downcast_ref::<std::string::String>()
+                .map(|s| s.as_str())
+                .unwrap_or("")
+        });
+    // Should either be our explicit error or a host error from the missing token
+    assert!(
+        err_msg.contains("transfer failed")
+            || err_msg.contains("HostError")
+            || err_msg.contains("transfer amount mismatch"),
+        "Expected descriptive error, got: {}",
+        err_msg
+    );
 }

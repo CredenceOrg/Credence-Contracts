@@ -22,6 +22,9 @@
 //! - `missing_delegation_rejects_with_not_found`            — negative: no record → 501
 //! - `delegation_active_at_one_second_before_expiry_passes` — boundary: now == expires_at - 1 passes
 //! - `delegation_inactive_at_exact_expiry_ledger_rejects`   — boundary: now == expires_at rejects
+//! - `self_delegation_active_passes`                        — edge: owner == delegate, active
+//! - `self_delegation_expired_rejects`                      — edge: owner == delegate, expired → 510
+//! - `self_delegation_revoked_rejects`                      — edge: owner == delegate, revoked → 510
 
 #![cfg(test)]
 
@@ -188,4 +191,75 @@ fn missing_delegation_rejects_with_not_found() {
 
     // No delegation was ever created for this key.
     client.check_delegation_active(&owner, &delegate, &DelegationType::Attestation);
+}
+
+// ---------------------------------------------------------------------------
+// Self-delegation edge cases (owner == delegate)
+// ---------------------------------------------------------------------------
+
+/// Self-delegation (owner == delegate) that is still active passes normally.
+#[test]
+fn self_delegation_active_passes() {
+    let (env, _cid, client) = setup();
+    set_ts(&env, 1000);
+    let user = Address::generate(&env);
+
+    client.delegate(
+        &user,
+        &user,
+        &DelegationType::Management,
+        &2000u64,
+        &client.get_nonce(&user),
+    );
+
+    // now (1000) < expires_at (2000): must not panic even when owner == delegate.
+    client.check_delegation_active(&user, &user, &DelegationType::Management);
+}
+
+/// Expired self-delegation → DelegationInactive (code 510).
+#[test]
+#[should_panic(expected = "Error(Contract, #510)")]
+fn self_delegation_expired_rejects() {
+    let (env, _cid, client) = setup();
+    set_ts(&env, 1000);
+    let user = Address::generate(&env);
+
+    client.delegate(
+        &user,
+        &user,
+        &DelegationType::Management,
+        &2000u64,
+        &client.get_nonce(&user),
+    );
+
+    set_ts(&env, 99999); // far past expiry
+    client.check_delegation_active(&user, &user, &DelegationType::Management);
+}
+
+/// Revoked self-delegation → DelegationInactive (code 510).
+#[test]
+#[should_panic(expected = "Error(Contract, #510)")]
+fn self_delegation_revoked_rejects() {
+    let (env, _cid, client) = setup();
+    set_ts(&env, 1000);
+    let user = Address::generate(&env);
+
+    client.delegate(
+        &user,
+        &user,
+        &DelegationType::Management,
+        &5000u64,
+        &client.get_nonce(&user),
+    );
+
+    // Revoke while well within the validity window.
+    client.revoke_delegation(
+        &user,
+        &user,
+        &DelegationType::Management,
+        &client.get_nonce(&user),
+    );
+
+    // Must reject even though owner == delegate.
+    client.check_delegation_active(&user, &user, &DelegationType::Management);
 }

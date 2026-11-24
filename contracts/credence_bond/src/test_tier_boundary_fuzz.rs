@@ -280,7 +280,7 @@ fn test_fully_slashed_bond_preserves_tier() {
     // from it remains Platinum even though the *available* balance is zero.
     f.client.slash(&f.admin, &TIER_GOLD_MAX);
 
-    let state = f.client.get_identity_state();
+    let state = f.client.get_identity_state(&identity);
     assert_eq!(state.bonded_amount, TIER_GOLD_MAX);
     assert_eq!(state.slashed_amount, TIER_GOLD_MAX);
     assert_eq!(f.client.get_tier(), BondTier::Platinum);
@@ -510,7 +510,7 @@ fn fuzz_tier_tracks_bonded_amount_under_random_sequences() {
     for _ in 0..iters {
         for _ in 0..actions {
             let op = rng.next() % 3;
-            let state = client.get_identity_state();
+            let state = client.get_identity_state(&identity);
             let bonded = state.bonded_amount;
             let available_for_withdraw = bonded.saturating_sub(state.slashed_amount);
 
@@ -535,7 +535,7 @@ fn fuzz_tier_tracks_bonded_amount_under_random_sequences() {
 
             // After every step, the on-chain tier must equal the tier implied
             // by the post-state `bonded_amount` derived from `get_tier_for_amount`.
-            let post_state = client.get_identity_state();
+            let post_state = client.get_identity_state(&identity);
             let post_bonded = post_state.bonded_amount;
             let implied_tier = get_tier_for_amount(&env, post_bonded);
             let on_chain_tier = client.get_tier();
@@ -569,7 +569,7 @@ fn fuzz_tier_tracks_bonded_amount_under_random_sequences() {
     }
 
     // Final invariant: tier equals tier implied by final bonded amount.
-    let final_bonded = client.get_identity_state().bonded_amount;
+    let final_bonded = client.get_identity_state(&identity).bonded_amount;
     let final_tier = client.get_tier();
     let derived = get_tier_for_amount(&env, final_bonded);
     assert!(
@@ -605,7 +605,7 @@ fn fuzz_rapid_threshold_crossing() {
             TIER_BRONZE_MAX - 1 - k
         };
 
-        let cur = client.get_identity_state().bonded_amount;
+        let cur = client.get_identity_state(&identity).bonded_amount;
         if target > cur {
             let _ = catch_unwind(AssertUnwindSafe(|| client.top_up(&(target - cur))));
         } else {
@@ -613,7 +613,7 @@ fn fuzz_rapid_threshold_crossing() {
             let _ = catch_unwind(AssertUnwindSafe(|| client.withdraw(&take)));
         }
 
-        let state = client.get_identity_state();
+        let state = client.get_identity_state(&identity);
         let implied = get_tier_for_amount(&env, state.bonded_amount);
         let on_chain = client.get_tier();
         assert!(

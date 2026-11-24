@@ -37,7 +37,7 @@ credence_math  testutils  credence_admin_cli  (no Credence deps)
 | Crate | Path | Deps | Purpose |
 |---|---|---|---|
 | `credence_errors` | `contracts/credence_errors/` | `soroban-sdk` | Canonical `ContractError` enum used by every contract via `panic_with_error!`. Wire-stable codes; never renumber a variant. |
-| `credence_math` | `contracts/credence_math/` | `soroban-sdk`, `credence_errors`, `ethnum` | Overflow-safe arithmetic (`add_i128`, `mul_i128`, `split_bps`, `ceil_div_i128`). Pure library — no state, no events. |
+| `credence_math` | `contracts/credence_math/` | `soroban-sdk`, `credence_errors`, `ethnum` | Overflow-safe arithmetic (`add_i128`, `mul_i128`, `split_bps`, `ceil_div_i128`) and `Timestamp` utilities (`floor_to_day`). Pure library — no state, no events. |
 | `testutils` | `crates/testutils/` | `soroban-sdk` (testutils feature) | Shared test harness re-exported by Soroban. Used as a dev-dependency in contracts that need mock auth and test helpers. |
 | `credence_admin_cli` | `crates/credence_admin_cli/` | `soroban-client`, `stellar-baselib`, `clap`, `anyhow`, `serde`, `tokio` | Off-chain CLI tool for admin operations (not a Soroban contract). |
 

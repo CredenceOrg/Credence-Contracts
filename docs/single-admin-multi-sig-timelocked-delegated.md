@@ -49,6 +49,7 @@ let proposal_id = client.submit_proposal(
     String::from_str(&e, "Set fee to 0.5%"),
     0, // no expiration
     None,
+    BytesN::from_array(&e, &[1; 32]), // unique operation salt
 );
 
 // 3. Another signer signs

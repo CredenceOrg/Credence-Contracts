@@ -13,5 +13,6 @@ credence_bond = 64
 credence_delegation = 64
 credence_multisig = 64
 credence_treasury = 64
+dispute_resolution = 64
 templates = 64
 timelock = 64

@@ -27,7 +27,7 @@
 #![allow(dead_code)]
 
 use crate::events::emit_parameter_updated;
-use soroban_sdk::{contracttype, symbol_short, Address, Env, String, Symbol};
+use soroban_sdk::{contracttype, symbol_short, Address, Env, Symbol};
 
 /// Governance approval envelope for parameter mutations.
 #[contracttype]
@@ -63,14 +63,14 @@ pub const MIN_WITHDRAWAL_COOLDOWN_SECS: u64 = 0;
 /// Maximum withdrawal cooldown period in seconds (30 days)
 pub const MAX_WITHDRAWAL_COOLDOWN_SECS: u64 = 2_592_000;
 /// Default withdrawal cooldown period in seconds (7 days)
-pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = 604_800;
+pub const DEFAULT_WITHDRAWAL_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 
 /// Minimum slash cooldown period in seconds (0 = no cooldown)
 pub const MIN_SLASH_COOLDOWN_SECS: u64 = 0;
 /// Maximum slash cooldown period in seconds (7 days)
-pub const MAX_SLASH_COOLDOWN_SECS: u64 = 604_800;
+pub const MAX_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_WEEK;
 /// Default slash cooldown period in seconds (24 hours)
-pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = 86_400;
+pub const DEFAULT_SLASH_COOLDOWN_SECS: u64 = credence_math::SECONDS_PER_DAY;
 /// Maximum number of attestations per subject (ledger entry cap)
 pub const MAX_ATTESTATIONS: u32 = 1_000;
 /// Maximum number of slash history records per identity (ledger entry cap)
@@ -867,32 +867,4 @@ fn validate_governance_approval(
     if approval.category != expected_category {
         panic!("governance approval category mismatch");
     }
-}
-
-/// Emits a parameter change event for off-chain tracking and auditing.
-///
-/// # Arguments
-/// * `e` - Soroban environment for event publishing
-/// * `parameter` - Name of the parameter that changed
-/// * `old_value` - Previous value (normalized to i128)
-/// * `new_value` - New value (normalized to i128)
-/// * `updated_by` - Address that performed the update
-fn emit_parameter_changed(
-    e: &Env,
-    parameter: &str,
-    old_value: i128,
-    new_value: i128,
-    updated_by: &Address,
-) {
-    let timestamp = e.ledger().timestamp();
-    e.events().publish(
-        (Symbol::new(e, "parameter_changed"),),
-        (
-            String::from_str(e, parameter),
-            old_value,
-            new_value,
-            updated_by.clone(),
-            timestamp,
-        ),
-    );
 }

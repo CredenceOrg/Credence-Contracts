@@ -198,7 +198,7 @@ fn test_large_claim_set_handling() {
     // Process in batches to test gas efficiency
     let mut total_processed = 0u32;
     let mut total_amount = 0i128;
-    let mut offset = 0u32;
+    let mut offset = 0u64;
 
     while offset < 200 {
         let batch_size = 50u32; // MAX_BATCH_CLAIMS
@@ -211,7 +211,7 @@ fn test_large_claim_set_handling() {
 
         total_processed += result.processed_count;
         total_amount += result.total_amount;
-        offset += batch_size;
+        offset += batch_size as u64;
     }
 
     assert_eq!(total_processed, 200);

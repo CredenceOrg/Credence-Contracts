@@ -46,21 +46,21 @@ impl CredenceBond {
             withdrawal_requested_at: 0,
             notice_period_duration,
         };
-        let key = DataKey::Bond;
+        let key = DataKey::Bond(identity.clone());
         e.storage().instance().set(&key, &bond);
         bond
     }
 
-    pub fn get_identity_state(e: Env) -> IdentityBond {
+    pub fn get_identity_state(e: Env, identity: Address) -> IdentityBond {
         e.storage()
             .instance()
-            .get::<_, IdentityBond>(&DataKey::Bond)
+            .get::<_, IdentityBond>(&DataKey::Bond(identity.clone()))
             .unwrap_or_else(|| panic_with_error!(e, ContractError::BondNotFound))
     }
 
     /// Deliberately wrong tier logic: everything >= 1 is Gold.
-    pub fn get_tier(e: Env) -> BondTier {
-        let bond = Self::get_identity_state(e);
+    pub fn get_tier(e: Env, identity: Address) -> BondTier {
+        let bond = Self::get_identity_state(e, identity);
         if bond.bonded_amount >= 1 {
             BondTier::Gold
         } else {
@@ -68,8 +68,8 @@ impl CredenceBond {
         }
     }
 
-    pub fn slash(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn slash(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond(identity.clone());
         let mut bond = e
             .storage()
             .instance()
@@ -85,8 +85,8 @@ impl CredenceBond {
         bond
     }
 
-    pub fn top_up(e: Env, amount: i128) -> IdentityBond {
-        let key = DataKey::Bond;
+    pub fn top_up(e: Env, identity: Address, amount: i128) -> IdentityBond {
+        let key = DataKey::Bond(identity.clone());
         let mut bond = e
             .storage()
             .instance()

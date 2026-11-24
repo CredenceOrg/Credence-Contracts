@@ -1,0 +1,7 @@
+[package]
+name = "bar"
+version = "0.1.0"
+edition = "2021"
+
+[dev-dependencies]
+soroban-sdk = { version = "23.0", features = ["testutils"] }
