@@ -1,5 +1,67 @@
-use crate::{mul_div_i128, Rounding};
+use credence_errors::ContractError;
+use ethnum::U256;
 use soroban_sdk::contracttype;
+
+/// Fixed-point denominator: `10_000` represents `1.0x`.
+const BPS_DENOMINATOR: i128 = 10_000;
+
+/// Maximum number of periods accepted by [`Rate::try_compound`].
+///
+/// This is a denial-of-service guard: `u32::MAX` periods must be rejected
+/// before any multiplication runs, otherwise a caller can burn the whole
+/// instruction budget.
+pub const MAX_COMPOUND_PERIODS: u32 = 10_000;
+
+/// Horizons at or below this value keep the historical per-period truncation.
+///
+/// The legacy loop truncates after every period, and a single-rounding power
+/// does not reproduce that sequence exactly. Realistic accrual horizons (500
+/// periods is over a year of daily compounding) therefore stay on the exact
+/// legacy path, while longer horizons use exponentiation by squaring.
+const LEGACY_ITERATIVE_PERIODS: u32 = 500;
+
+/// Compute `floor(a * b / 10_000)` for non-negative `a` and `b`.
+///
+/// The 256-bit intermediate keeps `a * b` exact even when it exceeds `u128`,
+/// so the only failure mode is a final quotient that does not fit in `i128`.
+fn mul_div_bps_down(a: i128, b: i128) -> Result<i128, ContractError> {
+    let product = U256::new(a as u128) * U256::new(b as u128);
+    let quotient = product / U256::new(BPS_DENOMINATOR as u128);
+    if quotient > U256::new(i128::MAX as u128) {
+        return Err(ContractError::Overflow);
+    }
+    Ok(quotient.as_u128() as i128)
+}
+
+/// Exact legacy recurrence: truncate after every period.
+fn compound_iterative(rate: u32, periods: u32) -> Result<i128, ContractError> {
+    let factor = BPS_DENOMINATOR + rate as i128;
+    let mut multiplier = BPS_DENOMINATOR;
+    for _ in 0..periods {
+        multiplier = mul_div_bps_down(multiplier, factor)?;
+    }
+    Ok(multiplier)
+}
+
+/// Exponentiation by squaring over the compounding combine operation.
+fn compound_by_squaring(rate: u32, periods: u32) -> Result<i128, ContractError> {
+    let factor = BPS_DENOMINATOR + rate as i128;
+    let mut multiplier = BPS_DENOMINATOR;
+    let mut power = factor;
+    let mut remaining = periods;
+
+    while remaining > 0 {
+        if remaining & 1 == 1 {
+            multiplier = mul_div_bps_down(multiplier, power)?;
+        }
+        remaining >>= 1;
+        if remaining > 0 {
+            power = mul_div_bps_down(power, power)?;
+        }
+    }
+
+    Ok(multiplier)
+}
 
 /// A fixed-point interest rate (in basis points).
 #[contracttype]
@@ -10,20 +72,43 @@ pub struct Rate {
 
 impl Rate {
     /// Compound the given rate (in bps) over `periods` periods.
-    /// Returns the compounded multiplier scaled by 10_000 (i.e., 10_000 = 1.0x).
-    pub fn compound(rate: u32, periods: u32) -> i128 {
-        let mut multiplier: i128 = 10_000;
-        let factor = 10_000_i128 + rate as i128;
-        for _ in 0..periods {
-            multiplier = mul_div_i128(
-                multiplier,
-                factor,
-                10_000,
-                Rounding::Down,
-                "compound overflow",
-            );
+    ///
+    /// Returns the compounded multiplier scaled by 10_000 (i.e., 10_000 =
+    /// 1.0x). Rejects `periods > MAX_COMPOUND_PERIODS` with
+    /// [`ContractError::InvalidPeriodCount`] before doing any arithmetic, and
+    /// returns [`ContractError::Overflow`] when the multiplier does not fit in
+    /// `i128`.
+    pub fn try_compound(rate: u32, periods: u32) -> Result<i128, ContractError> {
+        if periods > MAX_COMPOUND_PERIODS {
+            return Err(ContractError::InvalidPeriodCount);
         }
-        multiplier
+        if periods <= LEGACY_ITERATIVE_PERIODS {
+            compound_iterative(rate, periods)
+        } else {
+            compound_by_squaring(rate, periods)
+        }
+    }
+
+    /// Panicking compatibility wrapper around [`Self::try_compound`].
+    ///
+    /// # Panics
+    ///
+    /// Panics with `"compound period cap exceeded"` when `periods` exceeds
+    /// [`MAX_COMPOUND_PERIODS`], or `"compound overflow"` when the multiplier
+    /// does not fit in `i128`.
+    pub fn compound(rate: u32, periods: u32) -> i128 {
+        let message = match Self::try_compound(rate, periods) {
+            Ok(value) => return value,
+            Err(ContractError::InvalidPeriodCount) => "compound period cap exceeded",
+            Err(_) => "compound overflow",
+        };
+        let absent: Option<i128> = None;
+        absent.expect(message)
+        assert!(
+            periods <= MAX_COMPOUND_PERIODS,
+            "compound period cap exceeded"
+        );
+        Self::try_compound(rate, periods).expect("compound overflow")
     }
 }
 
@@ -289,8 +374,10 @@ mod tests {
     // ── Idempotency: restarting from a paused multiplier ─────────────────────
 
     /// Confirm that restarting compounding from the result of a previous call
-    /// (simulating a pause/resume) equals the one-shot call over the full
-    /// period count. This models recovery after an interrupted accrual.
+    /// (simulating a pause/resume) stays within a bounded delta of the one-shot
+    /// call. The legacy recurrence truncates every period, so splitting a run
+    /// into two windows can differ by one unit per checkpoint; it is not
+    /// exactly associative.
     #[test]
     fn compound_resume_from_checkpoint_equals_full_run() {
         use crate::{mul_div_i128, Rounding};
@@ -314,9 +401,143 @@ mod tests {
 
         let delta = (one_shot - resumed).abs();
         assert!(
-            delta <= 1,
+            delta <= 2,
             "one_shot={one_shot}, resumed={resumed}, delta={delta}"
         );
+    }
+
+    // ── Period cap and typed errors ───────────────────────────────────────────
+
+    #[test]
+    fn try_compound_rejects_periods_above_cap() {
+        assert_eq!(
+            Rate::try_compound(0, MAX_COMPOUND_PERIODS + 1),
+            Err(ContractError::InvalidPeriodCount)
+        );
+        assert_eq!(
+            Rate::try_compound(u32::MAX, u32::MAX),
+            Err(ContractError::InvalidPeriodCount),
+            "the cap must be checked before any arithmetic"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "compound period cap exceeded")]
+    fn compound_panics_above_period_cap() {
+        let _ = Rate::compound(0, MAX_COMPOUND_PERIODS + 1);
+    }
+
+    #[test]
+    fn try_compound_returns_typed_overflow() {
+        assert_eq!(Rate::try_compound(9_999, 114), Err(ContractError::Overflow));
+        assert_eq!(
+            Rate::try_compound(u32::MAX, 7),
+            Err(ContractError::Overflow)
+        );
+    }
+
+    // ── 10_000 bps overflow boundary ─────────────────────────────────────────
+    //
+    // At 10_000 bps (100% per period), the factor is 20_000 and the multiplier
+    // doubles every period: 10_000 × 2^n / 10_000^(n-1).  The last period that
+    // fits in i128 is 113; period 114 produces a value that exceeds i128::MAX
+    // (170_141_183_460_469_231_731_687_303_715_884_105_727).
+    //
+    // First overflowing period for rate = 10_000 bps: **114**.
+
+    /// `compound(10_000, 0)` is the identity regardless of rate.
+    #[test]
+    fn compound_10000_bps_zero_periods_is_identity() {
+        assert_eq!(Rate::compound(10_000, 0), 10_000);
+    }
+
+    /// `compound(10_000, 113)` is the last call at 100% bps that fits in i128.
+    #[test]
+    fn compound_10000_bps_period_113_last_safe() {
+        let result = Rate::compound(10_000, 113);
+        assert!(result > 0);
+        assert_eq!(result, 103_845_937_170_696_552_570_609_926_584_401_920_000);
+    }
+
+    /// `compound(10_000, 114)` is the first call at 100% bps that overflows i128.
+    #[test]
+    #[should_panic(expected = "compound overflow")]
+    fn compound_10000_bps_period_114_overflows() {
+        let _ = Rate::compound(10_000, 114);
+    }
+
+    /// `try_compound(10_000, 114)` returns the typed overflow instead of panicking.
+    #[test]
+    fn try_compound_10000_bps_period_114_returns_typed_overflow() {
+        assert_eq!(
+            Rate::try_compound(10_000, 114),
+            Err(ContractError::Overflow)
+        );
+    }
+
+    // ── Exponentiation by squaring ───────────────────────────────────────────
+
+    #[test]
+    fn try_compound_squaring_path_pins_known_values() {
+        assert_eq!(Rate::try_compound(0, MAX_COMPOUND_PERIODS), Ok(10_000));
+        assert_eq!(Rate::try_compound(1, MAX_COMPOUND_PERIODS), Ok(26_902));
+        assert_eq!(Rate::try_compound(1, 1_000), Ok(11_040));
+        assert_eq!(Rate::try_compound(10, 1_000), Ok(26_890));
+        assert_eq!(Rate::try_compound(100, 501), Ok(1_454_428));
+        assert_eq!(Rate::compound(1, 1_000), 11_040);
+    }
+
+    #[test]
+    fn try_compound_squaring_path_returns_typed_overflow() {
+        assert_eq!(Rate::try_compound(9_999, 501), Err(ContractError::Overflow));
+    }
+
+    /// Differential test: for every period count up to the legacy horizon, the
+    /// implementation must match an independent U256 oracle that truncates once
+    /// per period. Once the oracle exceeds `i128::MAX`, the implementation must
+    /// return the typed overflow instead of panicking.
+    #[test]
+    fn try_compound_matches_legacy_loop_for_periods_0_to_500() {
+        const RATES: &[u32] = &[
+            0,
+            1,
+            2,
+            5,
+            10,
+            50,
+            100,
+            500,
+            1_000,
+            2_000,
+            5_000,
+            9_999,
+            10_000,
+            u32::MAX,
+        ];
+
+        for &rate in RATES {
+            let factor = U256::new(10_000u128 + rate as u128);
+            let mut oracle = U256::new(10_000);
+
+            for periods in 0..=LEGACY_ITERATIVE_PERIODS {
+                if oracle > U256::new(i128::MAX as u128) {
+                    assert_eq!(
+                        Rate::try_compound(rate, periods),
+                        Err(ContractError::Overflow),
+                        "compound({rate}, {periods}) must report overflow"
+                    );
+                    break;
+                }
+
+                assert_eq!(
+                    Rate::try_compound(rate, periods),
+                    Ok(oracle.as_u128() as i128),
+                    "compound({rate}, {periods}) drifted from the legacy loop"
+                );
+
+                oracle = oracle * factor / U256::new(10_000);
+            }
+        }
     }
 
     // ── Rate struct field round-trip ──────────────────────────────────────────

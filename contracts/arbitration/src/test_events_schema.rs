@@ -5,7 +5,7 @@
 mod tests {
     use super::*;
     use crate::status::DisputeStatus;
-    use soroban_sdk::testutils::{Address as _, Events as _, Ledger as _};
+    use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Env, Symbol, TryFromVal};
 
     #[test]

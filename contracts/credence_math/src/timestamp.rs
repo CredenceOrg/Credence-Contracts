@@ -76,10 +76,7 @@ mod tests {
         assert_eq!(Timestamp::add_business_days(thursday, 0), thursday);
 
         // +1 -> Friday
-        assert_eq!(
-            Timestamp::add_business_days(thursday, 1),
-            1 * SECONDS_PER_DAY
-        );
+        assert_eq!(Timestamp::add_business_days(thursday, 1), SECONDS_PER_DAY);
 
         // +2 -> Monday (skip Sat, Sun)
         assert_eq!(
@@ -94,7 +91,7 @@ mod tests {
         );
 
         // Start on Friday (1970-01-02)
-        let friday = 1 * SECONDS_PER_DAY;
+        let friday = SECONDS_PER_DAY;
         // +1 -> Monday
         assert_eq!(Timestamp::add_business_days(friday, 1), 4 * SECONDS_PER_DAY);
         // +5 -> Next Friday

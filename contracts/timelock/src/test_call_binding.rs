@@ -107,8 +107,16 @@ fn call_bound_op_invokes_target() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[1; 32]);
 
-    let op_id = client.queue_call(&admin, &target.address, &func, &args, &min_delay_seconds());
+    let op_id = client.queue_call(
+        &admin,
+        &target.address,
+        &func,
+        &args,
+        &salt,
+        &min_delay_seconds(),
+    );
     let op = client.get_operation(&op_id).unwrap();
 
     // The queued call is inspectable and bound to the operation.
@@ -137,8 +145,16 @@ fn call_bound_op_not_before_eta() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[2; 32]);
 
-    let op_id = client.queue_call(&admin, &target.address, &func, &args, &min_delay_seconds());
+    let op_id = client.queue_call(
+        &admin,
+        &target.address,
+        &func,
+        &args,
+        &salt,
+        &min_delay_seconds(),
+    );
     let op = client.get_operation(&op_id).unwrap();
 
     env.ledger().with_mut(|li| li.timestamp = op.eta - 1);
@@ -159,8 +175,16 @@ fn call_bound_op_executes_once() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[3; 32]);
 
-    let op_id = client.queue_call(&admin, &target.address, &func, &args, &min_delay_seconds());
+    let op_id = client.queue_call(
+        &admin,
+        &target.address,
+        &func,
+        &args,
+        &salt,
+        &min_delay_seconds(),
+    );
     let op = client.get_operation(&op_id).unwrap();
 
     env.ledger().with_mut(|li| li.timestamp = op.eta);
@@ -179,8 +203,16 @@ fn failing_target_reverts_status() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "panic_call");
     let args = empty_args(&env);
+    let salt = BytesN::from_array(&env, &[4; 32]);
 
-    let op_id = client.queue_call(&admin, &target.address, &func, &args, &min_delay_seconds());
+    let op_id = client.queue_call(
+        &admin,
+        &target.address,
+        &func,
+        &args,
+        &salt,
+        &min_delay_seconds(),
+    );
     let op = client.get_operation(&op_id).unwrap();
 
     env.ledger().with_mut(|li| li.timestamp = op.eta);
@@ -238,8 +270,16 @@ fn cancelled_call_never_runs() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[5; 32]);
 
-    let op_id = client.queue_call(&admin, &target.address, &func, &args, &min_delay_seconds());
+    let op_id = client.queue_call(
+        &admin,
+        &target.address,
+        &func,
+        &args,
+        &salt,
+        &min_delay_seconds(),
+    );
     let op = client.get_operation(&op_id).unwrap();
 
     client.cancel_operation(&admin, &op_id);
@@ -261,12 +301,14 @@ fn queue_call_requires_admin() {
     let stranger = Address::generate(&env);
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[8; 32]);
 
     let res = client.try_queue_call(
         &stranger,
         &target.address,
         &func,
         &args,
+        &salt,
         &min_delay_seconds(),
     );
     assert!(res.is_err(), "only the admin may queue calls");
@@ -277,12 +319,14 @@ fn queue_call_obeys_minimum_delay() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[9; 32]);
 
     let res = client.try_queue_call(
         &admin,
         &target.address,
         &func,
         &args,
+        &salt,
         &(min_delay_seconds() - 1),
     );
     assert!(res.is_err(), "delays below the minimum must be rejected");
@@ -314,8 +358,16 @@ fn call_bound_execution_emits_target_and_func() {
     let (env, client, admin, target) = setup_with_target();
     let func = Symbol::new(&env, "set_value");
     let args = args_u32(&env, 7);
+    let salt = BytesN::from_array(&env, &[6; 32]);
 
-    let op_id = client.queue_call(&admin, &target.address, &func, &args, &min_delay_seconds());
+    let op_id = client.queue_call(
+        &admin,
+        &target.address,
+        &func,
+        &args,
+        &salt,
+        &min_delay_seconds(),
+    );
     let op = client.get_operation(&op_id).unwrap();
 
     env.ledger().with_mut(|li| li.timestamp = op.eta);
@@ -323,16 +375,23 @@ fn call_bound_execution_emits_target_and_func() {
     client.execute_operation(&op_id);
 
     let all = env.events().all();
-    assert_eq!(all.len(), 1, "call-bound execute emits exactly one event");
-    let ev = all.iter().next().unwrap();
-    // Topics: (operation_executed, op_id)
-    assert_eq!(ev.1.len(), 2);
-    let topics = ev.1;
-    let op_id_emitted: u64 = u64::try_from_val(&env, &topics.get(1).unwrap()).unwrap();
+    assert_eq!(all.len(), 2, "call-bound execute emits two events");
+    let executed_event = all.iter().next().unwrap();
+    assert_eq!(executed_event.1.len(), 2);
+    let executed_topics = executed_event.1;
+    let event_name: Symbol = Symbol::try_from_val(&env, &executed_topics.get(0).unwrap()).unwrap();
+    assert_eq!(event_name, Symbol::new(&env, "operation_executed"));
+    let op_id_emitted: u64 = u64::try_from_val(&env, &executed_topics.get(1).unwrap()).unwrap();
     assert_eq!(op_id_emitted, op_id);
-    // Data: (op_hash, target, func)
-    let (hash, emitted_target, emitted_func): (BytesN<32>, Address, Symbol) =
-        <(BytesN<32>, Address, Symbol)>::try_from_val(&env, &ev.2).unwrap();
+    let hash: BytesN<32> = BytesN::try_from_val(&env, &executed_event.2).unwrap();
+
+    let call_event = all.iter().nth(1).unwrap();
+    assert_eq!(call_event.1.len(), 2);
+    let call_topics = call_event.1;
+    let call_event_name: Symbol = Symbol::try_from_val(&env, &call_topics.get(0).unwrap()).unwrap();
+    assert_eq!(call_event_name, Symbol::new(&env, "call_executed"));
+    let (emitted_target, emitted_func): (Address, Symbol) =
+        <(Address, Symbol)>::try_from_val(&env, &call_event.2).unwrap();
     assert_eq!(hash, op.op_hash);
     assert_eq!(emitted_target, target.address);
     assert_eq!(emitted_func, func);

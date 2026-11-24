@@ -323,10 +323,9 @@ fn double_initialize_is_rejected_and_preserves_original_admin() {
 fn verifier_grant_lifecycle_is_observable() {
     let f = Fixture::initialized();
 
-    // Baseline: the fixture publishes nothing on its own.
-    assert_eq!(
-        f.event_count(),
-        0,
+    // Baseline: `initialize` publishes its own event, but no verifier grant.
+    assert!(
+        !f.emitted("verifier_added"),
         "initialize must not be mistaken for a grant event"
     );
 
