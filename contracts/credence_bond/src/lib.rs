@@ -1482,7 +1482,7 @@ impl CredenceBond {
             for j in (i + 1)..n {
                 let item_j = items.get(j).unwrap();
                 if item_i.attester == item_j.attester {
-                    panic!("duplicate attester in batch");
+                    panic_with_error!(e, ContractError::DuplicateAttestation);
                 }
             }
         }
@@ -1856,6 +1856,8 @@ impl CredenceBond {
     /// - `InvalidBondAmount` when `amount <= 0`.
     /// - `LockupNotExpired` when called before the bond's lock-up end (use
     ///   `withdraw_early` instead to exit early with a penalty).
+    /// - `WithdrawalNotRequested` when a rolling bond has no pending withdrawal.
+    /// - `CooldownPeriodNotElapsed` when a rolling bond's notice period is active.
     /// - `InsufficientBalance` when `amount > bonded_amount - slashed_amount`.
     /// - `SlashExceedsBond` when the subtraction would leave
     ///   `slashed_amount > bonded_amount`.
@@ -1879,19 +1881,19 @@ impl CredenceBond {
             .checked_add(bond.bond_duration)
             .expect("bond end timestamp overflow");
         if now < end {
-            panic!("lock-up not expired; use withdraw_early");
+            panic_with_error!(e, ContractError::LockupNotExpired);
         }
 
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
-                panic!("withdrawal not requested");
+                panic_with_error!(e, ContractError::WithdrawalNotRequested);
             }
             let earliest = bond
                 .withdrawal_requested_at
                 .checked_add(bond.notice_period_duration)
                 .expect("notice period overflow");
             if e.ledger().timestamp() < earliest {
-                panic!("notice period not elapsed");
+                panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
             }
         } else if e.ledger().timestamp() < bond.bond_start.saturating_add(bond.bond_duration) {
             panic_with_error!(e, ContractError::LockupNotExpired);
@@ -2339,6 +2341,8 @@ impl CredenceBond {
     /// - `ContractError::BondNotFound` when no bond exists.
     /// - `ContractError::NotBondOwner` when `identity` does not match the bond owner.
     /// - `ContractError::BondNotActive` when the bond is already inactive.
+    /// - `ContractError::WithdrawalNotRequested` for a rolling bond without a request.
+    /// - `ContractError::CooldownPeriodNotElapsed` before its notice period elapses.
     /// - `ContractError::ReentrancyDetected` when called re-entrantly.
     ///
     /// See also: [`docs/withdrawal.md`](../../../docs/withdrawal.md),
@@ -2367,7 +2371,7 @@ impl CredenceBond {
         if bond.is_rolling {
             if bond.withdrawal_requested_at == 0 {
                 Self::release_lock(&e);
-                panic!("withdrawal not requested");
+                panic_with_error!(e, ContractError::WithdrawalNotRequested);
             }
             let earliest = bond
                 .withdrawal_requested_at
@@ -2375,7 +2379,7 @@ impl CredenceBond {
                 .expect("notice period overflow");
             if e.ledger().timestamp() < earliest {
                 Self::release_lock(&e);
-                panic!("notice period not elapsed");
+                panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
             }
         }
 
@@ -2494,11 +2498,11 @@ impl CredenceBond {
     /// to prevent same-ledger sandwich attacks where an attacker increases
     /// collateral and then immediately drains the cooldown window.
     ///
-    /// # Panics
-    /// - If no cooldown request exists for `identity`.
-    /// - If `identity` is not the requester.
-    /// - If the cooldown period has not yet elapsed.
-    /// - If the cooldown execution happens in the same ledger as a collateral increase.
+    /// # Errors
+    /// - `ContractError::CooldownRequestNotFound` if no cooldown request exists.
+    /// - `ContractError::NotBondOwner` if `identity` is not the requester.
+    /// - `ContractError::CooldownPeriodNotElapsed` before the cooldown elapses.
+    /// - `ContractError::SameLedgerCooldownBlocked` if collateral increased in this ledger.
     pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         identity.require_auth();
@@ -2545,7 +2549,7 @@ impl CredenceBond {
         {
             if last == current_seq {
                 Self::release_lock(&e);
-                panic!("{}", same_ledger_liquidation_guard::COOLDOWN_BLOCKED_REASON);
+                panic_with_error!(e, ContractError::SameLedgerCooldownBlocked);
             }
         }
 
@@ -2941,6 +2945,8 @@ impl CredenceBond {
     /// - `ContractError::NotAdmin` when caller is not the configured admin.
     /// - `ContractError::BondNotActive` when the bond has already been
     ///   finalized (idempotency / replay resistance).
+    /// - `ContractError::BondNotEligibleForLiquidation` unless fully slashed or
+    ///   expired without renewal.
     /// - `ContractError::ReentrancyDetected` on re-entrant invocation.
     ///
     /// See also: [`docs/liquidation.md`](../../../docs/liquidation.md),
@@ -2996,7 +3002,7 @@ impl CredenceBond {
         let expired_unrenewed = !bond.is_rolling && now >= lockup_end;
         if !fully_slashed && !expired_unrenewed {
             Self::release_lock(&e);
-            panic!("bond is not eligible for liquidation: must be fully slashed or expired (non-rolling) without renewal");
+            panic_with_error!(e, ContractError::BondNotEligibleForLiquidation);
         }
 
         let residual = bond.bonded_amount.saturating_sub(bond.slashed_amount);
@@ -3387,8 +3393,8 @@ impl CredenceBond {
     /// - `ContractError::NotAdmin` when `admin` is not the configured admin
     /// - `ContractError::EmptyBatch` when `items` is empty
     /// - `ContractError::BatchTooLarge` when `items.len() > MAX_BATCH_TRANSFER_SIZE`
-    /// - Panics with `"amount must be positive"` for any item with `amount <= 0`
-    /// - Panics with `"recipient cannot be the contract itself"` for any self-transfer
+    /// - `ContractError::AmountMustBePositive` for any item with `amount <= 0`
+    /// - `ContractError::SelfTransferNotAllowed` for any self-transfer
     pub fn batch_transfer(e: Env, admin: Address, items: Vec<BatchTransferItem>) -> u32 {
         Self::require_not_paused(&e);
         admin.require_auth();
@@ -3411,10 +3417,10 @@ impl CredenceBond {
         for i in 0..items.len() {
             let item = items.get(i).unwrap();
             if item.amount <= 0 {
-                panic!("amount must be positive");
+                panic_with_error!(e, ContractError::AmountMustBePositive);
             }
             if item.recipient == contract {
-                panic!("recipient cannot be the contract itself");
+                panic_with_error!(e, ContractError::SelfTransferNotAllowed);
             }
             total_amount = total_amount
                 .checked_add(item.amount)

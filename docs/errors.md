@@ -149,6 +149,10 @@ error code instead of an opaque transaction failure.
 | 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is below the requested amount |
 | 242 | `TokenTransferFailed` | ✓ | Token transfer failed |
 | 243 | `TokenApproveFailed` | ✓ | Token approval failed |
+| 240 | `WithdrawalNotRequested` | ✓ | A rolling-bond withdrawal has not been requested |
+| 241 | `BondNotEligibleForLiquidation` | ✓ | Bond is not fully slashed or expired without renewal |
+| 242 | `SameLedgerCooldownBlocked` | ✓ | Cooldown execution is blocked after a collateral increase in this ledger |
+| 243 | `SelfTransferNotAllowed` | ✓ | A contract cannot transfer tokens to itself |
 
 ### Attestation (300–399)
 

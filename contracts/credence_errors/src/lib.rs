@@ -744,6 +744,25 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     TokenApproveFailed = 243,
+    /// A rolling-bond withdrawal cannot be settled before a request is made.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    WithdrawalNotRequested = 240,
+
+    /// A bond does not meet the conditions required for liquidation.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    BondNotEligibleForLiquidation = 241,
+
+    /// Cooldown execution is blocked because collateral increased in this ledger.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SameLedgerCooldownBlocked = 242,
+
+    /// A contract cannot transfer tokens to itself.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    SelfTransferNotAllowed = 243,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -1269,6 +1288,10 @@ impl ErrorExt for ContractError {
             | ContractError::InsufficientTokenAllowance
             | ContractError::TokenTransferFailed
             | ContractError::TokenApproveFailed => ErrorCategory::Bond,
+            | ContractError::WithdrawalNotRequested
+            | ContractError::BondNotEligibleForLiquidation
+            | ContractError::SameLedgerCooldownBlocked
+            | ContractError::SelfTransferNotAllowed => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1539,6 +1562,18 @@ impl ErrorExt for ContractError {
             }
             ContractError::TokenTransferFailed => "Token transfer failed",
             ContractError::TokenApproveFailed => "Token approval failed",
+            ContractError::WithdrawalNotRequested => {
+                "A rolling-bond withdrawal has not been requested"
+            }
+            ContractError::BondNotEligibleForLiquidation => {
+                "Bond is not fully slashed or expired without renewal"
+            }
+            ContractError::SameLedgerCooldownBlocked => {
+                "Cooldown execution is blocked after a collateral increase in this ledger"
+            }
+            ContractError::SelfTransferNotAllowed => {
+                "A contract cannot transfer tokens to itself"
+            }
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
             }
@@ -1766,6 +1801,10 @@ impl ErrorExt for ContractError {
             | ContractError::AmountExplicitlyZero     // supply a non-zero amount
             | ContractError::InvalidBondDuration
             | ContractError::InvalidNoticePeriod
+            | ContractError::WithdrawalNotRequested  // request a rolling-bond withdrawal first
+            | ContractError::BondNotEligibleForLiquidation
+            | ContractError::SameLedgerCooldownBlocked // wait until the next ledger
+            | ContractError::SelfTransferNotAllowed   // use another recipient
             | ContractError::BondAlreadyExists
             | ContractError::UnauthorizedToken
             | ContractError::InvalidCurrency
