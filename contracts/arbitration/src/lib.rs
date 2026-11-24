@@ -773,6 +773,23 @@ impl CredenceArbitration {
         Ok(dispute)
     }
 
+    /// Return the total number of disputes ever created on this contract.
+    ///
+    /// This is a read-only view of the internal dispute counter. It reflects
+    /// every dispute regardless of its current status (Open, Closed, Cancelled).
+    /// The return value monotonically increases and never decreases when disputes
+    /// are cancelled.
+    ///
+    /// Indexers and frontends can use this to know the range of valid dispute IDs
+    /// (`1..=get_dispute_count()`) without scanning storage.
+    pub fn get_dispute_count(e: Env) -> u64 {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::DisputeCounter)
+            .unwrap_or(0)
+    }
+
     /// Get current total weight for an outcome.
     pub fn get_tally(e: Env, dispute_id: u64, outcome: u32) -> i128 {
         bump_instance_ttl(&e);
@@ -1157,3 +1174,6 @@ mod test_events_schema;
 
 #[cfg(test)]
 mod test_creator_disputes;
+
+#[cfg(test)]
+mod test_dispute_count;
