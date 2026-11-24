@@ -105,7 +105,6 @@ contracts/credence_bond/src/validation.rs::panic!("stringified bytes too long")
 contracts/credence_bond/src/weighted_attestation.rs::panic!("attester stake cannot be negative")
 contracts/credence_bond/src/weighted_attestation.rs::panic!("max_weight exceeds maximum")
 contracts/credence_bond/src/weighted_attestation.rs::panic!("multiplier_bps exceeds maximum")
-contracts/credence_math/src/lib.rs::panic!("{}", msg),
 contracts/fixed_duration_bond/src/lib.rs::panic!("cannot exit early: penalty not configured")
 contracts/fixed_duration_bond/src/lib.rs::panic!("lock period has already elapsed; use withdraw")
 contracts/fixed_duration_bond/src/lib.rs::panic!("lock period has not elapsed yet")

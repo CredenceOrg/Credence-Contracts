@@ -4,44 +4,89 @@
 //! operate on that scale (`WAD = 10^18`) using the shared 256-bit
 //! [`mul_div_i128`](crate::mul_div_i128) intermediate so intermediate products
 //! can safely exceed `i128` as long as the final rounded result fits.
-use crate::{mul_div_i128, sat_mul_div_i128, Rounding};
+#[allow(deprecated)]
+use crate::{checked_mul_div_i128, mul_div_i128, sat_mul_div_i128, Rounding};
+use credence_errors::ContractError;
 /// Fixed-point scale for Credence's 18-decimal internal accounting (`10^18`).
 pub const WAD: i128 = 1_000_000_000_000_000_000;
+
+/// Checked WAD multiply: `(a * b) / WAD`, truncating toward zero.
+///
+/// Returns [`ContractError::Overflow`] if the final rounded result does not fit in `i128`.
+#[inline]
+pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
+    checked_mul_div_i128(a, b, WAD, Rounding::Down)
+}
+
+/// Checked WAD multiply, rounding away from zero on any remainder.
+///
+/// Returns [`ContractError::Overflow`] if the final rounded result does not fit in `i128`.
+#[inline]
+pub fn checked_mul_wad_up(a: i128, b: i128) -> Result<i128, ContractError> {
+    checked_mul_div_i128(a, b, WAD, Rounding::Up)
+}
+
+/// Checked WAD divide: `(a * WAD) / b`, truncating toward zero.
+///
+/// Returns [`ContractError::DivisionByZero`] when `b == 0` and
+/// [`ContractError::Overflow`] if the final rounded result does not fit in `i128`.
+#[inline]
+pub fn checked_div_wad(a: i128, b: i128) -> Result<i128, ContractError> {
+    checked_mul_div_i128(a, WAD, b, Rounding::Down)
+}
+
+/// Checked WAD divide, rounding away from zero on any remainder.
+///
+/// Returns [`ContractError::DivisionByZero`] when `b == 0` and
+/// [`ContractError::Overflow`] if the final rounded result does not fit in `i128`.
+#[inline]
+pub fn checked_div_wad_up(a: i128, b: i128) -> Result<i128, ContractError> {
+    checked_mul_div_i128(a, WAD, b, Rounding::Up)
+}
+
 /// Multiply two WAD-scaled values: `(a * b) / WAD`, truncating toward zero.
 ///
-/// # Panics
-/// Panics with `msg` if the final rounded result does not fit in `i128`.
+/// Legacy compatibility wrapper around [`checked_mul_wad`]. The `_msg`
+/// parameter is ignored; overflow aborts with a fixed static message.
 #[inline]
 #[must_use]
-pub fn mul_wad(a: i128, b: i128, msg: &'static str) -> i128 {
-    mul_div_i128(a, b, WAD, Rounding::Down, msg)
+#[deprecated(note = "use checked_mul_wad instead")]
+#[allow(deprecated)]
+pub fn mul_wad(a: i128, b: i128, _msg: &'static str) -> i128 {
+    mul_div_i128(a, b, WAD, Rounding::Down, "")
 }
 /// Multiply two WAD-scaled values, rounding away from zero on any remainder.
 ///
-/// # Panics
-/// Panics with `msg` if the final rounded result does not fit in `i128`.
+/// Legacy compatibility wrapper around [`checked_mul_wad_up`]. The `_msg`
+/// parameter is ignored; overflow aborts with a fixed static message.
 #[inline]
 #[must_use]
-pub fn mul_wad_up(a: i128, b: i128, msg: &'static str) -> i128 {
-    mul_div_i128(a, b, WAD, Rounding::Up, msg)
+#[deprecated(note = "use checked_mul_wad_up instead")]
+#[allow(deprecated)]
+pub fn mul_wad_up(a: i128, b: i128, _msg: &'static str) -> i128 {
+    mul_div_i128(a, b, WAD, Rounding::Up, "")
 }
 /// Divide into a WAD-scaled quotient: `(a * WAD) / b`, truncating toward zero.
 ///
-/// # Panics
-/// Panics with `msg` if `b == 0` or the final rounded result does not fit in `i128`.
+/// Legacy compatibility wrapper around [`checked_div_wad`]. The `_msg`
+/// parameter is ignored; division by zero or overflow aborts with a fixed static message.
 #[inline]
 #[must_use]
-pub fn div_wad(a: i128, b: i128, msg: &'static str) -> i128 {
-    mul_div_i128(a, WAD, b, Rounding::Down, msg)
+#[deprecated(note = "use checked_div_wad instead")]
+#[allow(deprecated)]
+pub fn div_wad(a: i128, b: i128, _msg: &'static str) -> i128 {
+    mul_div_i128(a, WAD, b, Rounding::Down, "")
 }
 /// Divide into a WAD-scaled quotient, rounding away from zero on any remainder.
 ///
-/// # Panics
-/// Panics with `msg` if `b == 0` or the final rounded result does not fit in `i128`.
+/// Legacy compatibility wrapper around [`checked_div_wad_up`]. The `_msg`
+/// parameter is ignored; division by zero or overflow aborts with a fixed static message.
 #[inline]
 #[must_use]
-pub fn div_wad_up(a: i128, b: i128, msg: &'static str) -> i128 {
-    mul_div_i128(a, WAD, b, Rounding::Up, msg)
+#[deprecated(note = "use checked_div_wad_up instead")]
+#[allow(deprecated)]
+pub fn div_wad_up(a: i128, b: i128, _msg: &'static str) -> i128 {
+    mul_div_i128(a, WAD, b, Rounding::Up, "")
 }
 /// Saturating WAD multiply: clamps on overflow, returns `0` if somehow denom
 /// were zero (unreachable for the constant `WAD`).
@@ -122,12 +167,12 @@ mod tests {
         assert_eq!(sat_mul_wad(WAD, WAD), WAD);
     }
     #[test]
-    #[should_panic(expected = "div0")]
+    #[should_panic(expected = "credence_math: division by zero")]
     fn div_wad_panics_on_zero_denominator() {
         let _ = div_wad(WAD, 0, "div0");
     }
     #[test]
-    #[should_panic(expected = "overflow")]
+    #[should_panic(expected = "credence_math: arithmetic overflow")]
     fn mul_wad_panics_when_final_result_overflows() {
         // (MAX * 2) / 1 overflow via wide path with denom 1 using mul_div directly;
         // for mul_wad, MAX * 2 / WAD may still fit. Force overflow:
@@ -394,25 +439,46 @@ mod tests {
         assert_eq!(sat_mul_wad(0, 0), 0);
     }
 
-    // ── Panic-message forwarding ─────────────────────────────────────────────
+    // ── Typed error & fixed static panic behavior ────────────────────────────
 
-    /// The custom message supplied by the caller appears in the panic payload.
     #[test]
-    #[should_panic(expected = "div_wad_zero_msg")]
-    fn div_wad_panic_message_is_forwarded() {
+    fn checked_wad_helpers_return_typed_errors() {
+        assert_eq!(checked_mul_wad(WAD, WAD), Ok(WAD));
+        assert_eq!(checked_mul_wad_up(3, WAD / 2), Ok(2));
+        assert_eq!(
+            checked_mul_wad(i128::MAX, 2 * WAD),
+            Err(ContractError::Overflow)
+        );
+        assert_eq!(
+            checked_mul_wad_up(i128::MAX, 2 * WAD),
+            Err(ContractError::Overflow)
+        );
+        assert_eq!(checked_div_wad(WAD, 0), Err(ContractError::DivisionByZero));
+        assert_eq!(
+            checked_div_wad_up(WAD, 0),
+            Err(ContractError::DivisionByZero)
+        );
+        assert_eq!(
+            checked_div_wad(i128::MAX, 1),
+            Err(ContractError::Overflow)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "credence_math: division by zero")]
+    fn div_wad_uses_fixed_static_panic_message() {
         let _ = div_wad(WAD, 0, "div_wad_zero_msg");
     }
 
     #[test]
-    #[should_panic(expected = "div_wad_up_zero_msg")]
-    fn div_wad_up_panic_message_is_forwarded() {
+    #[should_panic(expected = "credence_math: division by zero")]
+    fn div_wad_up_uses_fixed_static_panic_message() {
         let _ = div_wad_up(WAD, 0, "div_wad_up_zero_msg");
     }
 
-    /// Overflow in the panicking path propagates the caller's message.
     #[test]
-    #[should_panic(expected = "mul_overflow_msg")]
-    fn mul_div_overflow_message_is_forwarded() {
+    #[should_panic(expected = "credence_math: arithmetic overflow")]
+    fn mul_div_overflow_uses_fixed_static_panic_message() {
         let _ = mul_div_i128(i128::MAX, 2, 1, Rounding::Down, "mul_overflow_msg");
     }
 

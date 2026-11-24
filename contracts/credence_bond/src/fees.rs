@@ -126,7 +126,7 @@ pub fn record_fee(e: &Env, identity: &Address, amount: i128, fee: i128, treasury
     }
     let key = Symbol::new(e, "fees");
     let current: i128 = e.storage().instance().get(&key).unwrap_or(0);
-    let new_total = math::add_i128(current, fee, "fee pool overflow");
+    let new_total = math::unwrap_or_panic_error(e, math::checked_add_i128(current, fee));
     e.storage().instance().set(&key, &new_total);
     emit_fee_event(e, identity, amount, fee, treasury);
 }

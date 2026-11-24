@@ -21,13 +21,19 @@
 // is the only mode where this deny fires (tests
 // stay free to use format!/write! for diagnostics).
 use credence_errors::ContractError;
+use ethnum::U256;
+use soroban_sdk::{panic_with_error, Env};
 
 pub mod fixed_point;
 pub mod rate;
 pub mod time;
 pub mod timestamp;
 
-pub use fixed_point::{div_wad, div_wad_up, mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD};
+#[allow(deprecated)]
+pub use fixed_point::{
+    checked_div_wad, checked_div_wad_up, checked_mul_wad, checked_mul_wad_up, div_wad, div_wad_up,
+    mul_wad, mul_wad_up, sat_div_wad, sat_mul_wad, WAD,
+};
 pub use rate::{Rate, MAX_COMPOUND_PERIODS};
 pub use time::{
     SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, SECONDS_PER_WEEK, SECONDS_PER_YEAR,
@@ -89,11 +95,49 @@ pub enum Rounding {
     Nearest,
 }
 
-/// Fixed-point multiplication with widening intermediate.
+/// Unwrap a `Result<T, ContractError>` by aborting with a typed Soroban
+/// `ContractError` via `panic_with_error!`.
+///
+/// Preferred over legacy message-taking wrappers whenever an `&Env` is in scope.
+#[inline]
+pub fn unwrap_or_panic_error<T>(env: &Env, result: Result<T, ContractError>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(err) => panic_with_error!(env, err),
+    }
+}
+
+/// Internal compatibility unwrapper for legacy helpers that do not accept an
+/// `&Env`. Uses fixed static messages and never formats a runtime string.
+#[inline]
+fn unwrap_legacy<T>(result: Result<T, ContractError>) -> T {
+    match result {
+        Ok(value) => value,
+        Err(ContractError::DivisionByZero) => {
+            Option::<T>::None.expect("credence_math: division by zero")
+        }
+        Err(ContractError::Underflow) => {
+            Option::<T>::None.expect("credence_math: arithmetic underflow")
+        }
+        Err(_) => Option::<T>::None.expect("credence_math: arithmetic overflow"),
+    }
+}
+
+/// Checked `u64` multiplication returning [`ContractError::Overflow`] on overflow.
+#[inline]
+pub fn checked_mul_u64(a: u64, b: u64) -> Result<u64, ContractError> {
+    a.checked_mul(b).ok_or(ContractError::Overflow)
+}
+
+/// Checked `u64` multiplication (legacy compatibility wrapper).
+///
+/// Prefer [`checked_mul_u64`] or [`unwrap_or_panic_error`]. The `_message`
+/// parameter is ignored; overflow aborts with a fixed static message.
 #[inline]
 #[must_use]
-pub fn mul_u64(a: u64, b: u64, message: &str) -> u64 {
-    a.checked_mul(b).expect(message)
+#[deprecated(note = "use checked_mul_u64 instead")]
+pub fn mul_u64(a: u64, b: u64, _message: &str) -> u64 {
+    unwrap_legacy(checked_mul_u64(a, b))
 }
 
 /// Floor a Unix timestamp (seconds since epoch) to the start of its UTC day.
@@ -125,145 +169,278 @@ pub fn floor_to_day(ts: u64) -> u64 {
     (ts / SECONDS_PER_DAY) * SECONDS_PER_DAY
 }
 
-/// Checked `i128` addition with a stable panic message.
+/// Checked `i128` addition returning [`ContractError::Overflow`] on overflow.
 #[inline]
-#[must_use]
-pub fn add_i128(a: i128, b: i128, message: &str) -> i128 {
-    a.checked_add(b).expect(message)
+pub fn checked_add_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_add(b).ok_or(ContractError::Overflow)
 }
 
-/// Checked `i128` subtraction with a stable panic message.
+/// Checked `i128` addition (legacy compatibility wrapper).
+///
+/// Prefer [`checked_add_i128`]. The `_message` parameter is ignored.
 #[inline]
 #[must_use]
-pub fn sub_i128(a: i128, b: i128, message: &str) -> i128 {
-    a.checked_sub(b).expect(message)
+#[deprecated(note = "use checked_add_i128 instead")]
+pub fn add_i128(a: i128, b: i128, _message: &str) -> i128 {
+    unwrap_legacy(checked_add_i128(a, b))
 }
 
-/// Checked `i128` multiplication with a stable panic message.
+/// Checked `i128` subtraction returning [`ContractError::Underflow`] or
+/// [`ContractError::Overflow`] when the result does not fit in `i128`.
 #[inline]
-#[must_use]
-pub fn mul_i128(a: i128, b: i128, message: &str) -> i128 {
-    a.checked_mul(b).expect(message)
+pub fn checked_sub_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_sub(b).ok_or(if b < 0 {
+        ContractError::Overflow
+    } else {
+        ContractError::Underflow
+    })
 }
 
-/// Checked `i128` division with a stable panic message.
+/// Checked `i128` subtraction (legacy compatibility wrapper).
+///
+/// Prefer [`checked_sub_i128`]. The `_message` parameter is ignored.
 #[inline]
 #[must_use]
-pub fn div_i128(a: i128, b: i128, message: &str) -> i128 {
-    a.checked_div(b).expect(message)
+#[deprecated(note = "use checked_sub_i128 instead")]
+pub fn sub_i128(a: i128, b: i128, _message: &str) -> i128 {
+    unwrap_legacy(checked_sub_i128(a, b))
 }
 
-/// Checked `i128` ceiling division with a stable panic message.
+/// Checked `i128` multiplication returning [`ContractError::Overflow`] on overflow.
 #[inline]
-#[must_use]
-pub fn ceil_div_i128(a: i128, b: i128, message: &str) -> i128 {
-    assert!(b > 0, "{message}");
-    (a + b - 1) / b
+pub fn checked_mul_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    a.checked_mul(b).ok_or(ContractError::Overflow)
 }
 
-/// Wrapping multiply-divide: `(a * b) / denom` with full i128 intermediate.
-/// Rounds according to `rounding`. Panics with `msg` on overflow.
+/// Checked `i128` multiplication (legacy compatibility wrapper).
+///
+/// Prefer [`checked_mul_i128`]. The `_message` parameter is ignored.
 #[inline]
 #[must_use]
-pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, msg: &str) -> i128 {
-    assert!(denom > 0, "denominator must be positive");
-    // Use u128 for intermediate to avoid i128 overflow
-    let a_abs = a.unsigned_abs();
-    let b_abs = b.unsigned_abs();
-    let denom_abs = denom.unsigned_abs();
+#[deprecated(note = "use checked_mul_i128 instead")]
+pub fn mul_i128(a: i128, b: i128, _message: &str) -> i128 {
+    unwrap_legacy(checked_mul_i128(a, b))
+}
 
-    let num = match a_abs.checked_mul(b_abs) {
-        Some(v) => v,
-        None => panic!("{}", msg),
-    };
+/// Checked `i128` division returning [`ContractError::DivisionByZero`] when
+/// `b == 0` and [`ContractError::Overflow`] on `i128::MIN / -1`.
+#[inline]
+pub fn checked_div_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    if b == 0 {
+        return Err(ContractError::DivisionByZero);
+    }
+    a.checked_div(b).ok_or(ContractError::Overflow)
+}
 
-    let mut result = (num / denom_abs) as i128;
-    let rem = num % denom_abs;
+/// Checked `i128` division (legacy compatibility wrapper).
+///
+/// Prefer [`checked_div_i128`]. The `_message` parameter is ignored.
+#[inline]
+#[must_use]
+#[deprecated(note = "use checked_div_i128 instead")]
+pub fn div_i128(a: i128, b: i128, _message: &str) -> i128 {
+    unwrap_legacy(checked_div_i128(a, b))
+}
 
-    match rounding {
-        Rounding::Down => {}
-        Rounding::Up => {
-            if rem != 0 {
-                result = result.saturating_add(1);
-            }
-        }
-        Rounding::Nearest => {
-            let half = denom_abs / 2;
-            if rem >= half {
-                result = result.saturating_add(1);
-            }
-        }
+/// Checked `i128` ceiling division for positive denominator `b`.
+///
+/// Returns [`ContractError::DivisionByZero`] when `b == 0` and
+/// [`ContractError::Overflow`] when `b < 0` or `a + (b - 1)` overflows `i128`.
+#[inline]
+pub fn checked_ceil_div_i128(a: i128, b: i128) -> Result<i128, ContractError> {
+    if b == 0 {
+        return Err(ContractError::DivisionByZero);
+    }
+    if b < 0 {
+        return Err(ContractError::Overflow);
+    }
+    let adjusted = a.checked_add(b - 1).ok_or(ContractError::Overflow)?;
+    adjusted.checked_div(b).ok_or(ContractError::Overflow)
+}
+
+/// Checked `i128` ceiling division (legacy compatibility wrapper).
+///
+/// Prefer [`checked_ceil_div_i128`]. The `_message` parameter is ignored.
+#[inline]
+#[must_use]
+#[deprecated(note = "use checked_ceil_div_i128 instead")]
+pub fn ceil_div_i128(a: i128, b: i128, _message: &str) -> i128 {
+    unwrap_legacy(checked_ceil_div_i128(a, b))
+}
+
+/// Checked wide-intermediate multiply-divide: `(a * b) / denom` using a 256-bit
+/// intermediate so `a * b` can exceed `i128::MAX` as long as the final rounded
+/// quotient fits in `i128`.
+///
+/// Returns [`ContractError::DivisionByZero`] when `denom == 0`, and
+/// [`ContractError::Overflow`] when the final rounded result does not fit in `i128`.
+#[inline]
+pub fn checked_mul_div_i128(
+    a: i128,
+    b: i128,
+    denom: i128,
+    rounding: Rounding,
+) -> Result<i128, ContractError> {
+    if denom == 0 {
+        return Err(ContractError::DivisionByZero);
     }
 
-    // Apply sign
-    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) {
-        -1
-    } else {
-        1
+    let a_abs = U256::new(a.unsigned_abs());
+    let b_abs = U256::new(b.unsigned_abs());
+    let denom_abs = U256::new(denom.unsigned_abs());
+
+    let product = a_abs * b_abs;
+    let mut quotient = product / denom_abs;
+    let rem = product % denom_abs;
+
+    let round_up = match rounding {
+        Rounding::Down => false,
+        Rounding::Up => rem != U256::ZERO,
+        Rounding::Nearest => {
+            // Round half away from zero: 2 * rem >= denom_abs
+            rem * U256::new(2) >= denom_abs
+        }
     };
-    result.saturating_mul(sign)
+
+    if round_up {
+        quotient = quotient
+            .checked_add(U256::ONE)
+            .ok_or(ContractError::Overflow)?;
+    }
+
+    let negative = (a < 0) ^ (b < 0) ^ (denom < 0);
+    if negative {
+        let min_mag = U256::new(i128::MIN.unsigned_abs());
+        if quotient > min_mag {
+            return Err(ContractError::Overflow);
+        }
+        if quotient == min_mag {
+            Ok(i128::MIN)
+        } else {
+            Ok(-(quotient.as_u128() as i128))
+        }
+    } else {
+        let max_mag = U256::new(i128::MAX as u128);
+        if quotient > max_mag {
+            return Err(ContractError::Overflow);
+        }
+        Ok(quotient.as_u128() as i128)
+    }
+}
+
+/// Wide-intermediate multiply-divide (legacy compatibility wrapper).
+///
+/// Prefer [`checked_mul_div_i128`]. The `_msg` parameter is ignored.
+#[inline]
+#[must_use]
+#[deprecated(note = "use checked_mul_div_i128 instead")]
+pub fn mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding, _msg: &str) -> i128 {
+    unwrap_legacy(checked_mul_div_i128(a, b, denom, rounding))
 }
 
 /// Saturating multiply-divide: `(a * b) / denom` with saturation on overflow.
-/// Rounds according to `rounding`. Returns clamped value on overflow.
+/// Rounds according to `rounding`. Returns `0` when `denom == 0` and clamps to
+/// `i128::MIN` / `i128::MAX` on overflow.
 #[inline]
 #[must_use]
 pub fn sat_mul_div_i128(a: i128, b: i128, denom: i128, rounding: Rounding) -> i128 {
-    assert!(denom > 0, "denominator must be positive");
-    // Use i128 checked operations with manual overflow handling
-    let a_abs = a.unsigned_abs();
-    let b_abs = b.unsigned_abs();
-    let denom_abs = denom.unsigned_abs();
-
-    // Compute (a * b) / denom using u256 intermediate via u128::checked_mul
-    let num = match a_abs.checked_mul(b_abs) {
-        Some(v) => v,
-        None => {
-            return if (a < 0) ^ (b < 0) {
+    if denom == 0 {
+        return 0;
+    }
+    match checked_mul_div_i128(a, b, denom, rounding) {
+        Ok(v) => v,
+        Err(_) => {
+            if (a < 0) ^ (b < 0) ^ (denom < 0) {
                 i128::MIN
             } else {
                 i128::MAX
             }
         }
-    };
+    }
+}
 
-    let mut result = (num / denom_abs) as i128;
-    let rem = num % denom_abs;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    match rounding {
-        Rounding::Down => {}
-        Rounding::Up => {
-            if rem != 0 {
-                result = result.saturating_add(1);
-            }
-        }
-        Rounding::Nearest => {
-            let half = denom_abs / 2;
-            if rem >= half {
-                result = result.saturating_add(1);
-            }
-        }
+    #[test]
+    fn checked_mul_u64_works_and_reports_overflow() {
+        assert_eq!(checked_mul_u64(6, 7), Ok(42));
+        assert_eq!(checked_mul_u64(u64::MAX, 2), Err(ContractError::Overflow));
     }
 
-    // Apply sign
-    let sign = if (a < 0) ^ (b < 0) ^ (denom < 0) {
-        -1
-    } else {
-        1
-    };
-    result.saturating_mul(sign)
-}
+    #[test]
+    fn checked_add_sub_mul_div_i128_report_typed_errors() {
+        assert_eq!(checked_add_i128(10, 20), Ok(30));
+        assert_eq!(checked_add_i128(i128::MAX, 1), Err(ContractError::Overflow));
 
-/// Fixed-point multiplication with checked overflow.
-#[inline]
-pub fn checked_mul_wad(a: i128, b: i128) -> Result<i128, ContractError> {
-    let num = a.checked_mul(b).ok_or(ContractError::Overflow)?;
-    num.checked_div(WAD).ok_or(ContractError::Overflow)
-}
+        assert_eq!(checked_sub_i128(20, 10), Ok(10));
+        assert_eq!(
+            checked_sub_i128(i128::MIN, 1),
+            Err(ContractError::Underflow)
+        );
+        assert_eq!(
+            checked_sub_i128(i128::MAX, -1),
+            Err(ContractError::Overflow)
+        );
 
-/// Fixed-point division with checked overflow.
-#[inline]
-pub fn checked_div_wad(a: i128, b: i128) -> Result<i128, ContractError> {
-    let num = a.checked_mul(WAD).ok_or(ContractError::Overflow)?;
-    num.checked_div(b).ok_or(ContractError::Overflow)
+        assert_eq!(checked_mul_i128(6, -7), Ok(-42));
+        assert_eq!(checked_mul_i128(i128::MAX, 2), Err(ContractError::Overflow));
+
+        assert_eq!(checked_div_i128(42, 6), Ok(7));
+        assert_eq!(checked_div_i128(42, 0), Err(ContractError::DivisionByZero));
+        assert_eq!(
+            checked_div_i128(i128::MIN, -1),
+            Err(ContractError::Overflow)
+        );
+    }
+
+    #[test]
+    fn checked_ceil_div_i128_works_and_reports_typed_errors() {
+        assert_eq!(checked_ceil_div_i128(10, 3), Ok(4));
+        assert_eq!(checked_ceil_div_i128(9, 3), Ok(3));
+        assert_eq!(
+            checked_ceil_div_i128(10, 0),
+            Err(ContractError::DivisionByZero)
+        );
+        assert_eq!(checked_ceil_div_i128(10, -1), Err(ContractError::Overflow));
+        assert_eq!(
+            checked_ceil_div_i128(i128::MAX, 2),
+            Err(ContractError::Overflow)
+        );
+    }
+
+    #[test]
+    fn checked_mul_div_i128_wide_intermediate_and_typed_errors() {
+        assert_eq!(
+            checked_mul_div_i128(i128::MAX, WAD, WAD, Rounding::Down),
+            Ok(i128::MAX)
+        );
+        assert_eq!(
+            checked_mul_div_i128(i128::MIN, WAD, WAD, Rounding::Down),
+            Ok(i128::MIN)
+        );
+        assert_eq!(
+            checked_mul_div_i128(10, 1, 0, Rounding::Down),
+            Err(ContractError::DivisionByZero)
+        );
+        assert_eq!(
+            checked_mul_div_i128(i128::MAX, 2, 1, Rounding::Down),
+            Err(ContractError::Overflow)
+        );
+        assert_eq!(
+            checked_mul_div_i128(3, 1, 2, Rounding::Nearest),
+            Ok(2)
+        );
+        assert_eq!(
+            checked_mul_div_i128(1, 1, 3, Rounding::Nearest),
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn unwrap_or_panic_error_returns_ok_value() {
+        let env = Env::default();
+        assert_eq!(unwrap_or_panic_error(&env, checked_add_i128(2, 3)), 5);
+    }
 }
