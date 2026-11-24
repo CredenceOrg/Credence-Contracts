@@ -525,6 +525,30 @@ pub enum ContractError {
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
     UnsupportedStellarNetwork = 242,
+    /// A claim has already been processed and cannot be paid again.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ClaimAlreadyProcessed = 240,
+
+    /// A claim's expiry time has passed.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ClaimExpired = 241,
+
+    /// No pending claim exists for the given user and claim ID.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    ClaimNotFound = 242,
+
+    /// The user has no pending claims to process.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NoPendingClaims = 243,
+
+    /// No pending claims match the processing request.
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NoValidClaimsToProcess = 244,
 
     // --- Attestation (300-399) ---
     /// An attestation already exists from this attester for this bond.
@@ -991,6 +1015,11 @@ impl ErrorExt for ContractError {
             | ContractError::NegativeAmount
             | ContractError::InsufficientTokenAllowance
             | ContractError::UnsupportedStellarNetwork => ErrorCategory::Bond,
+            | ContractError::ClaimAlreadyProcessed
+            | ContractError::ClaimExpired
+            | ContractError::ClaimNotFound
+            | ContractError::NoPendingClaims
+            | ContractError::NoValidClaimsToProcess => ErrorCategory::Bond,
 
             ContractError::DuplicateAttestation
             | ContractError::AttestationNotFound
@@ -1199,6 +1228,12 @@ impl ErrorExt for ContractError {
             }
             ContractError::UnsupportedStellarNetwork => {
                 "The configured Stellar network label is not supported"
+            ContractError::ClaimAlreadyProcessed => "Claim has already been processed",
+            ContractError::ClaimExpired => "Claim has expired",
+            ContractError::ClaimNotFound => "No pending claim exists for the given user and ID",
+            ContractError::NoPendingClaims => "User has no pending claims to process",
+            ContractError::NoValidClaimsToProcess => {
+                "No pending claims match the processing request"
             }
             ContractError::DuplicateAttestation => {
                 "Attestation already exists from this attester"
@@ -1411,10 +1446,15 @@ impl ErrorExt for ContractError {
             | ContractError::NegativeAmount        // supply a non-negative amount
             | ContractError::InsufficientTokenAllowance // approve a sufficient allowance
             | ContractError::UnsupportedStellarNetwork // use mainnet or testnet
+            | ContractError::ClaimNotFound         // supply a claim ID pending for this user
+            | ContractError::NoPendingClaims       // create a claim before processing
+            | ContractError::NoValidClaimsToProcess // adjust the filter or pending claims
             => true,
 
             // FATAL Bond: caller cannot directly fix any of these.
-            ContractError::ReentrancyDetected => false,       // SECURITY HALT: investigate, do not retry
+            ContractError::ClaimAlreadyProcessed
+            | ContractError::ClaimExpired
+            | ContractError::ReentrancyDetected => false, // terminal state or SECURITY HALT
             ContractError::InvariantViolation => false,        // post-write drift detection; code bug
             ContractError::StorageCapReached => false,         // system capacity; only operator prune fixes it => false, // state-epoch mismatch; retry from fresh scan
 

@@ -121,6 +121,11 @@ error code instead of an opaque transaction failure.
 | 240 | `NegativeAmount` | ✓ | Token amount must be non-negative |
 | 241 | `InsufficientTokenAllowance` | ✓ | Token allowance is smaller than the requested transfer amount |
 | 242 | `UnsupportedStellarNetwork` | ✓ | The configured Stellar network label is not supported |
+| 240 | `ClaimAlreadyProcessed` | ✗ | Claim has already been processed and cannot be paid again |
+| 241 | `ClaimExpired` | ✗ | Claim's expiry time has passed |
+| 242 | `ClaimNotFound` | ✓ | No pending claim exists for the given user and claim ID |
+| 243 | `NoPendingClaims` | ✓ | User has no pending claims to process |
+| 244 | `NoValidClaimsToProcess` | ✓ | No pending claims match the processing request |
 
 ### Attestation (300–399)
 
