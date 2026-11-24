@@ -9,11 +9,14 @@ mod recovery_tests {
     fn duplicate_creation_failure_preserves_the_existing_bond() {
         let env = Env::default();
         let (client, _admin, identity, ..) = test_helpers::setup_with_token(&env);
-        let duration = credence_math::Timestamp::SECONDS_PER_DAY;
+        let duration = credence_math::SECONDS_PER_DAY;
 
-        let original = client.create_bond(&identity, &500, &duration);
+        // Amounts must be >= `validation::MIN_BOND_AMOUNT` (1000 in test mode)
+        // for the initial creation to succeed; the retry differs so the revert
+        // is unambiguously the duplicate-bond guard.
+        let original = client.create_bond(&identity, &1_000, &duration, &false, &0);
         let retry = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            client.create_bond(&identity, &700, &duration);
+            client.create_bond(&identity, &1_700, &duration, &false, &0);
         }));
         assert!(retry.is_err(), "duplicate creation must be rejected");
 

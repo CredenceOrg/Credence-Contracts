@@ -18,7 +18,10 @@ include!("../variant_table.rs");
 fn variant_table_length_is_the_canonical_generation() {
     assert_eq!(
         ALL_VARIANTS.len(),
-        116,
+        130,
+        126,
+        134,
+        129,
         "Add one row to `variant_table.rs` per new `ContractError` variant; \
          do not maintain separate manual counts in other test files.",
     );

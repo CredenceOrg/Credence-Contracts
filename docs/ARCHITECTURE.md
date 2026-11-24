@@ -130,14 +130,18 @@ See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
 
 **Responsibility:** Bidirectional mapping between identity addresses and their deployed bond contract addresses. The backend uses this as the discovery layer to find which bond contract belongs to which identity.
 
-**State (instance storage):**
+**State:**
 
-| Key | Type | Description |
-|---|---|---|
-| `Admin` | `Address` | Registry administrator |
-| `IdentityToBond(addr)` | `RegistryEntry` | Forward mapping: identity → entry |
-| `BondToIdentity(addr)` | `Address` | Reverse mapping: bond contract → identity |
-| `RegisteredIdentities` | `Vec<Address>` | Ordered list of all registered identities |
+| Key | Storage | Type | Description |
+|---|---|---|---|
+| `Admin` | instance | `Address` | Registry administrator |
+| `IdentityCount` | instance | `u32` | Number of indexed identities |
+| `IdentityToBond(addr)` | persistent | `RegistryEntry` | Forward mapping: identity → entry |
+| `BondToIdentity(addr)` | persistent | `Address` | Reverse mapping: bond contract → identity |
+| `IdentityAt(index)` | persistent | `Address` | Identity at a position in the insertion index |
+| `IdentityIndex(addr)` | persistent | `u32` | Position of an identity in the insertion index |
+
+Per-identity data is persistent so the instance entry stays constant-size; `remove` is swap-and-pop and `get_identities_page` reads only its slice (issue #1629).
 
 **Events emitted:**
 
@@ -153,7 +157,7 @@ See also: [fund-flow.md](fund-flow.md) for a complete token custody trace.
 
 - Index `identity_registered` to maintain the identity→bond-contract lookup table.
 - Use `get_bond_contract(identity)` for on-demand lookups.
-- Use `get_all_identities()` for full enumeration (note: unbounded — prefer event-based indexing at scale; see [known-simplifications.md](known-simplifications.md#7-get_all_identities-has-no-pagination)).
+- Use `get_identities_page(offset, limit)` for bounded enumeration (helpers: `get_identity_count()`), or the `identity_registered` event stream for off-chain indexing.
 
 ---
 

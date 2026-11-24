@@ -78,7 +78,10 @@ fn test_archive_resolved_dispute() {
     let s = setup();
     let id = create_and_resolve(&s);
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Resolved);
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
 }
 
@@ -87,6 +90,10 @@ fn test_archive_tied_dispute() {
     let s = setup();
     let id = create_and_tie(&s);
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Tied);
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
     s.client.try_archive_dispute(&s.admin, &id).unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
 }
@@ -96,7 +103,10 @@ fn test_archive_cancelled_dispute() {
     let s = setup();
     let id = create_and_cancel(&s);
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Cancelled);
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
 }
 
@@ -131,9 +141,16 @@ fn test_archive_rejects_non_admin() {
 fn test_reopen_archived_dispute() {
     let s = setup();
     let id = create_and_resolve(&s);
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
     s.client.try_archive_dispute(&s.admin, &id).unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
-    s.client.try_reopen_dispute(&s.admin, &id, &3600).unwrap();
+    s.client
+        .try_reopen_dispute(&s.admin, &id, &3600)
+        .unwrap()
+        .unwrap();
     let d = s.client.get_dispute(&id);
     assert_eq!(d.status, DisputeStatus::Voting);
     assert_eq!(d.outcome, 0);
@@ -143,7 +160,10 @@ fn test_reopen_archived_dispute() {
 fn test_reopen_rejects_non_admin() {
     let s = setup();
     let id = create_and_resolve(&s);
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
     let stranger = Address::generate(&s.env);
     let err = s
         .client
@@ -169,7 +189,10 @@ fn test_reopen_rejects_non_archived() {
 fn test_cannot_archive_twice() {
     let s = setup();
     let id = create_and_resolve(&s);
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
     let err = s
         .client
         .try_archive_dispute(&s.admin, &id)
@@ -182,6 +205,14 @@ fn test_cannot_archive_twice() {
 fn test_reopen_allows_new_votes() {
     let s = setup();
     let id = create_and_resolve(&s);
+    s.client
+        .try_archive_dispute(&s.admin, &id)
+        .unwrap()
+        .unwrap();
+    s.client
+        .try_reopen_dispute(&s.admin, &id, &3600)
+        .unwrap()
+        .unwrap();
     s.client.try_archive_dispute(&s.admin, &id).unwrap();
     s.client.try_reopen_dispute(&s.admin, &id, &3600).unwrap();
     s.client.vote(&s.arb, &id, &2);

@@ -14,6 +14,7 @@
 //! an unauthorised caller is rejected.
 
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
     Address, Env,
@@ -401,9 +402,7 @@ fn update_admin_role_no_op_when_role_is_unchanged() {
         AdminRole::Operator,
     );
 
-    let epoch_before = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_before = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
     let events_before = env.events().all().len();
 
     // Same role — must be a no-op.
@@ -416,8 +415,7 @@ fn update_admin_role_no_op_when_role_is_unchanged() {
         );
     });
 
-    let epoch_after =
-        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
+    let epoch_after = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
     assert_eq!(
         epoch_before, epoch_after,
         "no-op role update must not advance the config epoch"
@@ -545,9 +543,7 @@ fn deactivate_admin_rejected_call_does_not_advance_epoch() {
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
 
     // Capture epoch after the add_admin call.
-    let epoch_before = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_before = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     // Attempt a same-rank lateral deactivation (will panic).
     let second_admin = test_admin(&env);
@@ -558,9 +554,8 @@ fn deactivate_admin_rejected_call_does_not_advance_epoch() {
         &second_admin,
         AdminRole::Admin,
     );
-    let epoch_after_add = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after_add =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     // Wrap the rejected call; epoch must equal epoch_after_add.
     let env2 = env.clone();
@@ -573,9 +568,8 @@ fn deactivate_admin_rejected_call_does_not_advance_epoch() {
     let result = client.try_deactivate_admin(&admin_clone, &second_clone);
     assert!(result.is_err(), "lateral deactivation must be rejected");
 
-    let epoch_unchanged = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_unchanged =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
     assert_eq!(
         epoch_after_add, epoch_unchanged,
         "rejected deactivation must not advance the config epoch"
@@ -703,12 +697,7 @@ fn suspend_admin_rejected_when_re_suspension_does_not_extend_window() {
 
     // First suspension establishes the window.
     env.as_contract(&contract, || {
-        AdminContract::suspend_admin(
-            env.clone(),
-            super_admin.clone(),
-            admin.clone(),
-            until_ts,
-        );
+        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
     });
 
     // Second suspension with the same deadline — must be rejected.
@@ -738,12 +727,7 @@ fn suspend_admin_rejected_when_re_suspension_shortens_window() {
 
     // First suspension: window ends at +7200.
     env.as_contract(&contract, || {
-        AdminContract::suspend_admin(
-            env.clone(),
-            super_admin.clone(),
-            admin.clone(),
-            until_ts,
-        );
+        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
     });
 
     // Attempt to shorten to +3600 — must be rejected.
@@ -833,10 +817,7 @@ fn remove_admin_rejected_when_it_would_violate_min_admins_for_super_admin_tier()
             .get(&DataKey::RoleAdmins(AdminRole::SuperAdmin))
             .unwrap();
         // Remove second_super from the role list to leave only super_admin.
-        let idx = role_list
-            .iter()
-            .position(|a| a == second_super)
-            .unwrap();
+        let idx = role_list.iter().position(|a| a == second_super).unwrap();
         role_list.remove(idx as u32);
         env.storage()
             .instance()
@@ -923,11 +904,16 @@ fn config_epoch_does_not_advance_on_any_rejected_call() {
     let ghost = user(&env);
 
     add_admin(&env, &contract, &super_admin, &admin, AdminRole::Admin);
-    add_admin(&env, &contract, &super_admin, &operator, AdminRole::Operator);
+    add_admin(
+        &env,
+        &contract,
+        &super_admin,
+        &operator,
+        AdminRole::Operator,
+    );
 
-    let epoch_baseline = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_baseline =
+        env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     let client = AdminContractClient::new(&env, &contract);
 
@@ -947,9 +933,7 @@ fn config_epoch_does_not_advance_on_any_rejected_call() {
     // 5. update_admin_role: same role (no-op — epoch must not advance)
     let _ = client.try_update_admin_role(&super_admin, &operator, &AdminRole::Operator);
 
-    let epoch_after = env.as_contract(&contract, || {
-        AdminContract::get_config_epoch(env.clone())
-    });
+    let epoch_after = env.as_contract(&contract, || AdminContract::get_config_epoch(env.clone()));
 
     assert_eq!(
         epoch_baseline, epoch_after,
@@ -985,18 +969,27 @@ fn accept_ownership_succeeds_at_exact_timelock_boundary() {
 
     // Advance to exactly the timelock boundary.
     advance(&env, crate::OWNERSHIP_TRANSFER_TIMELOCK);
-    assert_eq!(env.ledger().timestamp(), proposed_at + crate::OWNERSHIP_TRANSFER_TIMELOCK);
+    assert_eq!(
+        env.ledger().timestamp(),
+        proposed_at + crate::OWNERSHIP_TRANSFER_TIMELOCK
+    );
 
     env.as_contract(&contract, || {
         AdminContract::accept_ownership(env.clone(), new_super.clone());
     });
 
     let owner = env.as_contract(&contract, || AdminContract::get_owner(env.clone()));
-    assert_eq!(owner, new_super, "owner must be updated at the exact timelock boundary");
+    assert_eq!(
+        owner, new_super,
+        "owner must be updated at the exact timelock boundary"
+    );
 
     // Pending owner slot must be cleared atomically.
     let pending = env.as_contract(&contract, || AdminContract::get_pending_owner(env.clone()));
-    assert_eq!(pending, None, "pending owner must be cleared after acceptance");
+    assert_eq!(
+        pending, None,
+        "pending owner must be cleared after acceptance"
+    );
 }
 
 // ── update_admin_role: promotion then demotion preserves state integrity ─────
@@ -1014,13 +1007,7 @@ fn accept_ownership_succeeds_at_exact_timelock_boundary() {
 fn update_admin_role_round_trip_preserves_role_list_integrity() {
     let (env, contract, super_admin) = setup_env();
     let target = user(&env);
-    add_admin(
-        &env,
-        &contract,
-        &super_admin,
-        &target,
-        AdminRole::Operator,
-    );
+    add_admin(&env, &contract, &super_admin, &target, AdminRole::Operator);
 
     // Promote to Admin.
     env.as_contract(&contract, || {
@@ -1046,7 +1033,11 @@ fn update_admin_role_round_trip_preserves_role_list_integrity() {
     let info = env.as_contract(&contract, || {
         AdminContract::get_admin_info(env.clone(), target.clone())
     });
-    assert_eq!(info.role, AdminRole::Operator, "role must reflect last update");
+    assert_eq!(
+        info.role,
+        AdminRole::Operator,
+        "role must reflect last update"
+    );
 
     // target must appear exactly once in the Operator list and not at all in Admin.
     let op_list: soroban_sdk::Vec<Address> = env.as_contract(&contract, || {
@@ -1056,11 +1047,17 @@ fn update_admin_role_round_trip_preserves_role_list_integrity() {
         AdminContract::get_admins_by_role(env.clone(), AdminRole::Admin)
     });
 
-    let op_count = op_list.iter().filter(|a| a == target).count();
-    let admin_count = admin_list.iter().filter(|a| a == target).count();
+    let op_count = op_list.iter().filter(|a| *a == target).count();
+    let admin_count = admin_list.iter().filter(|a| *a == target).count();
 
-    assert_eq!(op_count, 1, "target must appear exactly once in Operator list");
-    assert_eq!(admin_count, 0, "target must not appear in Admin list after demotion");
+    assert_eq!(
+        op_count, 1,
+        "target must appear exactly once in Operator list"
+    );
+    assert_eq!(
+        admin_count, 0,
+        "target must not appear in Admin list after demotion"
+    );
 }
 
 // ── suspend_admin: suspension expiry is auto-detected, no second tx needed ───
@@ -1083,18 +1080,15 @@ fn suspend_admin_expiry_boundary_is_inclusive() {
     let until_ts = now + 1_000;
 
     env.as_contract(&contract, || {
-        AdminContract::suspend_admin(
-            env.clone(),
-            super_admin.clone(),
-            admin.clone(),
-            until_ts,
-        );
+        AdminContract::suspend_admin(env.clone(), super_admin.clone(), admin.clone(), until_ts);
     });
 
     // One second before expiry: still suspended.
     env.ledger().with_mut(|li| li.timestamp = until_ts - 1);
     assert_eq!(
-        env.as_contract(&contract, || { AdminContract::is_admin(env.clone(), admin.clone()) }),
+        env.as_contract(&contract, || {
+            AdminContract::is_admin(env.clone(), admin.clone())
+        }),
         credence_errors::Role::User,
         "admin must be inactive one second before expiry"
     );
@@ -1102,7 +1096,9 @@ fn suspend_admin_expiry_boundary_is_inclusive() {
     // At exactly suspended_until: auto-reactivated (>= comparison).
     env.ledger().with_mut(|li| li.timestamp = until_ts);
     assert_eq!(
-        env.as_contract(&contract, || { AdminContract::is_admin(env.clone(), admin.clone()) }),
+        env.as_contract(&contract, || {
+            AdminContract::is_admin(env.clone(), admin.clone())
+        }),
         credence_errors::Role::Admin,
         "admin must be active at exactly suspended_until (>= boundary)"
     );

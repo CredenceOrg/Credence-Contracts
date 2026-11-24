@@ -25,6 +25,7 @@ use soroban_sdk::{contract, Address, Env, IntoVal, Symbol, TryFromVal, Val};
 
 /// Every declared variant, in wire order. Adding a variant means adding it
 /// here, which is what forces the closed-world cases below to classify it too.
+const ALL_STATUSES: [DisputeStatus; 8] = [
 const ALL_STATUSES: [DisputeStatus; 9] = [
     DisputeStatus::Open,
     DisputeStatus::Voting,
@@ -328,6 +329,10 @@ fn a_status_shares_the_ledger_encoding_of_its_discriminant() {
 fn an_out_of_range_status_code_does_not_deserialize_into_a_verdict() {
     // The guards are handed a `DisputeStatus`, never a raw code. A truncated,
     // stale, or hostile u32 has to fail conversion rather than collapse onto a
+    // variant. `NoQuorum` is the newest valid status, so only codes above 7 are
+    // invalid for this enum.
+    let (env, _id) = fixture();
+    for bogus in [8_u32, 42, u32::MAX] {
     // variant: silently mapping 9 to `Resolved` would admit lease work on a
     // dispute that is still being voted on.
     let (env, _id) = fixture();

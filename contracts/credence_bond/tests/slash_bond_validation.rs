@@ -187,10 +187,6 @@ fn slash_bond_releases_reentrancy_lock_after_rejected_call() {
 fn slash_bond_rejects_non_admin_caller() {
     let f = setup(1_000 * ONE_TOKEN);
     let stranger = Address::generate(&f.env);
-    f.client.slash_bond(
-        &stranger,
-        &f.identity,
-        &(100 * ONE_TOKEN),
-        &no_salt(&f.env),
-    );
+    f.client
+        .slash_bond(&stranger, &f.identity, &(100 * ONE_TOKEN), &no_salt(&f.env));
 }

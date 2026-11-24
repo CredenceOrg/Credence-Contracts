@@ -279,10 +279,7 @@ fn insufficient_approvals_rejected_but_recoverable() {
     let id = client.pause(&s1).unwrap();
     let epoch_after_propose = client.get_config_epoch();
 
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_INSUFFICIENT_APPROVALS)
@@ -311,7 +308,8 @@ fn stale_epoch_proposal_cannot_execute() {
     let s1 = signers.get(0).unwrap();
 
     let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
-    e.ledger().with_mut(|l| l.sequence_number = epoch_boundary - 1);
+    e.ledger()
+        .with_mut(|l| l.sequence_number = epoch_boundary - 1);
     let id = client.pause(&s1).unwrap();
 
     let epoch_after_propose = client.get_config_epoch();
@@ -319,10 +317,7 @@ fn stale_epoch_proposal_cannot_execute() {
     let events_before = e.events().all().len();
 
     // The proposal met the threshold in its own epoch; only staleness blocks it.
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(ERR_STALE_ADMIN_EPOCH)
@@ -600,13 +595,13 @@ fn set_pause_threshold_emits_event_on_change_only() {
 
     // Real change: 0 → 1. One event, one epoch bump.
     client.set_pause_threshold(&super_admin, &1u32);
+    assert_eq!(e.events().all().len(), 1);
     assert_eq!(client.get_config_epoch(), epoch_before + 1);
-    assert_eq!(e.events().all().len(), events_before + 1);
 
     // No-op re-set: 1 → 1. No event, no epoch bump.
     let epoch_after = client.get_config_epoch();
     let events_after = e.events().all().len();
     client.set_pause_threshold(&super_admin, &1u32);
+    assert!(e.events().all().is_empty());
     assert_eq!(client.get_config_epoch(), epoch_after);
-    assert_eq!(e.events().all().len(), events_after);
 }

@@ -7,18 +7,10 @@
     dead_code,
     unused_assignments,
     unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
+    mismatched_lifetime_syntaxes
 )]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
+// cargo build --release / WASM build is the only mode where this deny fires
+// (tests stay free to use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 //! # Serialization and retry contract
@@ -60,9 +52,9 @@ pub mod pausable;
 #[cfg(test)]
 mod test_events_schema;
 #[cfg(test)]
-mod test_ownership_transfer;
-#[cfg(test)]
 mod test_execute_pause_proposal_enhanced;
+#[cfg(test)]
+mod test_ownership_transfer;
 
 use credence_errors::{ContractError, Role};
 use soroban_sdk::panic_with_error;
@@ -999,7 +991,7 @@ impl AdminContract {
             panic_with_error!(&e, ContractError::TimelockNotReady);
         }
 
-// Revalidate the pending owner's effective SuperAdmin status at
+        // Revalidate the pending owner's effective SuperAdmin status at
         // acceptance time. The candidate's role, activation, or suspension
         // state may have changed during the timelock window; a stale proposal
         // must never grant durable ownership to an admin who is no longer an
@@ -1146,10 +1138,7 @@ impl AdminContract {
     /// this to schedule retries deterministically without guessing.
     pub fn get_pending_owner_eligible_at(e: Env) -> Option<u64> {
         bump_instance_ttl(&e);
-        let proposed_at: u64 = e
-            .storage()
-            .instance()
-            .get(&DataKey::TransferProposedAt)?;
+        let proposed_at: u64 = e.storage().instance().get(&DataKey::TransferProposedAt)?;
         Some(
             proposed_at
                 .checked_add(OWNERSHIP_TRANSFER_TIMELOCK)
@@ -1811,6 +1800,14 @@ mod test;
 #[cfg(test)]
 mod test_require_role_at_ledger;
 
+/// Configuration structure for observability
+#[derive(Clone, Debug)]
+struct PauseConfiguration {
+    threshold: u32,
+    signer_count: u32,
+    initialized: bool,
+}
+
 // Pause mechanism entrypoints
 #[contractimpl]
 impl AdminContract {
@@ -1876,7 +1873,7 @@ impl AdminContract {
     /// * **System errors** (require investigation): Configuration inconsistencies
     ///
     /// ## Observability
-    /// * Comprehensive event logging for all execution phases
+    /// * Debug logging for all execution phases
     /// * Diagnostic metrics for performance monitoring
     /// * Error context logging without sensitive data exposure
     /// * State transition tracking for audit trails
@@ -1893,16 +1890,18 @@ impl AdminContract {
     /// * `InvalidAdminAddress` - Configuration contains invalid addresses
     /// * `ThresholdExceedsSigners` - Invalid threshold configuration
     ///
-    /// # Events
-    /// Emits execution attempt events for observability without exposing sensitive data
+    /// # Diagnostics
+    /// Records execution attempts through SDK debug logs. Governance events
+    /// remain limited to the existing pause/unpause state transitions.
     pub fn execute_pause_proposal(e: Env, proposal_id: u64) {
         bump_instance_ttl(&e);
 
         // ── Execution Context Logging ───────────────────────────────────────────
         // Log execution start with context for monitoring and debugging
-        e.events().publish(
-            (Symbol::new(&e, "pause_proposal_execution_started"),),
-            (proposal_id, e.ledger().sequence(), e.ledger().timestamp()),
+        soroban_sdk::log!(
+            &e,
+            "pause_proposal_execution_started",
+            (proposal_id, e.ledger().sequence(), e.ledger().timestamp())
         );
 
         // ── Input Validation ─────────────────────────────────────────────────────
@@ -1910,17 +1909,15 @@ impl AdminContract {
         // deterministic failure boundaries independent of storage state
         match Self::validate_proposal_id_with_logging(&e, proposal_id) {
             Ok(()) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_proposal_validation_passed"),),
-                    proposal_id,
-                );
+                soroban_sdk::log!(&e, "pause_proposal_validation_passed", proposal_id);
             }
             Err(error_code) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_proposal_validation_failed"),),
-                    (proposal_id, error_code),
+                soroban_sdk::log!(
+                    &e,
+                    "pause_proposal_validation_failed",
+                    (proposal_id, error_code)
                 );
-                panic_with_error!(&e, ContractError::InvalidPauseAction);
+                Self::require_valid_proposal_id(&e, proposal_id);
             }
         }
 
@@ -1928,15 +1925,17 @@ impl AdminContract {
         // Verify contract and configuration integrity before proposal execution
         match Self::validate_pause_configuration_with_logging(&e) {
             Ok(config) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_config_validation_passed"),),
-                    (config.threshold, config.signer_count, config.initialized),
+                soroban_sdk::log!(
+                    &e,
+                    "pause_config_validation_passed",
+                    (config.threshold, config.signer_count, config.initialized)
                 );
             }
             Err(error_code) => {
-                e.events().publish(
-                    (Symbol::new(&e, "pause_config_validation_failed"),),
-                    (proposal_id, error_code),
+                soroban_sdk::log!(
+                    &e,
+                    "pause_config_validation_failed",
+                    (proposal_id, error_code)
                 );
                 // The specific error will be panicked by the validation function
                 Self::require_valid_pause_configuration(&e);
@@ -1947,11 +1946,12 @@ impl AdminContract {
         // The pausable module handles the core execution logic with enhanced
         // error boundaries and deterministic state transitions
         pausable::execute_pause_proposal(&e, proposal_id);
-        
+
         // ── Final Success Logging ───────────────────────────────────────────────
-        e.events().publish(
-            (Symbol::new(&e, "pause_proposal_execution_completed"),),
-            (proposal_id, e.ledger().sequence()),
+        soroban_sdk::log!(
+            &e,
+            "pause_execution_completed",
+            (proposal_id, e.ledger().sequence())
         );
     }
 
@@ -2022,37 +2022,6 @@ impl AdminContract {
         }
     }
 
-    /// Validate that an address is not a sentinel or invalid value.
-    ///
-    /// # Security
-    /// Rejects addresses that could cause permanent loss of admin control:
-    /// * Zero/invalid address sentinel that cannot be controlled
-    /// * Contract's own address which would create circular dependencies
-    ///
-    /// # Arguments
-    /// * `address` - The address to validate
-    ///
-    /// # Panics
-    /// * `InvalidAdminAddress` - Address is invalid or a sentinel value
-    fn require_valid_admin_address(e: &Env, address: &Address) {
-        // Reject the zero/invalid address sentinel
-        if address.to_string() == String::from_str(e, INVALID_ADDRESS_SENTINEL) {
-            panic_with_error!(e, ContractError::InvalidAdminAddress);
-        }
-        // Reject self-reference to prevent circular dependencies
-        if *address == e.current_contract_address() {
-            panic_with_error!(e, ContractError::InvalidAdminAddress);
-        }
-    }
-
-    /// Configuration structure for observability
-    #[derive(Clone, Debug)]
-    struct PauseConfiguration {
-        threshold: u32,
-        signer_count: u32,
-        initialized: bool,
-    }
-
     /// Enhanced proposal ID validation with detailed logging.
     ///
     /// # Arguments
@@ -2082,7 +2051,7 @@ impl AdminContract {
             .instance()
             .get(&DataKey::Initialized)
             .unwrap_or(false);
-        
+
         if !initialized {
             return Err(1); // Error code 1: not initialized
         }

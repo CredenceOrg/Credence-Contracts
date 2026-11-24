@@ -234,7 +234,7 @@ mod zero_address_tests {
         let env = Env::default();
         let (contract_address, super_admin) = setup_contract(&env);
         let new_admin = Address::generate(&env);
-        
+
         env.mock_all_auths();
         env.as_contract(&contract_address, || {
             AdminContract::add_admin(
@@ -244,7 +244,7 @@ mod zero_address_tests {
                 AdminRole::Admin,
             );
         });
-        
+
         // Retry
         env.mock_all_auths();
         env.as_contract(&contract_address, || {

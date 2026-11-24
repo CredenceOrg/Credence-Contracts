@@ -53,8 +53,7 @@ pub const MAX_TTL: u32 = 3_110_400;
 pub const MAX_NONCE_FUTURE_WINDOW: u64 = 1_000;
 
 use credence_errors::ContractError;
-use soroban_sdk::panic_with_error;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{panic_with_error, Address, Env};
 
 use crate::DataKey;
 
@@ -73,8 +72,7 @@ fn ttl_for_expiry(e: &Env, expires_at: u64) -> u32 {
     let remaining_secs = expires_at.saturating_sub(now);
     // Cap before narrowing: an extreme timestamp must not wrap a u64 ledger
     // offset into a short u32 TTL and archive still-valid replay protection.
-    let ledgers_until_expiry =
-        (remaining_secs / SECONDS_PER_LEDGER).min(u64::from(MAX_TTL)) as u32;
+    let ledgers_until_expiry = (remaining_secs / SECONDS_PER_LEDGER).min(u64::from(MAX_TTL)) as u32;
     let desired = ledgers_until_expiry.saturating_add(LEDGER_BUMP_BUFFER);
     desired.min(MAX_TTL)
 }
@@ -160,9 +158,10 @@ pub fn consume_nonce(e: &Env, identity: &Address, expected_nonce: u64) {
     if current != expected_nonce {
         panic_with_error!(e, ContractError::InvalidNonce);
     }
-    let next = current
-        .checked_add(1)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::Overflow));
+    let next = match current.checked_add(1) {
+        Some(next) => next,
+        None => panic_with_error!(e, ContractError::Overflow),
+    };
     e.storage().persistent().set(&key, &next);
     bump_nonce_ttl(e, &key, 0);
 }
@@ -214,9 +213,10 @@ pub fn invalidate_nonce_range(
     if new_nonce <= current {
         panic_with_error!(e, ContractError::InvalidNonce);
     }
-    let span = new_nonce
-        .checked_sub(current)
-        .unwrap_or_else(|| panic_with_error!(e, ContractError::Underflow));
+    let span = match new_nonce.checked_sub(current) {
+        Some(span) => span,
+        None => panic_with_error!(e, ContractError::Underflow),
+    };
     if span > max_span {
         panic_with_error!(e, ContractError::InvalidNonce);
     }

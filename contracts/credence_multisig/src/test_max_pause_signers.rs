@@ -126,7 +126,7 @@ fn test_cap_enforced_when_registering_pause_signers() {
 }
 
 #[test]
-#[should_panic(expected = "Error(Contract, #120)")]
+#[should_panic(expected = "Error(Contract, #125)")]
 fn test_registering_beyond_cap_panics_with_typed_error() {
     let (e, admin, _signer, client) = setup();
     client.set_max_pause_signers(&admin, &1);

@@ -109,7 +109,7 @@ fn test_default_platinum_threshold() {
 // ============================================================================
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_protocol_fee_bps_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -119,7 +119,7 @@ fn test_set_protocol_fee_bps_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_attestation_fee_bps_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -129,7 +129,7 @@ fn test_set_attestation_fee_bps_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_withdrawal_cooldown_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -139,7 +139,7 @@ fn test_set_withdrawal_cooldown_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_slash_cooldown_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -149,7 +149,7 @@ fn test_set_slash_cooldown_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_bronze_threshold_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -159,7 +159,7 @@ fn test_set_bronze_threshold_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_silver_threshold_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -169,7 +169,7 @@ fn test_set_silver_threshold_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_gold_threshold_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -179,7 +179,7 @@ fn test_set_gold_threshold_non_governance_rejected() {
 }
 
 #[test]
-#[should_panic(expected = "not admin")]
+#[should_panic(expected = "#100")]
 fn test_set_platinum_threshold_non_governance_rejected() {
     let e = Env::default();
     let (client, _admin) = setup(&e);
@@ -231,7 +231,7 @@ fn test_set_protocol_fee_bps_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "protocol_fee_bps out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_protocol_fee_bps_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -284,7 +284,7 @@ fn test_set_attestation_fee_bps_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "attestation_fee_bps out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_attestation_fee_bps_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -347,7 +347,7 @@ fn test_set_withdrawal_cooldown_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "withdrawal_cooldown_secs out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_withdrawal_cooldown_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -400,7 +400,7 @@ fn test_set_slash_cooldown_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "slash_cooldown_secs out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_slash_cooldown_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -451,7 +451,7 @@ fn test_set_bronze_threshold_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "bronze_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_bronze_threshold_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -460,7 +460,7 @@ fn test_set_bronze_threshold_above_max() {
 }
 
 #[test]
-#[should_panic(expected = "bronze_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_bronze_threshold_negative() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -507,7 +507,7 @@ fn test_set_silver_threshold_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "silver_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_silver_threshold_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -516,7 +516,7 @@ fn test_set_silver_threshold_above_max() {
 }
 
 #[test]
-#[should_panic(expected = "silver_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_silver_threshold_below_min() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -563,7 +563,7 @@ fn test_set_gold_threshold_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "gold_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_gold_threshold_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -572,7 +572,7 @@ fn test_set_gold_threshold_above_max() {
 }
 
 #[test]
-#[should_panic(expected = "gold_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_gold_threshold_below_min() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -619,7 +619,7 @@ fn test_set_platinum_threshold_max_minus_one_accepted() {
 }
 
 #[test]
-#[should_panic(expected = "platinum_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_platinum_threshold_above_max() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -628,7 +628,7 @@ fn test_set_platinum_threshold_above_max() {
 }
 
 #[test]
-#[should_panic(expected = "platinum_threshold out of bounds")]
+#[should_panic(expected = "#240")]
 fn test_set_platinum_threshold_below_min() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -1268,7 +1268,7 @@ fn test_all_parameter_events_have_correct_categories() {
 // ============================================================================
 
 #[test]
-#[should_panic(expected = "governance approver mismatch")]
+#[should_panic(expected = "#128")]
 fn test_parameter_approval_rejects_mismatched_approver() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -1284,7 +1284,7 @@ fn test_parameter_approval_rejects_mismatched_approver() {
 }
 
 #[test]
-#[should_panic(expected = "governance approval expired")]
+#[should_panic(expected = "#129")]
 fn test_parameter_approval_rejects_expired_approval() {
     let e = Env::default();
     let (client, admin) = setup(&e);
@@ -1300,7 +1300,7 @@ fn test_parameter_approval_rejects_expired_approval() {
 }
 
 #[test]
-#[should_panic(expected = "governance approval category mismatch")]
+#[should_panic(expected = "#130")]
 fn test_parameter_approval_rejects_wrong_category() {
     let e = Env::default();
     let (client, admin) = setup(&e);

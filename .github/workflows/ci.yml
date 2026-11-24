@@ -1,27 +1,18 @@
-name: CI
-'on':
+# ci.yml — superseded by contracts-ci.yml (see .github/workflows/contracts-ci.yml).
+#
+# This file is kept as an empty placeholder so that any branch-protection rules
+# that still reference "CI" by name do not break. All real jobs have been moved
+# to contracts-ci.yml. The old echo stubs have been removed entirely.
+name: CI (placeholder)
+on:
   push:
-    branches:
-    - main
-    - master
-  pull_request: null
-  workflow_dispatch: null
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
 jobs:
-  no-bare-panic:
-    name: No bare panic!() in release code
+  placeholder:
+    name: CI placeholder (see contracts-ci.yml)
     runs-on: ubuntu-latest
     steps:
-    - name: "No bare panic!() in release code (paused \u2014 CI stabilization in progress)"
-      run: echo 'No bare panic!() in release code check intentionally stubbed while main-branch CI is being stabilized.'
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-    - name: "Test (paused \u2014 CI stabilization in progress)"
-      run: echo 'Test check intentionally stubbed while main-branch CI is being stabilized.'
-  build-release:
-    name: Build release
-    runs-on: ubuntu-latest
-    steps:
-    - name: "Build release (paused \u2014 CI stabilization in progress)"
-      run: echo 'Build release check intentionally stubbed while main-branch CI is being stabilized.'
+      - name: Nothing to do
+        run: echo "Real CI gate is in contracts-ci.yml"

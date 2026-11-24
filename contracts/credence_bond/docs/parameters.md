@@ -223,49 +223,43 @@ Each update emits a separate `parameter_changed` event.
 
 ## Error Handling
 
-### Authorization Errors
+All parameter setters signal failures using typed `credence_errors::ContractError` codes via `panic_with_error!`.
 
-**Error:** `"not admin"`
-- **Cause:** Caller is not the contract admin
-- **Resolution:** Only the governance address can update parameters
+### Authorization & Governance Errors
 
-**Error:** `"not initialized"`
+**Error:** `ContractError::NotInitialized` (code `1`)
 - **Cause:** Contract has not been initialized
 - **Resolution:** Initialize contract with `initialize(admin)` first
 
+**Error:** `ContractError::NotAdmin` (code `100`)
+- **Cause:** Caller is not the contract admin
+- **Resolution:** Only the governance address can update parameters
+
+**Error:** `ContractError::GovernanceApproverMismatch` (code `128`)
+- **Cause:** `approval.approver` does not match the calling admin
+- **Resolution:** Supply a `GovernanceApproval` whose `approver` matches the calling admin
+
+**Error:** `ContractError::GovernanceApprovalExpired` (code `129`)
+- **Cause:** `approval.expires_at > 0` and current ledger timestamp exceeds `approval.expires_at`
+- **Resolution:** Obtain a fresh governance approval with a valid expiration timestamp
+
+**Error:** `ContractError::GovernanceApprovalCategoryMismatch` (code `130`)
+- **Cause:** `approval.category` does not match the target parameter's category (`fee`, `cooldown`, `tier`, or `risk`)
+- **Resolution:** Supply an approval matching the parameter's category
+
 ### Bounds Validation Errors
 
-**Error:** `"protocol_fee_bps out of bounds"`
-- **Cause:** Value < 0 or value > 1000
-- **Resolution:** Use value within [0, 1000] bps range
+All parameter setters validate bounds and return **`ContractError::ParameterOutOfBounds` (code `240`)** when the supplied value falls outside its allowed range:
 
-**Error:** `"attestation_fee_bps out of bounds"`
-- **Cause:** Value < 0 or value > 500
-- **Resolution:** Use value within [0, 500] bps range
-
-**Error:** `"withdrawal_cooldown_secs out of bounds"`
-- **Cause:** Value < 0 or value > 2,592,000
-- **Resolution:** Use value within [0, 2,592,000] seconds range
-
-**Error:** `"slash_cooldown_secs out of bounds"`
-- **Cause:** Value < 0 or value > 604,800
-- **Resolution:** Use value within [0, 604,800] seconds range
-
-**Error:** `"bronze_threshold out of bounds"`
-- **Cause:** Value < 0 or value > 1,000,000,000,000
-- **Resolution:** Use value within [0, 1,000,000,000,000] range
-
-**Error:** `"silver_threshold out of bounds"`
-- **Cause:** Value < 100,000,000 or value > 10,000,000,000,000
-- **Resolution:** Use value within [100,000,000, 10,000,000,000,000] range
-
-**Error:** `"gold_threshold out of bounds"`
-- **Cause:** Value < 1,000,000,000 or value > 100,000,000,000,000
-- **Resolution:** Use value within [1,000,000,000, 100,000,000,000,000] range
-
-**Error:** `"platinum_threshold out of bounds"`
-- **Cause:** Value < 10,000,000,000 or value > 1,000,000,000,000,000
-- **Resolution:** Use value within [10,000,000,000, 1,000,000,000,000,000] range
+- `set_protocol_fee_bps`: Value must be within `[0, 1000]` bps
+- `set_attestation_fee_bps`: Value must be within `[0, 500]` bps
+- `set_withdrawal_cooldown_secs`: Value must be within `[0, 2,592,000]` seconds
+- `set_slash_cooldown_secs`: Value must be within `[0, 604,800]` seconds
+- `set_bronze_threshold`: Value must be within `[0, 1,000,000,000,000]`
+- `set_silver_threshold`: Value must be within `[100,000,000, 10,000,000,000,000]`
+- `set_gold_threshold`: Value must be within `[1,000,000,000, 100,000,000,000,000]`
+- `set_platinum_threshold`: Value must be within `[10,000,000,000, 1,000,000,000,000,000]`
+- `set_max_leverage`: Value must be within `[1, 100,000,000]`
 
 ## Best Practices
 

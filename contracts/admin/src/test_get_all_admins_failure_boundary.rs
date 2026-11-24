@@ -450,7 +450,7 @@ fn failed_mutation_does_not_affect_list() {
     );
     #[allow(deprecated)]
     let list = client.get_all_admins();
-    assert_eq!(list.len(), count_before as usize);
+    assert_eq!(list.len(), count_before);
 }
 
 // ── Duplicate inputs ───────────────────────────────────────────────────────────

@@ -252,6 +252,3 @@ fn do_unpause(e: &Env, proposal_id: Option<u64>) {
     e.events()
         .publish((Symbol::new(e, "unpaused"),), proposal_id);
 }
-
-#[cfg(test)]
-mod tests;

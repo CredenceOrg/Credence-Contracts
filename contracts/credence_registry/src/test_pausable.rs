@@ -7,7 +7,7 @@ mod pausable_tests {
 
     fn setup() -> (Env, CredenceRegistryClient<'static>, Address) {
         let e = Env::default();
-        let contract_id = e.register_contract(None, CredenceRegistry);
+        let contract_id = e.register(CredenceRegistry, ());
         let client = CredenceRegistryClient::new(&e, &contract_id);
         let admin = Address::generate(&e);
         e.mock_all_auths();
@@ -166,7 +166,10 @@ mod pausable_tests {
         client.set_pause_signer(&admin, &signer, &true);
 
         let result = client.try_set_pause_threshold(&admin, &0_u32);
-        assert!(result.is_err(), "threshold must remain non-zero while signers exist");
+        assert!(
+            result.is_err(),
+            "threshold must remain non-zero while signers exist"
+        );
         assert_eq!(client.get_pause_state().threshold, 1);
     }
 

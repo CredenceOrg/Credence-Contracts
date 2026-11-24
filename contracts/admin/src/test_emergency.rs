@@ -277,8 +277,7 @@ fn emergency_pause_gate_is_sticky_across_failed_writes() {
     assert!(client.is_paused());
 
     // A second blocked write must also be rejected (no partial state).
-    let blocked_again =
-        client.try_remove_admin(&super_admin, &new_admin);
+    let blocked_again = client.try_remove_admin(&super_admin, &new_admin);
     assert!(blocked_again.is_err());
     assert_eq!(client.get_admin_count(), count_before);
     assert!(client.is_paused());

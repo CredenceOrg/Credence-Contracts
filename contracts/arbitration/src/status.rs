@@ -8,9 +8,11 @@ use soroban_sdk::contracterror;
 ///   Voting    → Cancelled   (cancel_dispute called by creator or admin)
 ///   Resolving → Resolved    (outcome tallied and stored, outcome != 0)
 ///   Resolving → Tied        (votes tallied with tie, outcome = 0 is reserved)
+///   Resolving → NoQuorum    (quorum requirements were not met, outcome = 0)
 ///   Open      → Cancelled   (cancel before voting starts)
 ///   Resolved  → Archived    (admin archives a finalized dispute)
 ///   Tied      → Archived    (admin archives a tied dispute)
+///   NoQuorum  → Archived    (admin archives a dispute that missed quorum)
 ///   Cancelled → Archived    (admin archives a cancelled dispute)
 ///   Archived  → Voting      (admin reopens an archived dispute for new voting)
 ///   Voting    → NoQuorum    (voting period expired, quorum was not met)
@@ -47,6 +49,8 @@ pub enum DisputeStatus {
     /// Dispute has been finalized and archived by an admin.
     /// Archived disputes can be reopened by an admin via reopen_dispute().
     Archived = 6,
+    /// Voting ended without meeting the configured quorum; outcome is 0.
+    NoQuorum = 7,
     /// Voting period ended but quorum (weight or voter count) was not met.
     /// Set by no_quorum_resolve(). Appealable within the appeal window.
     NoQuorum = 7,
@@ -58,19 +62,36 @@ pub enum DisputeStatus {
 #[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArbitrationError {
+    /// The requested dispute status transition is not allowed.
     InvalidTransition = 1,
+    /// The contract has already been initialized.
     AlreadyInitialized = 2,
+    /// The contract has not been initialized.
     NotInitialized = 3,
+    /// The caller is not the admin.
     NotAdmin = 4,
+    /// The caller is not a registered arbitrator.
     NotArbitrator = 5,
+    /// The voter has already cast a vote on this dispute.
     AlreadyVoted = 6,
+    /// The dispute is not in `Voting`, or the current ledger time is outside
+    /// the voting window (before `voting_start` or after `voting_end`).
     VotingInactive = 7,
+    /// The voting window has not yet ended.
     VotingNotEnded = 8,
+    /// The dispute id does not exist.
     DisputeNotFound = 9,
+    /// The supplied outcome is invalid (outcome 0 is reserved for tied or
+    /// no-quorum results).
     InvalidOutcome = 10,
+    /// The supplied arbitrator weight must be greater than zero.
     WeightNotPositive = 11,
+    /// The caller is not authorized for this action.
     NotAuthorized = 12,
+    /// The supplied reason exceeds the maximum length (256 bytes).
     ReasonTooLong = 14,
+    /// Quorum was not met. Currently unused: an unmet quorum finalizes the
+    /// dispute as `DisputeStatus::NoQuorum` instead of returning this error.
     QuorumNotMet = 13,
     /// The actual outcome does not match the promised outcome.
     PromiseNotKept = 15,
@@ -87,6 +108,14 @@ pub enum ArbitrationError {
     /// A creator already has an unresolved dispute tracked as active.
     /// This is raised when stale/duplicate active markers are still present.
     OngoingDispute = 18,
+    /// Creator may not cancel after votes have been cast or the voting window ended.
+    CancelNotAllowed = 19,
+    /// A dispute creator may not vote on their own dispute.
+    /// The creator may not cancel once votes have been cast or after the voting
+    /// window has closed.
+    CancelNotAllowed = 19,
+    /// A dispute's creator cannot vote on their own dispute.
+    ConflictOfInterest = 20,
     /// The appeal window has closed; the dispute can no longer be appealed.
     AppealWindowClosed = 19,
     /// The dispute has already been appealed once; a second appeal is not allowed.
@@ -110,8 +139,10 @@ pub fn require_transition(from: DisputeStatus, to: DisputeStatus) -> Result<(), 
             | (DisputeStatus::Voting, DisputeStatus::NoQuorum)
             | (DisputeStatus::Resolving, DisputeStatus::Resolved)
             | (DisputeStatus::Resolving, DisputeStatus::Tied)
+            | (DisputeStatus::Resolving, DisputeStatus::NoQuorum)
             | (DisputeStatus::Resolved, DisputeStatus::Archived)
             | (DisputeStatus::Tied, DisputeStatus::Archived)
+            | (DisputeStatus::NoQuorum, DisputeStatus::Archived)
             | (DisputeStatus::Cancelled, DisputeStatus::Archived)
             | (DisputeStatus::NoQuorum, DisputeStatus::Archived)
             | (DisputeStatus::Archived, DisputeStatus::Voting)
@@ -137,7 +168,8 @@ pub fn is_dispute_active(status: DisputeStatus) -> bool {
     )
 }
 
-/// Require that a dispute's status is inactive (Resolved, Cancelled, or Tied).
+/// Require that a dispute's status is inactive (Resolved, Cancelled, Tied,
+/// NoQuorum, or Archived).
 ///
 /// Active disputes (Open, Voting, Resolving) block lease-modifying operations;
 /// resolved disputes allow them to proceed.
@@ -164,6 +196,9 @@ pub fn require_kept_promise(promised: u32, actual: u32) -> Result<(), Arbitratio
 /// Assert that a dispute is in a resolved (terminal) state.
 ///
 /// Active dispute states (`Open`, `Voting`, `Resolving`) indicate the dispute
+/// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`, and
+/// `NoQuorum`) mean
+/// the dispute has concluded and downstream operations (e.g. lease/bond
 /// is still ongoing. Terminal states (`Resolved`, `Cancelled`, `Tied`, `NoQuorum`)
 /// mean the dispute has concluded and downstream operations (e.g. lease/bond
 /// actions) may proceed.
@@ -191,13 +226,36 @@ pub fn require_dispute_resolved(status: &DisputeStatus) -> Result<(), Arbitratio
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     extern crate std;
     use super::*;
     use std::vec;
     use std::vec::Vec;
+
+    #[test]
+    fn status_error_discriminants_are_wire_stable() {
+        assert_eq!(ArbitrationError::InvalidTransition as u32, 1);
+        assert_eq!(ArbitrationError::AlreadyInitialized as u32, 2);
+        assert_eq!(ArbitrationError::NotInitialized as u32, 3);
+        assert_eq!(ArbitrationError::NotAdmin as u32, 4);
+        assert_eq!(ArbitrationError::NotArbitrator as u32, 5);
+        assert_eq!(ArbitrationError::AlreadyVoted as u32, 6);
+        assert_eq!(ArbitrationError::VotingInactive as u32, 7);
+        assert_eq!(ArbitrationError::VotingNotEnded as u32, 8);
+        assert_eq!(ArbitrationError::DisputeNotFound as u32, 9);
+        assert_eq!(ArbitrationError::InvalidOutcome as u32, 10);
+        assert_eq!(ArbitrationError::WeightNotPositive as u32, 11);
+        assert_eq!(ArbitrationError::NotAuthorized as u32, 12);
+        assert_eq!(ArbitrationError::QuorumNotMet as u32, 13);
+        assert_eq!(ArbitrationError::ReasonTooLong as u32, 14);
+        assert_eq!(ArbitrationError::PromiseNotKept as u32, 15);
+        assert_eq!(ArbitrationError::CursorOutOfRange as u32, 16);
+        assert_eq!(ArbitrationError::DisputeActive as u32, 17);
+        assert_eq!(ArbitrationError::OngoingDispute as u32, 18);
+        assert_eq!(ArbitrationError::CancelNotAllowed as u32, 19);
+        assert_eq!(ArbitrationError::ConflictOfInterest as u32, 20);
+    }
 
     // ============================================================================
     // Tests for: require_transition
@@ -257,6 +315,14 @@ mod tests {
         }
 
         #[test]
+        fn valid_resolving_to_no_quorum() {
+            assert_eq!(
+                require_transition(DisputeStatus::Resolving, DisputeStatus::NoQuorum),
+                Ok(())
+            );
+        }
+
+        #[test]
         fn valid_resolved_to_archived() {
             assert_eq!(
                 require_transition(DisputeStatus::Resolved, DisputeStatus::Archived),
@@ -268,6 +334,14 @@ mod tests {
         fn valid_tied_to_archived() {
             assert_eq!(
                 require_transition(DisputeStatus::Tied, DisputeStatus::Archived),
+                Ok(())
+            );
+        }
+
+        #[test]
+        fn valid_no_quorum_to_archived() {
+            assert_eq!(
+                require_transition(DisputeStatus::NoQuorum, DisputeStatus::Archived),
                 Ok(())
             );
         }
@@ -342,6 +416,14 @@ mod tests {
         fn invalid_archived_to_archived() {
             assert_eq!(
                 require_transition(DisputeStatus::Archived, DisputeStatus::Archived),
+                Err(ArbitrationError::InvalidTransition)
+            );
+        }
+
+        #[test]
+        fn invalid_no_quorum_to_no_quorum() {
+            assert_eq!(
+                require_transition(DisputeStatus::NoQuorum, DisputeStatus::NoQuorum),
                 Err(ArbitrationError::InvalidTransition)
             );
         }
@@ -490,6 +572,11 @@ mod tests {
         #[test]
         fn allows_tied() {
             assert_eq!(require_dispute_inactive(DisputeStatus::Tied), Ok(()));
+        }
+
+        #[test]
+        fn allows_no_quorum() {
+            assert_eq!(require_dispute_inactive(DisputeStatus::NoQuorum), Ok(()));
         }
 
         #[test]
@@ -706,6 +793,11 @@ mod tests {
             assert_eq!(require_dispute_resolved(&DisputeStatus::Tied), Ok(()));
         }
 
+        #[test]
+        fn allows_no_quorum_state() {
+            assert_eq!(require_dispute_resolved(&DisputeStatus::NoQuorum), Ok(()));
+        }
+
         // --- Active States (Should Fail) ---
 
         #[test]
@@ -782,6 +874,7 @@ mod tests {
                 DisputeStatus::Resolved,
                 DisputeStatus::Cancelled,
                 DisputeStatus::Tied,
+                DisputeStatus::NoQuorum,
             ];
 
             for state in terminal_states {
@@ -969,9 +1062,7 @@ mod tests {
             let to = DisputeStatus::Voting;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_transition(from, to))
-                .collect();
+            let results: Vec<_> = (0..10).map(|_| require_transition(from, to)).collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -996,9 +1087,7 @@ mod tests {
             let status = DisputeStatus::Resolved;
 
             // Simulate multiple concurrent checks
-            let results: Vec<_> = (0..10)
-                .map(|_| require_dispute_resolved(&status))
-                .collect();
+            let results: Vec<_> = (0..10).map(|_| require_dispute_resolved(&status)).collect();
 
             // All results must be identical
             assert!(results.iter().all(|r| r == &Ok(())));
@@ -1131,6 +1220,7 @@ mod tests {
 
         #[test]
         fn all_status_values_covered() {
+            // Ensure all 8 states are defined
             // Ensure all 9 states are defined (7 original + NoQuorum + Appealed)
             let states = vec![
                 DisputeStatus::Open,
@@ -1141,6 +1231,9 @@ mod tests {
                 DisputeStatus::Tied,
                 DisputeStatus::Archived,
                 DisputeStatus::NoQuorum,
+            ];
+
+            assert_eq!(states.len(), 8, "All 8 dispute states should be tested");
                 DisputeStatus::Appealed,
             ];
 
@@ -1158,6 +1251,9 @@ mod tests {
                 DisputeStatus::Tied,
                 DisputeStatus::Archived,
                 DisputeStatus::NoQuorum,
+            ];
+
+            // Test all 64 possible transitions (8x8)
                 DisputeStatus::Appealed,
             ];
 
@@ -1167,8 +1263,8 @@ mod tests {
                     let result = require_transition(*from, *to);
                     // Every transition must be either Ok or InvalidTransition
                     match result {
-                        Ok(()) => {}, // valid
-                        Err(ArbitrationError::InvalidTransition) => {}, // invalid
+                        Ok(()) => {}                                   // valid
+                        Err(ArbitrationError::InvalidTransition) => {} // invalid
                         Err(e) => panic!("Unexpected error: {:?}", e),
                     }
                 }

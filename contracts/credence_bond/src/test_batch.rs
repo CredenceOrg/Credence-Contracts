@@ -7,8 +7,8 @@ use crate::{
     CredenceBondClient,
 };
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env, Vec,
+    testutils::{Address as _, Events, Ledger},
+    Address, Env, FromVal, Symbol, TryFromVal, Vec,
 };
 use std::panic::AssertUnwindSafe;
 
@@ -74,10 +74,7 @@ fn test_create_single_bond_in_batch() {
     let bond = result.bonds.get(0).unwrap();
     assert_eq!(bond.identity, identity);
     assert_eq!(bond.bonded_amount, 1000);
-    assert_eq!(
-        bond.bond_duration,
-        credence_math::Timestamp::SECONDS_PER_DAY
-    );
+    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
     assert!(bond.active);
     assert!(!bond.is_rolling);
 }
@@ -86,19 +83,27 @@ fn test_create_single_bond_in_batch() {
 fn test_create_multiple_bonds_in_batch() {
     let env = Env::default();
     env.mock_all_auths();
-
-    // Note: Current implementation only supports one bond per contract instance
-    // This test demonstrates the batch interface even though it will panic
-    // In a multi-identity system, this would work
+    let contract_id = env.register(CredenceBond, ());
+    let client = CredenceBondClient::new(&env, &contract_id);
+    let admin = Address::generate(&env);
+    client.initialize(&admin, &None);
 
     let identity1 = Address::generate(&env);
     let identity2 = Address::generate(&env);
     let identity3 = Address::generate(&env);
+    let unaddressed = Address::generate(&env);
+    client.create_bond(
+        &unaddressed,
+        &4000,
+        credence_math::SECONDS_PER_DAY,
+        &false,
+        &0,
+    );
 
     let mut params_list = Vec::new(&env);
 
     params_list.push_back(BatchBondParams {
-        identity: identity1,
+        identity: identity1.clone(),
         amount: 1000,
         duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
@@ -106,7 +111,7 @@ fn test_create_multiple_bonds_in_batch() {
     });
 
     params_list.push_back(BatchBondParams {
-        identity: identity2,
+        identity: identity2.clone(),
         amount: 2000,
         duration: 172800,
         is_rolling: true,
@@ -114,16 +119,49 @@ fn test_create_multiple_bonds_in_batch() {
     });
 
     params_list.push_back(BatchBondParams {
-        identity: identity3,
+        identity: identity3.clone(),
         amount: 3000,
         duration: 259200,
         is_rolling: false,
         notice_period_duration: 0,
     });
 
-    // This test verifies the batch interface works correctly
-    // In production with per-identity bonds, all 3 would be created
-    assert_eq!(params_list.len(), 3);
+    let result = client.create_batch_bonds(&params_list);
+    assert_eq!(result.created_count, 3);
+
+    assert_eq!(client.get_identity_state(&identity1).bonded_amount, 1000);
+    assert_eq!(client.get_identity_state(&identity2).bonded_amount, 2000);
+    assert_eq!(client.get_identity_state(&identity3).bonded_amount, 3000);
+    assert_eq!(
+        client.get_identity_state(&unaddressed).bonded_amount,
+        4000,
+        "an unaddressed identity's bond must remain unchanged"
+    );
+
+    // The existing batch event payload must preserve input identity/amount order.
+    let all_events = env.events().all();
+    let expected_topic = Symbol::new(&env, "batch_bonds_created");
+    let batch_event = all_events
+        .iter()
+        .find(|ev| {
+            ev.0 == contract_id
+                && ev.1.get(0)
+                    .and_then(|v| Symbol::try_from_val(&env, &v).ok())
+                    .map(|topic| topic == expected_topic)
+                    .unwrap_or(false)
+        })
+        .expect("batch_bonds_created event must exist");
+
+    let decoded = crate::BatchBondResult::try_from_val(&env, &batch_event.2)
+        .expect("batch event payload must decode");
+    assert_eq!(decoded.created_count, 3);
+    assert_eq!(decoded.bonds.len(), 3);
+    assert_eq!(decoded.bonds.get(0).unwrap().identity, identity1);
+    assert_eq!(decoded.bonds.get(1).unwrap().identity, identity2);
+    assert_eq!(decoded.bonds.get(2).unwrap().identity, identity3);
+    assert_eq!(decoded.bonds.get(0).unwrap().bonded_amount, 1000);
+    assert_eq!(decoded.bonds.get(1).unwrap().bonded_amount, 2000);
+    assert_eq!(decoded.bonds.get(2).unwrap().bonded_amount, 3000);
 }
 
 #[test]
@@ -421,10 +459,10 @@ fn test_duplicate_bond_in_batch_fails() {
     let (client, _admin, identity, _token, _contract_id) = setup_with_token(&env);
 
     // Create first bond
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &1_000_000,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0,
     );
@@ -516,7 +554,16 @@ fn test_atomic_failure_on_second_bond() {
 
     // Verify NO bonds were created (atomic failure)
     // The bond storage should be empty since validation failed before creation
-    assert!(!env.storage().instance().has(&crate::DataKey::Bond));
+    env.as_contract(&client.address, || {
+        for params in params_list.iter() {
+            assert!(
+                !env.storage()
+                    .instance()
+                    .has(&crate::DataKey::Bond(params.identity.clone())),
+                "no bond should be stored after an atomic failure"
+            );
+        }
+    });
 }
 
 #[test]
@@ -544,10 +591,7 @@ fn test_atomic_failure_validation_order() {
 
     assert_eq!(result.created_count, 1);
     let bond = result.bonds.get(0).unwrap();
-    assert_eq!(
-        bond.bond_duration,
-        credence_math::Timestamp::SECONDS_PER_DAY
-    );
+    assert_eq!(bond.bond_duration, credence_math::SECONDS_PER_DAY);
 }
 
 #[test]
@@ -815,7 +859,16 @@ fn test_all_bonds_validated_before_any_created() {
     assert!(result.is_err());
 
     // Verify no bonds were created
-    assert!(!env.storage().instance().has(&crate::DataKey::Bond));
+    env.as_contract(&client.address, || {
+        for params in params_list.iter() {
+            assert!(
+                !env.storage()
+                    .instance()
+                    .has(&crate::DataKey::Bond(params.identity.clone())),
+                "no bond should be stored when validation fails"
+            );
+        }
+    });
 }
 
 #[test]
@@ -1088,7 +1141,7 @@ fn test_batch_amount_at_min_bond_amount_succeeds() {
         identity: Address::generate(&env),
         // MIN_BOND_AMOUNT in test mode is 1_000 (validation.rs §4.2)
         amount: crate::validation::MIN_BOND_AMOUNT,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1119,7 +1172,7 @@ fn test_batch_amount_below_min_bond_amount_is_accepted_by_batch() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: 1,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1145,7 +1198,7 @@ fn test_batch_amount_at_max_bond_amount_succeeds() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: crate::validation::MAX_BOND_AMOUNT,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1175,7 +1228,7 @@ fn test_batch_amount_above_max_bond_amount_is_accepted_by_batch() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: above_max,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1409,7 +1462,7 @@ fn test_slash_blocked_same_ledger_after_batch_creation() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1434,7 +1487,7 @@ fn test_slash_allowed_next_ledger_after_batch_creation() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1556,14 +1609,14 @@ fn test_batch_bonds_created_event_bond_identity_and_amount() {
     params_list.push_back(BatchBondParams {
         identity: id_a.clone(),
         amount: 5_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: id_b.clone(),
         amount: 9_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: true,
         notice_period_duration: 3_600,
     });
@@ -1625,7 +1678,7 @@ fn test_batch_created_bonds_persist_in_storage() {
     params_list.push_back(BatchBondParams {
         identity: id1.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1651,10 +1704,7 @@ fn test_batch_created_bonds_persist_in_storage() {
     let stored1 = client.get_identity_state(&id1);
     assert_eq!(stored1.identity, id1);
     assert_eq!(stored1.bonded_amount, 1_000);
-    assert_eq!(
-        stored1.bond_duration,
-        credence_math::Timestamp::SECONDS_PER_DAY
-    );
+    assert_eq!(stored1.bond_duration, credence_math::SECONDS_PER_DAY);
     assert!(stored1.active);
     assert!(!stored1.is_rolling);
     assert_eq!(stored1.slashed_amount, 0);
@@ -1707,7 +1757,7 @@ fn test_batch_created_bond_start_matches_ledger_timestamp() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1772,7 +1822,7 @@ fn test_intra_batch_duplicate_identity_is_rejected() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1780,7 +1830,7 @@ fn test_intra_batch_duplicate_identity_is_rejected() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 2_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1804,14 +1854,14 @@ fn test_validate_batch_bonds_does_not_catch_intra_batch_duplicate() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: identity.clone(), // duplicate
         amount: 2_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1842,14 +1892,14 @@ fn test_get_batch_total_amount_with_negative_amounts_returns_negative_sum() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: -1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: -2_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1867,21 +1917,21 @@ fn test_get_batch_total_amount_mixed_sign_amounts() {
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: 5_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: -2_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
     params_list.push_back(BatchBondParams {
         identity: Address::generate(&env),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1907,10 +1957,10 @@ fn test_validate_passes_but_create_fails_for_pre_existing_bond() {
         crate::test_helpers::setup_with_token(&env);
 
     // Pre-create a bond via the single-bond path.
-    client.create_bond_with_rolling(
+    client.create_bond(
         &identity,
         &1_000_000,
-        &credence_math::Timestamp::SECONDS_PER_DAY,
+        &credence_math::SECONDS_PER_DAY,
         &false,
         &0,
     );
@@ -1919,7 +1969,7 @@ fn test_validate_passes_but_create_fails_for_pre_existing_bond() {
     params_list.push_back(BatchBondParams {
         identity: identity.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1964,7 +2014,7 @@ fn test_atomic_rejection_leaves_no_bonds_stored_invalid_amount() {
     params_list.push_back(BatchBondParams {
         identity: id_valid.clone(),
         amount: 1_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -1972,7 +2022,7 @@ fn test_atomic_rejection_leaves_no_bonds_stored_invalid_amount() {
     params_list.push_back(BatchBondParams {
         identity: id_invalid.clone(),
         amount: -500,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: false,
         notice_period_duration: 0,
     });
@@ -2015,7 +2065,7 @@ fn test_atomic_rejection_leaves_no_bonds_stored_invalid_rolling() {
         params_list.push_back(BatchBondParams {
             identity: id.clone(),
             amount: 1_000,
-            duration: credence_math::Timestamp::SECONDS_PER_DAY,
+            duration: credence_math::SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });
@@ -2024,7 +2074,7 @@ fn test_atomic_rejection_leaves_no_bonds_stored_invalid_rolling() {
     params_list.push_back(BatchBondParams {
         identity: ids[3].clone(),
         amount: 2_000,
-        duration: credence_math::Timestamp::SECONDS_PER_DAY,
+        duration: credence_math::SECONDS_PER_DAY,
         is_rolling: true,
         notice_period_duration: 0, // invalid
     });
@@ -2116,7 +2166,7 @@ fn test_successful_batch_stores_exactly_the_created_bonds() {
         params_list.push_back(BatchBondParams {
             identity: id.clone(),
             amount: 1_000 + i128::try_from(i).unwrap(),
-            duration: credence_math::Timestamp::SECONDS_PER_DAY,
+            duration: credence_math::SECONDS_PER_DAY,
             is_rolling: false,
             notice_period_duration: 0,
         });
@@ -2130,10 +2180,7 @@ fn test_successful_batch_stores_exactly_the_created_bonds() {
         let stored = client.get_identity_state(id);
         assert!(stored.active);
         assert_eq!(stored.bonded_amount, 1_000 + i128::try_from(i).unwrap());
-        assert_eq!(
-            stored.bond_duration,
-            credence_math::Timestamp::SECONDS_PER_DAY
-        );
+        assert_eq!(stored.bond_duration, credence_math::SECONDS_PER_DAY);
         assert_eq!(stored.slashed_amount, 0);
         assert_eq!(stored.withdrawal_requested_at, 0);
     }

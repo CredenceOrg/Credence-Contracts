@@ -13,6 +13,23 @@ The registry enforces strict uniqueness at two levels:
 
 Both checks are enforced atomically inside `register`. A deactivated entry still occupies its storage slot and therefore still blocks re-registration — use `remove` to free the slot.
 
+## Storage Layout
+
+Per-identity data lives in **persistent** storage so that the instance entry (loaded on every invocation) stays constant-size and the cost of `is_paused`, `get_admin` and `get_bond_contract` does not grow with the registry:
+
+| Key | Storage | Purpose |
+|---|---|---|
+| `IdentityToBond(identity)` | persistent | Forward mapping → `RegistryEntry` |
+| `BondToIdentity(bond)` | persistent | Reverse mapping → identity |
+| `AllowNonInterface(bond)` | persistent | Audit flag for bonds that opted out of the interface check |
+| `IdentityAt(index)` | persistent | Identity at a given position in the insertion index |
+| `IdentityIndex(identity)` | persistent | Position of an identity in the insertion index |
+| `IdentityCount` | instance | Number of indexed identities (single `u32`) |
+
+Every persistent read and write re-extends the entry's TTL (threshold `1_555_200`, target `3_110_400` ledgers), so a hot mapping is never archived while in use. The legacy `RegisteredIdentities` key is no longer read or written; its enum variant is kept so existing discriminants do not shift.
+
+`register` appends to the index in O(1). `remove` is swap-and-pop: the tail identity is moved into the freed slot, both its `IdentityAt` and `IdentityIndex` entries are rewritten, and the tail keys are deleted — so the list stays gap-free and `get_identities_page` always returns contiguous insertion order.
+
 ## Operations
 
 ### `register(identity, bond_contract, allow_non_interface) → RegistryEntry`
@@ -39,7 +56,7 @@ Restores a soft-deleted entry to `active = true`. Requires admin auth.
 
 ### `remove(identity)`
 
-Hard-deletes the entry. Removes the forward mapping (`identity → bond`), the reverse mapping (`bond → identity`), and the `AllowNonInterface(bond)` flag from storage, and removes the identity from the `RegisteredIdentities` list. After removal both the identity and the bond contract are free to be re-registered. Requires admin auth.
+Hard-deletes the entry. Removes the forward mapping (`identity → bond`), the reverse mapping (`bond → identity`), the `AllowNonInterface(bond)` flag and the two index entries (`IdentityAt`, `IdentityIndex`) from persistent storage. After removal both the identity and the bond contract are free to be re-registered. Requires admin auth.
 
 - Panics `#402` if identity is not registered.
 - Works on both active and deactivated entries.
@@ -55,6 +72,16 @@ Reverse lookup. Panics `#403` if not registered.
 ### `is_registered(identity) → bool`
 
 Returns `true` only if the entry exists **and** `active = true`.
+
+### `get_identities_page(offset, limit) → Vec<Address>`
+
+Returns at most `limit` identities (capped at `MAX_IDENTITIES_PAGE_SIZE = 200`) starting at `offset`, in insertion order. Reads only the requested slice: the cost is proportional to the page size, not to the registry size. Offsets at or past the end return an empty vector.
+
+### `get_identity_count() → u32`
+
+The total number of indexed identities. O(1) instance read; use it to compute the last page.
+
+> **API change (issue #1629):** `get_all_identities()` has been removed. It returned an unbounded vector and could not survive a growing registry. Use `get_identities_page` for enumeration and the `identity_registered` event stream for off-chain indexing.
 
 ## Remove / Reinsert Semantics
 
@@ -83,7 +110,6 @@ Part of the Credence protocol contracts.
 
 ## Known Simplifications
 
-- `get_all_identities()` is unbounded and has no pagination.
 - There is no cross-contract binding between bond and registry at initialization.
 
-See [known-simplifications.md](known-simplifications.md#7-get_all_identities-has-no-pagination) for details and production paths.
+See [known-simplifications.md](known-simplifications.md) for details and production paths.

@@ -96,11 +96,13 @@ fn test_pause_boundary_unauthorized_signer() {
     let signer1 = Address::generate(&env);
 
     // Non-admin trying to set pause signer
-    assert!(client.try_set_pause_signer(&not_admin, &signer1, &true).is_err());
+    assert!(client
+        .try_set_pause_signer(&not_admin, &signer1, &true)
+        .is_err());
 
     // Admin adds signer1
     client.set_pause_signer(&admin, &signer1, &true);
-    
+
     // Setting pause threshold by non-admin
     assert!(client.try_set_pause_threshold(&not_admin, &1u32).is_err());
 
@@ -123,7 +125,7 @@ fn test_pause_boundary_signer_management() {
     let s1 = Address::generate(&env);
 
     client.set_pause_signer(&admin, &s1, &true);
-    
+
     // Duplicate addition
     client.set_pause_signer(&admin, &s1, &true);
 
@@ -146,7 +148,7 @@ fn test_pause_boundary_signer_management() {
 #[test]
 fn test_pause_recovery_and_failures() {
     let (env, admin, client) = setup();
-    
+
     // threshold == 0, pause by non-admin should fail
     let not_admin = Address::generate(&env);
     assert!(client.try_pause(&not_admin).is_err());
@@ -186,7 +188,7 @@ fn test_pause_multisig_boundary_duplicate_and_insufficient() {
     // S1 has already approved implicitly during proposal.
     // Duplicate approval by S1 shouldn't increase count.
     client.approve_pause_proposal(&s1, &pid);
-    
+
     // Attempt to execute with insufficient approvals (only S1)
     assert!(client.try_execute_pause_proposal(&pid).is_err());
 
@@ -197,7 +199,7 @@ fn test_pause_multisig_boundary_duplicate_and_insufficient() {
 
     // Execute same proposal again should fail (proposal removed)
     assert!(client.try_execute_pause_proposal(&pid).is_err());
-    
+
     // Approve non-existent proposal
     assert!(client.try_approve_pause_proposal(&s1, &999u64).is_err());
 }

@@ -856,7 +856,7 @@ fn test_adversarial_regression_and_retry_scenarios() {
     let env = Env::default();
     let (contract, super_admin) = setup(&env);
     let admin = with_admin(&env, &contract, &super_admin);
-    
+
     // Retry event checks
     assert_role_assigned(&env, &admin, AdminRole::Admin, &super_admin);
 }

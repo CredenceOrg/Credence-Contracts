@@ -73,7 +73,11 @@ pub fn diff(baseline: &Baseline, current: &BTreeMap<String, EntryCost>) -> Vec<R
             ("cpu_insns", b.cpu_insns, c.cpu_insns),
             ("mem_bytes", b.mem_bytes, c.mem_bytes),
             ("read_entries", b.read_entries as i64, c.read_entries as i64),
-            ("write_entries", b.write_entries as i64, c.write_entries as i64),
+            (
+                "write_entries",
+                b.write_entries as i64,
+                c.write_entries as i64,
+            ),
             ("read_bytes", b.read_bytes as i64, c.read_bytes as i64),
             ("write_bytes", b.write_bytes as i64, c.write_bytes as i64),
         ];

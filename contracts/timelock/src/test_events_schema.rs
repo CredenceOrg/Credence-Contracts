@@ -143,7 +143,11 @@ fn admin_transferred_event_schema_matches() {
 
     let _ = e.events().all();
 
-    client.transfer_admin(&new_admin);
+    client.propose_admin(&new_admin);
+    let pending = client.get_pending_admin().unwrap();
+    e.ledger().with_mut(|li| li.timestamp = pending.eta);
+    let _ = e.events().all();
+    client.accept_admin();
 
     let (topics, data) = only_event(&e);
 
@@ -176,5 +180,9 @@ fn schema_event_count_is_predictable() {
     let _ = e.events().all();
     client.queue_operation(&admin, &op_hash, &delay);
     let after_queue = e.events().all();
-    assert_eq!(after_queue.len(), 1, "queue_operation must emit exactly 1 event");
+    assert_eq!(
+        after_queue.len(),
+        1,
+        "queue_operation must emit exactly 1 event"
+    );
 }

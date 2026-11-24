@@ -15,6 +15,25 @@ mod pausable_tests {
         (e, client, super_admin)
     }
 
+    #[test]
+    fn client_exposes_pause_entrypoints() {
+        let (e, client, admin) = setup();
+        let signer = Address::generate(&e);
+        client.set_pause_signer(&admin, &signer, &true);
+        client.set_pause_threshold(&admin, &1);
+        assert!(!client.is_paused());
+
+        let pause_id = client.pause(&signer).unwrap();
+        client.approve_pause_proposal(&signer, &pause_id);
+        client.execute_pause_proposal(&pause_id);
+        assert!(client.is_paused());
+
+        let unpause_id = client.unpause(&signer).unwrap();
+        client.approve_pause_proposal(&signer, &unpause_id);
+        client.execute_pause_proposal(&unpause_id);
+        assert!(!client.is_paused());
+    }
+
     // -------------------------------------------------------------------------
     // Existing baseline tests
     // -------------------------------------------------------------------------

@@ -1,24 +1,8 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests
-// stay free to use format!/write! for diagnostics).
+// `clippy::disallowed_macros` belongs to the `restriction` group. It is
+// denied only for non-test builds (cargo build --release / WASM build);
+// tests stay free to use format!/write! for diagnostics.
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use credence_errors::ContractError;
@@ -1103,11 +1087,6 @@ impl CredenceDelegation {
 }
 
 #[cfg(test)]
-// mod test;
-
-// #[cfg(test)]
-// mod test_verifier;
-#[cfg(test)]
 mod test_pausable;
 
 #[cfg(test)]
@@ -1116,13 +1095,9 @@ mod test_pausable_failure_boundaries;
 #[cfg(test)]
 mod test_pause_snapshots;
 
-// #[cfg(test)]
-// mod test_pause_signer_invariant;
-
 #[cfg(test)]
 mod test_proposal_id_derivation;
 
-// #[cfg(test)]
 #[cfg(test)]
 mod test_delegation_ttl;
 
@@ -1152,4 +1127,3 @@ mod test_operator_epoch_guard;
 
 #[cfg(test)]
 mod test_boundary_recovery;
-

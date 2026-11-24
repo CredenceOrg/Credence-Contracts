@@ -33,9 +33,12 @@
 #![cfg(test)]
 
 use crate::pausable::PROPOSAL_EPOCH_SIZE;
+extern crate std;
 use crate::*;
+use soroban_sdk::testutils::Events as _;
 use soroban_sdk::testutils::{Address as _, Ledger as _};
 use soroban_sdk::{Address, Env, String};
+use std::vec::Vec;
 
 // ---------------------------------------------------------------------------
 // Wire-stable error discriminants
@@ -202,6 +205,7 @@ fn sps_auth_super_admin_succeeds() {
     let events_before = e.events().all().len();
 
     client.set_pause_signer(&super_admin, &signer, &true);
+    let events = e.events().all();
 
     // State must reflect the change, epoch must advance exactly once, event emitted.
     assert_invariants(&e, &client, &[signer]);
@@ -211,8 +215,8 @@ fn sps_auth_super_admin_succeeds() {
         "I-3: successful enable must advance epoch by 1"
     );
     assert_eq!(
-        e.events().all().len(),
-        events_before + 1,
+        events.len(),
+        1,
         "I-4: successful enable must emit exactly one event"
     );
 }
@@ -434,7 +438,7 @@ fn sps_idempotent_retry_does_not_duplicate_event() {
 
     assert_eq!(
         e.events().all().len(),
-        events_after_first,
+        0,
         "retry must not emit a second pause_signer_set event"
     );
 }
@@ -696,16 +700,16 @@ fn sps_event_emitted_iff_state_changes() {
     let events_baseline = e.events().all().len();
 
     client.set_pause_signer(&super_admin, &signer, &true); // +1 event
-    assert_eq!(e.events().all().len(), events_baseline + 1);
+    assert_eq!(e.events().all().len(), 1);
 
     client.set_pause_signer(&super_admin, &signer, &true); // no-op
-    assert_eq!(e.events().all().len(), events_baseline + 1);
+    assert_eq!(e.events().all().len(), 0);
 
     client.set_pause_signer(&super_admin, &signer, &false); // +1 event
-    assert_eq!(e.events().all().len(), events_baseline + 2);
+    assert_eq!(e.events().all().len(), 1);
 
     client.set_pause_signer(&super_admin, &signer, &false); // no-op
-    assert_eq!(e.events().all().len(), events_baseline + 2);
+    assert_eq!(e.events().all().len(), 0);
 }
 
 /// Rejected calls (any error path) must emit zero events so off-chain indexers
@@ -729,7 +733,7 @@ fn sps_event_not_emitted_on_rejection() {
 
     assert_eq!(
         e.events().all().len(),
-        events_baseline,
+        0,
         "I-4: rejected calls must not emit any events"
     );
 }
@@ -762,7 +766,10 @@ fn sps_concurrent_same_signer_converges_to_count_one() {
             .instance()
             .get(&DataKey::PauseSignerCount)
             .unwrap_or(0);
-        assert_eq!(count, 1, "duplicate concurrent enables must not double-count");
+        assert_eq!(
+            count, 1,
+            "duplicate concurrent enables must not double-count"
+        );
     });
     assert_invariants(&e, &client, &[signer]);
 }
@@ -827,6 +834,9 @@ fn sps_lifecycle_full_add_use_remove() {
     assert_invariants(&e, &client, &[s1.clone(), s2]);
 
     // s1 alone can still pause (threshold == 1).
+    // Start a fresh proposal epoch: completed IDs retain replay protection.
+    e.ledger()
+        .with_mut(|ledger| ledger.sequence_number += PROPOSAL_EPOCH_SIZE);
     let id3 = client.pause(&s1).unwrap();
     client.execute_pause_proposal(&id3);
     assert!(client.is_paused());
@@ -971,7 +981,10 @@ fn sps_regression_drain_all_signers_leaves_zero_count_and_threshold() {
             .get(&DataKey::PauseThreshold)
             .unwrap_or(0);
         assert_eq!(count, 0, "all signers removed: count must be 0");
-        assert_eq!(threshold, 0, "all signers removed: threshold must be clamped to 0");
+        assert_eq!(
+            threshold, 0,
+            "all signers removed: threshold must be clamped to 0"
+        );
     });
 
     // With threshold 0, SuperAdmin can pause directly again.
@@ -989,7 +1002,8 @@ fn sps_regression_epoch_advance_does_not_affect_proposal_staleness() {
     client.set_pause_threshold(&super_admin, &1u32);
 
     let epoch_boundary = u32::from(PROPOSAL_EPOCH_SIZE);
-    e.ledger().with_mut(|l| l.sequence_number = epoch_boundary - 1);
+    e.ledger()
+        .with_mut(|l| l.sequence_number = epoch_boundary - 1);
 
     let id = client.pause(&s1).unwrap();
 
@@ -998,10 +1012,7 @@ fn sps_regression_epoch_advance_does_not_affect_proposal_staleness() {
     e.ledger().with_mut(|l| l.sequence_number = epoch_boundary);
 
     // The proposal is now stale.
-    let err = client
-        .try_execute_pause_proposal(&id)
-        .unwrap_err()
-        .unwrap();
+    let err = client.try_execute_pause_proposal(&id).unwrap_err().unwrap();
     assert_eq!(
         err,
         soroban_sdk::Error::from_contract_error(514), // StaleAdminEpoch

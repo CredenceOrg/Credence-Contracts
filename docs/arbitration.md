@@ -15,17 +15,24 @@ Open ──────> Voting ──────> Resolving ──────
   │            │              │
   └────────────┴──────────────┤──────────> Cancelled
                               ↓
-                             Tied
+                  ┌───────────┴───────────┐
+                  Tied                 NoQuorum
+                    └───────────┬───────────┘
+                                ↓
+                             Archived ──────> Voting
 ```
 
 ### Valid Transitions
 
 - `Open → Voting` — Voting period begins immediately when a dispute is created.
 - `Voting → Resolving` — The voting period ends and `resolve_dispute` begins tallying.
-- `Voting → Cancelled` — The dispute is cancelled by the creator or admin.
+- `Voting → Cancelled` — The dispute is cancelled by the creator (only before any vote is cast and before `voting_end`) or by the admin (at any time before resolution).
 - `Resolving → Resolved` — The tally produces a clear winner.
 - `Resolving → Tied` — The tally produces an equal highest-weight outcome.
+- `Resolving → NoQuorum` — Voting ended without meeting the configured quorum.
 - `Open → Cancelled` — The dispute is cancelled before voting begins.
+- `NoQuorum → Archived` — The admin archives a dispute that missed quorum.
+- `Archived → Voting` — The admin reopens an archived dispute for new voting.
 
 All other transitions are rejected with `ArbitrationError::InvalidTransition`.
 
@@ -38,6 +45,7 @@ The contract emits lifecycle events for the major milestones in the dispute life
 - `dispute_cancelled` when a dispute is cancelled.
 - `dispute_resolved` when a dispute reaches a terminal resolved state.
 - `dispute_tied` when tallying ends in a tie.
+- `quorum_not_met` when resolution completes without meeting the configured quorum; data is `(total_weight, min_total_weight, voter_count, min_voters)`.
 
 These events are intended to make the dispute lifecycle auditable and easy to consume off-chain.
 
@@ -53,6 +61,8 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | Resolved  | 3     | Final outcome determined with a clear winner      |
 | Cancelled | 4     | Dispute cancelled by creator or admin             |
 | Tied      | 5     | Votes resulted in a tie (equal highest weights)   |
+| Archived  | 6     | Finalized dispute archived by an admin             |
+| NoQuorum  | 7     | Voting ended without meeting quorum; outcome is 0   |
 | Archived  | 6     | Dispute archived by admin (can be reopened)       |
 | NoQuorum  | 7     | Voting ended but quorum was not met               |
 | Appealed  | 8     | Second voting round in progress (non-terminal)    |
@@ -67,10 +77,32 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | voting_start | u64           | Timestamp when voting begins           |
 | voting_end   | u64           | Timestamp when voting ends             |
 | status       | DisputeStatus | Current status in the lifecycle        |
-| outcome      | u32           | The winning outcome (0 only when Tied) |
+| outcome      | u32           | Winning outcome (0 when Tied or NoQuorum) |
 
 ### ArbitrationError
 
+| Error              | Code | Description                              |
+| ------------------ | ---- | ---------------------------------------- |
+| InvalidTransition  | 1    | Attempted an invalid status transition   |
+| AlreadyInitialized | 2    | Contract already initialized             |
+| NotInitialized     | 3    | Contract not initialized                 |
+| NotAdmin           | 4    | Caller is not the admin                  |
+| NotArbitrator      | 5    | Voter is not a registered arbitrator     |
+| AlreadyVoted       | 6    | Arbitrator already voted on this dispute |
+| VotingInactive     | 7    | Voting period is not active              |
+| VotingNotEnded     | 8    | Voting period has not ended yet          |
+| DisputeNotFound    | 9    | Dispute ID does not exist                |
+| InvalidOutcome     | 10   | Outcome must be > 0                      |
+| WeightNotPositive  | 11   | Arbitrator weight must be positive       |
+| NotAuthorized      | 12   | Caller not authorized for this action    |
+| QuorumNotMet       | 13   | Quorum requirements were not met         |
+| ReasonTooLong      | 14   | Cancellation reason exceeds the limit    |
+| PromiseNotKept     | 15   | The promise outcome did not match reality |
+| CursorOutOfRange   | 16   | Pagination cursor is out of range         |
+| DisputeActive      | 17   | Dispute is still active and blocks this action |
+| OngoingDispute     | 18   | Creator already has an unresolved dispute |
+| CancelNotAllowed   | 19   | Creator cannot cancel after votes or after voting_end |
+| ConflictOfInterest | 20   | Voter is the creator of the dispute       |
 | Error                    | Code | Description                                      |
 | ------------------------ | ---- | ------------------------------------------------ |
 | InvalidTransition        | 1    | Attempted an invalid status transition           |
@@ -115,17 +147,24 @@ Removes an arbitrator's voting rights. Requires admin authorization.
 
 Creates a new dispute. Requires creator authorization. Returns the dispute ID. Status starts as `Voting`.
 
+When a dispute is created, the contract records a frozen per-dispute snapshot of all currently registered arbitrators and their weights under `DataKey::DisputeWeightSnapshot(dispute_id)` in persistent storage. Subsequent calls to `register_arbitrator` or `unregister_arbitrator` never alter the effective voting weights, tallies, or quorum calculations of already-open disputes.
+
+**Gas and Storage Considerations**:
+- `create_dispute` iterates over `ArbitratorRegistry` once to build the snapshot (`O(N)` reads where `N` is the number of registered arbitrators) and writes a single `Map<Address, i128>` entry to persistent storage.
+- Storing snapshots in persistent storage (rather than instance storage) keeps instance storage bounded across disputes, and `archive_dispute` removes the snapshot entry once a dispute is archived.
+- **Legacy Disputes (Migration Safety)**: Disputes created before weight snapshotting was introduced have no `DisputeWeightSnapshot` entry; `vote` detects the missing snapshot and falls back to the live `Arbitrator(voter)` registry entry so in-flight legacy disputes remain resolvable.
+
 ### `cancel_dispute(caller: Address, dispute_id: u64) -> Result<(), ArbitrationError>`
 
-Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status.
+Cancels a dispute. Only the creator or admin may cancel. Valid from `Open` or `Voting` status. The creator may cancel a `Voting` dispute only while no votes have been cast (`VoterCounter(dispute_id) == 0`) and `now <= voting_end`; otherwise the call returns `CancelNotAllowed`. The admin may cancel a `Voting` dispute at any time before resolution, and the `dispute_cancelled` event reports `cancelled_by_role` as `"admin"`.
 
 ### `vote(voter: Address, dispute_id: u64, outcome: u32) -> Result<(), ArbitrationError>`
 
-Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status.
+Casts a weighted vote for an outcome. Requires voter authorization. Voter must be a registered arbitrator. Dispute must be in `Voting` status. A dispute's creator cannot vote on their own dispute; such a call returns `ConflictOfInterest`.
 
 ### `resolve_dispute(dispute_id: u64) -> Result<u32, ArbitrationError>`
 
-Resolves the dispute after the voting period has ended. Transitions `Voting → Resolving → Resolved` (or `Tied` if outcomes are tied). Calculates the winning outcome based on total weight. Returns the winning outcome if one is found, or 0 if a tie is detected. On tie, the dispute transitions to `Tied` status so consumers can distinguish it from a definite ruling.
+Resolves the dispute after the voting period has ended. Transitions `Voting → Resolving → Resolved` (or `Tied` if outcomes are tied). If configured quorum is not met, transitions `Voting → Resolving → NoQuorum`, keeps votes and tallies for audit, clears the creator's active-dispute guard, emits `quorum_not_met`, and returns 0. A NoQuorum dispute is terminal and can be archived and reopened by an admin.
 
 ### `get_dispute(dispute_id: u64) -> Result<Dispute, ArbitrationError>`
 
@@ -290,6 +329,8 @@ Appeals a `Resolved`, `Tied`, or `NoQuorum` dispute within the appeal window. On
 - Overflow protection for weight tallies and counters
 - Canonical status machine prevents invalid state transitions
 - Result-based error handling for all state-changing operations
+- Creator cancellation is bounded by vote count and voting deadline to prevent discarding a losing tally
+- Conflict-of-interest check prevents a creator from voting on their own dispute
 - Appeal limited to one per dispute; round-one voters excluded from round two
 - Appeal window enforced by ledger timestamp comparison
 
@@ -301,6 +342,9 @@ The contract includes comprehensive test coverage:
 - Tie scenarios
 - Double-voting prevention
 - Unauthorized voter rejection
+- Creator cancellation restrictions (before votes, after votes, after deadline)
+- Admin cancellation override after votes
+- Creator cannot vote on own dispute
 - All valid status transitions
 - All invalid status transitions (regression tests)
 - Edge cases (zero/negative weights, outcome validation, etc.)
@@ -310,3 +354,21 @@ Run tests:
 ```bash
 cargo test -p credence_arbitration
 ```
+
+## Dispute resolution integration
+
+Arbitration rulings back the `dispute_resolution` contract directly: a dispute
+there can name an arbitration contract as its resolver, and is then resolved from
+the arbitration ruling rather than a single address.
+
+- `dispute_resolution::create_arbitration_dispute(creator, arbitration_contract, arbitration_dispute_id)`
+  binds a dispute to an arbitration dispute id.
+- When resolving, `dispute_resolution` reads the ruling through the shared client
+  in `crates/interfaces/src/arbitration.rs` (mirroring `Dispute`/`DisputeStatus`,
+  so no contract-to-contract build edge is created) and calls `get_dispute`.
+- Only a final `Resolved` ruling with a non-zero outcome is accepted; `Tied`,
+  `NoQuorum`, cancelled/archived, and any non-final status are rejected with typed
+  errors.
+
+See [docs/dispute-resolution.md](dispute-resolution.md) for the full
+mapping and the events emitted.

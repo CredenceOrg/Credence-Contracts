@@ -19,7 +19,21 @@ Represents the state and parameters of an arbitration case.
 | `voting_start` | `u64` | Ledger timestamp when voting opens. |
 | `voting_end` | `u64` | Ledger timestamp when voting closes. |
 | `resolved` | `bool` | Whether the dispute has been finalized. |
-| `outcome` | `u32` | The winning result (0 = tie/unresolved). |
+| `status` | `DisputeStatus` | Lifecycle state, including `NoQuorum` when configured quorum is missed. |
+| `outcome` | `u32` | The winning result (0 for `Tied` or `NoQuorum`). |
+
+### Dispute status values
+
+| Status | Value | Meaning |
+| --- | ---: | --- |
+| `Open` | 0 | Initial state |
+| `Voting` | 1 | Voting is active |
+| `Resolving` | 2 | Votes are being tallied |
+| `Resolved` | 3 | A winning outcome was determined |
+| `Cancelled` | 4 | Cancelled by the creator or admin |
+| `Tied` | 5 | No unique highest-weight outcome |
+| `Archived` | 6 | Archived by an admin; may be reopened |
+| `NoQuorum` | 7 | Voting ended without reaching configured quorum |
 
 ---
 
@@ -72,6 +86,8 @@ Calculates the winner and closes the case.
 * **Resolution Logic**: The outcome with the highest total weight wins.
 * **Ties**: If two or more outcomes have the same maximum weight, the outcome is set to `0` (Unresolved).
 * **Prerequisite**: Must be called after the `voting_end` timestamp.
+* **Quorum miss**: When configured minimum total weight or voter count is not met, the contract transitions through `Resolving` to terminal `NoQuorum`, stores outcome `0`, preserves vote tallies, releases the creator's active-dispute guard, publishes `status_transition` and `quorum_not_met`, and returns `0` successfully. The event data is `(total_weight, min_total_weight, voter_count, min_voters)`. This is a successful call so its events are persisted on-ledger.
+* **Archive and reopen**: Admins may archive `NoQuorum` disputes and reopen them using the existing archived-dispute flow.
 
 ---
 
@@ -84,6 +100,14 @@ Calculates the winner and closes the case.
 | `get_arbitrator_weight` | `Result<u32, Error>` | Returns the voting weight of an arbitrator. Returns `Error::NotArbitrator` if unregistered. |
 | `has_voted` | `bool` | Returns `true` if the arbitrator has already voted on the specified dispute, `false` otherwise. |
 | `get_arbitrators_page` | `(Vec<Address>, Option<u32>)` | Returns a page of registered arbitrator addresses starting at `cursor` up to `limit`. |
+| `get_disputes_by_creator` | `(Vec<u64>, Option<u32>)` | Returns dispute IDs created by an address, in creation order, starting at `cursor`. |
+
+### 📖 Creator Dispute Pagination (`get_disputes_by_creator`)
+
+- The cursor is a 0-based index in the creator's dispute history.
+- A `limit` of `0` uses the default page size of `50`; larger limits are capped at `200`.
+- `CursorOutOfRange` is returned when `cursor` is greater than or equal to the creator's dispute count, including an empty history.
+- IDs are stored in persistent per-creator index slots and appended on dispute creation. The count and each slot use a 180-day TTL, extended when written or read; inactive index entries may expire under Soroban storage TTL.
 
 ### 📖 Pagination Semantics (`get_arbitrators_page`)
 
@@ -99,15 +123,25 @@ Calculates the winner and closes the case.
 
 ## 📋 Summary of Error States
 
-| Panic / Error Variant | Cause |
-| --- | --- |
-| `AlreadyInitialized` | Attempted to call `initialize` more than once. |
-| `WeightNotPositive` | Attempted to register an arbitrator with a weight $\le 0$. |
-| `VotingInactive` | Attempted to vote before the start or after the end time, or dispute not in Voting state. |
-| `AlreadyVoted` | Attempted to cast multiple votes on the same dispute. |
-| `VotingNotEnded` | Attempted to call `resolve_dispute` before the deadline. |
-| `NotArbitrator` | The specified address is not a registered arbitrator (returned by `get_arbitrator_weight` or `vote`). |
-| `DisputeNotFound` | The specified dispute ID does not exist in storage. |
-| `InvalidTransition` | Attempted an invalid dispute status transition. |
-| `NotAuthorized` | Caller is not authorized (e.g. non-creator/non-admin trying to cancel). |
-
+| Error Variant | Code | Cause |
+| --- | ---: | --- |
+| `InvalidTransition` | 1 | Attempted an invalid dispute status transition. |
+| `AlreadyInitialized` | 2 | Attempted to initialize the contract more than once. |
+| `NotInitialized` | 3 | Contract has not been initialized. |
+| `NotAdmin` | 4 | Caller is not the contract admin. |
+| `NotArbitrator` | 5 | Caller is not a registered arbitrator. |
+| `AlreadyVoted` | 6 | Arbitrator has already voted on this dispute. |
+| `VotingInactive` | 7 | Voting period is not active or the dispute is not in Voting state. |
+| `VotingNotEnded` | 8 | Attempted to resolve a dispute before the voting deadline. |
+| `DisputeNotFound` | 9 | The specified dispute ID does not exist. |
+| `InvalidOutcome` | 10 | Outcome must be greater than zero. |
+| `WeightNotPositive` | 11 | Arbitrator weight must be positive. |
+| `NotAuthorized` | 12 | Caller is not authorized for this action. |
+| `QuorumNotMet` | 13 | Quorum requirements were not met. |
+| `ReasonTooLong` | 14 | Cancellation reason exceeds the permitted length. |
+| `PromiseNotKept` | 15 | The actual outcome does not match the promised outcome. |
+| `CursorOutOfRange` | 16 | Pagination cursor is outside the arbitrator registry. |
+| `DisputeActive` | 17 | Dispute is still active and blocks this action. |
+| `OngoingDispute` | 18 | Creator already has an unresolved dispute. |
+| `CancelNotAllowed` | 19 | Creator cannot cancel after votes are cast or the voting window ends. |
+| `ConflictOfInterest` | 20 | Voter is the creator of the dispute. |

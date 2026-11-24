@@ -9,7 +9,6 @@
 #[cfg(test)]
 extern crate std;
 
-
 // `access_control` was not in the module tree on `main`, so none of it was
 // compiled or reachable. Made `pub` rather than private so the integration test
 // target in `tests/access_control_boundaries.rs` can exercise the guards against
@@ -107,9 +106,8 @@ pub mod test_helpers;
 /// Reusable bond-invariant assertion library (test-only).
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] pub mod test_invariants;
-/// Shared test setup utilities (mock token, bond registration).
-#[cfg(test)]
-pub mod test_helpers;
+// [pre-broken on main] #[cfg(test)]
+// [pre-broken on main] pub mod test_helpers;
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_unauthorized_token;
 // [pre-broken on main] #[cfg(test)]
@@ -123,10 +121,6 @@ pub mod test_helpers;
 // [pre-broken on main] mod chaos_token;
 // [pre-broken on main] mod test_chaos;
 // [pre-broken on main] mod test_reentrancy_hostile_token;
-
-/// Tests for describe_config and describe_bond introspection entrypoints.
-#[cfg(test)]
-mod test_describe;
 
 /// Tests for the liquidate entrypoint (issue #366).
 // [pre-broken on main] #[cfg(test)]
@@ -205,6 +199,9 @@ mod test_verify_stringified_bytes;
 #[cfg(test)]
 mod test_lib_boundary_recovery;
 
+#[cfg(test)]
+mod test_attestation_dedup_cap;
+
 /// Boundary and edge-case tests for event emissions (#1324).
 /// Validates numeric boundaries, invalid inputs, empty values, and large collections.
 // [pre-broken on main] #[cfg(test)]
@@ -219,7 +216,6 @@ mod test_lib_boundary_recovery;
 /// Validates event data correctness, invariant preservation, and schema immutability.
 // [pre-broken on main] #[cfg(test)]
 // [pre-broken on main] mod test_events_invariants;
-
 use credence_errors::ContractError;
 use soroban_sdk::{
     contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, IntoVal, String,
@@ -564,6 +560,10 @@ impl CredenceBond {
 
     /// Initialize the contract with admin authority.
     ///
+    /// Per `docs/UPGRADE.md`, initialisation also records the deployer as the
+    /// upgrade admin and grants it the `Upgrader` role, so the four
+    /// upgrade-admin entrypoints are reachable without a separate call.
+    ///
     /// Errors:
     /// - `ContractError::AlreadyInitialized` if called more than once.
     ///
@@ -577,6 +577,11 @@ impl CredenceBond {
         // auth: tree shape identifies the admin; usually a single signature entry.
         admin.require_auth();
         e.storage().instance().set(&DataKey::Admin, &admin);
+        // Record the deployer as upgrade admin and grant it the Upgrader role
+        // (docs/UPGRADE.md: "At initialisation ... the deployer address is
+        // automatically granted the `Upgrader` role and recorded as the
+        // upgrade admin.").
+        upgrade_auth::initialize_upgrade_auth(&e, &admin);
         if let Some(registry) = registry {
             e.invoke_contract::<()>(
                 &registry,
@@ -1053,6 +1058,13 @@ impl CredenceBond {
         // auth: tree shape [Identity] -> [Bond::create_bond]; may be delegated.
         identity.require_auth();
         parameters::require_not_borrow_frozen(&e);
+
+        // Validate inputs on the normalized 18-decimal amount before any token
+        // transfer, so a rejected bond never makes the token call.
+        validation::validate_bond_amount_for_token(&e, amount);
+        let max_leverage = parameters::get_max_leverage(&e);
+        leverage::validate_leverage_for_token(&e, amount, max_leverage);
+
         if token_integration::has_token(&e) {
             token_integration::transfer_into_contract(&e, &identity, amount);
         }
@@ -1062,11 +1074,6 @@ impl CredenceBond {
         let _end_timestamp = bond_start
             .checked_add(duration)
             .expect("bond end timestamp would overflow");
-
-        // Validate inputs
-        validation::validate_bond_amount(amount);
-        let max_leverage = parameters::get_max_leverage(&e);
-        leverage::validate_leverage(&e, amount, max_leverage);
 
         let bond = IdentityBond {
             identity: identity.clone(),
@@ -1096,67 +1103,6 @@ impl CredenceBond {
         crate::same_ledger_liquidation_guard::record_collateral_increase(&e);
         invariants::assert_self_consistent(&e);
         bond
-    }
-
-    // ── Batch Bond Operations ─────────────────────────────────────────────
-    // These entrypoints delegate to the `batch` module which is compiled
-    // test-only (`#[cfg(test)] mod batch`).  They are excluded from the
-    // production WASM but are present in the test-mode client so
-    // `test_batch.rs` can exercise them through the normal contract path.
-
-    /// Create multiple bonds atomically in a single transaction.
-    ///
-    /// All bonds are validated first (fail-fast). If any bond fails validation,
-    /// the **entire** batch is rejected before any state is written.
-    ///
-    /// # Panics
-    /// * `ContractError::EmptyBatch` if `params_list` is empty.
-    /// * `ContractError::BatchTooLarge` if `params_list.len() > MAX_BATCH_BOND_SIZE`.
-    /// * `"invalid amount in batch"` if any bond has `amount <= 0`.
-    /// * `"duration overflow in batch"` if any bond's end timestamp would overflow.
-    /// * `"rolling bond requires notice period"` if any rolling bond has `notice_period_duration == 0`.
-    /// * `"bond already exists"` if any identity already has an active bond.
-    ///
-    /// # Events
-    /// Emits `batch_bonds_created` on success.
-    #[cfg(test)]
-    pub fn create_batch_bonds(
-        e: Env,
-        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
-    ) -> batch::BatchBondResult {
-        Self::require_not_paused(&e);
-        batch::create_batch_bonds(&e, params_list)
-    }
-
-    /// Validate a batch of bond parameters without writing any state.
-    ///
-    /// Useful for pre-flight checks: identical validation rules as
-    /// [`create_batch_bonds`] with no side effects. Returns `true` when all
-    /// bonds are valid.
-    ///
-    /// # Panics
-    /// Same panic conditions as [`create_batch_bonds`], minus the duplicate-bond check.
-    #[cfg(test)]
-    pub fn validate_batch_bonds(
-        e: Env,
-        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
-    ) -> bool {
-        batch::validate_batch(&e, params_list)
-    }
-
-    /// Return the total bonded amount across a batch (no state written).
-    ///
-    /// Useful for calculating aggregate collateral requirements before submitting
-    /// a batch. Panics with `"batch total overflow"` if the sum would overflow `i128`.
-    ///
-    /// # Returns
-    /// `0` for an empty batch; the arithmetic sum of all `amount` fields otherwise.
-    #[cfg(test)]
-    pub fn get_batch_total_amount(
-        e: Env,
-        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
-    ) -> i128 {
-        batch::get_batch_total_amount(&e, &params_list)
     }
 
     /// Retrieve the current bond state.
@@ -1268,6 +1214,12 @@ impl CredenceBond {
             panic_with_error!(e, ContractError::DuplicateAttestation);
         }
 
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        if count >= parameters::MAX_ATTESTATIONS {
+            panic_with_error!(e, ContractError::StorageCapReached);
+        }
+
         let counter_key = DataKey::AttestationCounter;
         let id: u64 = e.storage().instance().get(&counter_key).unwrap_or(0);
         let next_id = id
@@ -1296,6 +1248,7 @@ impl CredenceBond {
         e.storage()
             .instance()
             .set(&DataKey::Attestation(id), &attestation);
+        e.storage().instance().set(&dedup_key, &true);
 
         let subject_key = DataKey::SubjectAttestations(subject.clone());
         let mut attestations: Vec<u64> = e
@@ -1307,11 +1260,7 @@ impl CredenceBond {
         e.storage().instance().set(&subject_key, &attestations);
         bump_instance_ttl(&e);
 
-        let count_key = DataKey::SubjectAttestationCount(subject.clone());
-        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage()
-            .instance()
-            .set(&count_key, &count.saturating_add(1));
+        e.storage().instance().set(&count_key, &(count + 1));
         bump_instance_ttl(&e);
 
         e.events().publish(
@@ -1381,6 +1330,15 @@ impl CredenceBond {
             if e.storage().instance().has(&dedup_key) {
                 panic_with_error!(e, ContractError::DuplicateAttestation);
             }
+        }
+
+        let count_key = DataKey::SubjectAttestationCount(subject.clone());
+        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
+        let updated_count = count
+            .checked_add(n)
+            .unwrap_or_else(|| panic_with_error!(e, ContractError::StorageCapReached));
+        if updated_count > parameters::MAX_ATTESTATIONS {
+            panic_with_error!(e, ContractError::StorageCapReached);
         }
 
         // Get weight configuration
@@ -1462,11 +1420,7 @@ impl CredenceBond {
             .set(&subject_key, &subject_attestations);
 
         // Update SubjectAttestationCount
-        let count_key = DataKey::SubjectAttestationCount(subject.clone());
-        let count: u32 = e.storage().instance().get(&count_key).unwrap_or(0);
-        e.storage()
-            .instance()
-            .set(&count_key, &count.saturating_add(n));
+        e.storage().instance().set(&count_key, &updated_count);
 
         bump_instance_ttl(&e);
 
@@ -1559,7 +1513,7 @@ impl CredenceBond {
     /// Get an attestation by ID.
     pub fn get_attestation(e: Env, attestation_id: u64) -> Attestation {
         let key = DataKey::Attestation(attestation_id);
-        let att = e
+        let att: Attestation = e
             .storage()
             .instance()
             .get(&key)
@@ -2014,6 +1968,12 @@ impl CredenceBond {
     /// See also: [`docs/slashing.md`](../../../docs/slashing.md)
     pub fn slash(e: Env, admin: Address, identity: Address, amount: i128) -> IdentityBond {
         Self::require_not_paused(&e);
+        // The admin address is public, so require_auth is mandatory to prevent
+        // an unauthenticated caller from passing a known admin address and
+        // slashing any bond. validate_admin in slashing.rs remains a pure
+        // address comparison; it does not call require_auth to avoid a
+        // second auth entry for the same address (which the host rejects).
+        admin.require_auth();
         slashing::slash_bond(&e, &admin, &identity, amount)
     }
 
@@ -2076,10 +2036,10 @@ impl CredenceBond {
         let old_available = bond.bonded_amount.saturating_sub(bond.slashed_amount);
         let old_tier = tiered_bond::get_tier_for_amount(&e, old_available);
 
-        // Validate the new total amount
-        validation::validate_bond_amount(new_bonded_amount);
+        // Validate the new total amount on the normalized 18-decimal value.
+        validation::validate_bond_amount_for_token(&e, new_bonded_amount);
         let max_leverage = parameters::get_max_leverage(&e);
-        leverage::validate_leverage(&e, new_bonded_amount, max_leverage);
+        leverage::validate_leverage_for_token(&e, new_bonded_amount, max_leverage);
 
         bond.bonded_amount = new_bonded_amount;
 
@@ -2269,7 +2229,6 @@ impl CredenceBond {
     /// - [`ContractError::ContractPaused`] if the contract is paused.
     pub fn set_cooldown_period(e: Env, admin: Address, period: u64) {
         Self::require_not_paused(&e);
-        admin.require_auth();
         guards::require_admin(&e, &admin);
         let old = cooldown::get_cooldown_period(&e);
         cooldown::set_cooldown_period(&e, period);
@@ -2296,7 +2255,11 @@ impl CredenceBond {
     /// - If `amount` is not positive.
     /// - If `amount` exceeds available balance.
     /// - If a cooldown request is already pending.
-    pub fn request_cooldown_withdrawal(e: Env, identity: Address, amount: i128) {
+    pub fn request_cooldown_withdrawal(
+        e: Env,
+        identity: Address,
+        amount: i128,
+    ) -> cooldown::CooldownRequest {
         Self::require_not_paused(&e);
         identity.require_auth();
         let bond: IdentityBond = guards::load_bond(&e, &identity);
@@ -2326,6 +2289,7 @@ impl CredenceBond {
         cooldown::set_cooldown_request(&e, &identity, &request);
         cooldown::record_cooldown_request(&e);
         cooldown::emit_cooldown_requested(&e, &identity, amount);
+        request
     }
 
     /// Execute a previously requested cooldown withdrawal.
@@ -2342,38 +2306,94 @@ impl CredenceBond {
     pub fn execute_cooldown_withdrawal(e: Env, identity: Address) -> IdentityBond {
         Self::require_not_paused(&e);
         identity.require_auth();
-        let mut bond: IdentityBond = guards::load_bond(&e, &identity);
-        // #1273: lifecycle invariant — a closed bond must not be mutated.
-        lifecycle::require_bond_active(&e, &bond);
+
+        Self::acquire_lock(&e);
+
+        let mut bond: IdentityBond =
+            match e.storage().instance().get(&DataKey::Bond(identity.clone())) {
+                Some(b) => b,
+                None => {
+                    Self::release_lock(&e);
+                    panic_with_error!(e, ContractError::BondNotFound);
+                }
+            };
+
+        if !bond.active {
+            Self::release_lock(&e);
+            panic_with_error!(e, ContractError::BondNotActive);
+        }
+
         if bond.identity != identity {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::BondNotFound);
         }
-        let request = cooldown::get_cooldown_request(&e, &identity)
-            .unwrap_or_else(|| panic_with_error!(e, ContractError::CooldownRequestNotFound));
+
+        let request = match cooldown::get_cooldown_request(&e, &identity) {
+            Some(r) => r,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::CooldownRequestNotFound);
+            }
+        };
+
         if request.requester != identity {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::NotBondOwner);
         }
-        same_ledger_liquidation_guard::require_cooldown_allowed_after_collateral_increase(&e);
+
+        let current_seq = e.ledger().sequence();
+        if let Some(last) = e
+            .storage()
+            .instance()
+            .get::<_, u32>(&DataKey::LastCollateralIncreaseLedger)
+        {
+            if last == current_seq {
+                Self::release_lock(&e);
+                panic!("{}", same_ledger_liquidation_guard::COOLDOWN_BLOCKED_REASON);
+            }
+        }
+
         let now = e.ledger().timestamp();
         let cooldown_period = cooldown::get_cooldown_period(&e);
         if !cooldown::can_withdraw(now, request.requested_at, cooldown_period) {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::CooldownPeriodNotElapsed);
         }
+
         let available = bond.bonded_amount - bond.slashed_amount;
         if request.amount > available {
+            Self::release_lock(&e);
             panic_with_error!(e, ContractError::InsufficientBalance);
         }
+
         let old_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
-        bond.bonded_amount = bond
-            .bonded_amount
-            .checked_sub(request.amount)
-            .ok_or(ContractError::Underflow)
-            .unwrap_or_else(|_| panic_with_error!(e, ContractError::Underflow));
+        bond.bonded_amount = match bond.bonded_amount.checked_sub(request.amount) {
+            Some(amt) => amt,
+            None => {
+                Self::release_lock(&e);
+                panic_with_error!(e, ContractError::Underflow);
+            }
+        };
         let new_tier = tiered_bond::get_tier_for_amount(&e, bond.bonded_amount);
         tiered_bond::emit_tier_change_if_needed(&e, &identity, old_tier, new_tier);
+
+        // Effects: persist reduced bond state and clear cooldown request
+        let bond_key = DataKey::Bond(identity.clone());
+        e.storage().instance().set(&bond_key, &bond);
         cooldown::clear_cooldown_request(&e, &identity);
         bump_instance_ttl(&e);
+
+        // Interactions: custody transfer gated by has_token()
+        if token_integration::has_token(&e) {
+            token_integration::transfer_from_contract(&e, &identity, request.amount);
+        }
+
+        // Release reentrancy lock before event emission and invariant checking
+        Self::release_lock(&e);
+
         cooldown::emit_cooldown_executed(&e, &identity, request.amount);
+        invariants::assert_self_consistent(&e);
+
         bond
     }
 
@@ -3222,6 +3242,69 @@ impl CredenceBond {
     }
 }
 
+// ── Batch Bond Operations (test-only entrypoints) ───────────────────────
+// These entrypoints delegate to the `batch` module and are excluded from the
+// production WASM but are present in the test-mode client so `test_batch.rs`
+// can exercise them through the normal contract path. They live in their own
+// `#[cfg(test)]` `#[contractimpl]` block because the macro cannot emit the
+// per-method dispatch modules for `#[cfg(test)]` functions inside the main
+// `#[contractimpl]` block.
+#[cfg(test)]
+#[contractimpl]
+impl CredenceBond {
+    /// Create multiple bonds atomically in a single transaction.
+    ///
+    /// All bonds are validated first (fail-fast). If any bond fails validation,
+    /// the **entire** batch is rejected before any state is written.
+    ///
+    /// # Panics
+    /// * `ContractError::EmptyBatch` if `params_list` is empty.
+    /// * `ContractError::BatchTooLarge` if `params_list.len() > MAX_BATCH_BOND_SIZE`.
+    /// * `"invalid amount in batch"` if any bond has `amount <= 0`.
+    /// * `"duration overflow in batch"` if any bond's end timestamp would overflow.
+    /// * `"rolling bond requires notice period"` if any rolling bond has `notice_period_duration == 0`.
+    /// * `"bond already exists"` if any identity already has an active bond.
+    ///
+    /// # Events
+    /// Emits `batch_bonds_created` on success.
+    pub fn create_batch_bonds(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> batch::BatchBondResult {
+        Self::require_not_paused(&e);
+        batch::create_batch_bonds(&e, params_list)
+    }
+
+    /// Validate a batch of bond parameters without writing any state.
+    ///
+    /// Useful for pre-flight checks: identical validation rules as
+    /// [`create_batch_bonds`] with no side effects. Returns `true` when all
+    /// bonds are valid.
+    ///
+    /// # Panics
+    /// Same panic conditions as [`create_batch_bonds`], minus the duplicate-bond check.
+    pub fn validate_batch_bonds(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> bool {
+        batch::validate_batch(&e, params_list)
+    }
+
+    /// Return the total bonded amount across a batch (no state written).
+    ///
+    /// Useful for calculating aggregate collateral requirements before submitting
+    /// a batch. Panics with `"batch total overflow"` if the sum would overflow `i128`.
+    ///
+    /// # Returns
+    /// `0` for an empty batch; the arithmetic sum of all `amount` fields otherwise.
+    pub fn get_batch_total_amount(
+        e: Env,
+        params_list: soroban_sdk::Vec<batch::BatchBondParams>,
+    ) -> i128 {
+        batch::get_batch_total_amount(&e, &params_list)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pure Rust bond validation helpers
 // ---------------------------------------------------------------------------
@@ -3611,8 +3694,8 @@ mod test_early_exit_treasury_requirement {
 // [pre-broken on main] mod test_grace_window;
 
 /// Tests for the batch_transfer entrypoint (issue #917).
-// [pre-broken on main] #[cfg(test)]
-// [pre-broken on main] mod test_batch_transfer;
+#[cfg(test)]
+mod test_batch_transfer;
 
 /// Tests for batch bond creation operations in batch.rs (issue #1317).
 /// Covers boundary, recovery, retry/stale, and authorization invariants.

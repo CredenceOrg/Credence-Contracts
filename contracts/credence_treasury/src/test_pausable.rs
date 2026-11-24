@@ -106,9 +106,7 @@ fn sanity_check_pause_state() {
     assert!(client.try_set_token(&admin, &new_token).is_err());
     assert!(client.try_set_min_liquidity(&admin, &100_i128).is_err());
     assert!(client.try_set_proposal_ttl(&admin, &1000_u64).is_err());
-    assert!(client
-        .try_rescue_native(&admin, &admin, &100_i128)
-        .is_err());
+    assert!(client.try_rescue_native(&admin, &admin, &100_i128).is_err());
 
     // ── Pause-system entrypoints remain accessible while paused ──
     let s1 = Address::generate(&e);

@@ -1,15 +1,17 @@
-name: Contracts Tests
-'on':
+# contracts-tests.yml — superseded by contracts-ci.yml.
+#
+# All test jobs have moved to the `test` matrix job in contracts-ci.yml.
+# This file is a no-op placeholder. The old echo stubs have been removed.
+name: Contracts Tests (placeholder)
+on:
   push:
-    branches:
-    - main
-    - master
-  pull_request: null
-  workflow_dispatch: null
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
 jobs:
-  test:
-    name: Workspace Tests
+  placeholder:
+    name: Tests placeholder (see contracts-ci.yml)
     runs-on: ubuntu-latest
     steps:
-    - name: "Workspace Tests (paused \u2014 CI stabilization in progress)"
-      run: echo 'Workspace Tests check intentionally stubbed while main-branch CI is being stabilized.'
+      - name: Nothing to do
+        run: echo "Real test gate is in contracts-ci.yml"

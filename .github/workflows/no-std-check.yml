@@ -1,37 +1,35 @@
-name: no_std Build Check
-'on':
+# no-std-check.yml — superseded by contracts-ci.yml (wasm job).
+#
+# The no_std / wasm32v1-none build check is now the `wasm` job in
+# contracts-ci.yml. This file is a no-op placeholder. The old echo stubs
+# have been removed.
+name: no_std Build Check (placeholder)
+on:
   push:
-    branches:
-    - main
-    - master
-    - develop
-    - ci/**
+    branches: [main, master, develop]
     paths:
-    - Cargo.toml
-    - Cargo.lock
-    - rust-toolchain.toml
-    - contracts/**
-    - crates/**
-    - scripts/**
-    - .github/workflows/no-std-check.yml
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - contracts/**
+      - crates/**
+      - scripts/**
+      - .github/workflows/no-std-check.yml
   pull_request:
-    branches:
-    - main
-    - master
-    - develop
+    branches: [main, master, develop]
     paths:
-    - Cargo.toml
-    - Cargo.lock
-    - rust-toolchain.toml
-    - contracts/**
-    - crates/**
-    - scripts/**
-    - .github/workflows/no-std-check.yml
-  workflow_dispatch: null
+      - Cargo.toml
+      - Cargo.lock
+      - rust-toolchain.toml
+      - contracts/**
+      - crates/**
+      - scripts/**
+      - .github/workflows/no-std-check.yml
+  workflow_dispatch:
 jobs:
-  no-std-check:
-    name: no_std WASM Build
+  placeholder:
+    name: no_std placeholder (see contracts-ci.yml wasm job)
     runs-on: ubuntu-latest
     steps:
-    - name: "no_std WASM Build (paused \u2014 CI stabilization in progress)"
-      run: echo 'no_std WASM Build check intentionally stubbed while main-branch CI is being stabilized.'
+      - name: Nothing to do
+        run: echo "Real no_std/wasm gate is the wasm job in contracts-ci.yml"

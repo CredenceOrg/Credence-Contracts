@@ -101,7 +101,7 @@ pub fn get_slash_record(e: &Env, identity: &Address, index: u32) -> SlashRecord 
         .storage()
         .persistent()
         .get(&key)
-        .unwrap_or_else(|| panic!("slash record not found"));
+        .unwrap_or_else(|| e.panic_with_error(credence_errors::ContractError::SlashRecordNotFound));
     e.storage().persistent().extend_ttl(
         &key,
         crate::PERSISTENT_TTL_MAX / 2,
@@ -199,7 +199,7 @@ pub mod testutils {
         e.storage()
             .persistent()
             .get(&key)
-            .unwrap_or_else(|| panic!("slash record not found"))
+            .unwrap_or_else(|| e.panic_with_error(credence_errors::ContractError::SlashRecordNotFound))
     }
 
     /// Sum all slash amounts from history. O(n) — use only in tests.
@@ -263,12 +263,18 @@ mod boundary_recovery_tests {
             let result_0 = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 get_slash_record(&e, &identity, 0);
             }));
-            assert!(result_0.is_err(), "reading index 0 on empty history must panic");
+            assert!(
+                result_0.is_err(),
+                "reading index 0 on empty history must panic"
+            );
 
             let result_max = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 get_slash_record(&e, &identity, u32::MAX);
             }));
-            assert!(result_max.is_err(), "reading index u32::MAX on empty history must panic");
+            assert!(
+                result_max.is_err(),
+                "reading index u32::MAX on empty history must panic"
+            );
         });
     }
 
@@ -532,7 +538,13 @@ mod boundary_recovery_tests {
             let reason = Symbol::new(&e, "admin_slash");
             let total_records = 23;
             for i in 0..total_records {
-                append_slash_history(&e, &identity, (i as i128) + 1, reason.clone(), (i as i128) + 1);
+                append_slash_history(
+                    &e,
+                    &identity,
+                    (i as i128) + 1,
+                    reason.clone(),
+                    (i as i128) + 1,
+                );
             }
 
             let page_size = 5;
@@ -661,9 +673,14 @@ mod boundary_recovery_tests {
             assert_eq!(all.len(), 2);
             assert_eq!(all.get(0).unwrap(), get_slash_record(&e, &identity, 0));
             assert_eq!(all.get(1).unwrap(), get_slash_record(&e, &identity, 1));
-            assert_eq!(testutils::get_slash_record(&e, &identity, 1), get_slash_record(&e, &identity, 1));
-            assert_eq!(testutils::get_total_slashed_from_history(&e, &identity), 1000);
+            assert_eq!(
+                testutils::get_slash_record(&e, &identity, 1),
+                get_slash_record(&e, &identity, 1)
+            );
+            assert_eq!(
+                testutils::get_total_slashed_from_history(&e, &identity),
+                1000
+            );
         });
     }
 }
-
