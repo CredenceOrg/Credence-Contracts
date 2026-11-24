@@ -508,6 +508,23 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     BytesTooLarge = 239,
 
+    /// A token amount was negative where a non-negative amount is required.
+    /// Replaces: panic!("amount must be non-negative")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    NegativeAmount = 240,
+
+    /// The token allowance is smaller than the requested transfer amount.
+    /// Replaces: panic!("{}", safe_token::errors::INSUFFICIENT_ALLOWANCE)
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    InsufficientTokenAllowance = 241,
+
+    /// The configured Stellar network label is not supported.
+    /// Replaces: panic!("unsupported stellar network")
+    /// Contracts: bond
+    /// Wire-stable: do not renumber this error code.
+    UnsupportedStellarNetwork = 242,
     /// A claim has already been processed and cannot be paid again.
     /// Contracts: bond
     /// Wire-stable: do not renumber this error code.
@@ -833,6 +850,13 @@ pub enum ContractError {
     /// Wire-stable: do not renumber this error code.
     InvalidPercentSplit = 703,
 
+    /// Compound period count exceeds the documented maximum.
+    /// Raised by `Rate::try_compound` before any multiplication so an
+    /// attacker cannot burn the instruction budget with `u32::MAX` periods.
+    /// Contracts: math
+    /// Wire-stable: do not renumber this error code.
+    InvalidPeriodCount = 704,
+
     // --- Escrow (800-899) ---
     /// No escrow exists for the given id.
     /// Contracts: bounty-escrow
@@ -988,6 +1012,9 @@ impl ErrorExt for ContractError {
             | ContractError::InvalidCurrency
             | ContractError::SnapshotGenerationMismatch
             | ContractError::BytesTooLarge
+            | ContractError::NegativeAmount
+            | ContractError::InsufficientTokenAllowance
+            | ContractError::UnsupportedStellarNetwork => ErrorCategory::Bond,
             | ContractError::ClaimAlreadyProcessed
             | ContractError::ClaimExpired
             | ContractError::ClaimNotFound
@@ -1042,7 +1069,8 @@ impl ErrorExt for ContractError {
             ContractError::Overflow
             | ContractError::Underflow
             | ContractError::DivisionByZero
-            | ContractError::InvalidPercentSplit => ErrorCategory::Arithmetic,
+            | ContractError::InvalidPercentSplit
+            | ContractError::InvalidPeriodCount => ErrorCategory::Arithmetic,
 
             ContractError::EscrowNotFound
             | ContractError::EscrowNotReleasable
@@ -1194,6 +1222,12 @@ impl ErrorExt for ContractError {
             ContractError::BytesTooLarge => {
                 "User-supplied Bytes input exceeds the maximum accepted length"
             }
+            ContractError::NegativeAmount => "Token amount must be non-negative",
+            ContractError::InsufficientTokenAllowance => {
+                "Token allowance is smaller than the requested transfer amount"
+            }
+            ContractError::UnsupportedStellarNetwork => {
+                "The configured Stellar network label is not supported"
             ContractError::ClaimAlreadyProcessed => "Claim has already been processed",
             ContractError::ClaimExpired => "Claim has expired",
             ContractError::ClaimNotFound => "No pending claim exists for the given user and ID",
@@ -1299,6 +1333,9 @@ impl ErrorExt for ContractError {
             ContractError::DivisionByZero => "Division by a zero denominator",
             ContractError::InvalidPercentSplit => {
                 "Percentage splits do not sum to exactly 10,000 basis points"
+            }
+            ContractError::InvalidPeriodCount => {
+                "Compound period count exceeds the documented maximum"
             }
             ContractError::EscrowNotFound => "No escrow exists for the given id",
             ContractError::EscrowNotReleasable => "Escrow is already released or fully refunded and cannot be released",
@@ -1406,6 +1443,9 @@ impl ErrorExt for ContractError {
             | ContractError::BatchTooLarge         // reduce batch size
             | ContractError::EmptyBatch            // supply at least one item
             | ContractError::BytesTooLarge         // resubmit with shorter input
+            | ContractError::NegativeAmount        // supply a non-negative amount
+            | ContractError::InsufficientTokenAllowance // approve a sufficient allowance
+            | ContractError::UnsupportedStellarNetwork // use mainnet or testnet
             | ContractError::ClaimNotFound         // supply a claim ID pending for this user
             | ContractError::NoPendingClaims       // create a claim before processing
             | ContractError::NoValidClaimsToProcess // adjust the filter or pending claims
@@ -1481,6 +1521,7 @@ impl ErrorExt for ContractError {
 
 
             ContractError::InvalidPercentSplit => true, // caller can provide valid splits
+            ContractError::InvalidPeriodCount => true,  // caller can pass fewer periods
 
             // --- Escrow (800-899) ---
             ContractError::EscrowNotFound => true, // caller supplies a valid id

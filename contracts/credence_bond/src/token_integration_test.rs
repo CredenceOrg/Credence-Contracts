@@ -5,8 +5,10 @@
 
 use crate::safe_token;
 use crate::token_integration::*;
+use crate::test_helpers::expect_contract_error_panic;
+use credence_errors::ContractError;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, String};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 fn setup_env() -> (Env, Address) {
@@ -15,23 +17,91 @@ fn setup_env() -> (Env, Address) {
     (env, contract_address)
 }
 
-fn set_token(env: &Env, token: &Address) {
+fn store_token(env: &Env, token: &Address) {
     env.storage()
         .instance()
         .set(&crate::DataKey::BondToken, token);
 }
 
 #[test]
-#[should_panic(expected = "insufficient token allowance")]
-fn test_transfer_into_contract_fails_without_allowance() {
+fn test_transfer_into_contract_fails_with_typed_insufficient_allowance() {
     let (env, contract_address) = setup_env();
     let token_address = Address::generate(&env);
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
-        // No allowance set - should blow up with insufficient allowance
-        transfer_into_contract(&env, &owner, 5000);
+        store_token(&env, &token_address);
+        expect_contract_error_panic(ContractError::InsufficientTokenAllowance as u32, || {
+            transfer_into_contract(&env, &owner, 5000);
+        });
+    });
+}
+
+#[test]
+fn test_get_token_without_configuration_uses_not_initialized_error() {
+    let (env, contract_address) = setup_env();
+
+    env.as_contract(&contract_address, || {
+        expect_contract_error_panic(ContractError::NotInitialized as u32, || {
+            get_token(&env);
+        });
+    });
+}
+
+#[test]
+fn test_set_token_without_admin_uses_not_initialized_error() {
+    let (env, contract_address) = setup_env();
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        expect_contract_error_panic(ContractError::NotInitialized as u32, || {
+            set_token(&env, &admin, &token);
+        });
+    });
+}
+
+#[test]
+fn test_set_token_with_wrong_admin_uses_typed_error() {
+    let (env, contract_address) = setup_env();
+    env.mock_all_auths();
+    let configured_admin = Address::generate(&env);
+    let caller = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        env.storage()
+            .instance()
+            .set(&crate::DataKey::Admin, &configured_admin);
+        expect_contract_error_panic(ContractError::NotAdmin as u32, || {
+            set_token(&env, &caller, &token);
+        });
+    });
+}
+
+#[test]
+fn test_negative_token_amount_uses_typed_error() {
+    let (env, contract_address) = setup_env();
+    let recipient = Address::generate(&env);
+
+    env.as_contract(&contract_address, || {
+        expect_contract_error_panic(ContractError::NegativeAmount as u32, || {
+            transfer_from_contract(&env, &recipient, -1);
+        });
+    });
+}
+
+#[test]
+fn test_set_usdc_token_rejects_unsupported_network_with_typed_error() {
+    let (env, contract_address) = setup_env();
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+    let network = String::from_str(&env, "futurenet");
+
+    env.as_contract(&contract_address, || {
+        expect_contract_error_panic(ContractError::UnsupportedStellarNetwork as u32, || {
+            set_usdc_token(&env, &admin, &token, &network);
+        });
     });
 }
 
@@ -42,7 +112,7 @@ fn test_transfer_into_contract_no_silent_success_when_transfer_fails() {
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // No allowance, no real token - transfer should fail, not silently succeed
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -58,9 +128,9 @@ fn test_transfer_into_contract_no_silent_success_when_transfer_fails() {
                 .unwrap_or("")
         });
         assert!(
-            err_msg.contains("insufficient token allowance")
+            err_msg.contains("#241")
                 || err_msg.contains("transfer failed")
-                || err_msg.contains("token not configured"),
+                || err_msg.contains("#1"),
             "Expected transfer failure but got: {}",
             err_msg
         );
@@ -74,7 +144,7 @@ fn test_transfer_from_contract_no_silent_success_with_insufficient_balance() {
     let recipient = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // No real token, no balance - transfer should fail
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -92,7 +162,7 @@ fn test_top_up_with_negative_amount_fails_atomically() {
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // Negative amount should panic - no partial state possible
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -115,7 +185,7 @@ fn test_atomic_transfer_no_partial_state_on_failure() {
     let recipient = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         let mut state_updated = false;
 
@@ -168,7 +238,7 @@ fn test_require_allowance_fails_with_insufficient_approval() {
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // No allowance set - should fail
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -191,7 +261,7 @@ fn test_set_token_rejects_unauthorized_token() {
         // Random address not in accepted tokens set should be rejected
         let result = catch_unwind(AssertUnwindSafe(|| {
             let addr = Address::generate(&env);
-            set_token(&env, &addr);
+            store_token(&env, &addr);
         }));
         assert!(result.is_err());
     });
@@ -204,7 +274,7 @@ fn test_fee_on_transfer_detection_prevents_silent_success() {
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // Even if allowance existed, without real token contract the transfer fails
         // This ensures fee-on-transfer tokens are properly rejected
@@ -225,7 +295,7 @@ fn test_transfer_into_contract_balance_delta_prevents_fee_on_transfer() {
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // Without a real token client, the balance-delta check will catch
         // that actual_received (0) != amount (1000), preventing silent success.
@@ -244,7 +314,7 @@ fn test_transfer_from_contract_balance_delta_prevents_fee_on_transfer() {
     let recipient = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // Without a real token client, the balance-delta check will catch
         // that actual_sent (0) != amount (5000), preventing silent success.
@@ -263,7 +333,7 @@ fn test_safe_transfer_now_has_balance_delta_guard() {
     let recipient = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // safe_transfer now includes a balance-delta guard.
         // Without a real token, the transfer will fail (no balance change).
@@ -282,7 +352,7 @@ fn test_safe_transfer_from_now_has_balance_delta_guard() {
     let owner = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // safe_transfer_from now includes a balance-delta guard.
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -300,7 +370,7 @@ fn test_transfer_from_contract_with_source_emits_event() {
     let recipient = Address::generate(&env);
 
     env.as_contract(&contract_address, || {
-        set_token(&env, &token_address);
+        store_token(&env, &token_address);
 
         // With zero amount, no transfer happens but no event emitted either.
         // With positive amount and no real token, the call will panic.

@@ -256,6 +256,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("Underflow", ContractError::Underflow),           // 701
     ("DivisionByZero", ContractError::DivisionByZero), // 702
     ("InvalidPercentSplit", ContractError::InvalidPercentSplit), // 703
+    ("InvalidPeriodCount", ContractError::InvalidPeriodCount), // 704
     // --- Escrow (800-899) ---
     ("EscrowNotFound", ContractError::EscrowNotFound), // 800
     ("EscrowNotReleasable", ContractError::EscrowNotReleasable), // 801
