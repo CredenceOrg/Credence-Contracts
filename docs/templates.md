@@ -99,6 +99,47 @@ Return the current admin address through the `Governable` interface. Returns the
 4. Replace `DataKey`, `Record`, and entry points with your contract's logic.
 5. Keep the test harness structure — add tests for every new entry point.
 
+## Accrual helper template
+
+[`contracts/templates/accrual_helper_template.rs`](../contracts/templates/accrual_helper_template.rs)
+is a copyable pseudocode pattern for idempotently accruing interest to the
+current ledger timestamp. It outlines the timestamp check, checked interest
+math, debt and reserve updates, and the final timestamp write. The file is kept
+outside `src/`, so it is not compiled as part of the `templates` crate; its
+placeholder module declaration and commented code must be adapted before use.
+
+To adopt it:
+
+1. Copy the helper into your contract as `src/accrual.rs` and declare the module
+   from `src/lib.rs` (`mod accrual;` or `pub mod accrual;`, depending on your API).
+2. Remove the template's placeholder `pub module accrual_helper_template` line
+   and replace the pseudocode with your contract's storage access, error handling,
+   interest model, and checked-arithmetic helpers.
+3. Add the keys used by your implementation to your `DataKey` enum. The example
+   refers to `LastAccrualTimestamp` (`u64`), `InterestRatePerSecond` (`i128`),
+   `TotalDebt` (`i128`), and optionally `TotalReserves` (`i128`) when interest
+   fees are tracked. Choose appropriate defaults and initialization rules for
+   each key; these names are examples, not keys exported by the template crate.
+4. Call `ensure_accrued(&e)` at the start of each borrow or repay path that must
+   use fresh debt state, before reading or changing principal.
+
+## Accrual test templates
+
+[`contracts/templates/accrual_tests_template.rs`](../contracts/templates/accrual_tests_template.rs)
+contains skeleton tests for borrow-triggered accrual, repay-triggered accrual,
+and avoiding duplicate accrual in one operation. It deliberately leaves the
+fixture, client methods, storage readers, rate configuration, and expected math
+as comments because those details depend on the adopting contract.
+
+To adopt it, copy the relevant tests into `src/test_accrual.rs` and include that
+module under `#[cfg(test)]`, or place them in an integration test under `tests/`.
+Replace `YourLendingClient`, `setup`, and the commented operations with the real
+contract API, and calculate expectations with the same documented rounding and
+checked-arithmetic rules as production. The tests use the same example keys as
+the helper: `LastAccrualTimestamp`, `InterestRatePerSecond`, `TotalDebt`, and
+optionally `TotalReserves`. Add a test-only accrual counter only if needed for
+the no-double-accrual case; it is not a required production storage key.
+
 ## Build & test
 
 ```bash

@@ -128,6 +128,30 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    (
+        "ClaimAlreadyProcessed",
+        ContractError::ClaimAlreadyProcessed,
+    ), // 240
+    ("ClaimExpired", ContractError::ClaimExpired), // 241
+    ("ClaimNotFound", ContractError::ClaimNotFound), // 242
+    ("NoPendingClaims", ContractError::NoPendingClaims), // 243
+    (
+        "NoValidClaimsToProcess",
+        ContractError::NoValidClaimsToProcess,
+    ), // 244
+        "BondAmountBelowMinimum",
+        ContractError::BondAmountBelowMinimum,
+    ), // 240
+    (
+        "BondAmountExceedsMaximum",
+        ContractError::BondAmountExceedsMaximum,
+    ), // 241
+    (
+        "BondDurationTooShort",
+        ContractError::BondDurationTooShort,
+    ), // 242
+    ("BondDurationTooLong", ContractError::BondDurationTooLong), // 243
+    ("InvalidRecipient", ContractError::InvalidRecipient), // 244
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301
