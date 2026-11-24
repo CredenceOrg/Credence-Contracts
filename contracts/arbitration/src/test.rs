@@ -1,5 +1,6 @@
 use super::*;
 use soroban_sdk::testutils::{Address as _, Events as _, Ledger};
+use soroban_sdk::{Env, String, Symbol, TryFromVal};
 use soroban_sdk::{Env, String};
 
 fn advance(e: &Env, secs: u64) {
@@ -1253,23 +1254,32 @@ fn admin_cancel_after_votes_ok() {
 
     // Admin moderation override still works after votes.
     s.client.cancel_dispute(&s.admin, &id, &None);
+    let events = s.env.events().all();
+    let mut found_admin_role = false;
+    for event in events.iter() {
+        let topics = event.1;
+        if topics.len() != 2 {
+            continue;
+        }
+        let name = Symbol::try_from_val(&s.env, &topics.get(0).unwrap()).unwrap();
+        let event_dispute_id = u64::try_from_val(&s.env, &topics.get(1).unwrap()).unwrap();
+        if name != Symbol::new(&s.env, "dispute_cancelled") || event_dispute_id != id {
+            continue;
+        }
+
+        let (_, role, _): (Address, Symbol, Option<String>) =
+            TryFromVal::try_from_val(&s.env, &event.2).unwrap();
+        assert_eq!(role, Symbol::new(&s.env, "admin"));
+        found_admin_role = true;
+    }
+    assert!(
+        found_admin_role,
+        "admin cancellation event should be published"
+    );
     assert_eq!(
         s.client.get_dispute(&id).status,
         status::DisputeStatus::Cancelled
     );
-
-    // The cancellation event reports the admin role.
-    let events = s.env.events().all();
-    let mut found_admin_role = false;
-    for ev in events.iter() {
-        let (_, topics, data) = ev;
-        let _ = topics;
-        let _ = data;
-    }
-    // Event role assertion is covered by the contract's event payload; we
-    // verify the state transition above and that the admin path succeeded.
-    found_admin_role = true;
-    assert!(found_admin_role);
 }
 
 #[test]
@@ -1286,4 +1296,79 @@ fn creator_cannot_vote_own_dispute() {
     // No vote marker written and tally unchanged.
     assert!(!s.client.has_voted(&id, &s.creator));
     assert_eq!(s.client.get_tally(&id, &1), 0i128);
+}
+
+#[test]
+fn test_ttl_extension() {
+    let e = Env::default();
+    e.mock_all_auths();
+
+    let admin = Address::generate(&e);
+    let arb = Address::generate(&e);
+    let creator = Address::generate(&e);
+
+    let contract_id = e.register(CredenceArbitration, ());
+    let client = CredenceArbitrationClient::new(&e, &contract_id);
+
+    client.initialize(&admin);
+    client.register_arbitrator(&arb, &10);
+
+    // Set max_entry_ttl to a known value for testing
+    e.ledger().set(soroban_sdk::testutils::LedgerInfo {
+        timestamp: 0,
+        protocol_version: 22,
+        sequence_number: 1,
+        network_id: [0; 32],
+        base_reserve: 10,
+        min_temp_entry_ttl: 16,
+        min_persistent_entry_ttl: 16,
+        max_entry_ttl: 31_536_000,
+    });
+
+    let description = String::from_str(&e, "TTL Test");
+    let dispute_id = client.create_dispute(&creator, &description, &3600);
+
+    // TTL should be extended after create_dispute
+    let dispute_key = DataKey::Dispute(dispute_id);
+    let ttl = e
+        .storage()
+        .instance()
+        .get_ttl(&dispute_key)
+        .unwrap();
+    assert!(ttl.live_until >= 15_768_000); // STORAGE_TTL_EXTEND_TO / 2
+
+    // TTL should be extended after get_dispute
+    client.get_dispute(&dispute_id);
+    let ttl_after_get = e
+        .storage()
+        .instance()
+        .get_ttl(&dispute_key)
+        .unwrap();
+    assert!(ttl_after_get.live_until >= 15_768_000);
+
+    // Vote and resolve
+    client.vote(&arb, &dispute_id, &1);
+    advance(&e, 3601);
+    client.resolve_dispute(&dispute_id);
+
+    // TTL should be extended after resolve_dispute
+    let ttl_after_resolve = e
+        .storage()
+        .instance()
+        .get_ttl(&dispute_key)
+        .unwrap();
+    assert!(ttl_after_resolve.live_until >= 15_768_000);
+
+    // Test cancel_dispute TTL extension
+    let description2 = String::from_str(&e, "Cancel TTL Test");
+    let dispute_id2 = client.create_dispute(&creator, &description2, &3600);
+    client.cancel_dispute(&creator, &dispute_id2, &Some(String::from_str(&e, "Test")));
+
+    let dispute_key2 = DataKey::Dispute(dispute_id2);
+    let ttl_after_cancel = e
+        .storage()
+        .instance()
+        .get_ttl(&dispute_key2)
+        .unwrap();
+    assert!(ttl_after_cancel.live_until >= 15_768_000);
 }

@@ -95,8 +95,9 @@ These events are intended to make the dispute lifecycle auditable and easy to co
 | QuorumNotMet       | 13   | Quorum requirements were not met         |
 | ReasonTooLong      | 14   | Cancellation reason exceeds the limit    |
 | PromiseNotKept     | 15   | The promise outcome did not match reality |
-| DisputeActive      | 16   | Dispute is still active and blocks this action |
-| OngoingDispute     | 17   | Creator already has an unresolved dispute |
+| CursorOutOfRange   | 16   | Pagination cursor is out of range         |
+| DisputeActive      | 17   | Dispute is still active and blocks this action |
+| OngoingDispute     | 18   | Creator already has an unresolved dispute |
 | CancelNotAllowed   | 19   | Creator cannot cancel after votes or after voting_end |
 | ConflictOfInterest | 20   | Voter is the creator of the dispute       |
 
@@ -117,6 +118,13 @@ Removes an arbitrator's voting rights. Requires admin authorization.
 ### `create_dispute(creator: Address, description: String, duration: u64) -> Result<u64, ArbitrationError>`
 
 Creates a new dispute. Requires creator authorization. Returns the dispute ID. Status starts as `Voting`.
+
+When a dispute is created, the contract records a frozen per-dispute snapshot of all currently registered arbitrators and their weights under `DataKey::DisputeWeightSnapshot(dispute_id)` in persistent storage. Subsequent calls to `register_arbitrator` or `unregister_arbitrator` never alter the effective voting weights, tallies, or quorum calculations of already-open disputes.
+
+**Gas and Storage Considerations**:
+- `create_dispute` iterates over `ArbitratorRegistry` once to build the snapshot (`O(N)` reads where `N` is the number of registered arbitrators) and writes a single `Map<Address, i128>` entry to persistent storage.
+- Storing snapshots in persistent storage (rather than instance storage) keeps instance storage bounded across disputes, and `archive_dispute` removes the snapshot entry once a dispute is archived.
+- **Legacy Disputes (Migration Safety)**: Disputes created before weight snapshotting was introduced have no `DisputeWeightSnapshot` entry; `vote` detects the missing snapshot and falls back to the live `Arbitrator(voter)` registry entry so in-flight legacy disputes remain resolvable.
 
 ### `cancel_dispute(caller: Address, dispute_id: u64) -> Result<(), ArbitrationError>`
 

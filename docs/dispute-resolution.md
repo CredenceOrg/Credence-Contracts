@@ -1,23 +1,21 @@
-# Arbitration: Dispute Resolution
+# Dispute Resolution
 
-This document describes the dispute resolution lifecycle and quorum configuration for the `credence_arbitration` contract.
+This document describes the dispute lifecycle and emergency pause controls for the `dispute_resolution` contract.
 
 ## Dispute Lifecycle
 
 ```
-Open → Voting → Resolving → Resolved
-  ↘        ↘         ↘
-  Cancelled  Cancelled  Tied
+Open → Resolved → Closed
+  └─────────────→ Closed
 ```
 
 Valid state transitions:
 
-| From     | To       | Trigger           | Authorisation              |
-| -------- | -------- | ----------------- | -------------------------- |
-| Open     | Resolved | `resolve_dispute` | resolver only              |
-| Resolved | Closed   | `close`           | resolver only              |
-| Open     | Closed   | `close`           | resolver only (if allowed) |
-| (any)    | (same)   | (no‑op)           | –                          |
+| From     | To       | Trigger   | Authorisation |
+| -------- | -------- | --------- | ------------- |
+| Open     | Resolved | `resolve` | resolver only |
+| Open     | Closed   | `close`   | resolver only |
+| Resolved | Closed   | `close`   | resolver only |
 
 ## Closure Invariants
 
@@ -28,100 +26,74 @@ Valid state transitions:
   Only the designated `resolver` (set at dispute creation) may call `close`. Any other account triggers `Unauthorized`.
 
 - **Deterministic terminal state**  
-  Once a dispute is `Closed`, **no further state changes are allowed**. All mutating functions (`resolve_dispute`, `close`, and any future extensions) will revert with `DisputeClosed` error, ensuring a permanent and unambiguous final state.
+  Once a dispute is `Closed`, no further lifecycle transitions are allowed. `resolve` and `close` return `AlreadyClosed` for invalid transitions.
 
 ## Functions
 
-| Function          | Parameters                            | Description                                     |
-| ----------------- | ------------------------------------- | ----------------------------------------------- |
-| `create_dispute`  | `resolver: Address` → `u64`           | Creates a new dispute with the given resolver.  |
-| `get_dispute`     | `id: u64` → `Dispute`                 | Returns the dispute details.                    |
-| `resolve_dispute` | `id: u64, outcome: String` → `Result` | Sets the outcome and transitions to `Resolved`. |
-| `close`           | `id: u64` → `Result`                  | Finalises the dispute (transition to `Closed`). |
+| Function | Parameters | Description |
+| -------- | ---------- | ----------- |
+| `initialize` | `admin: Address` | Initializes the pause administrator and state; callable once. |
+| `create_dispute` | `creator, resolver: Address` → `u64` | Creates an open dispute; the creator authorizes the call. |
+| `get_dispute` | `id: u64` → `Result<Dispute, DisputeError>` | Returns the dispute details. |
+| `resolve` | `caller: Address, id: u64` → `Result<(), DisputeError>` | Marks an open dispute as resolved. |
+| `close` | `caller: Address, id: u64` → `Result<(), DisputeError>` | Closes an open or resolved dispute. |
+| `pause` / `unpause` | `caller: Address` → `Option<u64>` | Pauses immediately as admin at threshold zero, or returns a proposal ID. |
+| `is_paused` | — → `bool` | Returns whether lifecycle writes are paused. |
+| `set_pause_signer` | `admin, signer: Address, enabled: bool` | Adds or removes an authorized pause signer. |
+| `set_pause_threshold` | `admin, threshold: u32` | Sets the signer approval threshold. |
+| `approve_pause_proposal` | `signer, proposal_id: u64` | Adds a signer approval to a pause proposal. |
+| `execute_pause_proposal` | `proposal_id: u64` | Executes a proposal once its approval threshold is met. |
 
 ## Errors
 
-| Error             | Code | Description                                |
-| ----------------- | ---- | ------------------------------------------ |
-| `DisputeNotFound` | 1    | The given dispute ID does not exist.       |
-| `AlreadyClosed`   | 2    | Attempt to close a dispute already closed. |
-| `Unauthorized`    | 3    | Caller is not the authorised resolver.     |
-| `DisputeClosed`   | 4    | Attempt to modify a closed dispute.        |
+| Error | Code | Description |
+| ----- | ---- | ----------- |
+| `DisputeNotFound` | 1 | The given dispute ID does not exist. |
+| `AlreadyClosed` | 2 | Invalid transition from a closed or resolved state. |
+| `Unauthorized` | 3 | Caller is not the authorized resolver. |
+| `Paused` | 4 | State-changing dispute operation rejected while paused. |
+
+Pause administration errors use the shared `credence_errors::ContractError`
+catalogue, including `AlreadyInitialized`, `NotInitialized`, `NotAdmin`,
+`NotSigner`, `ThresholdExceedsSigners`, `ProposalNotFound`, and
+`InsufficientApprovals`.
 
 ## Events
 
-| Event              | Topics             | Data              | Trigger           |
-| ------------------ | ------------------ | ----------------- | ----------------- |
-| `dispute_closed`   | `("closed", id)`   | `("by", Address)` | `close`           |
-| `dispute_resolved` | `("resolved", id)` | `("by", Address)` | `resolve_dispute` |
+| Event | Topics | Data | Trigger |
+| ----- | ------ | ---- | ------- |
+| `created` | `("created", id)` | `(creator, resolver)` | `create_dispute` |
+| `resolved` | `("resolved", id)` | `(creator, caller)` | `resolve` |
+| `closed` | `("closed", id)` | `(creator, caller)` | `close` |
+| `pause_proposed` | `("pause_proposed", id)` | action code | `pause` / `unpause` |
+| `pause_approved` | `("pause_approved", id)` | signer | `approve_pause_proposal` |
+| `paused` / `unpaused` | corresponding event topic | proposal ID and pause reason, where applicable | pause execution |
+| `pause_signer_set` / `pause_threshold_set` | corresponding event topic | updated configuration | admin configuration |
 
 ## Authorisation
 
 - The `resolver` address is immutable and set at creation.
-- Only the resolver can call `resolve_dispute` and `close`.
-- No other roles (e.g., admin) exist in this contract.
+- Only the resolver can call `resolve` and `close`.
+- `initialize(admin)` sets the administrator for pause controls.
+- The administrator manages pause signers and the approval threshold.
+- When the threshold is zero, only the admin can pause or unpause directly.
+- When the threshold is non-zero, registered signers propose and approve pause or unpause.
+
+## Emergency Pause
+
+The pause guard rejects `create_dispute`, `resolve`, and `close` with
+`DisputeError::Paused`. Read operations, including `get_dispute` and
+`is_paused`, remain available. Pause proposals can still be approved and
+executed while paused so the contract can be unpaused.
 
 ## Security & Determinism
 
-- The `Closed` state is final – the contract guarantees that once a dispute is closed, its outcome cannot be altered, ensuring determinism for off‑chain consumers (e.g., slashing, payouts).
-- All checks are performed upfront; no re‑entrancy or storage corruption risks.
-
-## Tied vs. Resolved
-
-When `resolve_dispute` is called after the voting period ends:
-
-- **Clear Winner**: Highest-weight outcome is unique → transitions to `Resolved` with `outcome = &lt;winning_outcome&gt;`
-- **Tie**: Two or more outcomes have equal highest weight → transitions to `Tied` with `outcome = 0`
-
-The `Tied` state makes tie ambiguity explicit. Outcome 0 is reserved (rejected by `vote` as `InvalidOutcome`), so a dispute in the `Tied` state with `outcome = 0` cannot be confused with a valid ruling. Consumers (e.g., slashing/settlement logic) must handle `Tied` separately from `Resolved`.
-
-## Quorum Gate
-
-The admin may set two quorum parameters via `set_quorum`:
-
-- **`min_total_weight`** (`i128`) — minimum sum of vote weights required
-- **`min_voters`** (`u32`) — minimum number of distinct voters required
-
-Both default to `0`, preserving legacy behaviour (no quorum gate).
-
-### Resolution flow with quorum
-
-1. Voting period ends
-2. Quorum check (before the Resolving transition):
-   - Sum all vote weights across all outcomes
-   - Count distinct voters from `VoterCounter`
-   - If either threshold is unmet → emit `quorum_not_met` event, return `QuorumNotMet`
-   - Dispute **stays in Voting**; caller may retry after more votes are cast
-3. Transition to Resolving
-4. Tally votes → determine winner
-5. Transition to Resolved
-
-### Error
-
-`ArbitrationError::QuorumNotMet` (13) — returned when quorum thresholds are not satisfied.
-
-### Events
-
-| Event            | Topics                           | Data                                                        | Trigger                               |
-| ---------------- | -------------------------------- | ----------------------------------------------------------- | ------------------------------------- |
-| `quorum_set`     | `("quorum_set",)`                | `(min_total_weight, min_voters)`                            | `set_quorum`                          |
-| `quorum_not_met` | `("quorum_not_met", dispute_id)` | `(total_weight, min_total_weight, voter_count, min_voters)` | `resolve_dispute` when quorum not met |
-
-## Admin Functions
-
-- `set_quorum(admin, min_total_weight, min_voters)` — requires admin auth
-- `get_quorum()` — returns `(min_total_weight, min_voters)`
-
-## Edge Cases
-
-- **Weight quorum met, voter quorum not met** → `QuorumNotMet`
-- **Voter quorum met, weight quorum not met** → `QuorumNotMet`
-- **Both met** → resolution proceeds
-- **Default (0, 0)** → legacy behaviour, no quorum gate
-- **Single voter under `min_voters`** → `QuorumNotMet`
+- `Closed` is terminal; paused write attempts do not change dispute records.
+- `get_dispute` and `is_paused` remain available during an emergency pause.
 
 ## Tests
 
+Pause behavior is covered in `contracts/dispute_resolution/tests/test_pausable.rs`.
 Quorum tests are in:
 
 - `contracts/arbitration/src/test.rs` — basic config + single-voter edge case

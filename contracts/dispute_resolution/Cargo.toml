@@ -11,6 +11,7 @@ crate-type = ["cdylib", "rlib"]
 doctest = false
 
 [dependencies]
+credence_errors = { path = "../credence_errors" }
 soroban-sdk = { version = "22.0", default-features = false }
 # Shared cross-contract client and mirrored arbitration types. They live in
 # `interfaces` (not in `credence_arbitration`) so this contract can read an

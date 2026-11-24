@@ -38,7 +38,13 @@ pub mod status;
 use status::ArbitrationError as Error;
 use status::{require_transition, ArbitrationError, DisputeStatus};
 
-use interfaces::governable::Governable;
+const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
+
+fn bump_instance_ttl(e: &Env) {
+    e.storage()
+        .instance()
+        .extend_ttl(STORAGE_TTL_EXTEND_TO / 2, STORAGE_TTL_EXTEND_TO);
+}
 
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -80,6 +86,7 @@ pub enum DataKey {
     ActiveDispute(Address),
     CreatorDispute(Address, u32),
     CreatorDisputeCount(Address),
+    DisputeWeightSnapshot(u64),
 }
 
 const STORAGE_TTL_EXTEND_TO: u32 = 31_536_000;
@@ -128,6 +135,73 @@ fn clear_active_dispute(e: &Env, creator: &Address) {
     e.storage()
         .instance()
         .remove(&DataKey::ActiveDispute(creator.clone()));
+}
+
+/// Capture a frozen snapshot of all currently registered arbitrators and their
+/// voting weights for `dispute_id` in persistent storage.
+///
+/// Storing the snapshot in persistent storage keeps instance storage bounded
+/// across disputes. Gas cost scales linearly (`O(N)`) with the number of
+/// registered arbitrators in `ArbitratorRegistry`.
+fn snapshot_arbitrator_weights(e: &Env, dispute_id: u64) {
+    let registry: Vec<Address> = e
+        .storage()
+        .instance()
+        .get(&DataKey::ArbitratorRegistry)
+        .unwrap_or_else(|| Vec::new(e));
+
+    let mut snapshot: Map<Address, i128> = Map::new(e);
+    for addr in registry.iter() {
+        if let Some(weight) = e
+            .storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Arbitrator(addr.clone()))
+        {
+            snapshot.set(addr, weight);
+        }
+    }
+
+    let key = DataKey::DisputeWeightSnapshot(dispute_id);
+    e.storage().persistent().set(&key, &snapshot);
+    e.storage().persistent().extend_ttl(
+        &key,
+        PERSISTENT_TTL_THRESHOLD,
+        PERSISTENT_TTL_EXTEND_TO,
+    );
+}
+
+/// Resolve the effective voting weight of `voter` for `dispute_id`.
+///
+/// - If a frozen weight snapshot exists for `dispute_id`, only arbitrators
+///   present in that snapshot may vote and their snapshotted weight is used.
+/// - If no snapshot exists (legacy disputes created before snapshotting was
+///   introduced), falls back to the live arbitrator registry for
+///   migration-safe backwards compatibility.
+fn get_effective_voter_weight(
+    e: &Env,
+    dispute_id: u64,
+    voter: &Address,
+) -> Result<i128, ArbitrationError> {
+    let snapshot_key = DataKey::DisputeWeightSnapshot(dispute_id);
+    if let Some(snapshot) = e
+        .storage()
+        .persistent()
+        .get::<DataKey, Map<Address, i128>>(&snapshot_key)
+    {
+        e.storage().persistent().extend_ttl(
+            &snapshot_key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+        snapshot
+            .get(voter.clone())
+            .ok_or(ArbitrationError::NotArbitrator)
+    } else {
+        e.storage()
+            .instance()
+            .get::<DataKey, i128>(&DataKey::Arbitrator(voter.clone()))
+            .ok_or(ArbitrationError::NotArbitrator)
+    }
 }
 
 #[contract]
@@ -283,9 +357,11 @@ impl CredenceArbitration {
         };
 
         e.storage().instance().set(&DataKey::Dispute(id), &dispute);
+        bump_instance_ttl(&e);
         e.storage()
             .instance()
             .set(&DataKey::ActiveDispute(creator.clone()), &id);
+        snapshot_arbitrator_weights(&e, id);
 
         let creator_dispute_count_key = DataKey::CreatorDisputeCount(creator.clone());
         let creator_dispute_count: u32 = e
@@ -361,6 +437,9 @@ impl CredenceArbitration {
             return Err(ArbitrationError::NotAuthorized);
         };
 
+        let from = dispute.status.clone();
+        require_transition(from, DisputeStatus::Cancelled)?;
+
         // Creator may only cancel before any votes are cast and within the voting window.
         // Admin retains a moderation override to cancel a Voting dispute at any time.
         if role == symbol_short!("creator") {
@@ -384,7 +463,7 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
-        clear_active_dispute(&e, &dispute.creator);
+        bump_instance_ttl(&e);
 
         e.events().publish(
             (Symbol::new(&e, "dispute_cancelled"), dispute_id),
@@ -413,11 +492,7 @@ impl CredenceArbitration {
             return Err(ArbitrationError::InvalidOutcome);
         }
 
-        let weight: i128 = e
-            .storage()
-            .instance()
-            .get(&DataKey::Arbitrator(voter.clone()))
-            .ok_or(ArbitrationError::NotArbitrator)?;
+        let weight: i128 = get_effective_voter_weight(&e, dispute_id, &voter)?;
 
         let dispute: Dispute = e
             .storage()
@@ -601,15 +676,14 @@ impl CredenceArbitration {
             is_tie = true;
         }
 
-        if is_tie {
-            // Resolving → Tied (explicit tie state)
-            require_transition(DisputeStatus::Resolving, DisputeStatus::Tied)?;
-            dispute.status = DisputeStatus::Tied;
-            dispute.outcome = 0; // Reserved sentinel for tie; cannot confuse with a valid outcome
-            e.storage()
-                .instance()
-                .set(&DataKey::Dispute(dispute_id), &dispute);
-            clear_active_dispute(&e, &dispute.creator);
+        // Resolving → Resolved
+        require_transition(DisputeStatus::Resolving, DisputeStatus::Resolved)?;
+        dispute.status = DisputeStatus::Resolved;
+        dispute.outcome = winning_outcome;
+        e.storage()
+            .instance()
+            .set(&DataKey::Dispute(dispute_id), &dispute);
+        bump_instance_ttl(&e);
 
             e.events().publish(
                 (Symbol::new(&e, "status_transition"), dispute_id),
@@ -694,11 +768,30 @@ impl CredenceArbitration {
 
     /// Get dispute details.
     pub fn get_dispute(e: Env, dispute_id: u64) -> Result<Dispute, ArbitrationError> {
+        let dispute: Dispute = e
+            .storage()
+            .instance()
+            .get(&DataKey::Dispute(dispute_id))
+            .ok_or(ArbitrationError::DisputeNotFound)?;
+        bump_instance_ttl(&e);
+        Ok(dispute)
+    }
+
+    /// Return the total number of disputes ever created on this contract.
+    ///
+    /// This is a read-only view of the internal dispute counter. It reflects
+    /// every dispute regardless of its current status (Open, Closed, Cancelled).
+    /// The return value monotonically increases and never decreases when disputes
+    /// are cancelled.
+    ///
+    /// Indexers and frontends can use this to know the range of valid dispute IDs
+    /// (`1..=get_dispute_count()`) without scanning storage.
+    pub fn get_dispute_count(e: Env) -> u64 {
         bump_instance_ttl(&e);
         e.storage()
             .instance()
-            .get(&DataKey::Dispute(dispute_id))
-            .ok_or(ArbitrationError::DisputeNotFound)
+            .get(&DataKey::DisputeCounter)
+            .unwrap_or(0)
     }
 
     /// Get current total weight for an outcome.
@@ -927,6 +1020,9 @@ impl CredenceArbitration {
         e.storage()
             .instance()
             .set(&DataKey::Dispute(dispute_id), &dispute);
+        e.storage()
+            .persistent()
+            .remove(&DataKey::DisputeWeightSnapshot(dispute_id));
         e.events().publish(
             (Symbol::new(&e, "dispute_archived"), dispute_id),
             from as u32,
@@ -1003,6 +1099,9 @@ impl CredenceArbitration {
             let voter_casted_key = DataKey::VoterCasted(dispute_id, addr);
             e.storage().instance().remove(&voter_casted_key);
         }
+
+        // Refresh the frozen arbitrator weight snapshot for the new voting period
+        snapshot_arbitrator_weights(&e, dispute_id);
         e.events().publish(
             (Symbol::new(&e, "dispute_reopened"), dispute_id),
             from as u32,
@@ -1079,3 +1178,6 @@ mod test_events_schema;
 
 #[cfg(test)]
 mod test_creator_disputes;
+
+#[cfg(test)]
+mod test_dispute_count;

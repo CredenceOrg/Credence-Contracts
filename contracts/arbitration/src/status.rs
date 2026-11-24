@@ -88,6 +88,9 @@ pub enum ArbitrationError {
     /// A creator already has an unresolved dispute tracked as active.
     /// This is raised when stale/duplicate active markers are still present.
     OngoingDispute = 18,
+    /// Creator may not cancel after votes have been cast or the voting window ended.
+    CancelNotAllowed = 19,
+    /// A dispute creator may not vote on their own dispute.
     /// The creator may not cancel once votes have been cast or after the voting
     /// window has closed.
     CancelNotAllowed = 19,
@@ -187,6 +190,30 @@ mod tests {
     use super::*;
     use std::vec;
     use std::vec::Vec;
+
+    #[test]
+    fn status_error_discriminants_are_wire_stable() {
+        assert_eq!(ArbitrationError::InvalidTransition as u32, 1);
+        assert_eq!(ArbitrationError::AlreadyInitialized as u32, 2);
+        assert_eq!(ArbitrationError::NotInitialized as u32, 3);
+        assert_eq!(ArbitrationError::NotAdmin as u32, 4);
+        assert_eq!(ArbitrationError::NotArbitrator as u32, 5);
+        assert_eq!(ArbitrationError::AlreadyVoted as u32, 6);
+        assert_eq!(ArbitrationError::VotingInactive as u32, 7);
+        assert_eq!(ArbitrationError::VotingNotEnded as u32, 8);
+        assert_eq!(ArbitrationError::DisputeNotFound as u32, 9);
+        assert_eq!(ArbitrationError::InvalidOutcome as u32, 10);
+        assert_eq!(ArbitrationError::WeightNotPositive as u32, 11);
+        assert_eq!(ArbitrationError::NotAuthorized as u32, 12);
+        assert_eq!(ArbitrationError::QuorumNotMet as u32, 13);
+        assert_eq!(ArbitrationError::ReasonTooLong as u32, 14);
+        assert_eq!(ArbitrationError::PromiseNotKept as u32, 15);
+        assert_eq!(ArbitrationError::CursorOutOfRange as u32, 16);
+        assert_eq!(ArbitrationError::DisputeActive as u32, 17);
+        assert_eq!(ArbitrationError::OngoingDispute as u32, 18);
+        assert_eq!(ArbitrationError::CancelNotAllowed as u32, 19);
+        assert_eq!(ArbitrationError::ConflictOfInterest as u32, 20);
+    }
 
     // ============================================================================
     // Tests for: require_transition
