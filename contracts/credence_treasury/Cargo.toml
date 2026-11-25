@@ -5,13 +5,12 @@ edition = "2021"
 description = "Credence treasury — protocol fees, slashed funds, multi-sig withdrawals"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 soroban-sdk = "22.0"
 credence_errors = { path = "../credence_errors" }
 ethnum = { version = "1.5.2", default-features = false }
-timelock = { path = "../timelock" }
 interfaces = { path = "../../crates/interfaces" }
 
 [dev-dependencies]

@@ -639,7 +639,7 @@ fn repeated_transfers_conserve_total_supply() {
             1 => (&b, &c),
             _ => (&c, &a),
         };
-        t.transfer(&leg.0, &leg.1, amt);
+        t.transfer(leg.0, leg.1, amt);
         assert_eq!(
             t.balance(&a) + t.balance(&b) + t.balance(&c),
             total,
