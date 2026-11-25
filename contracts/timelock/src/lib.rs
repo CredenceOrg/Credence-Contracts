@@ -5,7 +5,7 @@
 use credence_errors::ContractError;
 use soroban_sdk::xdr::ToXdr;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, BytesN, Env, Symbol,
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, BytesN, Env, Symbol,
     Val, Vec,
 };
 
@@ -69,9 +69,6 @@ fn bump_instance_ttl(e: &Env) {
 fn bump_persistent_ttl(e: &Env, key: impl core::borrow::Borrow<DataKey>) {
     e.storage().persistent().extend_ttl(
         key.borrow(),
-fn bump_persistent_ttl(e: &Env, key: &DataKey) {
-    e.storage().persistent().extend_ttl(
-        key,
         CALL_BOUND_OPERATION_TTL / 2,
         CALL_BOUND_OPERATION_TTL,
     );
@@ -198,7 +195,7 @@ fn compute_call_hash(
     preimage.append(&e.current_contract_address().to_xdr(e));
     preimage.append(&target.to_xdr(e));
     preimage.append(&func.to_xdr(e));
-    preimage.append(&args.clone().to_xdr(e));
+    preimage.append(&args.to_xdr(e));
     preimage.append(&salt.to_xdr(e));
     e.crypto().sha256(&preimage).to_bytes()
 }
@@ -344,62 +341,6 @@ impl TimelockContract {
             op_ids.push_back(Self::queue_call_internal(&e, &proposer, call));
         }
         op_ids
-
-        let op_id: u64 = e
-            .storage()
-            .instance()
-            .get(&DataKey::OperationCounter)
-            .unwrap_or(0);
-        let next_op_id = op_id
-            .checked_add(1)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        e.storage()
-            .instance()
-            .set(&DataKey::OperationCounter, &next_op_id);
-
-        let now = e.ledger().timestamp();
-        let eta = now
-            .checked_add(delay)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-        let expires_at = eta
-            .checked_add(GRACE_PERIOD)
-            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
-
-        let op = CallBoundOperation {
-            id: op_id,
-            op_hash: op_hash.clone(),
-            target: target.clone(),
-            func: func.clone(),
-            args: args.clone(),
-            salt: salt.clone(),
-            eta,
-            expires_at,
-            status: OperationStatus::Pending,
-        };
-
-        // Store in persistent storage with TTL extension
-        let op_key = DataKey::CallBoundOperation(op_id);
-        e.storage().persistent().set(&op_key, &op);
-        bump_persistent_ttl(&e, &op_key);
-
-        // Also store in instance storage for backward compatibility with get_operation
-        let op_wrapper = QueuedOperation {
-            id: op_id,
-            op_hash: op_hash.clone(),
-            eta,
-            expires_at,
-            status: OperationStatus::Pending,
-        };
-        e.storage()
-            .instance()
-            .set(&DataKey::Operation(op_id), &op_wrapper);
-
-        e.events().publish(
-            (Symbol::new(&e, "operation_queued"), op_id),
-            (proposer, op_hash, eta, expires_at),
-        );
-
-        op_id
     }
 
     /// Compute the hash for a call-bound operation.
@@ -424,8 +365,7 @@ impl TimelockContract {
         preimage.append(&salt.to_xdr(&e));
 
         // Compute SHA256 hash using e.crypto().sha256()
-        let hash: BytesN<32> = e.crypto().sha256(&preimage).into();
-        hash
+        e.crypto().sha256(&preimage).into()
     }
 
     /// Execute a queued operation after its ETA has passed and before its grace period expires.
@@ -538,7 +478,7 @@ impl TimelockContract {
 
         op.status = OperationStatus::Executed;
         e.storage().persistent().set(&key, &op);
-        bump_persistent_ttl(e, &key);
+        bump_persistent_ttl(e, key);
 
         // Also update the instance storage wrapper
         let op_wrapper = QueuedOperation {
@@ -595,7 +535,7 @@ impl TimelockContract {
 
             op.status = OperationStatus::Cancelled;
             e.storage().persistent().set(&call_bound_key, &op);
-            bump_persistent_ttl(&e, &call_bound_key);
+            bump_persistent_ttl(&e, call_bound_key);
 
             // Update instance storage wrapper
             let op_wrapper = QueuedOperation {
@@ -645,7 +585,6 @@ impl TimelockContract {
         let op: Option<QueuedOperation> = e.storage().persistent().get(&key);
         if op.is_some() {
             bump_persistent_ttl(&e, key);
-            bump_persistent_ttl(&e, key.clone());
             return op;
         }
         e.storage().instance().get(&key)
@@ -656,7 +595,7 @@ impl TimelockContract {
         let key = DataKey::CallBoundOperation(op_id);
         let op: Option<CallBoundOperation> = e.storage().persistent().get(&key);
         if let Some(op) = op {
-            bump_persistent_ttl(&e, &key);
+            bump_persistent_ttl(&e, key);
             Some(CallSpec {
                 target: op.target,
                 func: op.func,
@@ -712,12 +651,11 @@ impl TimelockContract {
                 .persistent()
                 .get::<DataKey, QueuedOperation>(&key)
             {
-                bump_persistent_ttl(&e, &key);
+                bump_persistent_ttl(&e, key);
                 page.push_back(op);
             }
         }
         page
-        }
     }
 
     fn require_proposer_admin(e: &Env, proposer: &Address) {
