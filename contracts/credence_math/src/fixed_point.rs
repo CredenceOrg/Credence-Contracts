@@ -102,6 +102,10 @@ pub fn sat_div_wad(a: i128, b: i128) -> i128 {
     sat_mul_div_i128(a, WAD, b, Rounding::Down)
 }
 #[cfg(test)]
+#[allow(
+    deprecated,
+    reason = "these tests pin the legacy WAD wrappers kept for credence_bond"
+)]
 mod tests {
     use super::*;
     use crate::Rounding;
@@ -454,10 +458,7 @@ mod tests {
             checked_div_wad_up(WAD, 0),
             Err(ContractError::DivisionByZero)
         );
-        assert_eq!(
-            checked_div_wad(i128::MAX, 1),
-            Err(ContractError::Overflow)
-        );
+        assert_eq!(checked_div_wad(i128::MAX, 1), Err(ContractError::Overflow));
     }
 
     #[test]
