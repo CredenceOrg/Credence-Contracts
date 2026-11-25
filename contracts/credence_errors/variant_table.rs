@@ -1,4 +1,4 @@
-// Single source of truth for exhaustive `ContractError` variant coverage in tests. // a
+// Single source of truth for exhaustive `ContractError` variant coverage in tests.
 //
 // Included from `tests/discriminant_uniqueness.rs`, `tests/variant_coverage_sync.rs`
 // and `src/test_errors.rs`. When adding a variant to `src/lib.rs`, add exactly one
@@ -28,6 +28,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "InsufficientSignatures",
         ContractError::InsufficientSignatures,
     ), // 108
+    ("ZeroBytes32", ContractError::ZeroBytes32),   // 109
     ("InvalidAdminAddress", ContractError::InvalidAdminAddress), // 110
     ("AdminUnchanged", ContractError::AdminUnchanged), // 111
     ("TimelockNotReady", ContractError::TimelockNotReady), // 112
@@ -51,14 +52,13 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "CrossContractCallerMismatch",
         ContractError::CrossContractCallerMismatch,
     ), // 123
+    ("MigrationInProgress", ContractError::MigrationInProgress), // 124
     (
         "MaxPauseSignersExceeded",
         ContractError::MaxPauseSignersExceeded,
-    ), // 124
-    ("MigrationInProgress", ContractError::MigrationInProgress), // 125
+    ), // 125
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
-    ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
-    ("RoleRequired", ContractError::RoleRequired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201
@@ -127,6 +127,16 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    ("InvalidFeeBps", ContractError::InvalidFeeBps), // 240
+    ("SlashRecordNotFound", ContractError::SlashRecordNotFound), // 241
+    (
+        "SameLedgerSlashBlocked",
+        ContractError::SameLedgerSlashBlocked,
+    ), // 242
+    (
+        "SameLedgerCooldownBlocked",
+        ContractError::SameLedgerCooldownBlocked,
+    ), // 243
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301

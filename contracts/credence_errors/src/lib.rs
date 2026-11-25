@@ -1,24 +1,5 @@
 #![no_std]
 #![deny(clippy::float_arithmetic)]
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
-// Must come AFTER `#![allow(clippy::restriction, ...)]` above: the
-// `clippy::disallowed_macros` lint belongs to the `restriction` group, so
-// a later allow would re-silence it. cargo build --release / WASM build
-// is the only mode where this deny fires (tests stay free to
-// use format!/write! for diagnostics).
 #![cfg_attr(not(test), deny(clippy::disallowed_macros))]
 
 use soroban_sdk::{contracterror, contracttype, panic_with_error, Address, Env};
@@ -1611,7 +1592,7 @@ pub fn verify_no_future_ledger(e: &Env, ledger_number: impl Into<u64>) {
 macro_rules! verify_no_future_ledger_sequence {
     ($env:expr, $seq:expr) => {
         if $seq > $env.ledger().sequence() {
-            panic_with_error!($env, $crate::ContractError::TimestampInFuture);
+            ::soroban_sdk::panic_with_error!($env, $crate::ContractError::TimestampInFuture);
         }
     };
 }
@@ -1621,7 +1602,7 @@ macro_rules! verify_no_future_ledger_sequence {
 #[macro_export]
 macro_rules! require_non_zero_bytes32 {
     ($env:expr, $val:expr) => {
-        if $val == &soroban_sdk::BytesN::<32>::from_array($env, &[0u8; 32]) {
+        if $val == &::soroban_sdk::BytesN::<32>::from_array($env, &[0u8; 32]) {
             return Err($crate::ContractError::ZeroBytes32);
         }
     };

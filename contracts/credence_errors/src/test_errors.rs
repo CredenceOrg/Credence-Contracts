@@ -20,10 +20,6 @@ mod tests {
 
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
-        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized(e, false);
-            Ok(())
-        }
         let e = soroban_sdk::Env::default();
         // Does not panic.
         crate::require_contract_uninitialized(&e, false);
@@ -183,6 +179,10 @@ mod tests {
         assert_eq!(ContractError::CooldownRequestNotFound as u32, 237);
         assert_eq!(ContractError::CooldownPeriodNotElapsed as u32, 238);
         assert_eq!(ContractError::BytesTooLarge as u32, 239);
+        assert_eq!(ContractError::InvalidFeeBps as u32, 240);
+        assert_eq!(ContractError::SlashRecordNotFound as u32, 241);
+        assert_eq!(ContractError::SameLedgerSlashBlocked as u32, 242);
+        assert_eq!(ContractError::SameLedgerCooldownBlocked as u32, 243);
     }
 
     #[test]
@@ -250,6 +250,17 @@ mod tests {
         assert_eq!(ContractError::Underflow as u32, 701);
         assert_eq!(ContractError::DivisionByZero as u32, 702);
         assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
+    }
+
+    #[test]
+    fn test_codes_escrow() {
+        assert_eq!(ContractError::EscrowNotFound as u32, 800);
+        assert_eq!(ContractError::EscrowNotReleasable as u32, 801);
+        assert_eq!(ContractError::EscrowNotRefundable as u32, 802);
+        assert_eq!(ContractError::EscrowNotExpired as u32, 803);
+        assert_eq!(ContractError::RefundExceedsRemaining as u32, 804);
+        assert_eq!(ContractError::InvalidEscrowExpiry as u32, 805);
+        assert_eq!(ContractError::NotEscrowParty as u32, 806);
     }
 
     // ---------------------------------------------------------------------------
@@ -354,6 +365,10 @@ mod tests {
             ContractError::CooldownRequestNotFound,
             ContractError::CooldownPeriodNotElapsed,
             ContractError::BytesTooLarge,
+            ContractError::InvalidFeeBps,
+            ContractError::SlashRecordNotFound,
+            ContractError::SameLedgerSlashBlocked,
+            ContractError::SameLedgerCooldownBlocked,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -471,6 +486,22 @@ mod tests {
             ContractError::InvalidPercentSplit.category(),
             ErrorCategory::Arithmetic
         );
+    }
+
+    #[test]
+    fn test_category_escrow() {
+        let escrow_variants = [
+            ContractError::EscrowNotFound,
+            ContractError::EscrowNotReleasable,
+            ContractError::EscrowNotRefundable,
+            ContractError::EscrowNotExpired,
+            ContractError::RefundExceedsRemaining,
+            ContractError::InvalidEscrowExpiry,
+            ContractError::NotEscrowParty,
+        ];
+        for v in &escrow_variants {
+            assert_eq!(v.category(), ErrorCategory::Escrow, "{v:?} should be Escrow");
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -1422,6 +1453,10 @@ mod tests {
             ContractError::BatchTooLarge => true,         // reduce batch size
             ContractError::EmptyBatch => true,            // supply at least one item
             ContractError::BytesTooLarge => true,         // resubmit with shorter input
+            ContractError::InvalidFeeBps => true,         // supply fee_bps within allowed bounds
+            ContractError::SlashRecordNotFound => true,   // query an existing slash record index
+            ContractError::SameLedgerSlashBlocked => true, // retry in a subsequent ledger
+            ContractError::SameLedgerCooldownBlocked => true, // retry in a subsequent ledger
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -1512,123 +1547,11 @@ mod tests {
         // documented expectation. The match in `expected_is_recoverable`
         // already forces compile-time exhaustiveness for the expectation
         // table.
-        // Canonical list of all 110 variants, one entry each, in numeric wire-code
-        // order matching `variant_table.rs`. No duplicates. Adding a new variant
-        // to `lib.rs` requires adding it here AND in `expected_is_recoverable`.
-        let cases: std::vec::Vec<ContractError> = std::vec![
-            ContractError::NotInitialized,
-            ContractError::AlreadyInitialized,
-            ContractError::NotAdmin,
-            ContractError::NotBondOwner,
-            ContractError::UnauthorizedAttester,
-            ContractError::NotOriginalAttester,
-            ContractError::NotSigner,
-            ContractError::UnauthorizedDepositor,
-            ContractError::ContractPaused,
-            ContractError::BorrowFrozen,
-            ContractError::InvalidPauseAction,
-            ContractError::InsufficientSignatures,
-            ContractError::AdminSuspended,
-            ContractError::NoPendingAdmin,
-            ContractError::InvalidAdminAddress,
-            ContractError::AdminUnchanged,
-            ContractError::TimelockNotReady,
-            ContractError::EmergencyDrainNotPermitted,
-            ContractError::RoleNotHeldAtLedger,
-            ContractError::ZeroBytes32,
-            ContractError::RoleRequired,
-            ContractError::LeaseSignerMismatch,
-            ContractError::BondNotFound,
-            ContractError::BondNotActive,
-            ContractError::InsufficientBalance,
-            ContractError::SlashExceedsBond,
-            ContractError::LockupNotExpired,
-            ContractError::NotRollingBond,
-            ContractError::WithdrawalAlreadyRequested,
-            ContractError::ReentrancyDetected,
-            ContractError::InvalidNonce,
-            ContractError::SignatureExpired,
-            ContractError::NegativeStake,
-            ContractError::EarlyExitConfigNotSet,
-            ContractError::InvalidPenaltyBps,
-            ContractError::LeverageExceeded,
-            ContractError::UnsupportedToken,
-            ContractError::UnsupportedDecimals,
-            ContractError::InvalidBondAmount,
-            ContractError::AmountExplicitlyZero,
-            ContractError::InvalidBondDuration,
-            ContractError::InvalidNoticePeriod,
-            ContractError::BondAlreadyExists,
-            ContractError::UnauthorizedToken,
-            ContractError::DuplicateIdempotencyKey,
-            ContractError::BatchTooLarge,
-            ContractError::EmptyBatch,
-            ContractError::StorageCapReached,
-            ContractError::TreasuryNotConfigured,
-            ContractError::InvariantViolation,
-            ContractError::DomainMismatch,
-            ContractError::OwnerMismatch,
-            ContractError::TargetMismatch,
-            ContractError::ContractIdMismatch,
-            ContractError::DuplicateAttestation,
-            ContractError::AttestationNotFound,
-            ContractError::AttestationAlreadyRevoked,
-            ContractError::InvalidAttestationWeight,
-            ContractError::AttestationWeightExceedsMax,
-            ContractError::IdentityAlreadyRegistered,
-            ContractError::BondContractAlreadyRegistered,
-            ContractError::IdentityNotRegistered,
-            ContractError::BondContractNotRegistered,
-            ContractError::AlreadyDeactivated,
-            ContractError::AlreadyActive,
-            ContractError::InvalidContractAddress,
-            ContractError::ContractCodeVerificationFailed,
-            ContractError::UnsupportedInterface,
-            ContractError::ExpiryInPast,
-            ContractError::DelegationNotFound,
-            ContractError::AlreadyRevoked,
-            ContractError::DelegationExpiryTooLong,
-            ContractError::UnknownScheme,
-            ContractError::VerifierAlreadyRegistered,
-            ContractError::VerifierNotRegistered,
-            ContractError::VerificationFailed,
-            ContractError::RevocationGraceExpired,
-            ContractError::DelegationNotExpired,
-            ContractError::DelegationInactive,
-            ContractError::PromiseNotKept,
-            ContractError::AmountMustBePositive,
-            ContractError::ThresholdExceedsSigners,
-            ContractError::InsufficientTreasuryBalance,
-            ContractError::ProposalNotFound,
-            ContractError::ProposalAlreadyExecuted,
-            ContractError::InsufficientApprovals,
-            ContractError::InvalidFlashLoanCallback,
-            ContractError::FlashLoanRepaymentFailed,
-            ContractError::ProposalExpired,
-            ContractError::SlippageExceeded,
-            ContractError::TreasuryBeneficiaryMismatch,
-            ContractError::CursorOutOfRange,
-            ContractError::InvalidCurrency,
-            ContractError::PayloadTooOld,
-            ContractError::PromiseNotKept,
-            ContractError::Overflow,
-            ContractError::Underflow,
-            ContractError::DivisionByZero,
-            ContractError::TimestampInFuture,
-            ContractError::BorrowFrozen,
-            ContractError::PayloadTooOld,
-            ContractError::InvalidCurrency,
-            ContractError::StaleEpoch,
-            ContractError::MigrationInProgress,
-            ContractError::OutsideBusinessHours,
-        ];
+        let cases = all_variants();
         assert_eq!(
             cases.len(),
-            105,
-            "Add the new variant to ALL THREE places: \
-             (1) lib.rs is_recoverable() match, \
-             (2) expected_is_recoverable() below, \
-             (3) this `cases` list."
+            ALL_VARIANTS.len(),
+            "all_variants() length must match ALL_VARIANTS.len()"
         );
         for e in &cases {
             assert_eq!(
@@ -1638,6 +1561,7 @@ mod tests {
                 e
             );
         }
+    }
     }
 
     /// Metadata guarantees: must not panic, must not allocate, must be
@@ -2145,6 +2069,26 @@ mod tests {
             Err(ContractError::CooldownPeriodNotElapsed)
         );
         assert!(mock_complete_cooldown(true, true).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_fee_bps_is_recoverable() {
+        assert!(ContractError::InvalidFeeBps.is_recoverable());
+    }
+
+    #[test]
+    fn test_slash_record_not_found_is_recoverable() {
+        assert!(ContractError::SlashRecordNotFound.is_recoverable());
+    }
+
+    #[test]
+    fn test_same_ledger_slash_blocked_is_recoverable() {
+        assert!(ContractError::SameLedgerSlashBlocked.is_recoverable());
+    }
+
+    #[test]
+    fn test_same_ledger_cooldown_blocked_is_recoverable() {
+        assert!(ContractError::SameLedgerCooldownBlocked.is_recoverable());
     }
 
     // ---------------------------------------------------------------------------
