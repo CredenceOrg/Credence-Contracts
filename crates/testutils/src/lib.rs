@@ -2,6 +2,7 @@
 extern crate alloc;
 
 pub mod addresses;
+pub mod cost_harness;
 pub mod vec;
 
 pub use addresses::{admin, attacker, user};

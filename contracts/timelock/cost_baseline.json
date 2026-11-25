@@ -1,0 +1,39 @@
+{
+  "schema": "credence_bond.cost_baseline.v1",
+  "tolerance_pct": 10.0,
+  "metric_help": "cpu_insns and mem_bytes are modelled host costs; read/write_entries and read/write_bytes are the ledger rw-unit footprint. See docs/gas-benchmark-notes.md.",
+  "entrypoints": {
+    "queue_operation": {
+      "cpu_insns": 190000,
+      "mem_bytes": 30000,
+      "read_entries": 2,
+      "write_entries": 2,
+      "read_bytes": 512,
+      "write_bytes": 768
+    },
+    "execute_operation": {
+      "cpu_insns": 230000,
+      "mem_bytes": 36000,
+      "read_entries": 3,
+      "write_entries": 2,
+      "read_bytes": 768,
+      "write_bytes": 896
+    },
+    "cancel_operation": {
+      "cpu_insns": 180000,
+      "mem_bytes": 28000,
+      "read_entries": 2,
+      "write_entries": 2,
+      "read_bytes": 512,
+      "write_bytes": 640
+    },
+    "get_operations_page": {
+      "cpu_insns": 210000,
+      "mem_bytes": 32000,
+      "read_entries": 6,
+      "write_entries": 0,
+      "read_bytes": 1536,
+      "write_bytes": 0
+    }
+  }
+}

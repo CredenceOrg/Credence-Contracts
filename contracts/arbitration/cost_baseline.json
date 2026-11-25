@@ -1,0 +1,55 @@
+{
+  "schema": "credence_bond.cost_baseline.v1",
+  "tolerance_pct": 10.0,
+  "metric_help": "cpu_insns and mem_bytes are modelled host costs; read/write_entries and read/write_bytes are the ledger rw-unit footprint. See docs/gas-benchmark-notes.md.",
+  "entrypoints": {
+    "register_arbitrator": {
+      "cpu_insns": 180000,
+      "mem_bytes": 28000,
+      "read_entries": 2,
+      "write_entries": 2,
+      "read_bytes": 512,
+      "write_bytes": 768
+    },
+    "create_dispute": {
+      "cpu_insns": 320000,
+      "mem_bytes": 48000,
+      "read_entries": 3,
+      "write_entries": 4,
+      "read_bytes": 1024,
+      "write_bytes": 1600
+    },
+    "vote": {
+      "cpu_insns": 260000,
+      "mem_bytes": 40000,
+      "read_entries": 3,
+      "write_entries": 2,
+      "read_bytes": 1024,
+      "write_bytes": 1200
+    },
+    "resolve_dispute": {
+      "cpu_insns": 280000,
+      "mem_bytes": 42000,
+      "read_entries": 3,
+      "write_entries": 2,
+      "read_bytes": 1024,
+      "write_bytes": 1200
+    },
+    "cancel_dispute": {
+      "cpu_insns": 220000,
+      "mem_bytes": 34000,
+      "read_entries": 2,
+      "write_entries": 2,
+      "read_bytes": 768,
+      "write_bytes": 1024
+    },
+    "get_arbitrators_page": {
+      "cpu_insns": 140000,
+      "mem_bytes": 22000,
+      "read_entries": 2,
+      "write_entries": 0,
+      "read_bytes": 768,
+      "write_bytes": 0
+    }
+  }
+}
