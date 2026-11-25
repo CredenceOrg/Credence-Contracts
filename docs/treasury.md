@@ -16,9 +16,9 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 
 ## Deposits
 
-- **receive_fee(from, amount, source)**
-  Credits the treasury. Caller must be the admin or an authorized depositor (e.g. bond contract).
-  `source` is either `ProtocolFee` or `SlashedFunds`.
+- **receive_fee(from, amount, source)**  
+  Credits the treasury. Caller must be the admin or an authorized depositor (e.g. bond contract).  
+  `source` is either `ProtocolFee` or `SlashedFunds`.  
   Emits `treasury_deposit`.
 
 - **add_depositor(depositor)** — Admin only. Allows the address to call `receive_fee`.
@@ -27,7 +27,6 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 ## Flash loans
 
 - **set_flash_loan_fee(fee_bps)** — Admin-authenticated (the stored admin address must sign). Sets the loan fee in basis points; `10,000` bps is 100%. Values above `10,000` revert with `InvalidFeeBps (#240)`. Defaults to `0` at initialization.
-  Emits `flash_loan_fee_updated` with `(old_fee_bps, fee_bps)`.
 
 - **get_flash_loan_fee()** — Current fee in basis points.
 
@@ -45,24 +44,24 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **remove_signer(signer)** — Admin only. Threshold is reduced if it exceeded the new signer count.
 - **set_threshold(threshold)** — Admin only. Threshold must be ≤ number of signers.
 
-- **propose_withdrawal(proposer, recipient, amount)**
-  Creates a withdrawal proposal. Only a signer can propose. Amount must be positive and ≤ treasury balance.
-  Sets `expires_at = proposed_at + ttl` (default TTL is 7 days).
+- **propose_withdrawal(proposer, recipient, amount)**  
+  Creates a withdrawal proposal. Only a signer can propose. Amount must be positive and ≤ treasury balance.  
+  Sets `expires_at = proposed_at + ttl` (default TTL is 7 days).  
   Emits `treasury_withdrawal_proposed`.
 
-- **approve_withdrawal(approver, proposal_id)**
-  Adds the signer’s approval. Double approval by the same signer is a no-op.
-  Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.
+- **approve_withdrawal(approver, proposal_id)**  
+  Adds the signer’s approval. Double approval by the same signer is a no-op.  
+  Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.  
   Emits `treasury_withdrawal_approved`.
 
-- **execute_withdrawal(proposal_id, min_amount_out)**
-  Callable by anyone once approval count ≥ threshold. Deducts from treasury and marks the proposal executed.
-  Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.
-
+- **execute_withdrawal(proposal_id, min_amount_out)**  
+  Callable by anyone once approval count ≥ threshold. Deducts from treasury and marks the proposal executed.  
+  Rejects with `ProposalExpired` + emits `treasury_proposal_expired` if `now >= expires_at`.  
+  
   **Withdrawal Guardrails:**
   - **Liquidity Floor**: Ensures remaining balance after withdrawal is ≥ `min_liquidity`. Reverts with "liquidity guard: withdrawal would breach minimum liquidity floor" if violated.
   - **Slippage Protection**: Requires proposal amount ≥ `min_amount_out`. Reverts with "slippage: received amount below minimum" if violated. Pass `0` to skip this check.
-
+  
   Emits `treasury_withdrawal_executed` with `(recipient, min_amount_out, actual_amount, treasury_debit)`.
 
 ## Queries
@@ -153,13 +152,13 @@ across random deposit/withdrawal sequences (50 proptest cases with up to 20 acti
 
 ## Emergency rescue
 
-- **rescue_native(admin, to, amount)**
-  Admin-only. Transfers *excess* tokens — those held by the contract beyond the internally accounted `TotalBalance` — to `to`.
+- **rescue_native(admin, to, amount)**  
+  Admin-only. Transfers *excess* tokens — those held by the contract beyond the internally accounted `TotalBalance` — to `to`.  
   This allows recovery of accidentally sent or airdropped tokens without touching user/protocol funds.
 
   **Excess-only bound**:
   ```
   excess = token_client.balance(contract) - TotalBalance
   ```
-  `amount` must satisfy `0 < amount ≤ excess`. Any attempt to rescue accounted funds reverts with `InsufficientTreasuryBalance (#602)`.
+  `amount` must satisfy `0 < amount ≤ excess`. Any attempt to rescue accounted funds reverts with `InsufficientTreasuryBalance (#602)`.  
   Emits `native_rescued` with `(to, amount, admin)` only after a successful transfer.
