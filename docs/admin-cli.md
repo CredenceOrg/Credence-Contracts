@@ -259,7 +259,7 @@ With `--submit` the CLI:
 }
 ```
 
-### Missing signer
+### Missing signer or contract
 
 If `--submit` is used without `--signer` (and `CREDENCE_SIGNER` is unset),
 the CLI exits with a non-zero code and prints:
@@ -267,6 +267,17 @@ the CLI exits with a non-zero code and prints:
 ```
 Error: --signer / CREDENCE_SIGNER is required with --submit
 ```
+
+If `--submit` is used without `--contract` (and `CREDENCE_CONTRACT` is unset),
+the CLI exits with a non-zero code rather than falling back to the dry-run
+zero-address placeholder:
+
+```
+Error: --contract / CREDENCE_CONTRACT is required with --submit
+```
+
+Signer secret keys are never echoed in stdout or stderr on either success or
+failure.
 
 ---
 
@@ -321,10 +332,10 @@ credence-admin \
 
 ## Testing
 
-Run the integration test suite (offline — no live network required):
+Run the full test suite (offline — no live network required):
 
 ```sh
-cargo test -p credence_admin_cli -- --nocapture
+cargo test -p credence_admin_cli --locked -- --nocapture
 ```
 
 Tests assert that:
@@ -335,7 +346,12 @@ Tests assert that:
   `Vec`, and `I128`).
 - Different subcommands produce different XDR (each encodes distinct args).
 - Invalid typed arguments are rejected before any network I/O.
-- `--submit` without `--signer` exits non-zero with a clear message.
+- `--submit` without `--signer` or `--contract`, or with an invalid signer key,
+  exits non-zero with a clear message before any RPC call.
+- The `--submit` path is exercised offline via an in-process mock `SorobanRpc`
+  covering sequence-number incrementing, transaction signing, account-lookup
+  errors, simulation errors, rejected submissions, and verifying that secret key
+  material never appears in output or errors.
 
 ---
 

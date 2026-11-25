@@ -3,14 +3,16 @@
 // `format!` for event topics or reverts, but an admin CLI printing JSON
 // status text is allowed and uses format!() for diagnostics.
 
+mod rpc;
+
 use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
+use rpc::{LiveRpc, SorobanRpc};
 use serde_json::json;
 use soroban_client::{
     account::{Account, AccountBehavior},
     transaction::TransactionBehavior,
     transaction_builder::{TransactionBuilder, TransactionBuilderBehavior},
-    Options, Server,
 };
 use std::str::FromStr;
 use stellar_baselib::{
@@ -217,13 +219,22 @@ enum Commands {
 // Entry point
 // ---------------------------------------------------------------------------
 
+fn resolve_contract_id(cli: &Cli) -> Result<&str> {
+    if let Some(contract) = cli.contract.as_deref() {
+        Ok(contract)
+    } else if cli.submit {
+        Err(anyhow!(
+            "--contract / CREDENCE_CONTRACT is required with --submit"
+        ))
+    } else {
+        eprintln!("warning: --contract not set; using zero-address placeholder");
+        Ok("CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4")
+    }
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    let contract_id = cli.contract.as_deref().unwrap_or_else(|| {
-        eprintln!("warning: --contract not set; using zero-address placeholder");
-        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4"
-    });
+    let contract_id = resolve_contract_id(&cli)?;
 
     match &cli.command {
         Commands::BondSetEarlyExitConfig {
@@ -482,6 +493,45 @@ fn signer_keypair(secret: &str) -> Result<Keypair> {
 /// Build an `InvokeHostFunction` transaction, then either print a dry-run
 /// JSON report or sign-and-submit it to the network.
 fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result<()> {
+    let output = if cli.submit {
+        if cli.contract.is_none() {
+            return Err(anyhow!(
+                "--contract / CREDENCE_CONTRACT is required with --submit"
+            ));
+        }
+        // Validate contract address and signer key before opening an RPC connection.
+        let _ = Contracts::new(contract_id)
+            .map_err(|e| anyhow!("invalid contract address {contract_id:?}: {e}"))?;
+        let secret = cli
+            .signer
+            .as_deref()
+            .ok_or_else(|| anyhow!("--signer / CREDENCE_SIGNER is required with --submit"))?;
+        let _ = signer_keypair(secret)?;
+
+        let rpc = LiveRpc::new(&cli.rpc_url)?;
+        run_with_rpc(cli, contract_id, function, args, Some(&rpc))?
+    } else {
+        run_with_rpc(cli, contract_id, function, args, None)?
+    };
+    println!("{output}");
+    Ok(())
+}
+
+/// Core transaction builder / runner with an injectable [`SorobanRpc`] client
+/// so `--submit` can be tested offline without network access.
+fn run_with_rpc(
+    cli: &Cli,
+    contract_id: &str,
+    function: &str,
+    args: Vec<ScVal>,
+    rpc: Option<&dyn SorobanRpc>,
+) -> Result<String> {
+    if cli.submit && cli.contract.is_none() {
+        return Err(anyhow!(
+            "--contract / CREDENCE_CONTRACT is required with --submit"
+        ));
+    }
+
     // Build the XDR operation via stellar-baselib's Contracts helper.
     let contract = Contracts::new(contract_id)
         .map_err(|e| anyhow!("invalid contract address {contract_id:?}: {e}"))?;
@@ -505,56 +555,42 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
         .unwrap_or_else(|| "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF".to_string());
 
     if cli.submit {
-        // --- Live path: fetch account, build, sign, submit ------------------
-        let runtime = tokio::runtime::Runtime::new()?;
-        runtime.block_on(async {
-            let server = Server::new(
-                &cli.rpc_url,
-                Options {
-                    allow_http: false,
-                    ..Default::default()
-                },
-            )
-            .map_err(|e| anyhow!("RPC connect error: {e:?}"))?;
+        // --- Live path: fetch account, build, prepare, sign, submit ---------
+        let rpc = rpc.ok_or_else(|| anyhow!("RPC client is required with --submit"))?;
 
-            let mut source_account: Account = server
-                .get_account(&source_pub)
-                .await
-                .map_err(|e| anyhow!("failed to load source account {source_pub}: {e:?}"))?;
+        let mut source_account = rpc.get_account(&source_pub)?;
 
-            let mut builder = TransactionBuilder::new(&mut source_account, &cli.network, None);
-            builder
-                .fee(1_000_000_u32)
-                .set_timeout(30)
-                .map_err(|e| anyhow!(e))?;
-            builder.add_operation(operation);
-            let tx = builder.build();
+        let mut builder = TransactionBuilder::new(&mut source_account, &cli.network, None);
+        builder
+            .fee(1_000_000_u32)
+            .set_timeout(30)
+            .map_err(|e| anyhow!(e))?;
+        builder.add_operation(operation);
+        let tx = builder.build();
 
-            // Prepare (simulate + assemble footprint + resource fee).
-            let tx = server
-                .prepare_transaction(&tx)
-                .await
-                .map_err(|e| anyhow!("simulation failed: {e:?}"))?;
+        // Prepare (simulate + assemble footprint + resource fee).
+        let tx = rpc.prepare_transaction(&tx)?;
 
-            // Sign.
-            let kp = keypair.unwrap();
-            let mut signed_tx = tx;
-            signed_tx.sign(&[kp]);
+        // Sign.
+        let kp = keypair.unwrap();
+        let mut signed_tx = tx;
+        signed_tx.sign(&[kp]);
 
-            // Submit.
-            let resp = server
-                .send_transaction(signed_tx)
-                .await
-                .map_err(|e| anyhow!("send_transaction failed: {e:?}"))?;
+        // Submit.
+        let resp = rpc.send_transaction(signed_tx)?;
+        if resp.status.eq_ignore_ascii_case("ERROR") {
+            return Err(anyhow!(
+                "transaction rejected by RPC (status: {}, hash: {})",
+                resp.status,
+                resp.hash
+            ));
+        }
 
-            #[allow(clippy::disallowed_macros)]
-            let out = json!({
-                "status": format!("{:?}", resp.status),
-                "hash": resp.hash,
-            });
-            println!("{}", serde_json::to_string_pretty(&out)?);
-            Ok(())
-        })
+        let out = json!({
+            "status": resp.status,
+            "hash": resp.hash,
+        });
+        Ok(serde_json::to_string_pretty(&out)?)
     } else {
         // --- Dry-run path: build with dummy sequence, emit XDR JSON ---------
         let mut dummy_account =
@@ -585,8 +621,7 @@ fn run(cli: &Cli, contract_id: &str, function: &str, args: Vec<ScVal>) -> Result
             "envelope_xdr": envelope_xdr,
             "tx_hash": tx_hash,
         });
-        println!("{}", serde_json::to_string_pretty(&out)?);
-        Ok(())
+        Ok(serde_json::to_string_pretty(&out)?)
     }
 }
 
@@ -1508,5 +1543,321 @@ mod tests {
         assert!(!cli.submit);
         assert!(cli.signer.is_none());
         let _ = build_early_exit_args(VALID_G, VALID_G, 100).expect("valid args");
+    }
+
+    // -----------------------------------------------------------------------
+    // Offline --submit tests with an in-process mock SorobanRpc
+    // -----------------------------------------------------------------------
+
+    use rpc::SubmitResult;
+    use soroban_client::transaction::Transaction;
+    use std::cell::{Cell, RefCell};
+    use stellar_baselib::xdr::{SequenceNumber, TransactionEnvelope};
+
+    struct MockRpc {
+        account_seq: Result<String, String>,
+        prepare_err: Option<String>,
+        send_result: Result<SubmitResult, String>,
+        get_account_calls: Cell<usize>,
+        prepare_calls: Cell<usize>,
+        send_calls: Cell<usize>,
+        seen_sequence: Cell<Option<i64>>,
+        seen_signature_count: Cell<usize>,
+        seen_source: RefCell<Option<String>>,
+    }
+
+    impl MockRpc {
+        fn succeeding(seq: &str, hash: &str) -> Self {
+            Self {
+                account_seq: Ok(seq.to_string()),
+                prepare_err: None,
+                send_result: Ok(SubmitResult {
+                    status: "PENDING".to_string(),
+                    hash: hash.to_string(),
+                }),
+                get_account_calls: Cell::new(0),
+                prepare_calls: Cell::new(0),
+                send_calls: Cell::new(0),
+                seen_sequence: Cell::new(None),
+                seen_signature_count: Cell::new(0),
+                seen_source: RefCell::new(None),
+            }
+        }
+    }
+
+    impl SorobanRpc for MockRpc {
+        fn get_account(&self, public_key: &str) -> Result<Account> {
+            self.get_account_calls.set(self.get_account_calls.get() + 1);
+            *self.seen_source.borrow_mut() = Some(public_key.to_string());
+            match &self.account_seq {
+                Ok(seq) => Account::new(public_key, seq)
+                    .map_err(|e| anyhow!("mock account error: {e:?}")),
+                Err(msg) => Err(anyhow!("{msg}")),
+            }
+        }
+
+        fn prepare_transaction(&self, tx: &Transaction) -> Result<Transaction> {
+            self.prepare_calls.set(self.prepare_calls.get() + 1);
+            let env = tx
+                .to_envelope()
+                .map_err(|e| anyhow!("mock envelope error: {e}"))?;
+            if let TransactionEnvelope::Tx(v1) = env {
+                let SequenceNumber(seq) = v1.tx.seq_num;
+                self.seen_sequence.set(Some(seq));
+            }
+            if let Some(err) = &self.prepare_err {
+                return Err(anyhow!("{err}"));
+            }
+            Ok(tx.clone())
+        }
+
+        fn send_transaction(&self, tx: Transaction) -> Result<SubmitResult> {
+            self.send_calls.set(self.send_calls.get() + 1);
+            let env = tx
+                .to_envelope()
+                .map_err(|e| anyhow!("mock envelope error: {e}"))?;
+            if let TransactionEnvelope::Tx(v1) = env {
+                self.seen_signature_count.set(v1.signatures.len());
+            }
+            match &self.send_result {
+                Ok(res) => Ok(res.clone()),
+                Err(msg) => Err(anyhow!("{msg}")),
+            }
+        }
+    }
+
+    fn test_signer_secret() -> (String, String) {
+        let kp = Keypair::from_raw_ed25519_seed(&[7u8; 32]).expect("valid seed");
+        (kp.secret_key().expect("secret key"), kp.public_key())
+    }
+
+    #[test]
+    fn submit_success_increments_sequence_signs_tx_and_redacts_secret() {
+        let (secret, public_key) = test_signer_secret();
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--contract",
+            VALID_C,
+            "--signer",
+            &secret,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mock = MockRpc::succeeding("41", "abcdef0123456789");
+
+        let out = run_with_rpc(&cli, VALID_C, "set_weight_config", args, Some(&mock))
+            .expect("submit should succeed");
+
+        assert_eq!(mock.get_account_calls.get(), 1);
+        assert_eq!(mock.prepare_calls.get(), 1);
+        assert_eq!(mock.send_calls.get(), 1);
+        assert_eq!(mock.seen_source.borrow().as_deref(), Some(public_key.as_str()));
+        assert_eq!(mock.seen_sequence.get(), Some(42));
+        assert_eq!(mock.seen_signature_count.get(), 1);
+
+        let parsed: serde_json::Value = serde_json::from_str(&out).expect("valid JSON");
+        assert_eq!(parsed["status"], "PENDING");
+        assert_eq!(parsed["hash"], "abcdef0123456789");
+        assert!(
+            !out.contains(&secret),
+            "secret key must never appear in submit output"
+        );
+    }
+
+    #[test]
+    fn submit_account_lookup_error_short_circuits_and_redacts_secret() {
+        let (secret, _) = test_signer_secret();
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--contract",
+            VALID_C,
+            "--signer",
+            &secret,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mut mock = MockRpc::succeeding("0", "unused");
+        mock.account_seq = Err("failed to load source account: RPC timeout".to_string());
+
+        let err = run_with_rpc(&cli, VALID_C, "set_weight_config", args, Some(&mock)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("RPC timeout"), "unexpected error: {msg}");
+        assert!(!msg.contains(&secret), "secret leaked in error: {msg}");
+        assert_eq!(mock.get_account_calls.get(), 1);
+        assert_eq!(mock.prepare_calls.get(), 0);
+        assert_eq!(mock.send_calls.get(), 0);
+    }
+
+    #[test]
+    fn submit_simulation_error_short_circuits_and_redacts_secret() {
+        let (secret, _) = test_signer_secret();
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--contract",
+            VALID_C,
+            "--signer",
+            &secret,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mut mock = MockRpc::succeeding("10", "unused");
+        mock.prepare_err = Some("simulation failed: contract trap".to_string());
+
+        let err = run_with_rpc(&cli, VALID_C, "set_weight_config", args, Some(&mock)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("simulation failed"), "unexpected error: {msg}");
+        assert!(!msg.contains(&secret), "secret leaked in error: {msg}");
+        assert_eq!(mock.get_account_calls.get(), 1);
+        assert_eq!(mock.prepare_calls.get(), 1);
+        assert_eq!(mock.send_calls.get(), 0);
+    }
+
+    #[test]
+    fn submit_rejected_submission_rpc_error_and_error_status_fail_without_secret() {
+        let (secret, _) = test_signer_secret();
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--contract",
+            VALID_C,
+            "--signer",
+            &secret,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        // Case 1: send_transaction returns an RPC error.
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mut mock_err = MockRpc::succeeding("10", "unused");
+        mock_err.send_result = Err("send_transaction failed: tx_bad_seq".to_string());
+        let err = run_with_rpc(&cli, VALID_C, "set_weight_config", args, Some(&mock_err))
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("tx_bad_seq"), "unexpected error: {msg}");
+        assert!(!msg.contains(&secret), "secret leaked in error: {msg}");
+        assert_eq!(mock_err.send_calls.get(), 1);
+
+        // Case 2: send_transaction returns status ERROR.
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mut mock_rejected = MockRpc::succeeding("10", "badhash123");
+        mock_rejected.send_result = Ok(SubmitResult {
+            status: "ERROR".to_string(),
+            hash: "badhash123".to_string(),
+        });
+        let err = run_with_rpc(
+            &cli,
+            VALID_C,
+            "set_weight_config",
+            args,
+            Some(&mock_rejected),
+        )
+        .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("rejected"), "unexpected error: {msg}");
+        assert!(!msg.contains(&secret), "secret leaked in error: {msg}");
+        assert_eq!(mock_rejected.send_calls.get(), 1);
+    }
+
+    #[test]
+    fn submit_bad_signer_key_fails_before_rpc_without_leaking_key() {
+        let bad_secret = "SNOTAVALIDSECRETKEYMATERIAL1234567890";
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--contract",
+            VALID_C,
+            "--signer",
+            bad_secret,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mock = MockRpc::succeeding("0", "unused");
+        let err = run_with_rpc(&cli, VALID_C, "set_weight_config", args, Some(&mock)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid signer key"), "unexpected error: {msg}");
+        assert!(
+            !msg.contains(bad_secret),
+            "bad signer key must not be echoed in error: {msg}"
+        );
+        assert_eq!(mock.get_account_calls.get(), 0);
+        assert_eq!(mock.prepare_calls.get(), 0);
+        assert_eq!(mock.send_calls.get(), 0);
+    }
+
+    #[test]
+    fn submit_missing_contract_fails_before_rpc_without_leaking_secret() {
+        let (secret, _) = test_signer_secret();
+        let cli = parse_cli(&[
+            "credence-admin",
+            "--submit",
+            "--signer",
+            &secret,
+            "bond-set-weights",
+            "--admin",
+            VALID_G,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "10000",
+        ])
+        .expect("parse ok");
+
+        let resolve_err = resolve_contract_id(&cli).unwrap_err();
+        assert!(
+            resolve_err.to_string().contains("--contract"),
+            "unexpected resolve error: {resolve_err}"
+        );
+        assert!(!resolve_err.to_string().contains(&secret));
+
+        let args = build_weight_args(VALID_G, 500, 10_000).expect("valid args");
+        let mock = MockRpc::succeeding("0", "unused");
+        let err = run_with_rpc(&cli, VALID_C, "set_weight_config", args, Some(&mock)).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("--contract"), "unexpected error: {msg}");
+        assert!(!msg.contains(&secret), "secret leaked in error: {msg}");
+        assert_eq!(mock.get_account_calls.get(), 0);
+        assert_eq!(mock.prepare_calls.get(), 0);
+        assert_eq!(mock.send_calls.get(), 0);
     }
 }

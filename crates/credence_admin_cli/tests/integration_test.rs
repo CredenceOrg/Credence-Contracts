@@ -507,3 +507,75 @@ fn new_commands_reject_invalid_typed_args_offline() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("32 bytes"));
 }
+
+// ---------------------------------------------------------------------------
+// --submit guards: missing contract, bad signer, secret redaction
+// ---------------------------------------------------------------------------
+
+#[test]
+fn submit_without_contract_fails_and_never_leaks_secret() {
+    let secret = "SAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABSC4";
+    let output = Command::new(bin())
+        .args([
+            "--submit",
+            "--signer",
+            secret,
+            "bond-set-weights",
+            "--admin",
+            ADMIN_ADDR,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "50",
+        ])
+        .output()
+        .expect("failed to run credence-admin");
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit when --submit used without --contract"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("--contract") || stderr.contains("CREDENCE_CONTRACT"),
+        "expected contract-related error message; got: {stderr}"
+    );
+    assert!(!stdout.contains(secret), "secret leaked to stdout");
+    assert!(!stderr.contains(secret), "secret leaked to stderr");
+}
+
+#[test]
+fn submit_with_bad_signer_fails_and_never_leaks_secret() {
+    let bad_secret = "SBADSECRETKEYVALUE000000000000000000000000000000000000";
+    let output = Command::new(bin())
+        .args([
+            "--contract",
+            CONTRACT_ADDR,
+            "--submit",
+            "--signer",
+            bad_secret,
+            "bond-set-weights",
+            "--admin",
+            ADMIN_ADDR,
+            "--multiplier-bps",
+            "500",
+            "--max-weight",
+            "50",
+        ])
+        .output()
+        .expect("failed to run credence-admin");
+
+    assert!(
+        !output.status.success(),
+        "expected non-zero exit when --submit used with bad --signer"
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("invalid signer key"),
+        "expected invalid signer key error; got: {stderr}"
+    );
+    assert!(!stdout.contains(bad_secret), "bad signer leaked to stdout");
+    assert!(!stderr.contains(bad_secret), "bad signer leaked to stderr");
+}
