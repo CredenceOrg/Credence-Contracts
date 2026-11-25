@@ -2939,6 +2939,7 @@ version = "0.1.0"
 dependencies = [
  "credence_errors",
  "interfaces",
+ "proptest",
  "soroban-sdk",
 ]
 
