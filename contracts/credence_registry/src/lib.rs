@@ -36,7 +36,7 @@ use storage::{bump_instance_ttl, extend_persistent_ttl, DataKey};
 const SIGNATURE_DOMAIN: &str = "CredenceRegistry";
 
 /// Interface identifier expected from Credence bond contracts.
-pub const IFACE_CREDENCE_BOND_V1: u32 = 0x4342_5631;
+pub use interfaces::consts::IFACE_CREDENCE_BOND_V1;
 
 /// Maximum number of identities that can be returned in a single page
 /// This hard cap prevents unbounded ledger reads that could exceed Soroban's
@@ -59,6 +59,9 @@ mod test_boundary_recovery;
 
 #[cfg(test)]
 mod test_indexed_storage;
+
+#[cfg(test)]
+mod test_events_schema;
 
 #[contract]
 pub struct CredenceRegistry;
@@ -830,6 +833,16 @@ fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
         == 0
 }
 
+impl interfaces::governable::Governable for CredenceRegistry {
+    fn get_admin(e: Env) -> Address {
+        Self::get_admin(e)
+    }
+
+    fn set_admin(e: Env, new_admin: Address) {
+        Self::transfer_admin(e, new_admin);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     //! Regression coverage for issue #923: the registry used to carry two
@@ -895,15 +908,5 @@ mod tests {
             result.is_err(),
             "admin-check must panic on an uninitialized registry"
         );
-    }
-}
-
-impl interfaces::governable::Governable for CredenceRegistry {
-    fn get_admin(e: Env) -> Address {
-        Self::get_admin(e)
-    }
-
-    fn set_admin(e: Env, new_admin: Address) {
-        Self::transfer_admin(e, new_admin);
     }
 }

@@ -15,27 +15,37 @@ Multiplying two normalized amounts without a scale correction overflows the
 true economic product by `10^18`. The WAD helpers apply that scale in one
 overflow-safe `mul_div` step:
 
-| Helper | Formula | Rounding |
-|--------|---------|----------|
-| `mul_wad(a, b, msg)` | `(a * b) / WAD` | Toward zero |
-| `mul_wad_up(a, b, msg)` | `(a * b) / WAD` | Away from zero |
-| `div_wad(a, b, msg)` | `(a * WAD) / b` | Toward zero |
-| `div_wad_up(a, b, msg)` | `(a * WAD) / b` | Away from zero |
+| Helper | Formula | Rounding / Error Handling |
+|--------|---------|---------------------------|
+| `checked_mul_wad(a, b)` | `(a * b) / WAD` | Toward zero; returns `Result<i128, ContractError>` (`Overflow`) |
+| `checked_mul_wad_up(a, b)` | `(a * b) / WAD` | Away from zero; returns `Result<i128, ContractError>` (`Overflow`) |
+| `checked_div_wad(a, b)` | `(a * WAD) / b` | Toward zero; returns `Result<i128, ContractError>` (`DivisionByZero` / `Overflow`) |
+| `checked_div_wad_up(a, b)` | `(a * WAD) / b` | Away from zero; returns `Result<i128, ContractError>` (`DivisionByZero` / `Overflow`) |
+| `mul_wad(a, b, _msg)` *(deprecated)* | `(a * b) / WAD` | Toward zero; fixed static panic on overflow |
+| `mul_wad_up(a, b, _msg)` *(deprecated)* | `(a * b) / WAD` | Away from zero; fixed static panic on overflow |
+| `div_wad(a, b, _msg)` *(deprecated)* | `(a * WAD) / b` | Toward zero; fixed static panic on zero denom or overflow |
+| `div_wad_up(a, b, _msg)` *(deprecated)* | `(a * WAD) / b` | Away from zero; fixed static panic on zero denom or overflow |
 | `sat_mul_wad(a, b)` | same as `mul_wad` | Saturates / never panics |
 | `sat_div_wad(a, b)` | same as `div_wad` | Saturates; `b == 0 → 0` |
 
 `WAD = 10^18 = 1_000_000_000_000_000_000`.
 
-All panicking helpers widen the intermediate product to 256 bits via
-`mul_div_i128`, so `a * b` may exceed `i128::MAX` as long as the **final**
+All checked and legacy WAD helpers widen the intermediate product to 256 bits via
+`checked_mul_div_i128`, so `a * b` may exceed `i128::MAX` as long as the **final**
 rounded quotient fits. Saturating siblings clamp to `i128::MIN` / `i128::MAX`.
 
-```rust
-use credence_math::{div_wad, mul_wad, WAD};
+For contract entrypoints with an `&Env` in scope, combine any `checked_*` helper
+(`checked_add_i128`, `checked_sub_i128`, `checked_mul_i128`, `checked_div_i128`,
+`checked_ceil_div_i128`, `checked_mul_div_i128`, `checked_mul_u64`,
+`checked_mul_wad*`, `checked_div_wad*`) with `unwrap_or_panic_error(env, ...)` to
+abort with a typed `ContractError` via `panic_with_error!`.
 
-assert_eq!(mul_wad(WAD, WAD, "overflow"), WAD);       // 1.0 * 1.0 = 1.0
-assert_eq!(div_wad(2 * WAD, 2, "overflow"), WAD);     // 2.0 / 2 = 1.0
-assert_eq!(mul_wad(3, WAD / 2, "overflow"), 1);       // truncates 1.5 → 1
+```rust
+use credence_math::{checked_div_wad, checked_mul_wad, WAD};
+
+assert_eq!(checked_mul_wad(WAD, WAD), Ok(WAD));       // 1.0 * 1.0 = 1.0
+assert_eq!(checked_div_wad(2 * WAD, 2 * WAD), Ok(WAD)); // 2.0 / 2.0 = 1.0
+assert_eq!(checked_mul_wad(3, WAD / 2), Ok(1));       // truncates 1.5 → 1
 ```
 
 ## Percentage and basis-point companions

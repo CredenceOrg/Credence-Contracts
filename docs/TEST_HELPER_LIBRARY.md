@@ -30,6 +30,38 @@ fn test_access_control() {
 }
 ```
 
+### Generating Multiple Addresses
+
+When a test needs a batch of unique participants (for example, a list of voters or recipients), use `generate_many` instead of hand-rolling a loop. It returns a Soroban `Vec<Address>` containing exactly `n` distinct addresses. Passing `n = 0` returns an empty vector.
+
+```rust
+use soroban_sdk::Env;
+use testutils::generate_many;
+
+#[test]
+fn test_batch_of_voters() {
+    let env = Env::default();
+    let voters = generate_many(&env, 5);
+    assert_eq!(voters.len(), 5);
+}
+```
+
+For the common case of two different addresses (for example, a sender and a receiver), use `distinct_pair`. It returns a tuple of two addresses that are guaranteed not to be equal.
+
+```rust
+use soroban_sdk::Env;
+use testutils::distinct_pair;
+
+#[test]
+fn test_transfer_participants() {
+    let env = Env::default();
+    let (sender, receiver) = distinct_pair(&env);
+    assert_ne!(sender, receiver);
+}
+```
+
+Both helpers are re-exported at the crate root as `testutils::generate_many` and `testutils::distinct_pair`.
+
 ### Vector Deduplication
 
 When tests require validating unique sets (e.g., ensuring a batch of items has no duplicates), use the stable deduplication helpers. These retain the original insertion order of elements.

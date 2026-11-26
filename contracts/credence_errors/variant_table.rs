@@ -58,6 +58,39 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::MaxPauseSignersExceeded,
     ), // 125
     ("LeaseSignerMismatch", ContractError::LeaseSignerMismatch), // 126
+    ("ZeroBytes32", ContractError::ZeroBytes32),   // 127
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    ("OperationExpired", ContractError::OperationExpired), // 128
+    ("RoleRequired", ContractError::RoleRequired), // 127
+    (
+        "UpgradeAuthorizationAlreadyExists",
+        ContractError::UpgradeAuthorizationAlreadyExists,
+    ), // 128
+    (
+        "UpgradeAuthorizationNotFound",
+        ContractError::UpgradeAuthorizationNotFound,
+    ), // 129
+    (
+        "UpgradeSelfRoleNotAllowed",
+        ContractError::UpgradeSelfRoleNotAllowed,
+    ), // 130
+    ("LastUpgradeAdmin", ContractError::LastUpgradeAdmin), // 131
+    (
+        "NotPendingUpgradeAdmin",
+        ContractError::NotPendingUpgradeAdmin,
+    ), // 132
+    (
+        "GovernanceApproverMismatch",
+        ContractError::GovernanceApproverMismatch,
+    ), // 128
+    (
+        "GovernanceApprovalExpired",
+        ContractError::GovernanceApprovalExpired,
+    ), // 129
+    (
+        "GovernanceApprovalCategoryMismatch",
+        ContractError::GovernanceApprovalCategoryMismatch,
+    ), // 130
     ("RoleRequired", ContractError::RoleRequired), // 127
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
@@ -127,6 +160,45 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         ContractError::CooldownPeriodNotElapsed,
     ), // 238
     ("BytesTooLarge", ContractError::BytesTooLarge), // 239
+    (
+        "ClaimAlreadyProcessed",
+        ContractError::ClaimAlreadyProcessed,
+    ), // 240
+    ("ClaimExpired", ContractError::ClaimExpired), // 241
+    ("ClaimNotFound", ContractError::ClaimNotFound), // 242
+    ("NoPendingClaims", ContractError::NoPendingClaims), // 243
+    (
+        "NoValidClaimsToProcess",
+        ContractError::NoValidClaimsToProcess,
+    ), // 244
+        "BondAmountBelowMinimum",
+        ContractError::BondAmountBelowMinimum,
+    ), // 240
+    (
+        "BondAmountExceedsMaximum",
+        ContractError::BondAmountExceedsMaximum,
+    ), // 241
+    (
+        "BondDurationTooShort",
+        ContractError::BondDurationTooShort,
+    ), // 242
+    ("BondDurationTooLong", ContractError::BondDurationTooLong), // 243
+    ("InvalidRecipient", ContractError::InvalidRecipient), // 244
+    ("UpgradeNotAuthorized", ContractError::UpgradeNotAuthorized), // 240
+    ("UpgradeAuthNotActive", ContractError::UpgradeAuthNotActive), // 241
+    ("UpgradeAuthExpired", ContractError::UpgradeAuthExpired), // 242
+    ("UpgradeProposalNotPending", ContractError::UpgradeProposalNotPending), // 243
+    ("UpgradeProposalAlreadyApproved", ContractError::UpgradeProposalAlreadyApproved), // 244
+    ("UpgradeProposalNotApproved", ContractError::UpgradeProposalNotApproved), // 245
+    ("UpgradeImplementationMismatch", ContractError::UpgradeImplementationMismatch), // 246
+    ("ImplementationNotSet", ContractError::ImplementationNotSet), // 247
+    ("SameImplementation", ContractError::SameImplementation), // 248
+    ("ParameterOutOfBounds", ContractError::ParameterOutOfBounds), // 240
+    ("NoFeesToCollect", ContractError::NoFeesToCollect), // 240
+    (
+        "LockupAlreadyElapsed",
+        ContractError::LockupAlreadyElapsed,
+    ), // 241
     ("InvalidFeeBps", ContractError::InvalidFeeBps), // 240
     ("SlashRecordNotFound", ContractError::SlashRecordNotFound), // 241
     (
@@ -255,12 +327,16 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
     ("Underflow", ContractError::Underflow),           // 701
     ("DivisionByZero", ContractError::DivisionByZero), // 702
     ("InvalidPercentSplit", ContractError::InvalidPercentSplit), // 703
+    ("InvalidPeriodCount", ContractError::InvalidPeriodCount), // 704
     // --- Escrow (800-899) ---
     ("EscrowNotFound", ContractError::EscrowNotFound), // 800
     ("EscrowNotReleasable", ContractError::EscrowNotReleasable), // 801
     ("EscrowNotRefundable", ContractError::EscrowNotRefundable), // 802
     ("EscrowNotExpired", ContractError::EscrowNotExpired), // 803
-    ("RefundExceedsRemaining", ContractError::RefundExceedsRemaining), // 804
+    (
+        "RefundExceedsRemaining",
+        ContractError::RefundExceedsRemaining,
+    ), // 804
     ("InvalidEscrowExpiry", ContractError::InvalidEscrowExpiry), // 805
     ("NotEscrowParty", ContractError::NotEscrowParty), // 806
 ];

@@ -4,6 +4,7 @@
 
 use crate::test_helpers;
 use crate::CredenceBondClient;
+use credence_errors::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::token::TokenClient;
 use soroban_sdk::{contract, contractimpl, Address, Env};
@@ -167,8 +168,7 @@ fn test_withdraw_bond_after_lockup_non_rolling() {
 }
 
 #[test]
-#[should_panic(expected = "lock-up period not elapsed; use withdraw_early")]
-fn test_withdraw_bond_before_lockup_panics() {
+fn test_withdraw_bond_before_lockup_returns_typed_error() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
@@ -182,12 +182,16 @@ fn test_withdraw_bond_before_lockup_panics() {
     );
 
     e.ledger().with_mut(|li| li.timestamp = 44200);
-    client.withdraw_bond(&500);
+    assert_eq!(
+        client.try_withdraw_bond(&500),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::LockupNotExpired as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
-fn test_withdraw_bond_rolling_before_notice_panics() {
+fn test_withdraw_bond_rolling_without_request_returns_typed_error() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
@@ -201,12 +205,16 @@ fn test_withdraw_bond_rolling_before_notice_panics() {
     );
     e.ledger().with_mut(|li| li.timestamp = 1101);
 
-    client.withdraw_bond(&500);
+    assert_eq!(
+        client.try_withdraw_bond(&500),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::WithdrawalNotRequested as u32
+        )))
+    );
 }
 
 #[test]
-#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
-fn test_withdraw_bond_rolling_before_cooldown_panics() {
+fn test_withdraw_bond_rolling_before_notice_returns_typed_error() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
@@ -221,7 +229,12 @@ fn test_withdraw_bond_rolling_before_cooldown_panics() {
     client.request_withdrawal(&identity);
     e.ledger().with_mut(|li| li.timestamp = 1005);
 
-    client.withdraw_bond(&500);
+    assert_eq!(
+        client.try_withdraw_bond(&500),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::CooldownPeriodNotElapsed as u32
+        )))
+    );
 }
 
 #[test]
@@ -385,10 +398,9 @@ fn test_withdraw_bond_at_exact_lockup_boundary() {
     assert_eq!(bond.bonded_amount, 500);
 }
 
-/// Withdraw one second before lockup boundary must panic.
+/// Withdraw one second before lockup boundary returns a typed error.
 #[test]
-#[should_panic(expected = "lock-up period not elapsed; use withdraw_early")]
-fn test_withdraw_bond_one_second_before_lockup_boundary_panics() {
+fn test_withdraw_bond_one_second_before_lockup_boundary_returns_typed_error() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1_000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
@@ -396,7 +408,12 @@ fn test_withdraw_bond_one_second_before_lockup_boundary_panics() {
     client.create_bond_with_rolling(&identity, &1_000_i128, &86_400_u64, &false, &0_u64);
     // end = 87_400; one second before = 87_399
     e.ledger().with_mut(|li| li.timestamp = 87_399);
-    client.withdraw_bond(&500);
+    assert_eq!(
+        client.try_withdraw_bond(&500),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::LockupNotExpired as u32
+        )))
+    );
 }
 
 /// withdraw_bond decrements total supply by the withdrawn amount.
@@ -529,10 +546,9 @@ fn test_withdraw_bond_rolling_at_exact_cooldown_boundary() {
     assert_eq!(bond.bonded_amount, 500);
 }
 
-/// withdraw_bond on a rolling bond one second before cooldown boundary must panic.
+/// withdraw_bond on a rolling bond before cooldown expiry returns a typed error.
 #[test]
-#[should_panic(expected = "cooldown window not elapsed; request_withdrawal first")]
-fn test_withdraw_bond_rolling_one_second_before_cooldown_panics() {
+fn test_withdraw_bond_rolling_one_second_before_cooldown_returns_typed_error() {
     let e = Env::default();
     e.ledger().with_mut(|li| li.timestamp = 1_000);
     let (client, _admin, identity, _token_id, _bond_id) = setup_with_token(&e);
@@ -541,5 +557,10 @@ fn test_withdraw_bond_rolling_one_second_before_cooldown_panics() {
     client.request_withdrawal(&identity);
     // one second before cooldown expires
     e.ledger().with_mut(|li| li.timestamp = 1_099);
-    client.withdraw_bond(&500);
+    assert_eq!(
+        client.try_withdraw_bond(&500),
+        Err(Ok(soroban_sdk::Error::from_contract_error(
+            ContractError::CooldownPeriodNotElapsed as u32
+        )))
+    );
 }
