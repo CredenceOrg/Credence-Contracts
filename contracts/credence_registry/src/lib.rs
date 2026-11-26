@@ -432,19 +432,52 @@ impl CredenceRegistry {
     /// // Get second page
     /// let page2 = registry.get_identities_page(&env, 50, 50);
     /// ```
-    pub fn get_identities_page(e: Env, offset: u32, limit: u32) -> Vec<Address> {
-        bump_instance_ttl(&e);
-
+    fn page_range(e: &Env, offset: u32, limit: u32) -> Option<(u32, u32)> {
         let actual_limit = limit.min(MAX_IDENTITIES_PAGE_SIZE);
-        let total_count = Self::identity_count(&e);
+        let total_count = Self::identity_count(e);
 
-        // Handle offset past end
+        // Handle offset past end or zero limit
         if offset >= total_count || actual_limit == 0 {
-            return Vec::new(&e);
+            return None;
         }
 
         let start = offset;
         let end = start.saturating_add(actual_limit).min(total_count);
+        Some((start, end))
+    }
+
+    /// Get a paginated page of registered identities.
+    ///
+    /// # Arguments
+    /// * `offset` - Number of identities to skip (for pagination)
+    /// * `limit` - Maximum number of identities to return (capped at MAX_IDENTITIES_PAGE_SIZE)
+    ///
+    /// # Returns
+    /// A `Vec` of identity addresses for the requested page
+    ///
+    /// # Ordering
+    /// Identities are returned in insertion order (the order they were
+    /// registered). Removing an identity moves the tail entry into the freed
+    /// slot (swap-and-pop), so a page after a removal is still gapless and
+    /// deterministic, but the moved identity may appear earlier than it did
+    /// before. The cost is proportional to the page size, never to the number
+    /// of registered identities.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// // Get first page of 50 identities
+    /// let page1 = registry.get_identities_page(&env, 0, 50);
+    ///
+    /// // Get second page
+    /// let page2 = registry.get_identities_page(&env, 50, 50);
+    /// ```
+    pub fn get_identities_page(e: Env, offset: u32, limit: u32) -> Vec<Address> {
+        bump_instance_ttl(&e);
+
+        let (start, end) = match Self::page_range(&e, offset, limit) {
+            Some(range) => range,
+            None => return Vec::new(&e),
+        };
 
         // Read only the requested slice: one persistent key per returned
         // identity, never the whole registry.
@@ -454,6 +487,38 @@ impl CredenceRegistry {
             if let Some(identity) = e.storage().persistent().get::<_, Address>(&key) {
                 extend_persistent_ttl(&e, &key);
                 result.push_back(identity);
+            }
+        }
+
+        result
+    }
+
+    /// Get a paginated page of registered entries (identity, bond contract, registered_at, active).
+    ///
+    /// # Arguments
+    /// * `offset` - Number of entries to skip (for pagination)
+    /// * `limit` - Maximum number of entries to return (capped at MAX_IDENTITIES_PAGE_SIZE)
+    ///
+    /// # Returns
+    /// A `Vec` of `RegistryEntry` records for the requested page in insertion order.
+    pub fn get_entries_page(e: Env, offset: u32, limit: u32) -> Vec<RegistryEntry> {
+        bump_instance_ttl(&e);
+
+        let (start, end) = match Self::page_range(&e, offset, limit) {
+            Some(range) => range,
+            None => return Vec::new(&e),
+        };
+
+        let mut result = Vec::new(&e);
+        for i in start..end {
+            let at_key = DataKey::IdentityAt(i);
+            if let Some(identity) = e.storage().persistent().get::<_, Address>(&at_key) {
+                extend_persistent_ttl(&e, &at_key);
+                let entry_key = DataKey::IdentityToBond(identity);
+                if let Some(entry) = e.storage().persistent().get::<_, RegistryEntry>(&entry_key) {
+                    extend_persistent_ttl(&e, &entry_key);
+                    result.push_back(entry);
+                }
             }
         }
 
