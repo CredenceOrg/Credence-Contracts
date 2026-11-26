@@ -1,4 +1,4 @@
-// Single source of truth for exhaustive `ContractError` variant coverage in tests. // a
+// Single source of truth for exhaustive `ContractError` variant coverage in tests.
 //
 // Included from `tests/discriminant_uniqueness.rs`, `tests/variant_coverage_sync.rs`
 // and `src/test_errors.rs`. When adding a variant to `src/lib.rs`, add exactly one
@@ -91,6 +91,7 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "GovernanceApprovalCategoryMismatch",
         ContractError::GovernanceApprovalCategoryMismatch,
     ), // 130
+    ("RoleRequired", ContractError::RoleRequired), // 127
     // --- Bond (200-299) ---
     ("BondNotFound", ContractError::BondNotFound), // 200
     ("BondNotActive", ContractError::BondNotActive), // 201
@@ -198,6 +199,16 @@ pub const ALL_VARIANTS: &[(&str, ContractError)] = &[
         "LockupAlreadyElapsed",
         ContractError::LockupAlreadyElapsed,
     ), // 241
+    ("InvalidFeeBps", ContractError::InvalidFeeBps), // 240
+    ("SlashRecordNotFound", ContractError::SlashRecordNotFound), // 241
+    (
+        "SameLedgerSlashBlocked",
+        ContractError::SameLedgerSlashBlocked,
+    ), // 242
+    (
+        "SameLedgerCooldownBlocked",
+        ContractError::SameLedgerCooldownBlocked,
+    ), // 243
     // --- Attestation (300-399) ---
     ("DuplicateAttestation", ContractError::DuplicateAttestation), // 300
     ("AttestationNotFound", ContractError::AttestationNotFound),   // 301

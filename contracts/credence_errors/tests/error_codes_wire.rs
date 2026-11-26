@@ -129,6 +129,10 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::EmergencyRecordNotFound as u32, 242);
     assert_eq!(ContractError::EmergencyTransitionNotFound as u32, 243);
     assert_eq!(ContractError::DrainRecordNotFound as u32, 244);
+    assert_eq!(ContractError::InvalidFeeBps as u32, 240);
+    assert_eq!(ContractError::SlashRecordNotFound as u32, 241);
+    assert_eq!(ContractError::SameLedgerSlashBlocked as u32, 242);
+    assert_eq!(ContractError::SameLedgerCooldownBlocked as u32, 243);
 
     // Attestation (300-399)
     assert_eq!(ContractError::DuplicateAttestation as u32, 300);
@@ -187,4 +191,13 @@ fn test_error_code_wire_stability() {
     assert_eq!(ContractError::DivisionByZero as u32, 702);
     assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
     assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
+
+    // Escrow (800-899)
+    assert_eq!(ContractError::EscrowNotFound as u32, 800);
+    assert_eq!(ContractError::EscrowNotReleasable as u32, 801);
+    assert_eq!(ContractError::EscrowNotRefundable as u32, 802);
+    assert_eq!(ContractError::EscrowNotExpired as u32, 803);
+    assert_eq!(ContractError::RefundExceedsRemaining as u32, 804);
+    assert_eq!(ContractError::InvalidEscrowExpiry as u32, 805);
+    assert_eq!(ContractError::NotEscrowParty as u32, 806);
 }

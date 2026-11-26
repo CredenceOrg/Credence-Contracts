@@ -16,14 +16,15 @@ integration guide see:
 | Category       | Codes    | Count |
 |----------------|----------|-------|
 | Initialization | 1–99     | 2     |
-| Authorization  | 100–199  | 26    |
-| Bond           | 200–299  | 36    |
+| Authorization  | 100–199  | 28    |
+| Bond           | 200–299  | 44    |
 | Attestation    | 300–399  | 5     |
 | Registry       | 400–499  | 9     |
 | Delegation     | 500–599  | 16    |
-| Treasury       | 600–699  | 12    |
+| Treasury       | 600–699  | 13    |
 | Arithmetic     | 700–799  | 4     |
-| **Total**      |          | **110** |
+| Escrow         | 800–899  | 7     |
+| **Total**      |          | **128** |
 
 ## Single source of truth
 
