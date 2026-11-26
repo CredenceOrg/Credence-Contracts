@@ -97,18 +97,13 @@ impl Rate {
     /// [`MAX_COMPOUND_PERIODS`], or `"compound overflow"` when the multiplier
     /// does not fit in `i128`.
     pub fn compound(rate: u32, periods: u32) -> i128 {
-        let message = match Self::try_compound(rate, periods) {
-            Ok(value) => return value,
-            Err(ContractError::InvalidPeriodCount) => "compound period cap exceeded",
-            Err(_) => "compound overflow",
-        };
-        let absent: Option<i128> = None;
-        absent.expect(message)
-        assert!(
-            periods <= MAX_COMPOUND_PERIODS,
-            "compound period cap exceeded"
-        );
-        Self::try_compound(rate, periods).expect("compound overflow")
+        match Self::try_compound(rate, periods) {
+            Ok(value) => value,
+            Err(ContractError::InvalidPeriodCount) => {
+                crate::abort_with_message("compound period cap exceeded")
+            }
+            Err(_) => crate::abort_with_message("compound overflow"),
+        }
     }
 }
 
@@ -344,7 +339,7 @@ mod tests {
     /// Specifically: compound(r, a+b) == mul_div(compound(r, a), compound(r, b), 10_000).
     #[test]
     fn compound_additive_period_decomposition() {
-        use crate::{mul_div_i128, Rounding};
+        use crate::{checked_mul_div_i128, Rounding};
 
         let cases: &[(u32, u32, u32)] = &[
             (100, 2, 3),   // 5 periods split as 2+3
@@ -354,13 +349,13 @@ mod tests {
 
         for &(bps, a, b) in cases {
             let combined = Rate::compound(bps, a + b);
-            let split = mul_div_i128(
+            let split = checked_mul_div_i128(
                 Rate::compound(bps, a),
                 Rate::compound(bps, b),
                 10_000,
                 Rounding::Down,
-                "decomposition overflow",
-            );
+            )
+            .expect("decomposition overflow");
             // Allow a rounding delta of at most 1 due to integer truncation
             // at each intermediate step vs a single combined run.
             let delta = (combined - split).abs();
@@ -380,7 +375,7 @@ mod tests {
     /// exactly associative.
     #[test]
     fn compound_resume_from_checkpoint_equals_full_run() {
-        use crate::{mul_div_i128, Rounding};
+        use crate::{checked_mul_div_i128, Rounding};
 
         let bps = 200u32;
         let first_half = 5u32;
@@ -391,13 +386,13 @@ mod tests {
 
         // Checkpointed: 5 periods, then continue from that multiplier
         let checkpoint = Rate::compound(bps, first_half);
-        let resumed = mul_div_i128(
+        let resumed = checked_mul_div_i128(
             checkpoint,
             Rate::compound(bps, second_half),
             10_000,
             Rounding::Down,
-            "resume overflow",
-        );
+        )
+        .expect("resume overflow");
 
         let delta = (one_shot - resumed).abs();
         assert!(

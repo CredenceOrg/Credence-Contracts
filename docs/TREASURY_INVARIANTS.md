@@ -1,6 +1,6 @@
 # Treasury Invariants
 
-This document details the core invariants that the Credence Treasury contract is designed to preserve. These invariants govern the flow of funds (deposits, withdrawals, rescues) and the multisig proposal lifecycle.
+This document details the core invariants that the Credence Treasury contract is designed to preserve. These invariants govern the flow of funds (deposits, withdrawals, flash loans, rescues) and the multisig proposal lifecycle.
 
 ## Invariant 1: Total Balance Consistency
 The total accounted balance in the treasury must always equal the sum of the accounted balances across all fund sources.
@@ -50,3 +50,14 @@ The cached `SignerCount` must accurately reflect the number of active addresses 
 - Duplicate registrations must be rejected or treated as no-ops.
 - Signer removals must decrement the `SignerCount` cache.
 - The withdrawal threshold is automatically capped to `SignerCount` when signers are removed to prevent a deadlocked contract state.
+
+## Invariant 7: Flash Loan Repayment and Atomicity
+A successful flash loan must leave the treasury holding at least its pre-loan token balance plus the retained fee.
+```rust
+token_balance_after >= token_balance_before + fee
+fee = amount * flash_loan_fee_bps / 10_000
+```
+- The principal is transferred out only for the duration of the `FlashLoanReceiver` callback.
+- The receiver must return `FLASH_LOAN_SUCCESS` and repay `amount + fee`; otherwise a typed error reverts the whole call, including the outgoing transfer.
+- Only `fee` is added to `TotalBalance`, `BalanceBySource(ProtocolFee)`, and both cumulative counters. Overpayment becomes excess token balance and remains subject to Invariant 2.
+- A withdrawal lock blocks callback re-entry with `ReentrancyDetected`; the lock is released on the success path and implicitly rolled back on failure.

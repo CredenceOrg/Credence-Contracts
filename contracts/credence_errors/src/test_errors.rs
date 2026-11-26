@@ -20,10 +20,6 @@ mod tests {
 
     #[test]
     fn test_require_contract_uninitialized_passes_when_false() {
-        fn call(e: &soroban_sdk::Env) -> Result<(), ContractError> {
-            crate::require_contract_uninitialized(e, false);
-            Ok(())
-        }
         let e = soroban_sdk::Env::default();
         // Does not panic.
         crate::require_contract_uninitialized(&e, false);
@@ -214,6 +210,10 @@ mod tests {
         assert_eq!(ContractError::SameImplementation as u32, 248);
         assert_eq!(ContractError::NoFeesToCollect as u32, 240);
         assert_eq!(ContractError::LockupAlreadyElapsed as u32, 241);
+        assert_eq!(ContractError::InvalidFeeBps as u32, 240);
+        assert_eq!(ContractError::SlashRecordNotFound as u32, 241);
+        assert_eq!(ContractError::SameLedgerSlashBlocked as u32, 242);
+        assert_eq!(ContractError::SameLedgerCooldownBlocked as u32, 243);
     }
 
     #[test]
@@ -282,6 +282,17 @@ mod tests {
         assert_eq!(ContractError::DivisionByZero as u32, 702);
         assert_eq!(ContractError::InvalidPercentSplit as u32, 703);
         assert_eq!(ContractError::InvalidPeriodCount as u32, 704);
+    }
+
+    #[test]
+    fn test_codes_escrow() {
+        assert_eq!(ContractError::EscrowNotFound as u32, 800);
+        assert_eq!(ContractError::EscrowNotReleasable as u32, 801);
+        assert_eq!(ContractError::EscrowNotRefundable as u32, 802);
+        assert_eq!(ContractError::EscrowNotExpired as u32, 803);
+        assert_eq!(ContractError::RefundExceedsRemaining as u32, 804);
+        assert_eq!(ContractError::InvalidEscrowExpiry as u32, 805);
+        assert_eq!(ContractError::NotEscrowParty as u32, 806);
     }
 
     // ---------------------------------------------------------------------------
@@ -413,6 +424,10 @@ mod tests {
             ContractError::SameImplementation,
             ContractError::NoFeesToCollect,
             ContractError::LockupAlreadyElapsed,
+            ContractError::InvalidFeeBps,
+            ContractError::SlashRecordNotFound,
+            ContractError::SameLedgerSlashBlocked,
+            ContractError::SameLedgerCooldownBlocked,
         ];
         for v in &bond_variants {
             assert_eq!(v.category(), ErrorCategory::Bond, "{v:?} should be Bond");
@@ -534,6 +549,22 @@ mod tests {
             ContractError::InvalidPeriodCount.category(),
             ErrorCategory::Arithmetic
         );
+    }
+
+    #[test]
+    fn test_category_escrow() {
+        let escrow_variants = [
+            ContractError::EscrowNotFound,
+            ContractError::EscrowNotReleasable,
+            ContractError::EscrowNotRefundable,
+            ContractError::EscrowNotExpired,
+            ContractError::RefundExceedsRemaining,
+            ContractError::InvalidEscrowExpiry,
+            ContractError::NotEscrowParty,
+        ];
+        for v in &escrow_variants {
+            assert_eq!(v.category(), ErrorCategory::Escrow, "{v:?} should be Escrow");
+        }
     }
 
     // ---------------------------------------------------------------------------
@@ -1512,6 +1543,10 @@ mod tests {
             ContractError::SameImplementation => true, // supply a different implementation
             ContractError::NoFeesToCollect => true,       // await fee accumulation
             ContractError::LockupAlreadyElapsed => true,  // use normal withdraw
+            ContractError::InvalidFeeBps => true,         // supply fee_bps within allowed bounds
+            ContractError::SlashRecordNotFound => true,   // query an existing slash record index
+            ContractError::SameLedgerSlashBlocked => true, // retry in a subsequent ledger
+            ContractError::SameLedgerCooldownBlocked => true, // retry in a subsequent ledger
             ContractError::CooldownRequestAlreadyPending => true, // await the existing request
             ContractError::CooldownRequestNotFound => true, // the request was consumed
             ContractError::CooldownPeriodNotElapsed => true, // wait for the period
@@ -1741,6 +1776,11 @@ mod tests {
              (1) lib.rs is_recoverable() match, \
              (2) expected_is_recoverable() below, \
              (3) this `cases` list."
+        let cases = all_variants();
+        assert_eq!(
+            cases.len(),
+            ALL_VARIANTS.len(),
+            "all_variants() length must match ALL_VARIANTS.len()"
         );
         for e in &cases {
             assert_eq!(
@@ -1750,6 +1790,7 @@ mod tests {
                 e
             );
         }
+    }
     }
 
     /// Metadata guarantees: must not panic, must not allocate, must be
@@ -2275,6 +2316,26 @@ mod tests {
             Err(ContractError::CooldownPeriodNotElapsed)
         );
         assert!(mock_complete_cooldown(true, true).is_ok());
+    }
+
+    #[test]
+    fn test_invalid_fee_bps_is_recoverable() {
+        assert!(ContractError::InvalidFeeBps.is_recoverable());
+    }
+
+    #[test]
+    fn test_slash_record_not_found_is_recoverable() {
+        assert!(ContractError::SlashRecordNotFound.is_recoverable());
+    }
+
+    #[test]
+    fn test_same_ledger_slash_blocked_is_recoverable() {
+        assert!(ContractError::SameLedgerSlashBlocked.is_recoverable());
+    }
+
+    #[test]
+    fn test_same_ledger_cooldown_blocked_is_recoverable() {
+        assert!(ContractError::SameLedgerCooldownBlocked.is_recoverable());
     }
 
     // ---------------------------------------------------------------------------

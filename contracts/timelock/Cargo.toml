@@ -14,4 +14,5 @@ interfaces = { path = "../../crates/interfaces" }
 
 [dev-dependencies]
 soroban-sdk = { version = "22.0", features = ["testutils"] }
+proptest = "1.11.0"
 testutils = { path = "../../crates/testutils" }
