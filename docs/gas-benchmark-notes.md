@@ -155,6 +155,52 @@ The gas-profile assertion tests run as part of `cargo test --workspace` in
 `contracts-tests.yml`. A failure indicates an unintentional storage budget
 regression.
 
+### Cost Regression Baselines (`cost_baseline.json`)
+
+In addition to static storage-count guards, the workspace enforces modelled
+host-cost baselines (`cpu_insns`, `mem_bytes`, `read_entries`, `write_entries`,
+`read_bytes`, `write_bytes`) using the shared harness in
+`crates/testutils/src/cost_harness.rs` (schema `credence_bond.cost_baseline.v1`,
+10% default regression tolerance).
+
+Covered crates:
+- `credence_bond` (`contracts/credence_bond/cost_baseline.json`, `benches/cost.rs`, `tests/test_cost_regression.rs`)
+- `credence_arbitration` (`contracts/arbitration/cost_baseline.json`, `tests/test_cost_regression.rs`)
+- `timelock` (`contracts/timelock/cost_baseline.json`, `tests/test_cost_regression.rs`)
+- `credence_registry` (`contracts/credence_registry/cost_baseline.json`, `tests/test_cost_regression.rs`)
+
+#### Running Cost Regression Checks
+
+```bash
+cargo test -p credence_bond --locked cost
+cargo test -p credence_arbitration --locked cost
+cargo test -p timelock --locked cost
+cargo test -p credence_registry --locked cost
+```
+
+#### Updating a Baseline
+
+Refresh a committed `cost_baseline.json` **only when a cost change is
+intentional and reviewed** (for example, adding a required storage write or
+security check). Commit the updated JSON in the same PR so reviewers can
+inspect the resource delta.
+
+```bash
+# credence_bond (via refresher binary)
+cargo run -p credence_bond --features gas-bench --bin update-cost-baseline
+
+# credence_arbitration, timelock, credence_registry (via UPDATE_COST_BASELINE=1)
+UPDATE_COST_BASELINE=1 cargo test -p credence_arbitration --locked cost
+UPDATE_COST_BASELINE=1 cargo test -p timelock --locked cost
+UPDATE_COST_BASELINE=1 cargo test -p credence_registry --locked cost
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:UPDATE_COST_BASELINE="1"; cargo test -p credence_arbitration --locked cost; Remove-Item Env:UPDATE_COST_BASELINE
+```
+
 ---
 
 ## Optimization Patterns

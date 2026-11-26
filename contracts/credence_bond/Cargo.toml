@@ -88,11 +88,13 @@ interfaces = { path = "../../crates/interfaces" }
 # soroban-sdk is always required; testutils APIs are only needed for test
 # builds and are gated via the `testutils` feature defined below.
 soroban-sdk = { version = "22.0" }
+testutils = { path = "../../crates/testutils", optional = true }
 
 [dev-dependencies]
 # proptest is only used in #[cfg(test)] / fuzz modules — not in release WASM.
 proptest = "1.11.0"
 soroban-sdk = { version = "22.0", features = ["testutils"] }
+testutils = { path = "../../crates/testutils" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(skip_slash_invariant)', 'cfg(feature, values("testutils"))'] }
@@ -103,4 +105,4 @@ default = []
 # off-chain tooling, integration harnesses, and benchmarks that link the
 # crate as an rlib.  Must NOT be enabled when building the release WASM.
 testutils = ["soroban-sdk/testutils"]
-gas-bench = ["soroban-sdk/testutils"]
+gas-bench = ["soroban-sdk/testutils", "dep:testutils"]

@@ -517,11 +517,6 @@ dependencies = [
  "serde_json",
  "soroban-sdk",
  "timelock",
- "credence_arbitration",
- "credence_bond",
- "credence_registry",
- "credence_treasury",
- "soroban-sdk",
 ]
 
 [[package]]
@@ -546,6 +541,7 @@ dependencies = [
  "credence_errors",
  "interfaces",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
@@ -557,6 +553,7 @@ dependencies = [
  "interfaces",
  "proptest",
  "soroban-sdk",
+ "testutils",
  "timelock",
 ]
 
@@ -609,6 +606,7 @@ dependencies = [
  "credence_errors",
  "interfaces",
  "soroban-sdk",
+ "testutils",
  "timelock",
 ]
 
@@ -831,8 +829,8 @@ dependencies = [
 name = "dispute_resolution"
 version = "0.1.0"
 dependencies = [
- "credence_errors",
  "credence_arbitration",
+ "credence_errors",
  "interfaces",
  "soroban-sdk",
 ]
@@ -2965,6 +2963,7 @@ dependencies = [
  "interfaces",
  "proptest",
  "soroban-sdk",
+ "testutils",
 ]
 
 [[package]]
