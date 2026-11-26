@@ -50,6 +50,7 @@ pub enum DataKey {
     PauseProposal(u32),
     PauseApproval(u32, Address),
     PauseApprovalCount(u32),
+    PendingAdmin,
 }
 
 #[contracttype]
@@ -420,6 +421,75 @@ impl BountyEscrow {
     pub fn get_aggregate_stats_full_scan(env: Env, start: u32, limit: u32) -> AggregateStats {
         get_aggregate_stats_full_scan(env, start, limit)
     }
+
+    pub fn get_admin(env: Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NotInitialized))
+    }
+
+    pub fn get_pending_admin(env: Env) -> Option<Address> {
+        env.storage().instance().get(&DataKey::PendingAdmin)
+    }
+
+    pub fn propose_admin(env: Env, new_admin: Address) {
+        let current_admin = Self::get_admin(env.clone());
+        current_admin.require_auth();
+
+        if new_admin == current_admin {
+            panic_with_error!(&env, ContractError::AdminUnchanged);
+        }
+        if new_admin == env.current_contract_address() {
+            panic_with_error!(&env, ContractError::InvalidAdminAddress);
+        }
+
+        env.storage()
+            .instance()
+            .set(&DataKey::PendingAdmin, &new_admin);
+
+        env.events().publish(
+            (Symbol::new(&env, "admin_proposed"),),
+            (current_admin, new_admin),
+        );
+    }
+
+    pub fn accept_admin(env: Env) {
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NoPendingAdmin));
+        pending.require_auth();
+
+        let current_admin = Self::get_admin(env.clone());
+
+        env.storage().instance().set(&DataKey::Admin, &pending);
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events().publish(
+            (Symbol::new(&env, "admin_transferred"),),
+            (current_admin, pending),
+        );
+    }
+
+    pub fn cancel_admin_proposal(env: Env) {
+        let current_admin = Self::get_admin(env.clone());
+        current_admin.require_auth();
+
+        let pending: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::PendingAdmin)
+            .unwrap_or_else(|| panic_with_error!(&env, ContractError::NoPendingAdmin));
+
+        env.storage().instance().remove(&DataKey::PendingAdmin);
+
+        env.events().publish(
+            (Symbol::new(&env, "admin_proposal_cancelled"),),
+            (current_admin, pending),
+        );
+    }
 }
 
 #[cfg(test)]
@@ -427,6 +497,9 @@ mod test_events_schema;
 
 #[cfg(test)]
 mod test_ttl;
+
+#[cfg(test)]
+mod test_admin;
 
 #[cfg(test)]
 mod tests {

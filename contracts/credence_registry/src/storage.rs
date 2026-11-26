@@ -36,7 +36,7 @@ pub const PERSISTENT_TTL_THRESHOLD: u32 = PERSISTENT_TTL_EXTEND_TO / 2;
 ///  - TTL bumping is best-effort and must not alter the logical value of
 ///    an entry.
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RegistryEntry {
     /// The identity address
     pub identity: Address,

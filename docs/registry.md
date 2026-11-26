@@ -77,6 +77,10 @@ Returns `true` only if the entry exists **and** `active = true`.
 
 Returns at most `limit` identities (capped at `MAX_IDENTITIES_PAGE_SIZE = 200`) starting at `offset`, in insertion order. Reads only the requested slice: the cost is proportional to the page size, not to the registry size. Offsets at or past the end return an empty vector.
 
+### `get_entries_page(offset, limit) → Vec<RegistryEntry>`
+
+Returns at most `limit` full registry entries (capped at `MAX_IDENTITIES_PAGE_SIZE = 200`) starting at `offset`, in insertion order. Each `RegistryEntry` contains `identity`, `bond_contract`, `registered_at`, and `active`. Reads only the requested slice and extends the persistent TTL of each touched entry, avoiding individual RPC lookups per identity. Offsets at or past the end return an empty vector.
+
 ### `get_identity_count() → u32`
 
 The total number of indexed identities. O(1) instance read; use it to compute the last page.

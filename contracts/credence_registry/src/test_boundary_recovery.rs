@@ -170,6 +170,104 @@ fn zero_limit_is_a_valid_empty_read() {
     assert_eq!(client.get_identities_page(&0, &2).len(), 2);
 }
 
+/// Helper: register `n` entries and return their `RegistryEntry` structs in registration order.
+fn register_test_entries(env: &Env, client: &CredenceRegistryClient<'_>, n: u32) -> Vec<RegistryEntry> {
+    let mut entries = Vec::new(env);
+    for _ in 0..n {
+        let identity = Address::generate(env);
+        let bond = Address::generate(env);
+        let entry = client.register(&identity, &bond, &true);
+        entries.push_back(entry);
+    }
+    entries
+}
+
+/// An over-cap `limit` for `get_entries_page` is clamped to `MAX_IDENTITIES_PAGE_SIZE`,
+/// and the tail page resumes exactly where the clamped page stopped (no gap, no repeat).
+#[test]
+fn entries_page_limit_is_clamped_to_the_documented_cap() {
+    let env = Env::default();
+    let (client, _admin) = setup(&env);
+
+    let registered = register_test_entries(&env, &client, PAGE_CAP + 1);
+
+    let first = client.get_entries_page(&0, &(PAGE_CAP + 1));
+    assert_eq!(first.len(), PAGE_CAP, "limit must be clamped to the cap");
+    for i in 0..PAGE_CAP {
+        let entry = first.get(i).unwrap();
+        let expected = registered.get(i).unwrap();
+        assert_eq!(entry.identity, expected.identity, "page 1 identity ordering");
+        assert_eq!(entry.bond_contract, expected.bond_contract, "page 1 bond contract");
+        assert_eq!(entry.registered_at, expected.registered_at);
+        assert_eq!(entry.active, expected.active);
+    }
+
+    let tail = client.get_entries_page(&PAGE_CAP, &PAGE_CAP);
+    assert_eq!(tail.len(), 1, "the cap+1'th entry must land on page 2");
+    let tail_entry = tail.get(0).unwrap();
+    let expected_tail = registered.get(PAGE_CAP).unwrap();
+    assert_eq!(tail_entry.identity, expected_tail.identity);
+    assert_eq!(tail_entry.bond_contract, expected_tail.bond_contract);
+
+    // Boundary: `offset + limit` must not overflow when the caller passes `u32::MAX`
+    let clamped = client.get_entries_page(&PAGE_CAP, &u32::MAX);
+    assert_eq!(clamped.len(), 1);
+    assert_eq!(clamped.get(0).unwrap().identity, expected_tail.identity);
+}
+
+/// Offsets at or past the end for `get_entries_page` return an empty page instead of failing.
+#[test]
+fn entries_page_offsets_at_or_past_the_end_return_an_empty_page() {
+    let env = Env::default();
+    let (client, _admin) = setup(&env);
+    let registered = register_test_entries(&env, &client, 3);
+
+    assert_eq!(client.get_entries_page(&3, &10).len(), 0, "offset == total");
+    assert_eq!(client.get_entries_page(&4, &10).len(), 0, "offset > total");
+    assert_eq!(
+        client.get_entries_page(&u32::MAX, &u32::MAX).len(),
+        0,
+        "extreme offset must saturate, not overflow"
+    );
+    assert_eq!(client.get_entries_page(&0, &0).len(), 0, "limit == 0");
+
+    let full = client.get_entries_page(&0, &10);
+    assert_eq!(full.len(), 3);
+    for i in 0..3 {
+        assert_eq!(full.get(i).unwrap().identity, registered.get(i).unwrap().identity);
+    }
+}
+
+/// `get_entries_page` accurately reflects active and deactivated entries in insertion order.
+#[test]
+fn entries_page_reflects_entry_state_and_lifecycle() {
+    let env = Env::default();
+    let (client, _admin) = setup(&env);
+
+    let id1 = Address::generate(&env);
+    let id2 = Address::generate(&env);
+    let bond1 = Address::generate(&env);
+    let bond2 = Address::generate(&env);
+
+    client.register(&id1, &bond1, &true);
+    client.register(&id2, &bond2, &true);
+
+    client.deactivate(&id1);
+
+    let entries = client.get_entries_page(&0, &10);
+    assert_eq!(entries.len(), 2);
+
+    let e0 = entries.get(0).unwrap();
+    assert_eq!(e0.identity, id1);
+    assert_eq!(e0.bond_contract, bond1);
+    assert!(!e0.active, "id1 was deactivated");
+
+    let e1 = entries.get(1).unwrap();
+    assert_eq!(e1.identity, id2);
+    assert_eq!(e1.bond_contract, bond2);
+    assert!(e1.active, "id2 is active");
+}
+
 /// An empty registry answers every read deterministically.
 #[test]
 fn empty_registry_reads_are_safe_and_stable() {

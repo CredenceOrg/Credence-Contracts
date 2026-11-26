@@ -96,6 +96,17 @@ The bond contract uses a direct dual-auth transfer that requires both the curren
 
 That difference is useful when reviewing the codebase: if you are rotating contract-wide ownership, use the admin contract’s two-step flow. If you are changing the bond’s operational admin, the bond contract’s dual-auth path is the one to inspect.
 
+## Two-Step Admin Handover: Bounty Escrow and Timelock
+
+The `bounty-escrow` contract (`contracts/bounty-escrow/src/lib.rs`) and `timelock` contract implement a two-step admin transfer:
+
+1. `propose_admin(new_admin)`: Only the current admin can propose a replacement. Emits `admin_proposed`.
+2. `accept_admin()`: Only the pending admin address can authenticate and accept the handover. Sets `Admin = pending_admin`, clears `PendingAdmin`, and emits `admin_transferred`.
+3. `cancel_admin_proposal()`: The current admin can cancel an active proposal at any time prior to acceptance. Clears `PendingAdmin` and emits `admin_proposal_cancelled`.
+4. `get_pending_admin()`: View returning `Option<Address>` (or `Option<PendingAdmin>` for timelock) with the current pending candidate.
+
+This ensures privileged escrow administration cannot be captured in a single transaction or sent to an invalid or unauthenticated key.
+
 ## Operational checklist
 
 Before you rotate ownership:
