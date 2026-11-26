@@ -423,6 +423,9 @@ impl BountyEscrow {
 }
 
 #[cfg(test)]
+mod test_events_schema;
+
+#[cfg(test)]
 mod test_ttl;
 
 #[cfg(test)]
