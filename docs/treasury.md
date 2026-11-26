@@ -8,10 +8,11 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 - **Slashed fund tracking** — Slashed amounts are credited with source `SlashedFunds` for reporting and distribution.
 - **Multi-sig withdrawals** — Withdrawals require a proposal plus a configurable number of signer approvals before execution.
 - **Fund source tracking** — Balances are tracked by source (`ProtocolFee`, `SlashedFunds`) for accounting.
+- **Flash loans** — The configured token can be lent for a single receiver callback, provided the principal plus fee is repaid atomically.
 
 ## Initialization
 
-- `initialize(admin)` — Sets the admin. Must be called once. Admin can add/remove depositors and signers and set the approval threshold.
+- `initialize(admin, token)` — Sets the admin and the accounting token. Must be called once. Admin can add/remove depositors and signers and set the approval threshold.
 
 ## Deposits
 
@@ -22,6 +23,20 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 
 - **add_depositor(depositor)** — Admin only. Allows the address to call `receive_fee`.
 - **remove_depositor(depositor)** — Admin only.
+
+## Flash loans
+
+- **set_flash_loan_fee(fee_bps)** — Admin-authenticated (the stored admin address must sign). Sets the loan fee in basis points; `10,000` bps is 100%. Values above `10,000` revert with `InvalidFeeBps (#240)`. Defaults to `0` at initialization.
+
+- **get_flash_loan_fee()** — Current fee in basis points.
+
+- **flash_loan(initiator, receiver, amount, data)**
+  Transfers `amount` of the configured token from the treasury to `receiver`, then calls `receiver.on_flash_loan(initiator, token, amount, fee, data)`. The `initiator` must authorize the call. The receiver must implement the `FlashLoanReceiver` interface, return `FLASH_LOAN_SUCCESS`, and repay `amount + fee` to the treasury. The loan is rejected while paused; a negative `amount` reverts with `AmountMustBePositive`.
+
+  The treasury snapshots its token balance before the transfer and requires the post-callback balance to be at least `balance_before + fee`. A wrong success symbol reverts with `InvalidFlashLoanCallback (#606)`, a short repayment with `FlashLoanRepaymentFailed (#607)`, and a callback re-entry with `ReentrancyDetected (#207)`. Any panic in the receiver, insufficient repayment, or failed check reverts the whole invocation, including the initial transfer, so funds can never be borrowed without repayment.
+
+  Only the retained fee is booked as `ProtocolFee` revenue (plus cumulative totals); overpayment remains excess token balance.
+  Emits `flash_loan` with `(receiver, amount, fee)` under the `initiator` topic.
 
 ## Multi-sig withdrawals
 
@@ -53,6 +68,8 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 
 - **get_balance()** — Total treasury balance.
 - **get_balance_by_source(source)** — Balance attributed to `ProtocolFee` or `SlashedFunds` (cumulative received from that source).
+- **get_flash_loan_fee()** — Current flash loan fee in basis points.
+- **get_token()** — Current accounting/lending token address.
 - **get_min_liquidity()** — Current minimum liquidity floor that must remain after withdrawals.
 - **set_min_liquidity(admin, min_liquidity)** — Admin only. Sets the minimum balance that must remain in the treasury after any withdrawal.
 - **set_proposal_ttl(admin, ttl)** — Admin only. Sets the proposal time-to-live in ledger seconds (default 7 days; pass `0` for no expiry).
@@ -69,6 +86,8 @@ Central contract for managing protocol fees and slashed funds with multi-signatu
 
 - **treasury_initialized** — (admin)
 - **treasury_deposit** — (from, amount, source)
+- **flash_loan_fee_updated** — (old_fee_bps, fee_bps)
+- **flash_loan** — (receiver, amount, fee), topic initiator
 - **depositor_added** / **depositor_removed** — (depositor)
 - **signer_added** / **signer_removed** — (signer)
 - **threshold_updated** — (threshold)
@@ -87,6 +106,17 @@ with the remainder assigned to `SlashedFunds`:
 ```
 protocol_deduction = ProtocolFee_balance * actual_amount / TotalBalance   (floor division)
 slashed_deduction  = actual_amount - protocol_deduction
+```
+
+A successful `flash_loan` adds only the retained fee to `TotalBalance` and
+`BalanceBySource(ProtocolFee)`, and to both cumulative counters:
+
+```
+flash_loan_fee = amount * fee_bps / 10_000   (floor division)
+TotalBalance += flash_loan_fee
+BalanceBySource(ProtocolFee) += flash_loan_fee
+CumulativeReceived += flash_loan_fee
+CumulativeReceivedBySource(ProtocolFee) += flash_loan_fee
 ```
 
 The following invariant **must hold after every withdrawal**:
@@ -116,6 +146,7 @@ across random deposit/withdrawal sequences (50 proptest cases with up to 20 acti
 - Amounts use checked arithmetic to avoid overflow/underflow.
 - Proposal execution is idempotent (executed flag prevents double spend).
 - Proposals expire after the configured TTL (default 7 days); approvals and execution are rejected once expired.
+- Flash loans require initiator authorization, a withdrawal lock, a `FLASH_LOAN_SUCCESS` callback, and a treasury-side repayment check; any failure reverts atomically.
 - **Liquidity Floor Guardrail**: `min_liquidity` setting ensures treasury maintains minimum solvency after withdrawals.
 - **Slippage Protection**: `min_amount_out` parameter protects withdrawal executors from unfavorable settlement conditions.
 

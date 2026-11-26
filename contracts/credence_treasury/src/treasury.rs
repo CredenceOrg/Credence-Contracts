@@ -7,12 +7,17 @@ use credence_errors::ContractError;
 use ethnum::U256;
 use soroban_sdk::String;
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error, Address, Env, Symbol, U256 as SdkU256,
+    contract, contractimpl, contracttype, panic_with_error, Address, Bytes, Env, Symbol,
+    U256 as SdkU256,
 };
 
 use crate::pausable;
+use crate::receiver::FlashLoanReceiverClient;
 
 const CUMULATIVE_SEGMENT: u128 = (i128::MAX as u128) + 1;
+
+/// Basis-point denominator used for flash loan fee computation.
+const BPS_DENOMINATOR: i128 = 10_000;
 
 /// Default proposal time-to-live in ledger seconds (7 days).
 const DEFAULT_PROPOSAL_TTL: u64 = 7 * 24 * 60 * 60;
@@ -103,6 +108,9 @@ pub enum DataKey {
     Corridor(Address),
     /// Reentrancy guard shared by all outbound token-transfer paths.
     WithdrawalLock,
+    /// Flash loan fee in basis points, charged on the principal and retained by
+    /// the treasury on successful repayment.
+    FlashLoanFeeBps,
 }
 
 #[contract]
@@ -273,6 +281,9 @@ impl CredenceTreasury {
         e.storage()
             .instance()
             .set(&DataKey::ProposalTtl, &DEFAULT_PROPOSAL_TTL);
+        e.storage()
+            .instance()
+            .set(&DataKey::FlashLoanFeeBps, &0_u32);
         e.events()
             .publish((Symbol::new(&e, "treasury_initialized"),), admin);
     }
@@ -1018,6 +1029,161 @@ impl CredenceTreasury {
         );
 
         actual_amount
+    }
+
+    /// Set the flash loan fee in basis points. Only admin can call.
+    ///
+    /// The fee is charged on the principal of every successful flash loan and
+    /// remains in the treasury as `ProtocolFee` revenue. Values above 10,000
+    /// basis points (100%) are rejected with `InvalidFeeBps`.
+    pub fn set_flash_loan_fee(e: Env, fee_bps: u32) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        let admin = Self::get_admin(e.clone());
+        admin.require_auth();
+        if fee_bps > BPS_DENOMINATOR as u32 {
+            panic_with_error!(&e, ContractError::InvalidFeeBps);
+        }
+        let old_fee_bps: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::FlashLoanFeeBps)
+            .unwrap_or(0);
+        e.storage()
+            .instance()
+            .set(&DataKey::FlashLoanFeeBps, &fee_bps);
+        e.events().publish(
+            (Symbol::new(&e, "flash_loan_fee_updated"),),
+            (old_fee_bps, fee_bps),
+        );
+    }
+
+    /// Get the current flash loan fee in basis points.
+    pub fn get_flash_loan_fee(e: Env) -> u32 {
+        bump_instance_ttl(&e);
+        e.storage()
+            .instance()
+            .get(&DataKey::FlashLoanFeeBps)
+            .unwrap_or(0)
+    }
+
+    /// Lend the configured token to `receiver` for the duration of a single
+    /// callback, then require repayment of principal plus fee.
+    ///
+    /// The receiver must implement [`crate::receiver::FlashLoanReceiver`] and
+    /// must return `FLASH_LOAN_SUCCESS` after repaying `amount + fee` to this
+    /// contract. Any other symbol, a short repayment, or a panic in the
+    /// callback reverts the entire invocation, including the initial transfer,
+    /// so the treasury balance after a successful loan is at least
+    /// `balance_before + fee` and never lower on failure.
+    ///
+    /// # Panics
+    /// * `AmountMustBePositive` if `amount` is negative.
+    /// * `Paused` while the treasury is paused.
+    /// * `ReentrancyDetected` if a callback re-enters a guarded transfer path.
+    /// * `InvalidFlashLoanCallback` if the receiver returns any symbol other
+    ///   than `FLASH_LOAN_SUCCESS`.
+    /// * `FlashLoanRepaymentFailed` if less than `amount + fee` is repaid.
+    pub fn flash_loan(e: Env, initiator: Address, receiver: Address, amount: i128, data: Bytes) {
+        bump_instance_ttl(&e);
+        pausable::require_not_paused(&e);
+        if amount < 0 {
+            panic_with_error!(&e, ContractError::AmountMustBePositive);
+        }
+        acquire_withdrawal_lock(&e);
+        initiator.require_auth();
+
+        let token_addr = Self::get_token(e.clone());
+        let fee_bps: u32 = e
+            .storage()
+            .instance()
+            .get(&DataKey::FlashLoanFeeBps)
+            .unwrap_or(0);
+        let fee = amount
+            .checked_mul(i128::from(fee_bps))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow))
+            / BPS_DENOMINATOR;
+        let repayment = crate::receiver::validation::total_repayment(amount, fee)
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow));
+
+        let token_client = soroban_sdk::token::TokenClient::new(&e, &token_addr);
+        let contract_addr = e.current_contract_address();
+        let balance_before = token_client.balance(&contract_addr);
+        token_client.transfer(&contract_addr, &receiver, &amount);
+
+        let response = FlashLoanReceiverClient::new(&e, &receiver).on_flash_loan(
+            &initiator,
+            &token_addr,
+            &amount,
+            &fee,
+            &data,
+        );
+        if !crate::receiver::validation::is_success(&e, &response) {
+            panic_with_error!(&e, ContractError::InvalidFlashLoanCallback);
+        }
+
+        // The treasury-side snapshot is authoritative: it covers fee-on-transfer
+        // tokens and any overpayment without trusting the receiver's accounting.
+        let balance_after = token_client.balance(&contract_addr);
+        let required_balance = balance_before
+            .checked_sub(amount)
+            .and_then(|remaining| remaining.checked_add(repayment))
+            .unwrap_or_else(|| panic_with_error!(&e, ContractError::Underflow));
+        if balance_after < required_balance {
+            panic_with_error!(&e, ContractError::FlashLoanRepaymentFailed);
+        }
+
+        // Only the retained fee is booked as new protocol revenue. Any
+        // overpayment stays as excess token balance, reachable only via
+        // `rescue_native`, so the custody invariant is preserved.
+        let total: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::TotalBalance)
+            .unwrap_or(0);
+        let protocol_balance: i128 = e
+            .storage()
+            .instance()
+            .get(&DataKey::BalanceBySource(FundSource::ProtocolFee))
+            .unwrap_or(0);
+        let cumulative_total: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceived)
+            .unwrap_or_else(zero_cumulative_amount);
+        let cumulative_protocol: CumulativeAmount = e
+            .storage()
+            .instance()
+            .get(&DataKey::CumulativeReceivedBySource(
+                FundSource::ProtocolFee,
+            ))
+            .unwrap_or_else(zero_cumulative_amount);
+        e.storage().instance().set(
+            &DataKey::TotalBalance,
+            &total
+                .checked_add(fee)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow)),
+        );
+        e.storage().instance().set(
+            &DataKey::BalanceBySource(FundSource::ProtocolFee),
+            &protocol_balance
+                .checked_add(fee)
+                .unwrap_or_else(|| panic_with_error!(&e, ContractError::Overflow)),
+        );
+        e.storage().instance().set(
+            &DataKey::CumulativeReceived,
+            &add_to_cumulative(&e, &cumulative_total, fee),
+        );
+        e.storage().instance().set(
+            &DataKey::CumulativeReceivedBySource(FundSource::ProtocolFee),
+            &add_to_cumulative(&e, &cumulative_protocol, fee),
+        );
+
+        release_withdrawal_lock(&e);
+        e.events().publish(
+            (Symbol::new(&e, "flash_loan"), initiator),
+            (receiver, amount, fee),
+        );
     }
 
     /// Returns the configured token address.
