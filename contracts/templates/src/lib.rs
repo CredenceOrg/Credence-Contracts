@@ -1,17 +1,3 @@
-#![allow(
-    deprecated,
-    unused_imports,
-    unused_variables,
-    dead_code,
-    unused_assignments,
-    unused_mut,
-    mismatched_lifetime_syntaxes,
-    clippy::all,
-    clippy::pedantic,
-    clippy::nursery,
-    clippy::cargo,
-    clippy::restriction
-)]
 //! # Credence Contract Template
 //!
 //! Canonical starting point for new Soroban contracts in this workspace.
