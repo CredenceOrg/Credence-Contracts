@@ -94,7 +94,6 @@ fn test_archive_tied_dispute() {
         .try_archive_dispute(&s.admin, &id)
         .unwrap()
         .unwrap();
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
 }
 
@@ -145,7 +144,6 @@ fn test_reopen_archived_dispute() {
         .try_archive_dispute(&s.admin, &id)
         .unwrap()
         .unwrap();
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
     assert_eq!(s.client.get_dispute(&id).status, DisputeStatus::Archived);
     s.client
         .try_reopen_dispute(&s.admin, &id, &3600)
@@ -213,8 +211,6 @@ fn test_reopen_allows_new_votes() {
         .try_reopen_dispute(&s.admin, &id, &3600)
         .unwrap()
         .unwrap();
-    s.client.try_archive_dispute(&s.admin, &id).unwrap();
-    s.client.try_reopen_dispute(&s.admin, &id, &3600).unwrap();
     s.client.vote(&s.arb, &id, &2);
     advance(&s.env, 3601);
     let winner = s.client.resolve_dispute(&id);
