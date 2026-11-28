@@ -139,7 +139,7 @@ pub fn calculate_fee(amount: i128, fee_bps: u32) -> i128 {
     if fee_bps == 0 {
         return 0;
     }
-    math::bps(amount, fee_bps, "emergency fee mul", "emergency fee div")
+    math::bps(amount, fee_bps)
 }
 
 /// @notice Get latest record ID.

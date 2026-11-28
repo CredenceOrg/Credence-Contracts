@@ -23,27 +23,27 @@ fn bps_denominator_is_ten_thousand() {
 #[test]
 fn bps_one_percent_of_ten_thousand() {
     // 100 bps = 1 %; 1% of 10 000 = 100
-    let fee = math::bps(10_000, 100, "mul", "div");
+    let fee = math::bps(10_000, 100);
     assert_eq!(fee, 100);
 }
 
 #[test]
 fn bps_ten_percent_of_one_million() {
     // 1 000 bps = 10 %; 10% of 1 000 000 = 100 000
-    let fee = math::bps(1_000_000, 1_000, "mul", "div");
+    let fee = math::bps(1_000_000, 1_000);
     assert_eq!(fee, 100_000);
 }
 
 #[test]
 fn bps_max_rate_full_amount() {
     // 10 000 bps = 100 %; all of amount returned as fee
-    let fee = math::bps(500, BPS_DENOMINATOR as u32, "mul", "div");
+    let fee = math::bps(500, BPS_DENOMINATOR as u32);
     assert_eq!(fee, 500);
 }
 
 #[test]
 fn bps_zero_rate_returns_zero() {
-    let fee = math::bps(999_999, 0, "mul", "div");
+    let fee = math::bps(999_999, 0);
     assert_eq!(fee, 0);
 }
 
@@ -59,7 +59,7 @@ fn split_bps_net_plus_fee_equals_amount() {
         (0, 500),
     ];
     for &(amount, bps_value) in cases {
-        let (fee, net) = math::split_bps(amount, bps_value, "mul", "div", "sub");
+        let (fee, net) = math::split_bps(amount, bps_value);
         assert_eq!(
             fee + net,
             amount,
@@ -82,7 +82,7 @@ fn early_exit_penalty_matches_direct_bps() {
     let remaining_time = 43_200_u64; // half a day
 
     // Expected: base = 5% of 1_000_000 = 50_000; scaled by 0.5 = 25_000
-    let expected_base = math::bps(amount, penalty_bps, "mul", "div");
+    let expected_base = math::bps(amount, penalty_bps);
     let expected = expected_base * remaining_time as i128 / total_duration as i128;
 
     let actual = calculate_penalty(amount, remaining_time, total_duration, penalty_bps);
@@ -98,7 +98,7 @@ fn early_exit_penalty_full_remaining_equals_base_penalty() {
                                // remaining == total => penalty == base
     let duration = 100_u64;
     let penalty = calculate_penalty(amount, duration, duration, penalty_bps);
-    let base = math::bps(amount, penalty_bps, "mul", "div");
+    let base = math::bps(amount, penalty_bps);
     assert_eq!(penalty, base);
 }
 
@@ -112,7 +112,7 @@ fn fee_calculation_one_percent() {
     // Directly test the math used by fees::calculate_fee.
     let amount = 10_000_i128;
     let fee_bps = 100_u32; // 1 %
-    let (fee, net) = math::split_bps(amount, fee_bps, "mul", "div", "sub");
+    let (fee, net) = math::split_bps(amount, fee_bps);
     assert_eq!(fee, 100);
     assert_eq!(net, 9_900);
 }
@@ -121,7 +121,7 @@ fn fee_calculation_one_percent() {
 fn fee_calculation_half_percent() {
     let amount = 1_000_000_i128;
     let fee_bps = 50_u32; // 0.5 %
-    let (fee, net) = math::split_bps(amount, fee_bps, "mul", "div", "sub");
+    let (fee, net) = math::split_bps(amount, fee_bps);
     assert_eq!(fee, 5_000);
     assert_eq!(net, 995_000);
 }
@@ -131,7 +131,7 @@ fn fee_calculation_max_bps_takes_full_amount() {
     // MAX_FEE_BPS == BPS_DENOMINATOR == 10 000
     let amount = 1_000_i128;
     let fee_bps = BPS_DENOMINATOR as u32;
-    let (fee, net) = math::split_bps(amount, fee_bps, "mul", "div", "sub");
+    let (fee, net) = math::split_bps(amount, fee_bps);
     assert_eq!(fee, amount);
     assert_eq!(net, 0);
 }
@@ -150,7 +150,7 @@ fn fee_and_penalty_use_same_denominator_for_equal_rates() {
     let amount = 500_000_i128;
     let rate_bps = 300_u32; // 3 %
 
-    let (fee, _net) = math::split_bps(amount, rate_bps, "mul", "div", "sub");
+    let (fee, _net) = math::split_bps(amount, rate_bps);
     // Penalty with remaining == total collapses to the base bps value.
     let penalty = calculate_penalty(amount, 1, 1, rate_bps);
 
@@ -207,17 +207,17 @@ fn early_exit_penalty_regression_vectors() {
 #[test]
 fn fee_math_edge_cases() {
     // Zero amount
-    let (fee, net) = math::split_bps(0, 500, "mul", "div", "sub");
+    let (fee, net) = math::split_bps(0, 500);
     assert_eq!(fee, 0);
     assert_eq!(net, 0);
 
     // Zero BPS
-    let (fee, net) = math::split_bps(1_000_000, 0, "mul", "div", "sub");
+    let (fee, net) = math::split_bps(1_000_000, 0);
     assert_eq!(fee, 0);
     assert_eq!(net, 1_000_000);
 
     // Max BPS (100%)
-    let (fee, net) = math::split_bps(1_000_000, BPS_DENOMINATOR as u32, "mul", "div", "sub");
+    let (fee, net) = math::split_bps(1_000_000, BPS_DENOMINATOR as u32);
     assert_eq!(fee, 1_000_000);
     assert_eq!(net, 0);
 }

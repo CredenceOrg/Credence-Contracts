@@ -114,22 +114,21 @@ transaction.
 
 | Helper | Rounding | Panics on overflow | Uses wide intermediate |
 |--------|----------|-------------------|----------------------|
-| `bps` | Down (truncate) | Yes (via inner `mul_i128`/`div_i128`) | No — `amount * bps` must fit in `i128` |
+| `bps` | Down (truncate) | No — saturates on `value * bps` overflow | No — uses `saturating_mul` |
 | `bps_round_up` | Up | Yes (via `mul_div_i128`) | Yes |
 | `bps_u64` | Down (truncate) | Yes (via `mul_u64`) | No — `amount * bps` must fit in `u64` |
-| `split_bps` | Down (truncate) | Yes (via `bps` + `sub_i128`) | No |
+| `split_bps` | Down (truncate) | No — saturates on overflow/underflow | No — uses `saturating_mul`/`saturating_sub` |
 | `sat_mul_bps` | Down (truncate) | No — saturates | Yes |
 
 ### `bps`
 
 ```rust
-pub fn bps(amount: i128, bps: u32, mul_msg: &'static str, div_msg: &'static str) -> i128
+pub fn bps(value: i128, bps: u32) -> i128
 ```
 
-Computes `amount * bps / 10_000`. The multiply and divide are separate
-checked steps — the intermediate `amount * bps` must not exceed `i128`.
-For amounts that could overflow, use `mul_div_i128` with `Rounding::Down`
-or `sat_mul_bps` instead.
+Computes `value.saturating_mul(bps as i128) / 10_000`. Saturates on
+multiplication overflow instead of panicking. For wide 256-bit intermediate
+precision without saturation, use `checked_mul_div_i128` with `Rounding::Down`.
 
 ### `bps_round_up`
 
@@ -143,17 +142,12 @@ Rounds away from zero when the division leaves a remainder. Uses
 ### `split_bps`
 
 ```rust
-pub fn split_bps(
-    amount: i128,
-    bps_value: u32,
-    mul_msg: &'static str,
-    div_msg: &'static str,
-    sub_msg: &'static str,
-) -> (i128, i128)
+pub fn split_bps(value: i128, bps: u32) -> (i128, i128)
 ```
 
-Returns `(fee, net)` where `fee = bps(amount, bps_value, ...)` and
-`net = amount - fee`. Panics if `fee > amount`.
+Returns `(fee, net)` where `fee = bps(value, bps)` and
+`net = value.saturating_sub(fee)`. Saturates on overflow/underflow instead of
+panicking.
 
 ## Rate Helpers
 

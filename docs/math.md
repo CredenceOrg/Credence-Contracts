@@ -52,8 +52,8 @@ assert_eq!(checked_mul_wad(3, WAD / 2), Ok(1));       // truncates 1.5 → 1
 
 | Helper | Scale | Notes |
 |--------|-------|-------|
-| `bps` / `bps_round_up` / `split_bps` | `/ 10_000` | Panicking family |
-| `sat_mul_bps` / `sat_bps` / `sat_split_bps` | `/ 10_000` | Panic-free |
+| `bps(value, bps)` / `split_bps(value, bps)` | `/ 10_000` | Saturating (panic-free) |
+| `sat_mul_bps` | `/ 10_000` | Saturating (panic-free) |
 | `percent` / `percent_round_up` / `split_percent` | `/ 100` | Panicking; `_div_msg` is a no-op placeholder |
 | `sat_percent` / `sat_mul_percent` / `sat_split_percent` | `/ 100` | Panic-free |
 

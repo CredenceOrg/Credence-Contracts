@@ -121,7 +121,7 @@ division, so `a * b` can exceed `i128::MAX` as long as the final rounded result
 still fits in `i128`.
 
 - Use `Rounding::Down` for back-compatible truncation toward zero. This matches
-  the legacy `bps(amount, bps, ..)` result.
+  the `bps(value, bps)` result when `value * bps` does not saturate.
 - Use `Rounding::Up` when the protocol must collect at least the fractional fee
   or penalty amount.
 - Use `Rounding::Nearest` when symmetric nearest-integer behavior is desired;
