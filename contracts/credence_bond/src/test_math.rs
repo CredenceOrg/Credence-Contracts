@@ -4,15 +4,15 @@ use crate::math;
 
 #[test]
 fn test_bps_basic() {
-    let fee = math::bps(10_000_i128, 100_u32, "mul", "div");
+    let fee = math::bps(10_000_i128, 100_u32);
     assert_eq!(fee, 100);
 }
 
 #[test]
-#[should_panic(expected = "fee calculation overflow")]
-fn test_bps_overflow_panics() {
-    // i128::MAX * 10_000 overflows.
-    let _ = math::bps(i128::MAX, 10_000_u32, "fee calculation overflow", "div");
+fn test_bps_overflow_saturates() {
+    // i128::MAX * 10_000 saturates instead of panicking.
+    let fee = math::bps(i128::MAX, 10_000_u32);
+    assert_eq!(fee, i128::MAX / math::BPS_DENOMINATOR);
 }
 
 #[test]

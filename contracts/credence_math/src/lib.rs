@@ -27,11 +27,11 @@ pub const BPS_DENOMINATOR: i128 = 10_000;
 /// Fixed-point denominator for percentage calculations.
 pub const PERCENT_DENOMINATOR: i128 = 100;
 
-/// Multiply a value by basis points and divide by BPS_DENOMINATOR.
-/// Returns `(value * bps) / BPS_DENOMINATOR`.
-/// The operation names are for panic messages only (kept for backward compatibility).
+/// Multiply a value by basis points and divide by [`BPS_DENOMINATOR`].
+/// Returns `(value.saturating_mul(bps as i128)) / BPS_DENOMINATOR`.
+/// Saturates on multiplication overflow instead of panicking.
 #[inline]
-pub fn bps(value: i128, bps: u32, _mul_op: &str, _div_op: &str) -> i128 {
+pub fn bps(value: i128, bps: u32) -> i128 {
     value.saturating_mul(bps as i128) / BPS_DENOMINATOR
 }
 
@@ -50,16 +50,11 @@ pub fn sat_mul_bps(value: i128, bps: u32) -> i128 {
 }
 
 /// Split a value into fee and net portions based on basis points.
-/// Returns (fee, net) where fee = (value * bps) / BPS_DENOMINATOR and net = value - fee.
-/// The operation names (mul_op, div_op, sub_op) are for panic messages only.
+/// Returns `(fee, net)` where `fee = (value.saturating_mul(bps as i128)) / BPS_DENOMINATOR`
+/// and `net = value.saturating_sub(fee)`.
+/// Saturates on overflow/underflow instead of panicking.
 #[inline]
-pub fn split_bps(
-    value: i128,
-    bps: u32,
-    _mul_op: &str,
-    _div_op: &str,
-    _sub_op: &str,
-) -> (i128, i128) {
+pub fn split_bps(value: i128, bps: u32) -> (i128, i128) {
     let fee = value.saturating_mul(bps as i128) / BPS_DENOMINATOR;
     let net = value.saturating_sub(fee);
     (fee, net)
@@ -429,6 +424,22 @@ mod tests {
             sat_mul_div_i128(i128::MAX, -2, 1, Rounding::Down),
             i128::MIN
         );
+    }
+
+    #[test]
+    fn bps_and_split_bps_compute_and_saturate() {
+        assert_eq!(bps(10_000, 100), 100);
+        assert_eq!(bps(1_000_000, 0), 0);
+        assert_eq!(bps(500, BPS_DENOMINATOR as u32), 500);
+        assert_eq!(bps(i128::MAX, 10_000), i128::MAX / BPS_DENOMINATOR);
+        assert_eq!(bps(i128::MIN, 10_000), i128::MIN / BPS_DENOMINATOR);
+
+        assert_eq!(split_bps(10_000, 250), (250, 9_750));
+        assert_eq!(split_bps(0, 500), (0, 0));
+        assert_eq!(split_bps(1_000, BPS_DENOMINATOR as u32), (1_000, 0));
+        let (sat_fee, sat_net) = split_bps(i128::MAX, 10_000);
+        assert_eq!(sat_fee, i128::MAX / BPS_DENOMINATOR);
+        assert_eq!(sat_net, i128::MAX - sat_fee);
     }
 
     #[test]

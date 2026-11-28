@@ -94,7 +94,7 @@ Many bond paths use a **two-lane** split rather than an N-recipient vector:
 use credence_math::split_bps;
 
 // fee_bps out of 10_000 → (fee, net) with fee + net == amount
-let (fee, net) = split_bps(amount, fee_bps, "mul", "div", "sub");
+let (fee, net) = split_bps(amount, fee_bps);
 ```
 
 This is the same bps model with an implicit second recipient (the bond principal / net lane). Multi-recipient vectors generalize that idea to N named addresses.
